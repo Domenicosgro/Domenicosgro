@@ -1,16 +1,17 @@
 import React, { useState } from 'react'
 import { Plus, Trash2, Copy, FileText, Search, ChevronRight } from 'lucide-react'
-import { formatDate } from '../utils'
+import { formatDate, buildProtocolNo } from '../utils'
 
 export default function ProtocolList({ protocols, onCreate, onOpen, onDelete, onDuplicate }) {
   const [search, setSearch] = useState('')
 
   const filtered = protocols.filter(p => {
     const q = search.toLowerCase()
+    const no = buildProtocolNo(p.projectName, p.date)
     return (
       p.projectName.toLowerCase().includes(q) ||
       p.meetingType.toLowerCase().includes(q) ||
-      p.protocolNo.toLowerCase().includes(q)
+      no.toLowerCase().includes(q)
     )
   })
 
@@ -53,6 +54,7 @@ export default function ProtocolList({ protocols, onCreate, onOpen, onDelete, on
       <div className="space-y-3">
         {filtered.map(p => {
           const openActions = p.actionItems.filter(a => a.status === 'offen' || a.status === 'in_arbeit').length
+          const no = buildProtocolNo(p.projectName, p.date)
           return (
             <div
               key={p.id}
@@ -66,10 +68,9 @@ export default function ProtocolList({ protocols, onCreate, onOpen, onDelete, on
                     {p.projectName || 'Ohne Projektnamen'}
                   </span>
                   <span className="badge-blue">{p.meetingType}</span>
-                  {p.protocolNo && <span className="text-xs text-gray-400">#{p.protocolNo}</span>}
                 </div>
                 <div className="flex items-center gap-3 mt-1 text-xs text-gray-500">
-                  <span>{formatDate(p.date)}</span>
+                  <span className="font-mono text-gray-400">{no}</span>
                   {p.location && <span>· {p.location}</span>}
                   {p.participants.length > 0 && (
                     <span>· {p.participants.filter(pt => pt.present).length} Teilnehmer</span>

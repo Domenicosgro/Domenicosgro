@@ -29,11 +29,17 @@ export const statusBadge = (val) =>
 export const priorityBadge = (val) =>
   PRIORITIES.find(p => p.value === val) ?? PRIORITIES[1]
 
+// Auto-generate protocol number: "ProjektName_DD.MM.YYYY"
+export const buildProtocolNo = (projectName, date) => {
+  const name = (projectName || '').trim().replace(/\s+/g, '-') || 'Protokoll'
+  const d = date ? formatDate(date) : formatDate(today())
+  return `${name}_${d}`
+}
+
 export const emptyProtocol = () => ({
   id: uid(),
   meetingType: 'Baubesprechung',
   projectName: '',
-  protocolNo: '',
   date: today(),
   time: '',
   location: '',
@@ -41,7 +47,7 @@ export const emptyProtocol = () => ({
   nextMeetingTime: '',
   preparedBy: '',
   notes: '',
-  predecessorId: null,   // ID of the previous meeting (for carryover)
+  predecessorId: null,
   participants: [],
   agendaItems: [],
   actionItems: [],
@@ -54,6 +60,7 @@ export const emptyParticipant = () => ({
   name: '',
   company: '',
   role: '',
+  email: '',
   present: true,
 })
 
@@ -76,6 +83,6 @@ export const emptyActionItem = () => ({
   status: 'offen',
   priority: 'mittel',
   remarks: '',
-  carriedFromId: null,   // source protocol ID if carried over from a previous meeting
-  completedAt: null,     // ISO timestamp when status was set to 'erledigt'
+  carriedFromId: null,
+  completedAt: null,
 })

@@ -1,9 +1,23 @@
 import React, { useState } from 'react'
-import { Plus, Trash2, CheckSquare, EyeOff, Eye } from 'lucide-react'
+import { Plus, Trash2, CheckSquare, EyeOff, Eye, Search, X } from 'lucide-react'
 import { emptyActionItem, ACTION_STATUSES, PRIORITIES, formatDate } from '../utils'
+
+function highlight(text, query) {
+  if (!query || !text) return text
+  const idx = text.toLowerCase().indexOf(query.toLowerCase())
+  if (idx === -1) return text
+  return (
+    <>
+      {text.slice(0, idx)}
+      <mark className="bg-yellow-200 rounded px-0.5">{text.slice(idx, idx + query.length)}</mark>
+      {text.slice(idx + query.length)}
+    </>
+  )
+}
 
 export default function ActionItems({ items, onChange }) {
   const [hideCompleted, setHideCompleted] = useState(false)
+  const [search, setSearch] = useState('')
 
   const add = () => {
     const no = String(items.length + 1)
@@ -14,7 +28,6 @@ export default function ActionItems({ items, onChange }) {
     onChange(items.map(it => {
       if (it.id !== id) return it
       const updated = { ...it, [field]: value }
-      // track completion timestamp
       if (field === 'status') {
         updated.completedAt = value === 'erledigt' ? new Date().toISOString() : null
       }
@@ -25,11 +38,25 @@ export default function ActionItems({ items, onChange }) {
   const remove = (id) => onChange(items.filter(it => it.id !== id))
 
   const completedCount = items.filter(it => it.status === 'erledigt').length
-  const openCount = items.filter(it => it.status === 'offen' || it.status === 'in_arbeit').length
+  const openCount      = items.filter(it => it.status === 'offen' || it.status === 'in_arbeit').length
 
-  const visible = hideCompleted
-    ? items.filter(it => it.status !== 'erledigt')
-    : items
+  const q = search.trim().toLowerCase()
+
+  // Search matches all fields including completed ones (ignores hideCompleted when searching)
+  const visible = items.filter(it => {
+    if (q) {
+      return (
+        it.description.toLowerCase().includes(q) ||
+        it.responsible.toLowerCase().includes(q) ||
+        it.remarks.toLowerCase().includes(q) ||
+        it.no.toLowerCase().includes(q)
+      )
+    }
+    return hideCompleted ? it.status !== 'erledigt' : true
+  })
+
+  // When searching and hitting a completed item, show a hint
+  const searchHitsCompleted = q && visible.some(it => it.status === 'erledigt')
 
   return (
     <div className="card p-6 space-y-4">
@@ -37,15 +64,14 @@ export default function ActionItems({ items, onChange }) {
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div className="flex items-center gap-3 flex-wrap">
           <h2 className="section-title"><CheckSquare size={16} /> Maßnahmen &amp; Aufgaben</h2>
-          {openCount > 0 && <span className="badge-yellow">{openCount} offen</span>}
+          {openCount > 0      && <span className="badge-yellow">{openCount} offen</span>}
           {completedCount > 0 && <span className="badge-green">{completedCount} erledigt</span>}
         </div>
-        <div className="flex gap-2 no-print">
-          {completedCount > 0 && (
+        <div className="flex gap-2 no-print flex-wrap">
+          {completedCount > 0 && !q && (
             <button
               className="btn-secondary text-xs"
               onClick={() => setHideCompleted(v => !v)}
-              title={hideCompleted ? 'Erledigte einblenden' : 'Erledigte ausblenden'}
             >
               {hideCompleted ? <Eye size={14} /> : <EyeOff size={14} />}
               {hideCompleted ? 'Erledigte einblenden' : 'Erledigte ausblenden'}
@@ -55,17 +81,47 @@ export default function ActionItems({ items, onChange }) {
         </div>
       </div>
 
+      {/* Search bar */}
+      {items.length > 0 && (
+        <div className="relative no-print">
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+          <input
+            className="input pl-9 pr-9"
+            placeholder="Maßnahmen durchsuchen (auch erledigte)…"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+          />
+          {search && (
+            <button
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+              onClick={() => setSearch('')}
+            >
+              <X size={14} />
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Search hint when completed items appear */}
+      {searchHitsCompleted && (
+        <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded px-3 py-1.5 no-print">
+          Die Suche zeigt auch erledigte Punkte.
+        </p>
+      )}
+
       {items.length === 0 && (
         <p className="text-sm text-gray-400 italic">Keine Maßnahmen erfasst.</p>
       )}
 
       {visible.length === 0 && items.length > 0 && (
-        <p className="text-sm text-gray-400 italic">Alle Maßnahmen erledigt – zum Einblenden den Button oben verwenden.</p>
+        <p className="text-sm text-gray-400 italic">
+          {q ? 'Keine Treffer gefunden.' : 'Alle Maßnahmen erledigt – Einblenden über den Button oben.'}
+        </p>
       )}
 
       {visible.length > 0 && (
         <div className="space-y-2">
-          {/* Table header */}
+          {/* Column header */}
           <div className="hidden sm:grid grid-cols-[2rem_1fr_8rem_8rem_7rem_7rem_2rem] gap-2 px-3 pb-1 border-b border-gray-100">
             <span className="text-xs font-medium text-gray-400">Nr.</span>
             <span className="text-xs font-medium text-gray-400">Maßnahme</span>
@@ -77,39 +133,31 @@ export default function ActionItems({ items, onChange }) {
           </div>
 
           {visible.map((item) => {
-            const done = item.status === 'erledigt'
+            const done     = item.status === 'erledigt'
             const isOverdue = item.deadline && !done && new Date(item.deadline) < new Date()
             const isCarried = !!item.carriedFromId
 
             return (
               <div
                 key={item.id}
-                className={`
-                  rounded-lg border px-3 py-2 transition-all
-                  ${done
-                    ? 'bg-green-50 border-green-200 opacity-70'
-                    : isOverdue
-                    ? 'bg-red-50 border-red-200'
-                    : isCarried
-                    ? 'bg-blue-50 border-blue-200'
-                    : 'bg-white border-gray-200'}
-                `}
+                className={`rounded-lg border px-3 py-2 transition-all ${
+                  done      ? 'bg-green-50 border-green-200 opacity-70'
+                  : isOverdue ? 'bg-red-50 border-red-200'
+                  : isCarried ? 'bg-blue-50 border-blue-200'
+                  : 'bg-white border-gray-200'
+                }`}
               >
                 <div className="grid grid-cols-1 sm:grid-cols-[2rem_1fr_8rem_8rem_7rem_7rem_2rem] gap-2 items-start">
                   {/* Nr */}
-                  <div className="flex items-center gap-1">
-                    <input
-                      className={`input py-1 text-center w-8 text-xs ${done ? 'line-through text-gray-400' : ''}`}
-                      value={item.no}
-                      onChange={e => update(item.id, 'no', e.target.value)}
-                    />
-                  </div>
+                  <input
+                    className={`input py-1 text-center w-8 text-xs ${done ? 'line-through text-gray-400' : ''}`}
+                    value={item.no}
+                    onChange={e => update(item.id, 'no', e.target.value)}
+                  />
 
                   {/* Description */}
                   <div className="space-y-1">
-                    {isCarried && (
-                      <span className="badge-blue text-xs">↩ Übernommen</span>
-                    )}
+                    {isCarried && <span className="badge-blue text-xs">↩ Übernommen</span>}
                     <input
                       className={`input py-1 text-sm font-medium ${done ? 'line-through text-gray-400 bg-green-50' : ''}`}
                       placeholder="Beschreibung der Maßnahme..."
@@ -125,6 +173,12 @@ export default function ActionItems({ items, onChange }) {
                     {done && item.completedAt && (
                       <p className="text-xs text-green-600">
                         Erledigt am {formatDate(item.completedAt.slice(0, 10))}
+                      </p>
+                    )}
+                    {/* Highlight match in read mode (shown below when searching) */}
+                    {q && (
+                      <p className="text-xs text-gray-400 italic">
+                        {highlight(item.description, q)}
                       </p>
                     )}
                   </div>

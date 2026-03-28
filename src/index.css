@@ -78,4 +78,9 @@
     resize: none !important;
     outline: none !important;
   }
+
+  /* Cover page occupies the full first printed page */
+  .print-cover {
+    min-height: 240mm;
+  }
 }
