@@ -1,8 +1,13 @@
 import React from 'react'
-import { MEETING_TYPES } from '../utils'
+import { MEETING_TYPES, formatDate } from '../utils'
 
-export default function MeetingHeader({ protocol, onChange }) {
+export default function MeetingHeader({ protocol, protocols, onChange }) {
   const set = (field) => (e) => onChange({ [field]: e.target.value })
+
+  // protocols that could be predecessors: same project, different id, earlier or equal date
+  const predecessorOptions = (protocols ?? []).filter(
+    p => p.id !== protocol.id && p.projectName === protocol.projectName
+  ).sort((a, b) => b.date.localeCompare(a.date))
 
   return (
     <div className="card p-6 space-y-4">
@@ -54,6 +59,25 @@ export default function MeetingHeader({ protocol, onChange }) {
           <label className="block text-xs font-medium text-gray-500 mb-1">Uhrzeit</label>
           <input className="input" type="time" value={protocol.nextMeetingTime} onChange={set('nextMeetingTime')} />
         </div>
+      </div>
+
+      {/* Row 4 – predecessor */}
+      <div className="pt-1 border-t border-gray-100 no-print">
+        <label className="block text-xs font-medium text-gray-500 mb-1">
+          Vorgänger-Protokoll <span className="text-gray-400 font-normal">(offene Maßnahmen werden übernommen)</span>
+        </label>
+        <select
+          className="select max-w-sm"
+          value={protocol.predecessorId ?? ''}
+          onChange={e => onChange({ predecessorId: e.target.value || null })}
+        >
+          <option value="">– Kein Vorgänger –</option>
+          {predecessorOptions.map(p => (
+            <option key={p.id} value={p.id}>
+              {p.meetingType}{p.protocolNo ? ` #${p.protocolNo}` : ''} – {formatDate(p.date)}{p.location ? ` – ${p.location}` : ''}
+            </option>
+          ))}
+        </select>
       </div>
     </div>
   )

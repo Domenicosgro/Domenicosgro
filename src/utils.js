@@ -41,6 +41,7 @@ export const emptyProtocol = () => ({
   nextMeetingTime: '',
   preparedBy: '',
   notes: '',
+  predecessorId: null,   // ID of the previous meeting (for carryover)
   participants: [],
   agendaItems: [],
   actionItems: [],
@@ -56,12 +57,14 @@ export const emptyParticipant = () => ({
   present: true,
 })
 
-export const emptyAgendaItem = () => ({
+// level: 1 = Hauptpunkt, 2 = Unterpunkt, 3 = Unter-Unterpunkt
+export const emptyAgendaItem = (level = 1) => ({
   id: uid(),
   no: '',
   topic: '',
   discussion: '',
   result: '',
+  level,
 })
 
 export const emptyActionItem = () => ({
@@ -73,4 +76,6 @@ export const emptyActionItem = () => ({
   status: 'offen',
   priority: 'mittel',
   remarks: '',
+  carriedFromId: null,   // source protocol ID if carried over from a previous meeting
+  completedAt: null,     // ISO timestamp when status was set to 'erledigt'
 })

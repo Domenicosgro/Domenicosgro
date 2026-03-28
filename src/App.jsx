@@ -18,6 +18,7 @@ export default function App() {
     return (
       <ProtocolEditor
         protocol={activeProtocol}
+        protocols={protocols}
         onUpdate={updateProtocol}
         onBack={() => setActiveId(null)}
       />
