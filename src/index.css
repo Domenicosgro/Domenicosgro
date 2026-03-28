@@ -1,0 +1,81 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-gray-50 text-gray-900 font-sans;
+  }
+}
+
+@layer components {
+  .btn {
+    @apply inline-flex items-center gap-2 px-4 py-2 rounded-lg font-medium text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-offset-1;
+  }
+  .btn-primary {
+    @apply btn bg-brand-600 text-white hover:bg-brand-700 focus:ring-brand-500;
+  }
+  .btn-secondary {
+    @apply btn bg-white text-gray-700 border border-gray-300 hover:bg-gray-50 focus:ring-gray-300;
+  }
+  .btn-danger {
+    @apply btn bg-red-50 text-red-600 hover:bg-red-100 focus:ring-red-400;
+  }
+  .btn-ghost {
+    @apply btn text-gray-500 hover:bg-gray-100 hover:text-gray-700 focus:ring-gray-300;
+  }
+  .input {
+    @apply w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent bg-white;
+  }
+  .select {
+    @apply input appearance-none cursor-pointer;
+  }
+  .textarea {
+    @apply input resize-none;
+  }
+  .card {
+    @apply bg-white rounded-xl border border-gray-200 shadow-sm;
+  }
+  .section-title {
+    @apply text-base font-semibold text-gray-800 flex items-center gap-2;
+  }
+  .badge {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
+  }
+  .badge-blue   { @apply badge bg-blue-100 text-blue-700; }
+  .badge-green  { @apply badge bg-green-100 text-green-700; }
+  .badge-yellow { @apply badge bg-yellow-100 text-yellow-700; }
+  .badge-red    { @apply badge bg-red-100 text-red-700; }
+  .badge-gray   { @apply badge bg-gray-100 text-gray-600; }
+}
+
+/* ── Print styles ────────────────────────────────────── */
+@media print {
+  @page { size: A4; margin: 18mm 15mm; }
+
+  body { background: white !important; font-size: 11pt; }
+
+  .no-print { display: none !important; }
+
+  .print-break-before { page-break-before: always; }
+
+  .card {
+    border: 1px solid #ccc !important;
+    box-shadow: none !important;
+    border-radius: 4px !important;
+    margin-bottom: 12px !important;
+  }
+
+  h1, h2, h3 { page-break-after: avoid; }
+
+  tr { page-break-inside: avoid; }
+
+  input, textarea, select {
+    border: none !important;
+    padding: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    resize: none !important;
+    outline: none !important;
+  }
+}
