@@ -1,5 +1,7 @@
 import React, { useMemo } from 'react'
-import { ArrowLeft, Printer, Building2, RefreshCw, AlertCircle } from 'lucide-react'
+import { ArrowLeft, Printer, Building2, RefreshCw, AlertCircle, Download } from 'lucide-react'
+
+const isElectron = typeof window !== 'undefined' && !!window.electronAPI
 import MeetingHeader from './MeetingHeader'
 import ParticipantsList from './ParticipantsList'
 import AgendaItems from './AgendaItems'
@@ -50,6 +52,15 @@ export default function ProtocolEditor({ protocol, protocols, onUpdate, onBack }
           <span className="text-xs text-gray-400 hidden sm:inline">
             Gespeichert: {new Date(protocol.updatedAt).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })}
           </span>
+          {isElectron && (
+            <button
+              className="btn-secondary"
+              title="Als JSON-Datei exportieren"
+              onClick={() => window.electronAPI.exportJSON(protocol)}
+            >
+              <Download size={16} /> Exportieren
+            </button>
+          )}
           <button className="btn-secondary" onClick={() => window.print()}>
             <Printer size={16} /> Drucken / PDF
           </button>

@@ -1,9 +1,44 @@
-import React, { useState } from 'react'
-import { Plus, Trash2, Copy, FileText, Search, ChevronRight } from 'lucide-react'
+import React, { useState, useRef } from 'react'
+import { Plus, Trash2, Copy, FileText, Search, ChevronRight, Upload, Download } from 'lucide-react'
 import { formatDate, buildProtocolNo } from '../utils'
 
-export default function ProtocolList({ protocols, onCreate, onOpen, onDelete, onDuplicate }) {
+const isElectron = typeof window !== 'undefined' && !!window.electronAPI
+
+export default function ProtocolList({ protocols, onCreate, onOpen, onDelete, onDuplicate, onImport, onOpenImported }) {
+  const fileInputRef = useRef(null)
   const [search, setSearch] = useState('')
+  const [importError, setImportError] = useState('')
+
+  const handleImportClick = async () => {
+    setImportError('')
+    if (isElectron) {
+      const data = await window.electronAPI.importJSON()
+      if (!data) return
+      const id = onImport(data)
+      if (id) onOpenImported(id)
+      else setImportError('Ungültige Protokolldatei.')
+    } else {
+      fileInputRef.current?.click()
+    }
+  }
+
+  const handleFileChange = (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = (ev) => {
+      try {
+        const data = JSON.parse(ev.target.result)
+        const id = onImport(data)
+        if (id) onOpenImported(id)
+        else setImportError('Ungültige Protokolldatei.')
+      } catch {
+        setImportError('Datei konnte nicht gelesen werden.')
+      }
+    }
+    reader.readAsText(file)
+    e.target.value = ''
+  }
 
   const filtered = protocols.filter(p => {
     const q = search.toLowerCase()
@@ -23,10 +58,30 @@ export default function ProtocolList({ protocols, onCreate, onOpen, onDelete, on
           <h1 className="text-2xl font-bold text-gray-900">Besprechungs&shy;protokolle</h1>
           <p className="text-sm text-gray-500 mt-0.5">Baubesprechungen &amp; Jour Fixe</p>
         </div>
-        <button className="btn-primary self-start sm:self-auto" onClick={onCreate}>
-          <Plus size={16} /> Neues Protokoll
-        </button>
+        <div className="flex gap-2 self-start sm:self-auto">
+          {/* hidden file input for browser-based import */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".json"
+            className="hidden"
+            onChange={handleFileChange}
+          />
+          <button className="btn-secondary" onClick={handleImportClick} title="JSON-Protokoll importieren">
+            <Upload size={16} /> Importieren
+          </button>
+          <button className="btn-primary" onClick={onCreate}>
+            <Plus size={16} /> Neues Protokoll
+          </button>
+        </div>
       </div>
+
+      {/* Import error */}
+      {importError && (
+        <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-2">
+          {importError}
+        </p>
+      )}
 
       {/* Search */}
       {protocols.length > 0 && (

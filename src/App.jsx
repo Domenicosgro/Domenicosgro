@@ -1,11 +1,50 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { useProtocols } from './hooks/useProtocols'
 import ProtocolList from './components/ProtocolList'
 import ProtocolEditor from './components/ProtocolEditor'
 
+const isElectron = typeof window !== 'undefined' && !!window.electronAPI
+
 export default function App() {
-  const { protocols, createProtocol, updateProtocol, deleteProtocol, duplicateProtocol } = useProtocols()
+  const {
+    protocols, loaded,
+    createProtocol, updateProtocol, deleteProtocol, duplicateProtocol, importProtocol,
+  } = useProtocols()
+
   const [activeId, setActiveId] = useState(null)
+  const activeIdRef = useRef(activeId)
+  activeIdRef.current = activeId
+
+  // ── Electron menu wiring ─────────────────────────────────────────────────
+  useEffect(() => {
+    if (!isElectron) return
+
+    // Import JSON from main menu
+    window.electronAPI.onMenuImport(async () => {
+      const data = await window.electronAPI.importJSON()
+      if (data) {
+        const id = importProtocol(data)
+        if (id) setActiveId(id)
+      }
+    })
+
+    // Export JSON from main menu (only when a protocol is open)
+    window.electronAPI.onMenuExportJSON(async () => {
+      const id = activeIdRef.current
+      if (!id) return
+      const p = protocols.find(x => x.id === id)
+      if (p) await window.electronAPI.exportJSON(p)
+    })
+
+    // Print from main menu
+    window.electronAPI.onMenuPrint(() => window.print())
+
+    return () => {
+      ;['menu:import', 'menu:export-json', 'menu:print'].forEach(
+        ch => window.electronAPI.removeAllListeners(ch)
+      )
+    }
+  }, [protocols, importProtocol])
 
   const handleCreate = () => {
     const id = createProtocol()
@@ -13,6 +52,14 @@ export default function App() {
   }
 
   const activeProtocol = protocols.find(p => p.id === activeId)
+
+  if (!loaded) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-gray-400 text-sm">Lade Protokolle…</div>
+      </div>
+    )
+  }
 
   if (activeId && activeProtocol) {
     return (
@@ -32,6 +79,8 @@ export default function App() {
       onOpen={setActiveId}
       onDelete={deleteProtocol}
       onDuplicate={duplicateProtocol}
+      onImport={importProtocol}
+      onOpenImported={setActiveId}
     />
   )
 }
