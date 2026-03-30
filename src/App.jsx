@@ -39,8 +39,13 @@ export default function App() {
     // Print from main menu
     window.electronAPI.onMenuPrint(() => window.print())
 
+    // Send agenda from main menu – signals to the editor via a custom DOM event
+    window.electronAPI.onMenuSendAgenda(() => {
+      window.dispatchEvent(new CustomEvent('app:send-agenda'))
+    })
+
     return () => {
-      ;['menu:import', 'menu:export-json', 'menu:print'].forEach(
+      ;['menu:import', 'menu:export-json', 'menu:print', 'menu:send-agenda'].forEach(
         ch => window.electronAPI.removeAllListeners(ch)
       )
     }

@@ -49,7 +49,10 @@ export const emptyProtocol = () => ({
   notes: '',
   predecessorId: null,
   participants: [],
-  agendaItems: [],
+  agenda: [],           // pre-meeting agenda draft (sent to participants beforehand)
+  agendaSentAt: null,   // ISO timestamp when the agenda email was last triggered
+  agendaGreeting: '',   // custom greeting text in the agenda email
+  agendaItems: [],      // during/post-meeting TOPs (Tagesordnungspunkte)
   actionItems: [],
   createdAt: new Date().toISOString(),
   updatedAt: new Date().toISOString(),
@@ -63,6 +66,71 @@ export const emptyParticipant = () => ({
   email: '',
   present: true,
 })
+
+// Pre-meeting agenda draft item
+export const emptyAgendaDraftItem = () => ({
+  id: uid(),
+  no: '',
+  topic: '',
+  duration: '',     // planned duration in minutes
+  responsible: '',  // who presents / leads this point
+  documents: '',    // required documents / preparation
+})
+
+// Builds the plain-text agenda body for the email
+export const buildAgendaEmailBody = (protocol) => {
+  const { projectName, meetingType, date, time, location, preparedBy, agenda, agendaGreeting, participants } = protocol
+  const dateStr = date ? formatDate(date) : '–'
+  const timeStr = time ? `${time} Uhr` : '–'
+
+  const lines = []
+
+  lines.push(`Einladung zur ${meetingType}`)
+  lines.push('='.repeat(50))
+  lines.push('')
+  lines.push(`Projekt:   ${projectName || '–'}`)
+  lines.push(`Datum:     ${dateStr}`)
+  lines.push(`Uhrzeit:   ${timeStr}`)
+  lines.push(`Ort:       ${location || '–'}`)
+  if (preparedBy) lines.push(`Einladung: ${preparedBy}`)
+  lines.push('')
+
+  if (agendaGreeting) {
+    lines.push(agendaGreeting)
+    lines.push('')
+  }
+
+  lines.push('TAGESORDNUNG')
+  lines.push('-'.repeat(50))
+
+  const totalMinutes = agenda.reduce((s, a) => s + (parseInt(a.duration) || 0), 0)
+
+  agenda.forEach((item, i) => {
+    const no          = item.no || String(i + 1)
+    const topic       = item.topic       || '(kein Thema)'
+    const dur         = item.duration    ? `${item.duration} min` : ''
+    const responsible = item.responsible ? `  [${item.responsible}]` : ''
+    lines.push(`${no.padEnd(4)} ${topic.padEnd(40)} ${dur.padStart(7)}${responsible}`)
+    if (item.documents) lines.push(`     Unterlagen: ${item.documents}`)
+  })
+
+  if (agenda.length === 0) lines.push('(keine Tagesordnungspunkte erfasst)')
+
+  lines.push('-'.repeat(50))
+  if (totalMinutes > 0) lines.push(`     Geplante Dauer gesamt: ca. ${totalMinutes} min`)
+  lines.push('')
+
+  const attending = (participants || []).filter(p => p.present).map(p => p.name).filter(Boolean)
+  if (attending.length > 0) {
+    lines.push(`Teilnehmer: ${attending.join(', ')}`)
+    lines.push('')
+  }
+
+  lines.push('Mit freundlichen Grüßen')
+  if (preparedBy) lines.push(preparedBy)
+
+  return lines.join('\n')
+}
 
 // level: 1 = Hauptpunkt, 2 = Unterpunkt, 3 = Unter-Unterpunkt
 export const emptyAgendaItem = (level = 1) => ({

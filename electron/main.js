@@ -51,6 +51,8 @@ function buildMenu(win) {
       submenu: [
         { label: 'Protokoll importieren…', click: () => win.webContents.send('menu:import') },
         { type: 'separator' },
+        { label: 'Agenda versenden…',             click: () => win.webContents.send('menu:send-agenda'), accelerator: 'CmdOrCtrl+Shift+A' },
+        { type: 'separator' },
         { label: 'Protokoll exportieren (JSON)…', click: () => win.webContents.send('menu:export-json') },
         { label: 'Als PDF drucken…',              click: () => win.webContents.send('menu:print') },
         { type: 'separator' },
@@ -108,6 +110,11 @@ ipcMain.handle('protocols:export-json', async (_e, protocol) => {
   fs.writeFileSync(filePath, JSON.stringify(protocol, null, 2), 'utf-8')
   shell.showItemInFolder(filePath)
   return true
+})
+
+// Open a URL in the default system application (mailto:, https:, etc.)
+ipcMain.handle('shell:open-external', (_e, url) => {
+  shell.openExternal(url)
 })
 
 // Import a single protocol from a JSON file
