@@ -6,6 +6,12 @@
   body {
     @apply bg-gray-50 text-gray-900 font-sans;
   }
+
+  /* macOS hiddenInset titlebar: push content below the traffic-light buttons */
+  body.platform-darwin {
+    padding-top: env(titlebar-area-height, 40px);
+    -webkit-app-region: no-drag;
+  }
 }
 
 @layer components {

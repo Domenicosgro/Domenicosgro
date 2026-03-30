@@ -1,8 +1,12 @@
-const { app, BrowserWindow, ipcMain, dialog, Menu, shell } = require('electron')
+const { app, BrowserWindow, ipcMain, dialog, Menu, shell, nativeTheme } = require('electron')
 const path = require('path')
 const fs   = require('fs')
 
-const isDev = !app.isPackaged
+const isDev  = !app.isPackaged
+const isMac  = process.platform === 'darwin'
+const isWin  = process.platform === 'win32'
+
+const APP_NAME = 'Baubesprechung Protokoll'
 
 // ── Data file ────────────────────────────────────────────────────────────────
 function dataFile() {
@@ -22,15 +26,23 @@ function writeData(protocols) {
 // ── Window ───────────────────────────────────────────────────────────────────
 function createWindow() {
   const win = new BrowserWindow({
-    width:    1360,
-    height:   900,
-    minWidth: 800,
+    width:     1360,
+    height:    900,
+    minWidth:  820,
     minHeight: 600,
-    title: 'Baubesprechung Protokoll',
+    title:     APP_NAME,
+
+    // macOS: traffic-light buttons sit inside the window frame (cleaner look)
+    titleBarStyle:        isMac ? 'hiddenInset' : 'default',
+    trafficLightPosition: isMac ? { x: 16, y: 16 } : undefined,
+
+    // macOS: enable vibrancy for native sidebar-like feel
+    vibrancy:             isMac ? 'sidebar' : undefined,
+
     webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
+      preload:          path.join(__dirname, 'preload.js'),
       contextIsolation: true,
-      nodeIntegration: false,
+      nodeIntegration:  false,
     },
   })
 
@@ -40,65 +52,125 @@ function createWindow() {
     win.loadFile(path.join(__dirname, '../dist/index.html'))
   }
 
+  // On macOS reflect the system dark/light mode automatically
+  if (isMac) {
+    nativeTheme.themeSource = 'system'
+  }
+
   buildMenu(win)
+  return win
 }
 
 // ── App menu ─────────────────────────────────────────────────────────────────
 function buildMenu(win) {
+  const send = (channel) => () => win.webContents.send(channel)
+
+  const fileMenu = {
+    label: 'Datei',
+    submenu: [
+      { label: 'Protokoll importieren…',       click: send('menu:import'),       accelerator: 'CmdOrCtrl+O' },
+      { type: 'separator' },
+      { label: 'Agenda versenden…',             click: send('menu:send-agenda'),  accelerator: 'CmdOrCtrl+Shift+A' },
+      { type: 'separator' },
+      { label: 'Protokoll exportieren (JSON)…', click: send('menu:export-json'),  accelerator: 'CmdOrCtrl+S' },
+      { label: 'Als PDF drucken…',              click: send('menu:print'),         accelerator: 'CmdOrCtrl+P' },
+      // On macOS "Beenden" lives in the app menu – omit it here
+      ...(!isMac ? [{ type: 'separator' }, { role: 'quit', label: 'Beenden' }] : []),
+    ],
+  }
+
+  const editMenu = {
+    label: 'Bearbeiten',
+    submenu: [
+      { role: 'undo',      label: 'Rückgängig'       },
+      { role: 'redo',      label: 'Wiederholen'       },
+      { type: 'separator' },
+      { role: 'cut',       label: 'Ausschneiden'      },
+      { role: 'copy',      label: 'Kopieren'          },
+      { role: 'paste',     label: 'Einfügen'          },
+      { role: 'selectAll', label: 'Alles auswählen'   },
+      // macOS: spell checking and substitutions
+      ...(isMac ? [
+        { type: 'separator' },
+        { label: 'Sprachdienste', role: 'startSpeaking', label: 'Vorlesen' },
+      ] : []),
+    ],
+  }
+
+  const viewMenu = {
+    label: 'Ansicht',
+    submenu: [
+      { role: 'reload',           label: 'Neu laden'          },
+      { role: 'toggleDevTools',   label: 'Entwicklertools'    },
+      { type: 'separator' },
+      { role: 'resetZoom',        label: 'Zoom zurücksetzen'  },
+      { role: 'zoomIn',           label: 'Vergrößern'         },
+      { role: 'zoomOut',          label: 'Verkleinern'        },
+      { type: 'separator' },
+      { role: 'togglefullscreen', label: 'Vollbild'           },
+    ],
+  }
+
+  const windowMenu = {
+    label: 'Fenster',
+    role: 'window',
+    submenu: [
+      { role: 'minimize', label: 'Minimieren'  },
+      { role: 'zoom',     label: 'Zoomen'      },
+      ...(isMac ? [
+        { type: 'separator' },
+        { role: 'front',  label: 'Alle nach vorne' },
+      ] : [
+        { role: 'close',  label: 'Schließen'   },
+      ]),
+    ],
+  }
+
+  // macOS: the first menu entry is always the app name menu
+  const macAppMenu = {
+    label: app.name,
+    submenu: [
+      { role: 'about',        label: `Über ${APP_NAME}`       },
+      { type: 'separator' },
+      { role: 'services',     label: 'Dienste'                },
+      { type: 'separator' },
+      { role: 'hide',         label: `${APP_NAME} ausblenden` },
+      { role: 'hideOthers',   label: 'Andere ausblenden'      },
+      { role: 'unhide',       label: 'Alle einblenden'        },
+      { type: 'separator' },
+      { role: 'quit',         label: `${APP_NAME} beenden`    },
+    ],
+  }
+
   const template = [
-    {
-      label: 'Datei',
-      submenu: [
-        { label: 'Protokoll importieren…', click: () => win.webContents.send('menu:import') },
-        { type: 'separator' },
-        { label: 'Agenda versenden…',             click: () => win.webContents.send('menu:send-agenda'), accelerator: 'CmdOrCtrl+Shift+A' },
-        { type: 'separator' },
-        { label: 'Protokoll exportieren (JSON)…', click: () => win.webContents.send('menu:export-json') },
-        { label: 'Als PDF drucken…',              click: () => win.webContents.send('menu:print') },
-        { type: 'separator' },
-        { role: 'quit', label: 'Beenden' },
-      ],
-    },
-    {
-      label: 'Bearbeiten',
-      submenu: [
-        { role: 'undo',      label: 'Rückgängig'  },
-        { role: 'redo',      label: 'Wiederholen' },
-        { type: 'separator' },
-        { role: 'cut',       label: 'Ausschneiden' },
-        { role: 'copy',      label: 'Kopieren'    },
-        { role: 'paste',     label: 'Einfügen'    },
-        { role: 'selectAll', label: 'Alles auswählen' },
-      ],
-    },
-    {
-      label: 'Ansicht',
-      submenu: [
-        { role: 'reload',          label: 'Neu laden'           },
-        { role: 'toggleDevTools',  label: 'Entwicklertools'     },
-        { type: 'separator'        },
-        { role: 'resetZoom',       label: 'Zoom zurücksetzen'   },
-        { role: 'zoomIn',          label: 'Vergrößern'          },
-        { role: 'zoomOut',         label: 'Verkleinern'         },
-        { type: 'separator'        },
-        { role: 'togglefullscreen',label: 'Vollbild'            },
-      ],
-    },
+    ...(isMac ? [macAppMenu] : []),
+    fileMenu,
+    editMenu,
+    viewMenu,
+    windowMenu,
   ]
+
   Menu.setApplicationMenu(Menu.buildFromTemplate(template))
+}
+
+// ── macOS About panel ─────────────────────────────────────────────────────────
+if (isMac) {
+  app.setAboutPanelOptions({
+    applicationName:    APP_NAME,
+    applicationVersion: app.getVersion(),
+    copyright:          '© 2026',
+    credits:            'Baubesprechungs- und Jour-Fixe-Protokollverwaltung',
+  })
 }
 
 // ── IPC handlers ─────────────────────────────────────────────────────────────
 
-// Load all protocols from disk
 ipcMain.handle('protocols:load', () => readData())
 
-// Save all protocols to disk (called on every change from renderer)
 ipcMain.handle('protocols:save', (_e, protocols) => {
   try { writeData(protocols); return true } catch { return false }
 })
 
-// Export a single protocol as JSON file (user picks location)
 ipcMain.handle('protocols:export-json', async (_e, protocol) => {
   const name = (protocol.projectName || 'Protokoll').replace(/[/\\:*?"<>|]/g, '-')
   const { filePath, canceled } = await dialog.showSaveDialog({
@@ -112,12 +184,10 @@ ipcMain.handle('protocols:export-json', async (_e, protocol) => {
   return true
 })
 
-// Open a URL in the default system application (mailto:, https:, etc.)
 ipcMain.handle('shell:open-external', (_e, url) => {
-  shell.openExternal(url)
+  return shell.openExternal(url)
 })
 
-// Import a single protocol from a JSON file
 ipcMain.handle('protocols:import-json', async () => {
   const { filePaths, canceled } = await dialog.showOpenDialog({
     title:      'Protokoll importieren',
@@ -132,11 +202,14 @@ ipcMain.handle('protocols:import-json', async () => {
 // ── Lifecycle ─────────────────────────────────────────────────────────────────
 app.whenReady().then(() => {
   createWindow()
+
+  // macOS: re-create window when clicking the dock icon with no windows open
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
 })
 
+// macOS: keep the process alive when all windows are closed (standard macOS behaviour)
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit()
+  if (!isMac) app.quit()
 })

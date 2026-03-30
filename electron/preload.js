@@ -1,6 +1,9 @@
 const { contextBridge, ipcRenderer } = require('electron')
 
 contextBridge.exposeInMainWorld('electronAPI', {
+  // Runtime info
+  platform: process.platform,   // 'darwin' | 'win32' | 'linux'
+
   // Persistence
   loadProtocols:  ()          => ipcRenderer.invoke('protocols:load'),
   saveProtocols:  (protocols) => ipcRenderer.invoke('protocols:save', protocols),
