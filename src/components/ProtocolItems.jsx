@@ -3,20 +3,40 @@ import { Plus, Trash2, FileText, IndentIncrease, IndentDecrease, Search, X, Chec
 import { emptyAgendaItem } from '../utils'
 
 const LEVEL_STYLES = {
-  1: { indent: '',       label: 'text-sm font-bold text-gray-900',     noStyle: 'text-sm font-bold text-brand-700',      borderL: 'border-l-4 border-brand-400' },
-  2: { indent: 'ml-6',   label: 'text-sm font-semibold text-gray-800', noStyle: 'text-sm font-semibold text-brand-600',  borderL: 'border-l-4 border-brand-200' },
-  3: { indent: 'ml-12',  label: 'text-sm font-medium text-gray-700',   noStyle: 'text-sm font-medium text-gray-500',     borderL: 'border-l-4 border-gray-300'  },
+  1: { indent: '',       label: 'text-sm font-bold text-gray-900',     noStyle: 'text-sm font-bold text-brand-700',     borderL: 'border-l-4 border-brand-400' },
+  2: { indent: 'ml-6',   label: 'text-sm font-semibold text-gray-800', noStyle: 'text-sm font-semibold text-brand-600', borderL: 'border-l-4 border-brand-200' },
+  3: { indent: 'ml-12',  label: 'text-sm font-medium text-gray-700',   noStyle: 'text-sm font-medium text-gray-500',    borderL: 'border-l-4 border-gray-300'  },
 }
 
-// Auto-compute hierarchical numbers: 1 / 1.1 / 1.1.1
-function calcNumbers(items) {
-  const counters = [0, 0, 0]
-  return items.map(item => {
-    const lvl = Math.min(Math.max((item.level ?? 1), 1), 3) - 1
-    counters[lvl]++
-    for (let i = lvl + 1; i < 3; i++) counters[i] = 0
-    return counters.slice(0, lvl + 1).join('.')
-  })
+// Suggest a starting number for a new item based on existing items.
+// The user can edit it freely afterwards — this is just a convenience pre-fill.
+function suggestNo(items, level) {
+  if (level === 1) {
+    const count = items.filter(it => it.level === 1).length
+    return String(count + 1)
+  }
+  if (level === 2) {
+    // Find last level-1 item and its no, then count level-2 siblings after it
+    let parentNo = ''
+    let lastL1 = -1
+    for (let i = items.length - 1; i >= 0; i--) {
+      if (items[i].level === 1) { lastL1 = i; parentNo = items[i].no || String(items.filter((x, j) => x.level === 1 && j <= i).length); break }
+    }
+    const siblings = lastL1 >= 0
+      ? items.slice(lastL1 + 1).filter(it => it.level === 2).length
+      : items.filter(it => it.level === 2).length
+    return parentNo ? `${parentNo}.${siblings + 1}` : `1.${siblings + 1}`
+  }
+  // level 3
+  let parentNo = ''
+  let lastL2 = -1
+  for (let i = items.length - 1; i >= 0; i--) {
+    if (items[i].level === 2) { lastL2 = i; parentNo = items[i].no || '1.1'; break }
+  }
+  const siblings = lastL2 >= 0
+    ? items.slice(lastL2 + 1).filter(it => it.level === 3).length
+    : items.filter(it => it.level === 3).length
+  return parentNo ? `${parentNo}.${siblings + 1}` : `1.1.${siblings + 1}`
 }
 
 export default function ProtocolItems({ items, onChange, readOnly, projectContacts }) {
@@ -26,7 +46,7 @@ export default function ProtocolItems({ items, onChange, readOnly, projectContac
 
   const add = (level = 1) => {
     if (readOnly) return
-    onChange([...items, emptyAgendaItem(level)])
+    onChange([...items, { ...emptyAgendaItem(level), no: suggestNo(items, level) }])
   }
 
   const update = (id, field, value) => {
@@ -50,11 +70,6 @@ export default function ProtocolItems({ items, onChange, readOnly, projectContac
       : it))
   }
 
-  // Compute numbers for all items (including hidden ones) so numbering is stable
-  const allNumbers = calcNumbers(items)
-  // Map id → computed number
-  const numById = Object.fromEntries(items.map((it, i) => [it.id, allNumbers[i]]))
-
   const q = search.trim().toLowerCase()
   const completedCount = items.filter(it => it.status === 'erledigt' && !it.carriedGray).length
 
@@ -64,7 +79,7 @@ export default function ProtocolItems({ items, onChange, readOnly, projectContac
       it.discussion.toLowerCase().includes(q) ||
       it.result.toLowerCase().includes(q) ||
       (it.assignedTo ?? '').toLowerCase().includes(q) ||
-      numById[it.id].includes(q)
+      (it.no ?? '').toLowerCase().includes(q)
     )
     if (!showCompleted && it.status === 'erledigt' && !it.carriedGray) return false
     return true
@@ -145,7 +160,6 @@ export default function ProtocolItems({ items, onChange, readOnly, projectContac
           const s    = LEVEL_STYLES[lvl]
           const done = item.status === 'erledigt'
           const gray = done && item.carriedGray
-          const num  = numById[item.id]
 
           return (
             <div
@@ -156,10 +170,19 @@ export default function ProtocolItems({ items, onChange, readOnly, projectContac
               {/* Row 1: number + topic + controls */}
               <div className="flex items-start gap-2">
 
-                {/* Hierarchical number */}
-                <span className={`flex-shrink-0 min-w-[2.5rem] tabular-nums ${s.noStyle} ${done ? 'opacity-50' : ''}`}>
-                  {num}
-                </span>
+                {/* Static editable number */}
+                <div className="flex-shrink-0 w-14">
+                  {readOnly || gray
+                    ? <span className={`${s.noStyle} ${done ? 'opacity-50' : ''}`}>{item.no || '–'}</span>
+                    : <input
+                        className={`input py-0.5 text-center font-semibold ${s.noStyle} ${done ? 'opacity-50' : ''}`}
+                        value={item.no}
+                        onChange={e => update(item.id, 'no', e.target.value)}
+                        placeholder="Nr."
+                        title="Nummer (fest, wird nicht automatisch geändert)"
+                      />
+                  }
+                </div>
 
                 {!readOnly && !gray && (
                   <button
@@ -203,7 +226,7 @@ export default function ProtocolItems({ items, onChange, readOnly, projectContac
 
               {/* Row 2: assignedTo */}
               {!gray && (
-                <div className="flex items-center gap-2 pl-10">
+                <div className="flex items-center gap-2 pl-16">
                   <User size={13} className="text-gray-400 flex-shrink-0" />
                   {readOnly
                     ? <span className="text-xs text-gray-500">{item.assignedTo || '–'}</span>
@@ -220,7 +243,7 @@ export default function ProtocolItems({ items, onChange, readOnly, projectContac
 
               {/* Discussion + Result */}
               {!gray && (
-                <div className="space-y-2 pl-10">
+                <div className="space-y-2 pl-16">
                   <div>
                     <label className="block text-xs text-gray-400 mb-0.5">Besprechungsinhalt</label>
                     {readOnly
@@ -244,7 +267,7 @@ export default function ProtocolItems({ items, onChange, readOnly, projectContac
 
               {/* Gray: read-only summary */}
               {gray && (item.discussion || item.result) && (
-                <div className="text-xs text-gray-400 pl-10 space-y-0.5">
+                <div className="text-xs text-gray-400 pl-16 space-y-0.5">
                   {item.discussion && <p><span className="font-medium">Inhalt:</span> {item.discussion}</p>}
                   {item.result     && <p><span className="font-medium">Ergebnis:</span> {item.result}</p>}
                 </div>
