@@ -2,7 +2,7 @@ import React from 'react'
 import { Plus, Trash2, Users } from 'lucide-react'
 import { emptyParticipant } from '../utils'
 
-export default function ParticipantsList({ participants, onChange }) {
+export default function ParticipantsList({ participants, onChange, readOnly }) {
   const add = () => onChange([...participants, emptyParticipant()])
 
   const update = (id, field, value) =>
@@ -14,7 +14,7 @@ export default function ParticipantsList({ participants, onChange }) {
   const absent  = participants.filter(p => !p.present)
 
   return (
-    <div className="card p-6 space-y-4">
+    <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <h2 className="section-title"><Users size={16} /> Teilnehmer</h2>
@@ -24,7 +24,7 @@ export default function ParticipantsList({ participants, onChange }) {
             </span>
           )}
         </div>
-        <button className="btn-primary no-print" onClick={add}><Plus size={14} /> Hinzufügen</button>
+        {!readOnly && <button className="btn-primary no-print" onClick={add}><Plus size={14} /> Hinzufügen</button>}
       </div>
 
       {participants.length === 0 && (
@@ -50,55 +50,49 @@ export default function ParticipantsList({ participants, onChange }) {
                 <tr key={p.id} className={p.present ? '' : 'opacity-60'}>
                   <td className="py-2 pr-3 text-gray-400 text-xs">{i + 1}</td>
                   <td className="py-2 pr-3">
-                    <input
-                      className="input py-1"
-                      placeholder="Max Mustermann"
-                      value={p.name}
-                      onChange={e => update(p.id, 'name', e.target.value)}
-                    />
+                    {readOnly
+                      ? <span className="text-sm text-gray-800">{p.name || '–'}</span>
+                      : <input className="input py-1" placeholder="Max Mustermann" value={p.name} onChange={e => update(p.id, 'name', e.target.value)} />
+                    }
                   </td>
                   <td className="py-2 pr-3">
-                    <input
-                      className="input py-1"
-                      placeholder="Baufirma GmbH"
-                      value={p.company}
-                      onChange={e => update(p.id, 'company', e.target.value)}
-                    />
+                    {readOnly
+                      ? <span className="text-sm text-gray-700">{p.company || '–'}</span>
+                      : <input className="input py-1" placeholder="Baufirma GmbH" value={p.company} onChange={e => update(p.id, 'company', e.target.value)} />
+                    }
                   </td>
                   <td className="py-2 pr-3">
-                    <input
-                      className="input py-1"
-                      placeholder="Bauleiter"
-                      value={p.role}
-                      onChange={e => update(p.id, 'role', e.target.value)}
-                    />
+                    {readOnly
+                      ? <span className="text-sm text-gray-700">{p.role || '–'}</span>
+                      : <input className="input py-1" placeholder="Bauleiter" value={p.role} onChange={e => update(p.id, 'role', e.target.value)} />
+                    }
                   </td>
                   <td className="py-2 pr-3">
-                    <input
-                      className="input py-1"
-                      type="email"
-                      placeholder="max@firma.de"
-                      value={p.email ?? ''}
-                      onChange={e => update(p.id, 'email', e.target.value)}
-                    />
+                    {readOnly
+                      ? <span className="text-sm text-gray-500">{p.email || '–'}</span>
+                      : <input className="input py-1" type="email" placeholder="max@firma.de" value={p.email ?? ''} onChange={e => update(p.id, 'email', e.target.value)} />
+                    }
                   </td>
                   <td className="py-2 pr-3 text-center">
                     <input
                       type="checkbox"
                       className="w-4 h-4 accent-brand-600 cursor-pointer"
                       checked={p.present}
-                      onChange={e => update(p.id, 'present', e.target.checked)}
+                      onChange={e => !readOnly && update(p.id, 'present', e.target.checked)}
+                      disabled={readOnly}
                     />
                   </td>
-                  <td className="py-2 no-print">
-                    <button
-                      className="btn-ghost p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50"
-                      onClick={() => remove(p.id)}
-                      title="Entfernen"
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  </td>
+                  {!readOnly && (
+                    <td className="py-2 no-print">
+                      <button
+                        className="btn-ghost p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50"
+                        onClick={() => remove(p.id)}
+                        title="Entfernen"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>

@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react'
-import { Plus, Trash2, Copy, FileText, Search, ChevronRight, Upload, Download } from 'lucide-react'
+import { Plus, Trash2, Copy, FileText, Search, ChevronRight, Upload, Lock } from 'lucide-react'
 import { formatDate, buildProtocolNo } from '../utils'
 
 const isElectron = typeof window !== 'undefined' && !!window.electronAPI
@@ -123,6 +123,9 @@ export default function ProtocolList({ protocols, onCreate, onOpen, onDelete, on
                     {p.projectName || 'Ohne Projektnamen'}
                   </span>
                   <span className="badge-blue">{p.meetingType}</span>
+                  {p.isClosed && (
+                    <span className="badge-gray flex items-center gap-1"><Lock size={10} /> Abgeschlossen</span>
+                  )}
                 </div>
                 <div className="flex items-center gap-3 mt-1 text-xs text-gray-500">
                   <span className="font-mono text-gray-400">{no}</span>

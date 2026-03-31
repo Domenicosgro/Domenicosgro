@@ -48,11 +48,13 @@ export const emptyProtocol = () => ({
   preparedBy: '',
   notes: '',
   predecessorId: null,
+  isClosed: false,       // protocol is finalized / locked
+  closedAt: null,
   participants: [],
-  agenda: [],           // pre-meeting agenda draft
+  agenda: [],
   agendaSentAt: null,
   agendaGreeting: '',
-  agendaItems: [],      // Protokollpunkte (during/post-meeting)
+  agendaItems: [],       // Protokollpunkte
   actionItems: [],
   createdAt: new Date().toISOString(),
   updatedAt: new Date().toISOString(),
@@ -72,9 +74,10 @@ export const emptyAgendaDraftItem = () => ({
   id: uid(),
   no: '',
   topic: '',
-  duration: '',     // planned duration in minutes
-  responsible: '',  // who presents / leads this point
-  documents: '',    // required documents / preparation
+  duration: '',
+  responsible: '',
+  documents: '',
+  linkedProtocolItemId: null,  // links to an existing agendaItem.id (or null = create new)
 })
 
 // Builds the plain-text agenda body for the email
@@ -145,6 +148,7 @@ export const emptyAgendaItem = (level = 1) => ({
   result: '',
   level,
   status: 'offen',
+  assignedTo: '',       // person or company responsible for this point
   carriedGray: false,
   carriedFromId: null,
 })
