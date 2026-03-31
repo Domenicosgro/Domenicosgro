@@ -1,44 +1,64 @@
 import React from 'react'
 import { MEETING_TYPES, formatDate, buildProtocolNo } from '../utils'
+import LogoUpload from './LogoUpload'
 
-export default function MeetingHeader({ protocol, protocols, onChange }) {
+export default function MeetingHeader({ protocol, protocols, logoDataUrl, onLogoUpdate, onLogoClear, onChange }) {
   const set = (field) => (e) => onChange({ [field]: e.target.value })
 
   const protocolNo = buildProtocolNo(protocol.projectName, protocol.date)
 
+  // Predecessor dropdown: show all other protocols (not just same project)
+  // so the user can pick any predecessor regardless of project name
   const predecessorOptions = (protocols ?? [])
-    .filter(p => p.id !== protocol.id && p.projectName === protocol.projectName)
+    .filter(p => p.id !== protocol.id)
     .sort((a, b) => b.date.localeCompare(a.date))
+
+  const handlePredecessorChange = (e) => {
+    const predId = e.target.value || null
+    const pred   = predId ? (protocols ?? []).find(p => p.id === predId) : null
+    const patch  = { predecessorId: predId }
+    // Auto-fill project name from predecessor if current field is empty
+    if (pred && !protocol.projectName.trim()) {
+      patch.projectName = pred.projectName
+    }
+    onChange(patch)
+  }
 
   return (
     <div className="card p-6 space-y-4">
-      {/* Row 1 – project + type */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="sm:col-span-2">
-          <label className="block text-xs font-medium text-gray-500 mb-1">Projektname</label>
-          <input
-            className="input font-semibold"
-            placeholder="Projekt XY – Neubau Wohnanlage"
-            value={protocol.projectName}
-            onChange={set('projectName')}
-          />
+      {/* Logo + project row */}
+      <div className="flex items-start gap-4 flex-wrap">
+        {/* Logo */}
+        <div className="no-print">
+          <LogoUpload logoDataUrl={logoDataUrl} onUpdate={onLogoUpdate} onClear={onLogoClear} />
         </div>
-        <div>
-          <label className="block text-xs font-medium text-gray-500 mb-1">Besprechungsart</label>
-          <select className="select" value={protocol.meetingType} onChange={set('meetingType')}>
-            {MEETING_TYPES.map(t => <option key={t}>{t}</option>)}
-          </select>
+        {/* Logo in print */}
+        {logoDataUrl && (
+          <img src={logoDataUrl} alt="Logo" className="hidden print:block h-14 max-w-[180px] object-contain" />
+        )}
+        <div className="flex-1 grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="sm:col-span-2">
+            <label className="block text-xs font-medium text-gray-500 mb-1">Projektname</label>
+            <input className="input font-semibold" placeholder="Projekt XY – Neubau Wohnanlage"
+              value={protocol.projectName} onChange={set('projectName')} />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">Besprechungsart</label>
+            <select className="select" value={protocol.meetingType} onChange={set('meetingType')}>
+              {MEETING_TYPES.map(t => <option key={t}>{t}</option>)}
+            </select>
+          </div>
         </div>
       </div>
 
-      {/* Protocol number – auto-generated, read-only */}
+      {/* Protocol number */}
       <div className="flex items-center gap-3 bg-brand-50 border border-brand-200 rounded-lg px-4 py-2">
         <span className="text-xs font-medium text-brand-600 flex-shrink-0">Protokoll-Nr.</span>
         <span className="font-mono font-semibold text-brand-800 text-sm tracking-wide">{protocolNo}</span>
         <span className="text-xs text-brand-400 ml-auto hidden sm:inline">automatisch aus Projektname + Datum</span>
       </div>
 
-      {/* Row 3 – date / time / location */}
+      {/* Date / time / location */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         <div>
           <label className="block text-xs font-medium text-gray-500 mb-1">Datum</label>
@@ -54,7 +74,7 @@ export default function MeetingHeader({ protocol, protocols, onChange }) {
         </div>
       </div>
 
-      {/* Row 4 – author + next meeting */}
+      {/* Author + next meeting */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div>
           <label className="block text-xs font-medium text-gray-500 mb-1">Erstellt von</label>
@@ -70,17 +90,13 @@ export default function MeetingHeader({ protocol, protocols, onChange }) {
         </div>
       </div>
 
-      {/* Row 5 – predecessor */}
+      {/* Predecessor */}
       <div className="pt-1 border-t border-gray-100 no-print">
         <label className="block text-xs font-medium text-gray-500 mb-1">
           Vorgänger-Protokoll{' '}
-          <span className="text-gray-400 font-normal">(offene Maßnahmen werden übernommen)</span>
+          <span className="text-gray-400 font-normal">(Protokollpunkte + offene Maßnahmen werden übernommen; Projektname wird auto-befüllt)</span>
         </label>
-        <select
-          className="select max-w-sm"
-          value={protocol.predecessorId ?? ''}
-          onChange={e => onChange({ predecessorId: e.target.value || null })}
-        >
+        <select className="select max-w-md" value={protocol.predecessorId ?? ''} onChange={handlePredecessorChange}>
           <option value="">– Kein Vorgänger –</option>
           {predecessorOptions.map(p => {
             const no = buildProtocolNo(p.projectName, p.date)

@@ -57,13 +57,12 @@
 
 /* ── Print styles ────────────────────────────────────── */
 @media print {
-  @page { size: A4; margin: 18mm 15mm; }
+  /* Leave bottom margin for the running footer */
+  @page { size: A4; margin: 15mm 15mm 22mm 15mm; }
 
   body { background: white !important; font-size: 11pt; }
 
   .no-print { display: none !important; }
-
-  .print-break-before { page-break-before: always; }
 
   .card {
     border: 1px solid #ccc !important;
@@ -73,8 +72,7 @@
   }
 
   h1, h2, h3 { page-break-after: avoid; }
-
-  tr { page-break-inside: avoid; }
+  tr          { page-break-inside: avoid; }
 
   input, textarea, select {
     border: none !important;
@@ -85,8 +83,32 @@
     outline: none !important;
   }
 
-  /* Cover page occupies the full first printed page */
-  .print-cover {
-    min-height: 240mm;
+  /* ── Page breaks ── */
+  .print-page-break {
+    page-break-after: always;
+    break-after: page;
+  }
+
+  /* Agenda & cover pages fill their sheet */
+  .print-agenda-page,
+  .print-cover-page {
+    min-height: 220mm;
+  }
+
+  /* ── Running footer – Chromium repeats position:fixed on every page ── */
+  .print-footer {
+    position: fixed;
+    bottom: 0;
+    left:  15mm;
+    right: 15mm;
+    height: 14mm;
+    display: flex !important;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 8pt;
+    color: #666;
+    border-top: 0.5pt solid #ccc;
+    background: white;
+    padding-top: 2mm;
   }
 }

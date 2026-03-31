@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { useProtocols } from './hooks/useProtocols'
+import { useLogo } from './hooks/useLogo'
 import ProtocolList from './components/ProtocolList'
 import ProtocolEditor from './components/ProtocolEditor'
 
@@ -10,6 +11,8 @@ export default function App() {
     protocols, loaded,
     createProtocol, updateProtocol, deleteProtocol, duplicateProtocol, importProtocol,
   } = useProtocols()
+
+  const { logoDataUrl, updateLogo, clearLogo } = useLogo()
 
   const [activeId, setActiveId] = useState(null)
   const activeIdRef = useRef(activeId)
@@ -71,6 +74,9 @@ export default function App() {
       <ProtocolEditor
         protocol={activeProtocol}
         protocols={protocols}
+        logoDataUrl={logoDataUrl}
+        onLogoUpdate={updateLogo}
+        onLogoClear={clearLogo}
         onUpdate={updateProtocol}
         onBack={() => setActiveId(null)}
       />

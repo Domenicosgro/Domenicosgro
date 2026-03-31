@@ -49,10 +49,10 @@ export const emptyProtocol = () => ({
   notes: '',
   predecessorId: null,
   participants: [],
-  agenda: [],           // pre-meeting agenda draft (sent to participants beforehand)
-  agendaSentAt: null,   // ISO timestamp when the agenda email was last triggered
-  agendaGreeting: '',   // custom greeting text in the agenda email
-  agendaItems: [],      // during/post-meeting TOPs (Tagesordnungspunkte)
+  agenda: [],           // pre-meeting agenda draft
+  agendaSentAt: null,
+  agendaGreeting: '',
+  agendaItems: [],      // Protokollpunkte (during/post-meeting)
   actionItems: [],
   createdAt: new Date().toISOString(),
   updatedAt: new Date().toISOString(),
@@ -133,6 +133,10 @@ export const buildAgendaEmailBody = (protocol) => {
 }
 
 // level: 1 = Hauptpunkt, 2 = Unterpunkt, 3 = Unter-Unterpunkt
+// status: 'offen' | 'erledigt'
+// carriedGray: true  → item was erledigt in direct predecessor (show gray)
+//              false → normal carry or new item
+// Items with carriedGray=true AND status='erledigt' are NOT carried to the next protocol
 export const emptyAgendaItem = (level = 1) => ({
   id: uid(),
   no: '',
@@ -140,6 +144,9 @@ export const emptyAgendaItem = (level = 1) => ({
   discussion: '',
   result: '',
   level,
+  status: 'offen',
+  carriedGray: false,
+  carriedFromId: null,
 })
 
 export const emptyActionItem = () => ({
