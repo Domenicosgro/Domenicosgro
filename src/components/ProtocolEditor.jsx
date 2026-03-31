@@ -44,7 +44,7 @@ function promoteAgenda(agenda, existingItems) {
   return [...updated, ...newItems]
 }
 
-export default function ProtocolEditor({ protocol, protocols, logoDataUrl, onLogoUpdate, onLogoClear, onUpdate, onBack }) {
+export default function ProtocolEditor({ protocol, protocols, projects, projectContacts, logoDataUrl, onLogoUpdate, onLogoClear, onUpdate, onBack }) {
   const change = (patch) => onUpdate(protocol.id, patch)
 
   const [showEmailModal, setShowEmailModal] = useState(false)
@@ -361,7 +361,7 @@ export default function ProtocolEditor({ protocol, protocols, logoDataUrl, onLog
         {/* Meeting header */}
         <div className="py-4">
           <MeetingHeader
-            protocol={protocol} protocols={protocols}
+            protocol={protocol} protocols={protocols} projects={projects ?? []}
             logoDataUrl={logoDataUrl} onLogoUpdate={onLogoUpdate} onLogoClear={onLogoClear}
             onChange={change}
           />
@@ -373,6 +373,7 @@ export default function ProtocolEditor({ protocol, protocols, logoDataUrl, onLog
             participants={protocol.participants ?? []}
             onChange={participants => change({ participants })}
             readOnly={isClosed}
+            projectContacts={projectContacts ?? []}
           />
         </div>
 
@@ -384,6 +385,7 @@ export default function ProtocolEditor({ protocol, protocols, logoDataUrl, onLog
               agendaGreeting={protocol.agendaGreeting ?? ''}
               agendaSentAt={protocol.agendaSentAt}
               protocolItems={protocol.agendaItems ?? []}
+              projectContacts={projectContacts ?? []}
               onChange={agenda => change({ agenda })}
               onChangeGreeting={agendaGreeting => change({ agendaGreeting })}
             />
@@ -407,6 +409,7 @@ export default function ProtocolEditor({ protocol, protocols, logoDataUrl, onLog
             items={protocol.agendaItems ?? []}
             onChange={agendaItems => change({ agendaItems })}
             readOnly={isClosed}
+            projectContacts={projectContacts ?? []}
           />
         </div>
 

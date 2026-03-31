@@ -4,9 +4,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Runtime info
   platform: process.platform,   // 'darwin' | 'win32' | 'linux'
 
-  // Persistence
+  // Persistence – protocols
   loadProtocols:  ()          => ipcRenderer.invoke('protocols:load'),
   saveProtocols:  (protocols) => ipcRenderer.invoke('protocols:save', protocols),
+
+  // Persistence – projects
+  loadProjects:   ()          => ipcRenderer.invoke('projects:load'),
+  saveProjects:   (projects)  => ipcRenderer.invoke('projects:save', projects),
 
   // File I/O
   exportJSON:     (protocol)  => ipcRenderer.invoke('protocols:export-json', protocol),

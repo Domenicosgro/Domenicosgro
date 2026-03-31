@@ -1,8 +1,16 @@
 import React from 'react'
-import { Plus, Trash2, Users } from 'lucide-react'
-import { emptyParticipant } from '../utils'
+import { Plus, Trash2, Users, FolderOpen } from 'lucide-react'
+import { emptyParticipant, uid } from '../utils'
 
-export default function ParticipantsList({ participants, onChange, readOnly }) {
+export default function ParticipantsList({ participants, onChange, readOnly, projectContacts }) {
+  const importFromProject = () => {
+    const existing = new Set(participants.map(p => p.email).filter(Boolean))
+    const toAdd = (projectContacts ?? [])
+      .filter(c => !existing.has(c.email) || !c.email)
+      .map(c => ({ ...emptyParticipant(), id: uid(), name: c.name, company: c.company, role: c.role, email: c.email ?? '' }))
+    if (toAdd.length === 0) return
+    onChange([...participants, ...toAdd])
+  }
   const add = () => onChange([...participants, emptyParticipant()])
 
   const update = (id, field, value) =>
@@ -24,7 +32,16 @@ export default function ParticipantsList({ participants, onChange, readOnly }) {
             </span>
           )}
         </div>
-        {!readOnly && <button className="btn-primary no-print" onClick={add}><Plus size={14} /> Hinzufügen</button>}
+        {!readOnly && (
+          <div className="flex gap-2 no-print flex-wrap">
+            {(projectContacts ?? []).length > 0 && (
+              <button className="btn-secondary" onClick={importFromProject} title="Projektkontakte als Teilnehmer importieren">
+                <FolderOpen size={14} /> Aus Projekt
+              </button>
+            )}
+            <button className="btn-primary" onClick={add}><Plus size={14} /> Hinzufügen</button>
+          </div>
+        )}
       </div>
 
       {participants.length === 0 && (

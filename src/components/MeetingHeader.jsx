@@ -1,8 +1,9 @@
 import React from 'react'
 import { MEETING_TYPES, formatDate, buildProtocolNo } from '../utils'
 import LogoUpload from './LogoUpload'
+import { FolderOpen } from 'lucide-react'
 
-export default function MeetingHeader({ protocol, protocols, logoDataUrl, onLogoUpdate, onLogoClear, onChange }) {
+export default function MeetingHeader({ protocol, protocols, projects, logoDataUrl, onLogoUpdate, onLogoClear, onChange }) {
   const set = (field) => (e) => onChange({ [field]: e.target.value })
 
   const protocolNo = buildProtocolNo(protocol.projectName, protocol.date)
@@ -24,8 +25,21 @@ export default function MeetingHeader({ protocol, protocols, logoDataUrl, onLogo
     onChange(patch)
   }
 
+  const handleProjectChange = (e) => {
+    const projectId = e.target.value || null
+    const proj = projectId ? (projects ?? []).find(p => p.id === projectId) : null
+    const patch = { projectId }
+    // Auto-fill project name from project if current field is empty
+    if (proj && !protocol.projectName.trim()) {
+      patch.projectName = proj.name
+    }
+    onChange(patch)
+  }
+
+  const linkedProject = (projects ?? []).find(p => p.id === protocol.projectId)
+
   return (
-    <div className="card p-6 space-y-4">
+    <div className="space-y-4">
       {/* Logo + project row */}
       <div className="flex items-start gap-4 flex-wrap">
         {/* Logo */}
@@ -89,6 +103,26 @@ export default function MeetingHeader({ protocol, protocols, logoDataUrl, onLogo
           <input className="input" type="time" value={protocol.nextMeetingTime} onChange={set('nextMeetingTime')} />
         </div>
       </div>
+
+      {/* Project database link */}
+      {(projects ?? []).length > 0 && (
+        <div className="pt-1 border-t border-gray-100 no-print">
+          <label className="block text-xs font-medium text-gray-500 mb-1 flex items-center gap-1">
+            <FolderOpen size={12} /> Projekt-Datenbank
+            {linkedProject && (
+              <span className="ml-2 badge-blue">{linkedProject.contacts?.length ?? 0} Kontakte verfügbar</span>
+            )}
+          </label>
+          <select className="select max-w-md" value={protocol.projectId ?? ''} onChange={handleProjectChange}>
+            <option value="">– Kein Projekt zugeordnet –</option>
+            {(projects ?? []).map(p => (
+              <option key={p.id} value={p.id}>
+                {p.name || 'Unbenanntes Projekt'} ({p.contacts?.length ?? 0} Kontakte)
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
 
       {/* Predecessor */}
       <div className="pt-1 border-t border-gray-100 no-print">

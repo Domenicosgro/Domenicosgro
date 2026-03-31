@@ -2,7 +2,8 @@ import React from 'react'
 import { Plus, Trash2, CalendarClock, Link } from 'lucide-react'
 import { emptyAgendaDraftItem } from '../utils'
 
-export default function AgendaDraft({ agenda, agendaGreeting, agendaSentAt, protocolItems, onChange, onChangeGreeting }) {
+export default function AgendaDraft({ agenda, agendaGreeting, agendaSentAt, protocolItems, projectContacts, onChange, onChangeGreeting }) {
+  const contactListId = 'agenda-contacts-list'
   const add = () => {
     const no = String(agenda.length + 1)
     onChange([...agenda, { ...emptyAgendaDraftItem(), no }])
@@ -52,6 +53,15 @@ export default function AgendaDraft({ agenda, agendaGreeting, agendaSentAt, prot
           value={agendaGreeting} onChange={e => onChangeGreeting(e.target.value)} />
       </div>
 
+      {/* Contact datalist */}
+      {(projectContacts ?? []).length > 0 && (
+        <datalist id={contactListId}>
+          {(projectContacts ?? []).map(c => (
+            <option key={c.id} value={c.name ? (c.company ? `${c.name} (${c.company})` : c.name) : c.company} />
+          ))}
+        </datalist>
+      )}
+
       {agenda.length === 0 && (
         <p className="text-sm text-gray-400 italic">Noch keine Agendapunkte erfasst.</p>
       )}
@@ -96,7 +106,9 @@ export default function AgendaDraft({ agenda, agendaGreeting, agendaSentAt, prot
                     </td>
                     <td className="py-2 pr-2 align-top">
                       <input className="input py-1 text-xs" placeholder="Name/Firma"
-                        value={item.responsible} onChange={e => update(item.id, 'responsible', e.target.value)} />
+                        value={item.responsible}
+                        list={(projectContacts ?? []).length > 0 ? contactListId : undefined}
+                        onChange={e => update(item.id, 'responsible', e.target.value)} />
                     </td>
                     <td className="py-2 pr-2 align-top">
                       <input className="input py-1 text-xs" placeholder="Pläne, Berichte…"

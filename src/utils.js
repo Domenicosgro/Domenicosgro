@@ -36,10 +36,28 @@ export const buildProtocolNo = (projectName, date) => {
   return `${name}_${d}`
 }
 
+export const emptyContact = () => ({
+  id: uid(),
+  name: '',
+  company: '',
+  role: '',
+  email: '',
+  phone: '',
+})
+
+export const emptyProject = () => ({
+  id: uid(),
+  name: '',
+  contacts: [],
+  createdAt: new Date().toISOString(),
+  updatedAt: new Date().toISOString(),
+})
+
 export const emptyProtocol = () => ({
   id: uid(),
   meetingType: 'Baubesprechung',
   projectName: '',
+  projectId: null,   // link to project database entry
   date: today(),
   time: '',
   location: '',

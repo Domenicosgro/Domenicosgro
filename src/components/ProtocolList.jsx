@@ -1,10 +1,10 @@
 import React, { useState, useRef } from 'react'
-import { Plus, Trash2, Copy, FileText, Search, ChevronRight, Upload, Lock } from 'lucide-react'
+import { Plus, Trash2, Copy, FileText, Search, ChevronRight, Upload, Lock, FolderOpen } from 'lucide-react'
 import { formatDate, buildProtocolNo } from '../utils'
 
 const isElectron = typeof window !== 'undefined' && !!window.electronAPI
 
-export default function ProtocolList({ protocols, onCreate, onOpen, onDelete, onDuplicate, onImport, onOpenImported }) {
+export default function ProtocolList({ protocols, onCreate, onOpen, onDelete, onDuplicate, onImport, onOpenImported, onOpenProjects }) {
   const fileInputRef = useRef(null)
   const [search, setSearch] = useState('')
   const [importError, setImportError] = useState('')
@@ -67,6 +67,9 @@ export default function ProtocolList({ protocols, onCreate, onOpen, onDelete, on
             className="hidden"
             onChange={handleFileChange}
           />
+          <button className="btn-secondary" onClick={onOpenProjects} title="Projektdatenbank">
+            <FolderOpen size={16} /> Projekte
+          </button>
           <button className="btn-secondary" onClick={handleImportClick} title="JSON-Protokoll importieren">
             <Upload size={16} /> Importieren
           </button>

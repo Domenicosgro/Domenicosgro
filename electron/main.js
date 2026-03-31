@@ -8,19 +8,26 @@ const isWin  = process.platform === 'win32'
 
 const APP_NAME = 'Baubesprechung Protokoll'
 
-// ── Data file ────────────────────────────────────────────────────────────────
-function dataFile() {
-  return path.join(app.getPath('userData'), 'protocols.json')
-}
+// ── Data files ───────────────────────────────────────────────────────────────
+function dataFile()     { return path.join(app.getPath('userData'), 'protocols.json') }
+function projectsFile() { return path.join(app.getPath('userData'), 'projects.json')  }
 
 function readData() {
   const f = dataFile()
   if (!fs.existsSync(f)) return []
   try { return JSON.parse(fs.readFileSync(f, 'utf-8')) } catch { return [] }
 }
-
 function writeData(protocols) {
   fs.writeFileSync(dataFile(), JSON.stringify(protocols, null, 2), 'utf-8')
+}
+
+function readProjects() {
+  const f = projectsFile()
+  if (!fs.existsSync(f)) return []
+  try { return JSON.parse(fs.readFileSync(f, 'utf-8')) } catch { return [] }
+}
+function writeProjects(projects) {
+  fs.writeFileSync(projectsFile(), JSON.stringify(projects, null, 2), 'utf-8')
 }
 
 // ── Window ───────────────────────────────────────────────────────────────────
@@ -169,6 +176,12 @@ ipcMain.handle('protocols:load', () => readData())
 
 ipcMain.handle('protocols:save', (_e, protocols) => {
   try { writeData(protocols); return true } catch { return false }
+})
+
+ipcMain.handle('projects:load', () => readProjects())
+
+ipcMain.handle('projects:save', (_e, projects) => {
+  try { writeProjects(projects); return true } catch { return false }
 })
 
 ipcMain.handle('protocols:export-json', async (_e, protocol) => {

@@ -8,7 +8,8 @@ const LEVEL_STYLES = {
   3: { indent: 'ml-12',  label: 'text-sm font-medium text-gray-700',   tag: 'E3', tagColor: 'bg-gray-200 text-gray-600',     borderL: 'border-l-4 border-gray-300'  },
 }
 
-export default function ProtocolItems({ items, onChange, readOnly }) {
+export default function ProtocolItems({ items, onChange, readOnly, projectContacts }) {
+  const contactListId = 'protocol-contacts-list'
   const [search, setSearch]           = useState('')
   const [showCompleted, setShowCompleted] = useState(true)
 
@@ -113,6 +114,15 @@ export default function ProtocolItems({ items, onChange, readOnly }) {
         </p>
       )}
 
+      {/* Contact datalist for assignedTo autocomplete */}
+      {(projectContacts ?? []).length > 0 && (
+        <datalist id={contactListId}>
+          {(projectContacts ?? []).map(c => (
+            <option key={c.id} value={c.name ? (c.company ? `${c.name} (${c.company})` : c.name) : c.company} />
+          ))}
+        </datalist>
+      )}
+
       {/* Items */}
       <div className="space-y-2">
         {visible.map((item, i) => {
@@ -191,6 +201,7 @@ export default function ProtocolItems({ items, onChange, readOnly }) {
                         className="input py-0.5 text-xs max-w-64"
                         placeholder="Zugewiesen an (Person / Firma)…"
                         value={item.assignedTo ?? ''}
+                        list={(projectContacts ?? []).length > 0 ? contactListId : undefined}
                         onChange={e => update(item.id, 'assignedTo', e.target.value)}
                       />
                   }
