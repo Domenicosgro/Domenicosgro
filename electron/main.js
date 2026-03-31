@@ -6,7 +6,7 @@ const isDev  = !app.isPackaged
 const isMac  = process.platform === 'darwin'
 const isWin  = process.platform === 'win32'
 
-const APP_NAME = 'Baubesprechung Protokoll'
+const APP_NAME = 'Komplizen Protokolle'
 
 // ── Data files ───────────────────────────────────────────────────────────────
 function dataFile()     { return path.join(app.getPath('userData'), 'protocols.json') }
