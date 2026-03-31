@@ -3,20 +3,30 @@ import { Plus, Trash2, FileText, IndentIncrease, IndentDecrease, Search, X, Chec
 import { emptyAgendaItem } from '../utils'
 
 const LEVEL_STYLES = {
-  1: { indent: '',       label: 'text-sm font-bold text-gray-900',     tag: 'E1', tagColor: 'bg-brand-600 text-white',       borderL: 'border-l-4 border-brand-400' },
-  2: { indent: 'ml-6',   label: 'text-sm font-semibold text-gray-800', tag: 'E2', tagColor: 'bg-brand-100 text-brand-700',   borderL: 'border-l-4 border-brand-200' },
-  3: { indent: 'ml-12',  label: 'text-sm font-medium text-gray-700',   tag: 'E3', tagColor: 'bg-gray-200 text-gray-600',     borderL: 'border-l-4 border-gray-300'  },
+  1: { indent: '',       label: 'text-sm font-bold text-gray-900',     noStyle: 'text-sm font-bold text-brand-700',      borderL: 'border-l-4 border-brand-400' },
+  2: { indent: 'ml-6',   label: 'text-sm font-semibold text-gray-800', noStyle: 'text-sm font-semibold text-brand-600',  borderL: 'border-l-4 border-brand-200' },
+  3: { indent: 'ml-12',  label: 'text-sm font-medium text-gray-700',   noStyle: 'text-sm font-medium text-gray-500',     borderL: 'border-l-4 border-gray-300'  },
+}
+
+// Auto-compute hierarchical numbers: 1 / 1.1 / 1.1.1
+function calcNumbers(items) {
+  const counters = [0, 0, 0]
+  return items.map(item => {
+    const lvl = Math.min(Math.max((item.level ?? 1), 1), 3) - 1
+    counters[lvl]++
+    for (let i = lvl + 1; i < 3; i++) counters[i] = 0
+    return counters.slice(0, lvl + 1).join('.')
+  })
 }
 
 export default function ProtocolItems({ items, onChange, readOnly, projectContacts }) {
   const contactListId = 'protocol-contacts-list'
-  const [search, setSearch]           = useState('')
+  const [search, setSearch]             = useState('')
   const [showCompleted, setShowCompleted] = useState(true)
 
   const add = (level = 1) => {
     if (readOnly) return
-    const no = String(items.filter(i => i.level === level).length + 1)
-    onChange([...items, { ...emptyAgendaItem(level), no }])
+    onChange([...items, emptyAgendaItem(level)])
   }
 
   const update = (id, field, value) => {
@@ -40,6 +50,11 @@ export default function ProtocolItems({ items, onChange, readOnly, projectContac
       : it))
   }
 
+  // Compute numbers for all items (including hidden ones) so numbering is stable
+  const allNumbers = calcNumbers(items)
+  // Map id → computed number
+  const numById = Object.fromEntries(items.map((it, i) => [it.id, allNumbers[i]]))
+
   const q = search.trim().toLowerCase()
   const completedCount = items.filter(it => it.status === 'erledigt' && !it.carriedGray).length
 
@@ -49,7 +64,7 @@ export default function ProtocolItems({ items, onChange, readOnly, projectContac
       it.discussion.toLowerCase().includes(q) ||
       it.result.toLowerCase().includes(q) ||
       (it.assignedTo ?? '').toLowerCase().includes(q) ||
-      (it.no ?? '').toLowerCase().includes(q)
+      numById[it.id].includes(q)
     )
     if (!showCompleted && it.status === 'erledigt' && !it.carriedGray) return false
     return true
@@ -125,11 +140,12 @@ export default function ProtocolItems({ items, onChange, readOnly, projectContac
 
       {/* Items */}
       <div className="space-y-2">
-        {visible.map((item, i) => {
+        {visible.map(item => {
           const lvl  = item.level ?? 1
           const s    = LEVEL_STYLES[lvl]
           const done = item.status === 'erledigt'
           const gray = done && item.carriedGray
+          const num  = numById[item.id]
 
           return (
             <div
@@ -137,10 +153,12 @@ export default function ProtocolItems({ items, onChange, readOnly, projectContac
               className={`${s.indent} rounded-lg ${s.borderL} pl-4 pr-3 py-3 space-y-2
                 ${gray ? 'bg-gray-50 opacity-60' : done ? 'bg-green-50' : 'bg-white'}`}
             >
-              {/* Row 1: badges + number + topic + controls */}
+              {/* Row 1: number + topic + controls */}
               <div className="flex items-start gap-2">
-                <span className={`text-xs px-1.5 py-0.5 rounded font-semibold flex-shrink-0 ${s.tagColor} ${done ? 'opacity-60' : ''}`}>
-                  {s.tag}
+
+                {/* Hierarchical number */}
+                <span className={`flex-shrink-0 min-w-[2.5rem] tabular-nums ${s.noStyle} ${done ? 'opacity-50' : ''}`}>
+                  {num}
                 </span>
 
                 {!readOnly && !gray && (
@@ -155,15 +173,7 @@ export default function ProtocolItems({ items, onChange, readOnly, projectContac
                 {gray && <span className="badge text-xs bg-gray-200 text-gray-500 flex-shrink-0">Freigemeldet (Vorgänger)</span>}
                 {!gray && item.carriedFromId && <span className="badge-blue text-xs flex-shrink-0 no-print">↩ Übernommen</span>}
 
-                {/* No + Topic */}
-                <div className="w-12 flex-shrink-0">
-                  {readOnly || gray
-                    ? <span className="text-xs font-semibold text-gray-500">{item.no || i + 1}</span>
-                    : <input className={`input py-0.5 text-center font-semibold text-xs ${done ? 'line-through text-gray-400' : ''}`}
-                        value={item.no} onChange={e => update(item.id, 'no', e.target.value)}
-                        placeholder={String(i + 1)} />
-                  }
-                </div>
+                {/* Topic */}
                 <div className="flex-1">
                   {readOnly || gray
                     ? <span className={`${s.label} ${done ? 'line-through text-gray-400' : ''}`}>{item.topic || '–'}</span>
@@ -193,7 +203,7 @@ export default function ProtocolItems({ items, onChange, readOnly, projectContac
 
               {/* Row 2: assignedTo */}
               {!gray && (
-                <div className="flex items-center gap-2 pl-[calc(1.5rem+0.5rem)]">
+                <div className="flex items-center gap-2 pl-10">
                   <User size={13} className="text-gray-400 flex-shrink-0" />
                   {readOnly
                     ? <span className="text-xs text-gray-500">{item.assignedTo || '–'}</span>
@@ -210,7 +220,7 @@ export default function ProtocolItems({ items, onChange, readOnly, projectContac
 
               {/* Discussion + Result */}
               {!gray && (
-                <div className="space-y-2 pl-[calc(1.5rem+0.5rem)]">
+                <div className="space-y-2 pl-10">
                   <div>
                     <label className="block text-xs text-gray-400 mb-0.5">Besprechungsinhalt</label>
                     {readOnly
@@ -234,7 +244,7 @@ export default function ProtocolItems({ items, onChange, readOnly, projectContac
 
               {/* Gray: read-only summary */}
               {gray && (item.discussion || item.result) && (
-                <div className="text-xs text-gray-400 pl-2 space-y-0.5">
+                <div className="text-xs text-gray-400 pl-10 space-y-0.5">
                   {item.discussion && <p><span className="font-medium">Inhalt:</span> {item.discussion}</p>}
                   {item.result     && <p><span className="font-medium">Ergebnis:</span> {item.result}</p>}
                 </div>
