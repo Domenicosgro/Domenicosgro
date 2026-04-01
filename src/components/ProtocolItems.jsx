@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { Plus, Trash2, FileText, IndentIncrease, IndentDecrease, Search, X, CheckCircle2, Circle, User } from 'lucide-react'
-import { emptyAgendaItem } from '../utils'
+import { emptyAgendaItem, uid } from '../utils'
 
 const LEVEL_STYLES = {
   1: { indent: '',       label: 'text-sm font-bold text-gray-900',     noStyle: 'text-sm font-bold text-brand-700',     borderL: 'border-l-4 border-brand-400' },
@@ -8,35 +8,39 @@ const LEVEL_STYLES = {
   3: { indent: 'ml-12',  label: 'text-sm font-medium text-gray-700',   noStyle: 'text-sm font-medium text-gray-500',    borderL: 'border-l-4 border-gray-300'  },
 }
 
-// Suggest a starting number for a new item based on existing items.
-// The user can edit it freely afterwards — this is just a convenience pre-fill.
-function suggestNo(items, level) {
-  if (level === 1) {
-    const count = items.filter(it => it.level === 1).length
-    return String(count + 1)
+// How many existing direct children does parentIdx have at childLevel?
+function countChildren(items, parentIdx, childLevel) {
+  let count = 0
+  const parentLevel = items[parentIdx].level ?? 1
+  for (let i = parentIdx + 1; i < items.length; i++) {
+    const lvl = items[i].level ?? 1
+    if (lvl <= parentLevel) break       // back to parent level or higher → stop
+    if (lvl === childLevel) count++
   }
-  if (level === 2) {
-    // Find last level-1 item and its no, then count level-2 siblings after it
-    let parentNo = ''
-    let lastL1 = -1
-    for (let i = items.length - 1; i >= 0; i--) {
-      if (items[i].level === 1) { lastL1 = i; parentNo = items[i].no || String(items.filter((x, j) => x.level === 1 && j <= i).length); break }
-    }
-    const siblings = lastL1 >= 0
-      ? items.slice(lastL1 + 1).filter(it => it.level === 2).length
-      : items.filter(it => it.level === 2).length
-    return parentNo ? `${parentNo}.${siblings + 1}` : `1.${siblings + 1}`
-  }
-  // level 3
-  let parentNo = ''
-  let lastL2 = -1
-  for (let i = items.length - 1; i >= 0; i--) {
-    if (items[i].level === 2) { lastL2 = i; parentNo = items[i].no || '1.1'; break }
-  }
-  const siblings = lastL2 >= 0
-    ? items.slice(lastL2 + 1).filter(it => it.level === 3).length
-    : items.filter(it => it.level === 3).length
-  return parentNo ? `${parentNo}.${siblings + 1}` : `1.1.${siblings + 1}`
+  return count
+}
+
+// Index after the last descendant of items[parentIdx]
+function subtreeEnd(items, parentIdx) {
+  const parentLevel = items[parentIdx].level ?? 1
+  let i = parentIdx + 1
+  while (i < items.length && (items[i].level ?? 1) > parentLevel) i++
+  return i
+}
+
+// Suggest number for a new child directly under items[parentIdx]
+function suggestChildNo(items, parentIdx) {
+  const parent    = items[parentIdx]
+  const childLvl  = Math.min((parent.level ?? 1) + 1, 3)
+  const siblings  = countChildren(items, parentIdx, childLvl)
+  const prefix    = parent.no || String(parentIdx + 1)
+  return `${prefix}.${siblings + 1}`
+}
+
+// Suggest number for a new top-level item (appended at end)
+function suggestTopNo(items) {
+  const count = items.filter(it => (it.level ?? 1) === 1).length
+  return String(count + 1)
 }
 
 export default function ProtocolItems({ items, onChange, readOnly, projectContacts }) {
@@ -44,9 +48,24 @@ export default function ProtocolItems({ items, onChange, readOnly, projectContac
   const [search, setSearch]             = useState('')
   const [showCompleted, setShowCompleted] = useState(true)
 
-  const add = (level = 1) => {
+  // Add a new top-level Hauptpunkt at the end
+  const addTop = () => {
     if (readOnly) return
-    onChange([...items, { ...emptyAgendaItem(level), no: suggestNo(items, level) }])
+    onChange([...items, { ...emptyAgendaItem(1), no: suggestTopNo(items) }])
+  }
+
+  // Add a child item directly below parentId (after its subtree)
+  const addChild = (parentId) => {
+    if (readOnly) return
+    const parentIdx = items.findIndex(it => it.id === parentId)
+    if (parentIdx < 0) return
+    const childLevel = Math.min((items[parentIdx].level ?? 1) + 1, 3)
+    const no         = suggestChildNo(items, parentIdx)
+    const insertAt   = subtreeEnd(items, parentIdx)
+    const newItem    = { ...emptyAgendaItem(childLevel), no }
+    const next       = [...items]
+    next.splice(insertAt, 0, newItem)
+    onChange(next)
   }
 
   const update = (id, field, value) => {
@@ -96,11 +115,9 @@ export default function ProtocolItems({ items, onChange, readOnly, projectContac
           {completedCount > 0 && <span className="badge-green">{completedCount} freigemeldet</span>}
         </div>
         {!readOnly && (
-          <div className="flex gap-2 no-print flex-wrap">
-            <button className="btn-primary btn-sm"   onClick={() => add(1)}><Plus size={13} /> Hauptpunkt</button>
-            <button className="btn-secondary btn-sm" onClick={() => add(2)}><Plus size={13} /> Unterpunkt</button>
-            <button className="btn-secondary btn-sm" onClick={() => add(3)}><Plus size={13} /> Unterunterpunkt</button>
-          </div>
+          <button className="btn-primary btn-sm no-print" onClick={addTop}>
+            <Plus size={13} /> Hauptpunkt
+          </button>
         )}
       </div>
 
@@ -144,7 +161,7 @@ export default function ProtocolItems({ items, onChange, readOnly, projectContac
         </p>
       )}
 
-      {/* Contact datalist for assignedTo autocomplete */}
+      {/* Contact datalist */}
       {(projectContacts ?? []).length > 0 && (
         <datalist id={contactListId}>
           {(projectContacts ?? []).map(c => (
@@ -162,114 +179,128 @@ export default function ProtocolItems({ items, onChange, readOnly, projectContac
           const gray = done && item.carriedGray
 
           return (
-            <div
-              key={item.id}
-              className={`${s.indent} rounded-lg ${s.borderL} pl-4 pr-3 py-3 space-y-2
-                ${gray ? 'bg-gray-50 opacity-60' : done ? 'bg-green-50' : 'bg-white'}`}
-            >
-              {/* Row 1: number + topic + controls */}
-              <div className="flex items-start gap-2">
+            <div key={item.id}>
+              <div
+                className={`${s.indent} rounded-lg ${s.borderL} pl-4 pr-3 py-3 space-y-2
+                  ${gray ? 'bg-gray-50 opacity-60' : done ? 'bg-green-50' : 'bg-white'}`}
+              >
+                {/* Row 1: number + topic + controls */}
+                <div className="flex items-start gap-2">
 
-                {/* Static editable number */}
-                <div className="flex-shrink-0 w-14">
-                  {readOnly || gray
-                    ? <span className={`${s.noStyle} ${done ? 'opacity-50' : ''}`}>{item.no || '–'}</span>
-                    : <input
-                        className={`input py-0.5 text-center font-semibold ${s.noStyle} ${done ? 'opacity-50' : ''}`}
-                        value={item.no}
-                        onChange={e => update(item.id, 'no', e.target.value)}
-                        placeholder="Nr."
-                        title="Nummer (fest, wird nicht automatisch geändert)"
-                      />
-                  }
+                  {/* Editable number */}
+                  <div className="flex-shrink-0 w-14">
+                    {readOnly || gray
+                      ? <span className={`${s.noStyle} ${done ? 'opacity-50' : ''}`}>{item.no || '–'}</span>
+                      : <input
+                          className={`input py-0.5 text-center font-semibold ${s.noStyle} ${done ? 'opacity-50' : ''}`}
+                          value={item.no}
+                          onChange={e => update(item.id, 'no', e.target.value)}
+                          placeholder="Nr."
+                        />
+                    }
+                  </div>
+
+                  {!readOnly && !gray && (
+                    <button
+                      className={`flex-shrink-0 mt-0.5 no-print transition-colors ${done ? 'text-green-600 hover:text-gray-400' : 'text-gray-300 hover:text-green-500'}`}
+                      onClick={() => toggleDone(item.id)}
+                      title={done ? 'Als offen markieren' : 'Als freigemeldet markieren'}
+                    >
+                      {done ? <CheckCircle2 size={18} /> : <Circle size={18} />}
+                    </button>
+                  )}
+                  {gray && <span className="badge text-xs bg-gray-200 text-gray-500 flex-shrink-0">Freigemeldet (Vorgänger)</span>}
+                  {!gray && item.carriedFromId && <span className="badge-blue text-xs flex-shrink-0 no-print">↩ Übernommen</span>}
+
+                  {/* Topic */}
+                  <div className="flex-1">
+                    {readOnly || gray
+                      ? <span className={`${s.label} ${done ? 'line-through text-gray-400' : ''}`}>{item.topic || '–'}</span>
+                      : <input className={`input py-0.5 ${s.label} ${done ? 'line-through text-gray-400' : ''}`}
+                          placeholder="Thema…" value={item.topic}
+                          onChange={e => update(item.id, 'topic', e.target.value)} />
+                    }
+                  </div>
+
+                  {!readOnly && !gray && (
+                    <div className="flex items-center gap-1 no-print flex-shrink-0">
+                      <button className="btn-ghost p-1 text-gray-400 hover:text-brand-600 disabled:opacity-30"
+                        onClick={() => changeLevel(item.id, 1)} disabled={lvl >= 3} title="Einrücken">
+                        <IndentIncrease size={13} />
+                      </button>
+                      <button className="btn-ghost p-1 text-gray-400 hover:text-brand-600 disabled:opacity-30"
+                        onClick={() => changeLevel(item.id, -1)} disabled={lvl <= 1} title="Ausrücken">
+                        <IndentDecrease size={13} />
+                      </button>
+                      <button className="btn-ghost p-1 text-red-400 hover:text-red-600 hover:bg-red-50"
+                        onClick={() => remove(item.id)} title="Entfernen">
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
+                  )}
                 </div>
 
-                {!readOnly && !gray && (
-                  <button
-                    className={`flex-shrink-0 mt-0.5 no-print transition-colors ${done ? 'text-green-600 hover:text-gray-400' : 'text-gray-300 hover:text-green-500'}`}
-                    onClick={() => toggleDone(item.id)}
-                    title={done ? 'Als offen markieren' : 'Als freigemeldet markieren'}
-                  >
-                    {done ? <CheckCircle2 size={18} /> : <Circle size={18} />}
-                  </button>
+                {/* Row 2: assignedTo */}
+                {!gray && (
+                  <div className="flex items-center gap-2 pl-16">
+                    <User size={13} className="text-gray-400 flex-shrink-0" />
+                    {readOnly
+                      ? <span className="text-xs text-gray-500">{item.assignedTo || '–'}</span>
+                      : <input
+                          className="input py-0.5 text-xs max-w-64"
+                          placeholder="Zugewiesen an (Person / Firma)…"
+                          value={item.assignedTo ?? ''}
+                          list={(projectContacts ?? []).length > 0 ? contactListId : undefined}
+                          onChange={e => update(item.id, 'assignedTo', e.target.value)}
+                        />
+                    }
+                  </div>
                 )}
-                {gray && <span className="badge text-xs bg-gray-200 text-gray-500 flex-shrink-0">Freigemeldet (Vorgänger)</span>}
-                {!gray && item.carriedFromId && <span className="badge-blue text-xs flex-shrink-0 no-print">↩ Übernommen</span>}
 
-                {/* Topic */}
-                <div className="flex-1">
-                  {readOnly || gray
-                    ? <span className={`${s.label} ${done ? 'line-through text-gray-400' : ''}`}>{item.topic || '–'}</span>
-                    : <input className={`input py-0.5 ${s.label} ${done ? 'line-through text-gray-400' : ''}`}
-                        placeholder="Thema…" value={item.topic}
-                        onChange={e => update(item.id, 'topic', e.target.value)} />
-                  }
-                </div>
+                {/* Discussion + Result */}
+                {!gray && (
+                  <div className="space-y-2 pl-16">
+                    <div>
+                      <label className="block text-xs text-gray-400 mb-0.5">Besprechungsinhalt</label>
+                      {readOnly
+                        ? <p className="text-sm text-gray-700 whitespace-pre-line">{item.discussion || '–'}</p>
+                        : <textarea className={`textarea text-sm ${done ? 'text-gray-400' : ''}`} rows={2}
+                            placeholder="Inhalt…" value={item.discussion}
+                            onChange={e => update(item.id, 'discussion', e.target.value)} />
+                      }
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-400 mb-0.5">Ergebnis / Beschluss</label>
+                      {readOnly
+                        ? <p className="text-sm text-gray-700 whitespace-pre-line">{item.result || '–'}</p>
+                        : <textarea className={`textarea text-sm ${done ? 'text-gray-400' : ''}`} rows={2}
+                            placeholder="Ergebnis…" value={item.result}
+                            onChange={e => update(item.id, 'result', e.target.value)} />
+                      }
+                    </div>
+                  </div>
+                )}
 
-                {!readOnly && !gray && (
-                  <div className="flex items-center gap-1 no-print flex-shrink-0">
-                    <button className="btn-ghost p-1 text-gray-400 hover:text-brand-600 disabled:opacity-30"
-                      onClick={() => changeLevel(item.id, 1)} disabled={lvl >= 3} title="Einrücken">
-                      <IndentIncrease size={13} />
-                    </button>
-                    <button className="btn-ghost p-1 text-gray-400 hover:text-brand-600 disabled:opacity-30"
-                      onClick={() => changeLevel(item.id, -1)} disabled={lvl <= 1} title="Ausrücken">
-                      <IndentDecrease size={13} />
-                    </button>
-                    <button className="btn-ghost p-1 text-red-400 hover:text-red-600 hover:bg-red-50"
-                      onClick={() => remove(item.id)} title="Entfernen">
-                      <Trash2 size={13} />
-                    </button>
+                {/* Gray summary */}
+                {gray && (item.discussion || item.result) && (
+                  <div className="text-xs text-gray-400 pl-16 space-y-0.5">
+                    {item.discussion && <p><span className="font-medium">Inhalt:</span> {item.discussion}</p>}
+                    {item.result     && <p><span className="font-medium">Ergebnis:</span> {item.result}</p>}
                   </div>
                 )}
               </div>
 
-              {/* Row 2: assignedTo */}
-              {!gray && (
-                <div className="flex items-center gap-2 pl-16">
-                  <User size={13} className="text-gray-400 flex-shrink-0" />
-                  {readOnly
-                    ? <span className="text-xs text-gray-500">{item.assignedTo || '–'}</span>
-                    : <input
-                        className="input py-0.5 text-xs max-w-64"
-                        placeholder="Zugewiesen an (Person / Firma)…"
-                        value={item.assignedTo ?? ''}
-                        list={(projectContacts ?? []).length > 0 ? contactListId : undefined}
-                        onChange={e => update(item.id, 'assignedTo', e.target.value)}
-                      />
-                  }
-                </div>
-              )}
-
-              {/* Discussion + Result */}
-              {!gray && (
-                <div className="space-y-2 pl-16">
-                  <div>
-                    <label className="block text-xs text-gray-400 mb-0.5">Besprechungsinhalt</label>
-                    {readOnly
-                      ? <p className="text-sm text-gray-700 whitespace-pre-line">{item.discussion || '–'}</p>
-                      : <textarea className={`textarea text-sm ${done ? 'text-gray-400' : ''}`} rows={2}
-                          placeholder="Inhalt…" value={item.discussion}
-                          onChange={e => update(item.id, 'discussion', e.target.value)} />
-                    }
-                  </div>
-                  <div>
-                    <label className="block text-xs text-gray-400 mb-0.5">Ergebnis / Beschluss</label>
-                    {readOnly
-                      ? <p className="text-sm text-gray-700 whitespace-pre-line">{item.result || '–'}</p>
-                      : <textarea className={`textarea text-sm ${done ? 'text-gray-400' : ''}`} rows={2}
-                          placeholder="Ergebnis…" value={item.result}
-                          onChange={e => update(item.id, 'result', e.target.value)} />
-                    }
-                  </div>
-                </div>
-              )}
-
-              {/* Gray: read-only summary */}
-              {gray && (item.discussion || item.result) && (
-                <div className="text-xs text-gray-400 pl-16 space-y-0.5">
-                  {item.discussion && <p><span className="font-medium">Inhalt:</span> {item.discussion}</p>}
-                  {item.result     && <p><span className="font-medium">Ergebnis:</span> {item.result}</p>}
+              {/* Inline add-child button (shown below each item, not when read-only or searching) */}
+              {!readOnly && !gray && !q && lvl < 3 && (
+                <div className={`${s.indent} no-print`}>
+                  <button
+                    className="ml-[calc(1rem+4px)] mt-1 flex items-center gap-1 text-xs text-gray-400 hover:text-brand-600 transition-colors py-0.5 px-2 rounded hover:bg-brand-50"
+                    onClick={() => addChild(item.id)}
+                    title={lvl === 1 ? 'Unterpunkt hinzufügen' : 'Unterunterpunkt hinzufügen'}
+                  >
+                    <Plus size={11} />
+                    {lvl === 1 ? 'Unterpunkt' : 'Unterunterpunkt'}
+                  </button>
                 </div>
               )}
             </div>
