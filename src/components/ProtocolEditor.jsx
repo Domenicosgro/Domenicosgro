@@ -375,8 +375,8 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
           />
         </div>
 
-        {/* Participants */}
-        <div className="py-6">
+        {/* Participants — screen only; print version is on the cover page */}
+        <div className="py-6 print:hidden">
           <ParticipantsList
             participants={protocol.participants ?? []}
             onChange={participants => change({ participants })}

@@ -212,7 +212,7 @@ export default function ProtocolItems({ items, onChange, readOnly, projectContac
           const gray = done && item.carriedGray
 
           return (
-            <div key={item.id}>
+            <div key={item.id} className="protocol-item">
               <div
                 className={`${s.indent} rounded-lg ${s.borderL} pl-4 pr-3 py-3 space-y-2
                   ${gray ? 'bg-gray-50 opacity-60' : done ? 'bg-green-50' : 'bg-white'}`}

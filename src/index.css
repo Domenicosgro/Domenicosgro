@@ -74,6 +74,12 @@
   h1, h2, h3 { page-break-after: avoid; }
   tr          { page-break-inside: avoid; }
 
+  /* Protocol items must not be split across pages */
+  .protocol-item {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+
   input, textarea, select {
     border: none !important;
     padding: 0 !important;
