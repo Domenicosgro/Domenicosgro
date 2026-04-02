@@ -169,6 +169,7 @@ export const emptyAgendaItem = (level = 1) => ({
   assignedTo: '',       // person or company responsible for this point
   carriedGray: false,
   carriedFromId: null,
+  createdAt: new Date().toISOString(),   // set once, never changed
 })
 
 export const emptyActionItem = () => ({

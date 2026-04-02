@@ -15,7 +15,13 @@ const isElectron = typeof window !== 'undefined' && !!window.electronAPI
 function carryProtocolItems(predecessorItems) {
   return predecessorItems
     .filter(it => !(it.status === 'erledigt' && it.carriedGray === true))
-    .map(it => ({ ...it, id: uid(), carriedFromId: it.id, carriedGray: it.status === 'erledigt' }))
+    .map(it => ({
+      ...it,
+      id:           uid(),
+      carriedFromId: it.id,
+      carriedGray:  it.status === 'erledigt',
+      createdAt:    it.createdAt ?? new Date().toISOString(),  // preserve original, never overwrite
+    }))
 }
 
 // When closing: promote agenda draft → protocol items

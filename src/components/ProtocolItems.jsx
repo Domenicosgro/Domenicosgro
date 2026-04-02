@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
-import { Plus, Trash2, FileText, IndentIncrease, IndentDecrease, Search, X, CheckCircle2, Circle, User } from 'lucide-react'
-import { emptyAgendaItem, uid } from '../utils'
+import { Plus, Trash2, FileText, IndentIncrease, IndentDecrease, Search, X, CheckCircle2, Circle, User, Calendar } from 'lucide-react'
+import { emptyAgendaItem, uid, formatDate } from '../utils'
 
 const LEVEL_STYLES = {
   1: { indent: '',       label: 'text-sm font-bold text-gray-900',     noStyle: 'text-sm font-bold text-brand-700',     borderL: 'border-l-4 border-brand-400' },
@@ -240,9 +240,14 @@ export default function ProtocolItems({ items, onChange, readOnly, projectContac
                   )}
                 </div>
 
-                {/* Row 2: assignedTo */}
+                {/* Row 2: createdAt + assignedTo */}
                 {!gray && (
-                  <div className="flex items-center gap-2 pl-16">
+                  <div className="flex items-center gap-4 pl-16 flex-wrap">
+                    <span className="flex items-center gap-1 text-xs text-gray-400 flex-shrink-0">
+                      <Calendar size={11} />
+                      {item.createdAt ? formatDate(item.createdAt.slice(0, 10)) : '–'}
+                    </span>
+                    <div className="flex items-center gap-1 flex-1">
                     <User size={13} className="text-gray-400 flex-shrink-0" />
                     {readOnly
                       ? <span className="text-xs text-gray-500">{item.assignedTo || '–'}</span>
@@ -254,6 +259,7 @@ export default function ProtocolItems({ items, onChange, readOnly, projectContac
                           onChange={e => update(item.id, 'assignedTo', e.target.value)}
                         />
                     }
+                    </div>
                   </div>
                 )}
 
