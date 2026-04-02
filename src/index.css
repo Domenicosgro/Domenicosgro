@@ -3,6 +3,9 @@
 @tailwind utilities;
 
 @layer base {
+  html {
+    font-size: 14px;   /* base: 16px → 14px; all rem values scale down */
+  }
   body {
     @apply bg-gray-50 text-gray-900 font-sans;
   }
@@ -16,7 +19,7 @@
 
 @layer components {
   .btn {
-    @apply inline-flex items-center gap-2 px-4 py-2 rounded-lg font-medium text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-offset-1;
+    @apply inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-medium text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-offset-1;
   }
   .btn-primary {
     @apply btn bg-brand-600 text-white hover:bg-brand-700 focus:ring-brand-500;
@@ -31,7 +34,7 @@
     @apply btn text-gray-500 hover:bg-gray-100 hover:text-gray-700 focus:ring-gray-300;
   }
   .input {
-    @apply w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent bg-white;
+    @apply w-full px-2.5 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent bg-white;
   }
   .select {
     @apply input appearance-none cursor-pointer;
@@ -43,10 +46,10 @@
     @apply bg-white rounded-xl border border-gray-200 shadow-sm;
   }
   .section-title {
-    @apply text-base font-semibold text-gray-800 flex items-center gap-2;
+    @apply text-sm font-semibold text-gray-800 flex items-center gap-2;
   }
   .badge {
-    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
+    @apply inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium;
   }
   .badge-blue   { @apply badge bg-blue-100 text-blue-700; }
   .badge-green  { @apply badge bg-green-100 text-green-700; }
@@ -58,17 +61,18 @@
 /* ── Print styles ────────────────────────────────────── */
 @media print {
   /* Leave bottom margin for the running footer */
-  @page { size: A4; margin: 15mm 15mm 22mm 15mm; }
+  @page { size: A4; margin: 12mm 12mm 20mm 12mm; }
 
-  body { background: white !important; font-size: 11pt; }
+  html { font-size: 10px; }   /* shrink everything proportionally */
+  body { background: white !important; font-size: 9pt; }
 
   .no-print { display: none !important; }
 
   .card {
-    border: 1px solid #ccc !important;
+    border: 0.5pt solid #ccc !important;
     box-shadow: none !important;
-    border-radius: 4px !important;
-    margin-bottom: 12px !important;
+    border-radius: 2px !important;
+    margin-bottom: 6px !important;
   }
 
   h1, h2, h3 { page-break-after: avoid; }
@@ -105,13 +109,13 @@
   .print-footer {
     position: fixed;
     bottom: 0;
-    left:  15mm;
-    right: 15mm;
-    height: 14mm;
+    left:  12mm;
+    right: 12mm;
+    height: 12mm;
     display: flex !important;
     align-items: center;
     justify-content: space-between;
-    font-size: 8pt;
+    font-size: 7pt;
     color: #666;
     border-top: 0.5pt solid #ccc;
     background: white;
