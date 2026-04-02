@@ -49,9 +49,19 @@ export const emptyProject = () => ({
   id: uid(),
   name: '',
   contacts: [],
+  passwordHash: null,   // SHA-256 hex of password; null = no protection
   createdAt: new Date().toISOString(),
   updatedAt: new Date().toISOString(),
 })
+
+// Hash a password with SHA-256 (Web Crypto API — works in Electron + browser)
+export async function hashPassword(password) {
+  const data   = new TextEncoder().encode(password)
+  const buffer = await crypto.subtle.digest('SHA-256', data)
+  return Array.from(new Uint8Array(buffer))
+    .map(b => b.toString(16).padStart(2, '0'))
+    .join('')
+}
 
 export const emptyProtocol = () => ({
   id: uid(),
