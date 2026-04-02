@@ -1,12 +1,15 @@
 import React, { useState, useRef } from 'react'
-import { Plus, Trash2, Copy, FileText, Search, ChevronRight, Upload, Lock, FolderOpen } from 'lucide-react'
+import { Plus, Trash2, Copy, FileText, Search, ChevronRight, Upload, Lock, ArrowLeft, Users } from 'lucide-react'
 import { formatDate, buildProtocolNo } from '../utils'
 
 const isElectron = typeof window !== 'undefined' && !!window.electronAPI
 
-export default function ProtocolList({ protocols, onCreate, onOpen, onDelete, onDuplicate, onImport, onOpenImported, onOpenProjects }) {
+export default function ProtocolList({
+  protocols, project, onCreate, onOpen, onDelete, onDuplicate,
+  onImport, onOpenImported, onBack, onManageContacts,
+}) {
   const fileInputRef = useRef(null)
-  const [search, setSearch] = useState('')
+  const [search, setSearch]       = useState('')
   const [importError, setImportError] = useState('')
 
   const handleImportClick = async () => {
@@ -32,16 +35,15 @@ export default function ProtocolList({ protocols, onCreate, onOpen, onDelete, on
         const id = onImport(data)
         if (id) onOpenImported(id)
         else setImportError('Ungültige Protokolldatei.')
-      } catch {
-        setImportError('Datei konnte nicht gelesen werden.')
-      }
+      } catch { setImportError('Datei konnte nicht gelesen werden.') }
     }
     reader.readAsText(file)
     e.target.value = ''
   }
 
+  const q = search.toLowerCase()
   const filtered = protocols.filter(p => {
-    const q = search.toLowerCase()
+    if (!q) return true
     const no = buildProtocolNo(p.projectName, p.date)
     return (
       p.projectName.toLowerCase().includes(q) ||
@@ -50,26 +52,34 @@ export default function ProtocolList({ protocols, onCreate, onOpen, onDelete, on
     )
   })
 
+  const title    = project ? project.name || 'Unbenanntes Projekt' : 'Protokolle ohne Projekt'
+  const contacts = project?.contacts ?? []
+
   return (
     <div className="max-w-4xl mx-auto p-4 sm:p-6 space-y-6">
+
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Besprechungs&shy;protokolle</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Baubesprechungen &amp; Jour Fixe</p>
-        </div>
-        <div className="flex gap-2 self-start sm:self-auto">
-          {/* hidden file input for browser-based import */}
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".json"
-            className="hidden"
-            onChange={handleFileChange}
-          />
-          <button className="btn-secondary" onClick={onOpenProjects} title="Projektdatenbank">
-            <FolderOpen size={16} /> Projekte
+        <div className="flex items-start gap-3">
+          <button className="btn-secondary mt-0.5" onClick={onBack}>
+            <ArrowLeft size={16} /> Projekte
           </button>
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">{title}</h1>
+            <p className="text-sm text-gray-500 mt-0.5">
+              {protocols.length} Protokoll{protocols.length !== 1 ? 'e' : ''}
+              {contacts.length > 0 && ` · ${contacts.length} Kontakte`}
+            </p>
+          </div>
+        </div>
+
+        <div className="flex gap-2 self-start sm:self-auto flex-wrap">
+          <input ref={fileInputRef} type="file" accept=".json" className="hidden" onChange={handleFileChange} />
+          {project && contacts.length >= 0 && (
+            <button className="btn-secondary" onClick={onManageContacts} title="Projektkontakte verwalten">
+              <Users size={16} /> Kontakte
+            </button>
+          )}
           <button className="btn-secondary" onClick={handleImportClick} title="JSON-Protokoll importieren">
             <Upload size={16} /> Importieren
           </button>
@@ -81,9 +91,7 @@ export default function ProtocolList({ protocols, onCreate, onOpen, onDelete, on
 
       {/* Import error */}
       {importError && (
-        <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-2">
-          {importError}
-        </p>
+        <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-2">{importError}</p>
       )}
 
       {/* Search */}
@@ -92,7 +100,7 @@ export default function ProtocolList({ protocols, onCreate, onOpen, onDelete, on
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
           <input
             className="input pl-9"
-            placeholder="Protokolle durchsuchen..."
+            placeholder="Protokolle durchsuchen…"
             value={search}
             onChange={e => setSearch(e.target.value)}
           />
@@ -104,14 +112,14 @@ export default function ProtocolList({ protocols, onCreate, onOpen, onDelete, on
         <div className="card p-12 text-center">
           <FileText size={40} className="mx-auto text-gray-300 mb-3" />
           <p className="text-gray-500 font-medium">Noch keine Protokolle vorhanden</p>
-          <p className="text-sm text-gray-400 mt-1">Erstelle dein erstes Protokoll mit dem Button oben.</p>
+          <p className="text-sm text-gray-400 mt-1">Erstelle das erste Protokoll für dieses Projekt.</p>
         </div>
       )}
 
       {/* List */}
       <div className="space-y-3">
         {filtered.map(p => {
-          const openActions = p.actionItems.filter(a => a.status === 'offen' || a.status === 'in_arbeit').length
+          const openActions = (p.actionItems ?? []).filter(a => a.status === 'offen' || a.status === 'in_arbeit').length
           const no = buildProtocolNo(p.projectName, p.date)
           return (
             <div
@@ -122,18 +130,16 @@ export default function ProtocolList({ protocols, onCreate, onOpen, onDelete, on
               <div className="w-2 h-12 rounded-full bg-brand-500 flex-shrink-0" />
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className="font-semibold text-gray-900 truncate">
-                    {p.projectName || 'Ohne Projektnamen'}
-                  </span>
+                  <span className="font-semibold text-gray-900 truncate">{formatDate(p.date)}</span>
                   <span className="badge-blue">{p.meetingType}</span>
                   {p.isClosed && (
                     <span className="badge-gray flex items-center gap-1"><Lock size={10} /> Abgeschlossen</span>
                   )}
                 </div>
-                <div className="flex items-center gap-3 mt-1 text-xs text-gray-500">
+                <div className="flex items-center gap-3 mt-1 text-xs text-gray-500 flex-wrap">
                   <span className="font-mono text-gray-400">{no}</span>
                   {p.location && <span>· {p.location}</span>}
-                  {p.participants.length > 0 && (
+                  {(p.participants ?? []).length > 0 && (
                     <span>· {p.participants.filter(pt => pt.present).length} Teilnehmer</span>
                   )}
                   {openActions > 0 && (
@@ -142,19 +148,13 @@ export default function ProtocolList({ protocols, onCreate, onOpen, onDelete, on
                 </div>
               </div>
               <div className="flex items-center gap-1 no-print" onClick={e => e.stopPropagation()}>
-                <button
-                  className="btn-ghost p-2 text-gray-400"
-                  title="Duplizieren"
-                  onClick={() => onDuplicate(p.id)}
-                >
+                <button className="btn-ghost p-2 text-gray-400" title="Duplizieren" onClick={() => onDuplicate(p.id)}>
                   <Copy size={14} />
                 </button>
                 <button
                   className="btn-ghost p-2 text-red-400 hover:text-red-600 hover:bg-red-50"
                   title="Löschen"
-                  onClick={() => {
-                    if (confirm('Protokoll wirklich löschen?')) onDelete(p.id)
-                  }}
+                  onClick={() => { if (confirm('Protokoll wirklich löschen?')) onDelete(p.id) }}
                 >
                   <Trash2 size={14} />
                 </button>

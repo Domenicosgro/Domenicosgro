@@ -2,11 +2,18 @@ import React, { useState, useEffect, useRef } from 'react'
 import { useProtocols } from './hooks/useProtocols'
 import { useProjects }  from './hooks/useProjects'
 import { useLogo }      from './hooks/useLogo'
+import ProjectsHome    from './components/ProjectsHome'
+import ProjectManager  from './components/ProjectManager'
 import ProtocolList    from './components/ProtocolList'
 import ProtocolEditor  from './components/ProtocolEditor'
-import ProjectManager  from './components/ProjectManager'
 
 const isElectron = typeof window !== 'undefined' && !!window.electronAPI
+
+// views:
+//  'home'              → ProjectsHome (start)
+//  'project-contacts'  → ProjectManager for one project
+//  'protocols'         → ProtocolList for a project (or null = unassigned)
+//  'editor'            → ProtocolEditor
 
 export default function App() {
   const {
@@ -21,9 +28,9 @@ export default function App() {
 
   const { logoDataUrl, updateLogo, clearLogo } = useLogo()
 
-  // view: 'protocols' | 'projects'
-  const [view,     setView]     = useState('protocols')
-  const [activeId, setActiveId] = useState(null)
+  const [view,              setView]              = useState('home')
+  const [selectedProjectId, setSelectedProjectId] = useState(null)   // null = unassigned
+  const [activeId,          setActiveId]          = useState(null)
   const activeIdRef = useRef(activeId)
   activeIdRef.current = activeId
 
@@ -35,7 +42,7 @@ export default function App() {
       const data = await window.electronAPI.importJSON()
       if (data) {
         const id = importProtocol(data)
-        if (id) { setView('protocols'); setActiveId(id) }
+        if (id) { setView('editor'); setActiveId(id) }
       }
     })
 
@@ -59,13 +66,38 @@ export default function App() {
     }
   }, [protocols, importProtocol])
 
-  const handleCreate = () => {
-    const id = createProtocol()
-    setActiveId(id)
+  // ── Helpers ───────────────────────────────────────────────────────────────
+  const openProject = (projectId) => {
+    setSelectedProjectId(projectId)
+    setView('protocols')
   }
 
-  const activeProtocol = protocols.find(p => p.id === activeId)
+  const handleCreateProtocol = () => {
+    const project = projects.find(p => p.id === selectedProjectId)
+    const id = createProtocol({
+      projectId:   selectedProjectId ?? null,
+      projectName: project?.name ?? '',
+    })
+    setActiveId(id)
+    setView('editor')
+  }
 
+  const handleOpenProtocol = (id) => {
+    setActiveId(id)
+    setView('editor')
+  }
+
+  const handleBackFromEditor = () => {
+    setActiveId(null)
+    setView('protocols')
+  }
+
+  const handleBackFromProtocols = () => {
+    setSelectedProjectId(null)
+    setView('home')
+  }
+
+  // ── Loading ───────────────────────────────────────────────────────────────
   if (!loaded || !projectsLoaded) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -74,24 +106,13 @@ export default function App() {
     )
   }
 
-  // ── Project manager view ──────────────────────────────────────────────────
-  if (view === 'projects') {
-    return (
-      <ProjectManager
-        projects={projects}
-        onCreate={createProject}
-        onUpdate={updateProject}
-        onDelete={deleteProject}
-        onBack={() => setView('protocols')}
-      />
-    )
-  }
-
   // ── Protocol editor ───────────────────────────────────────────────────────
-  if (activeId && activeProtocol) {
-    // Find the project linked to this protocol
-    const linkedProject = projects.find(p => p.id === activeProtocol.projectId) ?? null
-    const projectContacts = linkedProject?.contacts ?? []
+  if (view === 'editor') {
+    const activeProtocol    = protocols.find(p => p.id === activeId)
+    const linkedProject     = projects.find(p => p.id === activeProtocol?.projectId) ?? null
+    const projectContacts   = linkedProject?.contacts ?? []
+
+    if (!activeProtocol) { setView('protocols'); return null }
 
     return (
       <ProtocolEditor
@@ -103,22 +124,58 @@ export default function App() {
         onLogoUpdate={updateLogo}
         onLogoClear={clearLogo}
         onUpdate={updateProtocol}
-        onBack={() => setActiveId(null)}
+        onBack={handleBackFromEditor}
       />
     )
   }
 
-  // ── Protocol list ─────────────────────────────────────────────────────────
+  // ── Protocol list for a project ───────────────────────────────────────────
+  if (view === 'protocols') {
+    const project  = projects.find(p => p.id === selectedProjectId) ?? null
+    const filtered = protocols.filter(p =>
+      selectedProjectId ? p.projectId === selectedProjectId : !p.projectId
+    )
+
+    return (
+      <ProtocolList
+        protocols={filtered}
+        project={project}
+        onCreate={handleCreateProtocol}
+        onOpen={handleOpenProtocol}
+        onDelete={deleteProtocol}
+        onDuplicate={duplicateProtocol}
+        onImport={importProtocol}
+        onOpenImported={(id) => { setActiveId(id); setView('editor') }}
+        onBack={handleBackFromProtocols}
+        onManageContacts={() => setView('project-contacts')}
+      />
+    )
+  }
+
+  // ── Project contacts manager ──────────────────────────────────────────────
+  if (view === 'project-contacts') {
+    const project = projects.find(p => p.id === selectedProjectId)
+    // Wrap ProjectManager to show only this one project
+    return (
+      <ProjectManager
+        projects={project ? [project] : []}
+        onCreate={createProject}
+        onUpdate={updateProject}
+        onDelete={deleteProject}
+        onBack={() => setView('protocols')}
+      />
+    )
+  }
+
+  // ── Start: projects home ──────────────────────────────────────────────────
   return (
-    <ProtocolList
+    <ProjectsHome
+      projects={projects}
       protocols={protocols}
-      onCreate={handleCreate}
-      onOpen={setActiveId}
-      onDelete={deleteProtocol}
-      onDuplicate={duplicateProtocol}
-      onImport={importProtocol}
-      onOpenImported={setActiveId}
-      onOpenProjects={() => setView('projects')}
+      onCreate={createProject}
+      onUpdate={updateProject}
+      onDelete={deleteProject}
+      onOpenProject={openProject}
     />
   )
 }

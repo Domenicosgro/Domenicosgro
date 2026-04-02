@@ -40,8 +40,8 @@ export function useProtocols() {
     return () => clearTimeout(saveTimer.current)
   }, [protocols, loaded])
 
-  const createProtocol = useCallback(() => {
-    const p = emptyProtocol()
+  const createProtocol = useCallback((initial = {}) => {
+    const p = { ...emptyProtocol(), ...initial }
     setProtocols(prev => [p, ...prev])
     return p.id
   }, [])
