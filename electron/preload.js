@@ -17,7 +17,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   importJSON:     ()          => ipcRenderer.invoke('protocols:import-json'),
 
   // Shell
-  openExternal:   (url)       => ipcRenderer.invoke('shell:open-external', url),
+  openExternal:   (url)        => ipcRenderer.invoke('shell:open-external', url),
+  openAttachment: (attachment) => ipcRenderer.invoke('attachment:open', attachment),
 
   // Menu events pushed from main → renderer
   onMenuImport:      (cb) => ipcRenderer.on('menu:import',       (_e) => cb()),

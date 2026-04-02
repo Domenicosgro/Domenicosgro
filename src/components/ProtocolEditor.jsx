@@ -17,10 +17,12 @@ function carryProtocolItems(predecessorItems) {
     .filter(it => !(it.status === 'erledigt' && it.carriedGray === true))
     .map(it => ({
       ...it,
-      id:           uid(),
+      id:            uid(),
       carriedFromId: it.id,
-      carriedGray:  it.status === 'erledigt',
-      createdAt:    it.createdAt ?? new Date().toISOString(),  // preserve original, never overwrite
+      carriedGray:   it.status === 'erledigt',
+      createdAt:     it.createdAt ?? new Date().toISOString(),
+      // Anlage entfernen sobald Punkt freigemeldet wurde (grau = war erledigt im Vorgänger)
+      attachment:    it.status === 'erledigt' ? null : it.attachment,
     }))
 }
 

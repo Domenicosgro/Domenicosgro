@@ -1,6 +1,28 @@
-import React, { useState } from 'react'
-import { Plus, Trash2, FileText, IndentIncrease, IndentDecrease, Search, X, CheckCircle2, Circle, User, Calendar } from 'lucide-react'
+import React, { useState, useRef } from 'react'
+import { Plus, Trash2, FileText, IndentIncrease, IndentDecrease, Search, X, CheckCircle2, Circle, User, Calendar, Paperclip, ExternalLink } from 'lucide-react'
 import { emptyAgendaItem, uid, formatDate } from '../utils'
+
+const isElectron = typeof window !== 'undefined' && !!window.electronAPI
+
+function formatFileSize(bytes) {
+  if (!bytes) return ''
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
+function openAttachment(attachment) {
+  if (isElectron && window.electronAPI.openAttachment) {
+    window.electronAPI.openAttachment(attachment)
+  } else {
+    const byteChars = atob(attachment.data)
+    const byteArr   = new Uint8Array(byteChars.length)
+    for (let i = 0; i < byteChars.length; i++) byteArr[i] = byteChars.charCodeAt(i)
+    const blob = new Blob([byteArr], { type: attachment.mimeType })
+    const url  = URL.createObjectURL(blob)
+    window.open(url, '_blank')
+  }
+}
 
 const LEVEL_STYLES = {
   1: { indent: '',       label: 'text-sm font-bold text-gray-900',     noStyle: 'text-sm font-bold text-brand-700',     borderL: 'border-l-4 border-brand-400' },
@@ -71,6 +93,17 @@ export default function ProtocolItems({ items, onChange, readOnly, projectContac
   const update = (id, field, value) => {
     if (readOnly) return
     onChange(items.map(it => it.id === id ? { ...it, [field]: value } : it))
+  }
+
+  const handleAttachFile = (id, file) => {
+    if (!file) return
+    if (file.size > 20 * 1024 * 1024) { alert('Datei ist zu groß (max. 20 MB).'); return }
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      const base64 = e.target.result.split(',')[1]
+      update(id, 'attachment', { name: file.name, mimeType: file.type || 'application/octet-stream', data: base64, size: file.size })
+    }
+    reader.readAsDataURL(file)
   }
 
   const toggleDone = (id) => {
@@ -284,6 +317,53 @@ export default function ProtocolItems({ items, onChange, readOnly, projectContac
                             onChange={e => update(item.id, 'result', e.target.value)} />
                       }
                     </div>
+                  </div>
+                )}
+
+                {/* Attachment */}
+                {!gray && (
+                  <div className="pl-16 flex items-center gap-2 flex-wrap">
+                    {item.attachment ? (
+                      <>
+                        <Paperclip size={13} className="text-brand-600 flex-shrink-0" />
+                        <span className="text-xs font-medium text-brand-700 print:text-gray-700">
+                          Anlage {item.no ? `${item.no} – ` : ''}{item.attachment.name}
+                        </span>
+                        <span className="text-xs text-gray-400">{formatFileSize(item.attachment.size)}</span>
+                        <button
+                          className="btn-ghost p-1 text-brand-600 hover:text-brand-800 no-print"
+                          title="Anlage öffnen"
+                          onClick={() => openAttachment(item.attachment)}
+                        >
+                          <ExternalLink size={12} />
+                        </button>
+                        {!readOnly && (
+                          <button
+                            className="btn-ghost p-1 text-red-400 hover:text-red-600 no-print"
+                            title="Anlage entfernen"
+                            onClick={() => update(item.id, 'attachment', null)}
+                          >
+                            <X size={12} />
+                          </button>
+                        )}
+                      </>
+                    ) : !readOnly ? (
+                      <>
+                        <input
+                          type="file"
+                          id={`attach-${item.id}`}
+                          className="hidden"
+                          accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.png,.jpg,.jpeg,.dwg,.dxf"
+                          onChange={e => { handleAttachFile(item.id, e.target.files?.[0]); e.target.value = '' }}
+                        />
+                        <label
+                          htmlFor={`attach-${item.id}`}
+                          className="flex items-center gap-1 text-xs text-gray-400 hover:text-brand-600 cursor-pointer transition-colors no-print"
+                        >
+                          <Paperclip size={12} /> Anlage hinzufügen
+                        </label>
+                      </>
+                    ) : null}
                   </div>
                 )}
 

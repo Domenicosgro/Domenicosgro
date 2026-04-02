@@ -1,6 +1,7 @@
 const { app, BrowserWindow, ipcMain, dialog, Menu, shell, nativeTheme } = require('electron')
 const path = require('path')
 const fs   = require('fs')
+const os   = require('os')
 
 const isDev  = !app.isPackaged
 const isMac  = process.platform === 'darwin'
@@ -199,6 +200,16 @@ ipcMain.handle('protocols:export-json', async (_e, protocol) => {
 
 ipcMain.handle('shell:open-external', (_e, url) => {
   return shell.openExternal(url)
+})
+
+ipcMain.handle('attachment:open', async (_e, { data, mimeType, name }) => {
+  try {
+    const ext     = name.includes('.') ? name.split('.').pop() : 'bin'
+    const tmpPath = path.join(os.tmpdir(), `kp_anlage_${Date.now()}.${ext}`)
+    fs.writeFileSync(tmpPath, Buffer.from(data, 'base64'))
+    await shell.openPath(tmpPath)
+    return true
+  } catch { return false }
 })
 
 ipcMain.handle('protocols:import-json', async () => {

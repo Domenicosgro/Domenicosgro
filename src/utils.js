@@ -166,10 +166,11 @@ export const emptyAgendaItem = (level = 1) => ({
   result: '',
   level,
   status: 'offen',
-  assignedTo: '',       // person or company responsible for this point
+  assignedTo: '',
   carriedGray: false,
   carriedFromId: null,
-  createdAt: new Date().toISOString(),   // set once, never changed
+  createdAt: new Date().toISOString(),
+  attachment: null,   // { name, mimeType, data (base64), size }
 })
 
 export const emptyActionItem = () => ({
