@@ -83,11 +83,13 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
     change({ agendaItems: [...(protocol.agendaItems ?? []), ...carried] })
   }
 
-  // Live sync: when an agenda item is linked/unlinked to a protocol item via the dropdown,
-  // immediately insert/remove/update the corresponding sub-item in agendaItems.
+  // Live sync: whenever agenda changes, create/move/remove protocol items immediately.
+  // "Neu erstellen" (null)  → standalone new Hauptpunkt appended at the end.
+  // Linked to Hauptpunkt    → sub-item inserted directly after that parent.
+  // Topic/responsible edits → kept in sync on the linked protocol item.
   const handleAgendaChange = (newAgenda) => {
-    const oldAgenda   = protocol.agenda ?? []
-    let agendaItems   = [...(protocol.agendaItems ?? [])]
+    const oldAgenda = protocol.agenda ?? []
+    let agendaItems = [...(protocol.agendaItems ?? [])]
 
     const subtreeEnd = (arr, idx) => {
       const lvl = arr[idx].level ?? 1
@@ -97,29 +99,41 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
     }
 
     for (const newItem of newAgenda) {
-      const oldItem    = oldAgenda.find(a => a.id === newItem.id)
-      const newParent  = newItem.linkedProtocolItemId ?? null
-      const oldParent  = oldItem?.linkedProtocolItemId ?? null
+      const oldItem   = oldAgenda.find(a => a.id === newItem.id)
+      const newParent = newItem.linkedProtocolItemId ?? null
+      const oldParent = oldItem?.linkedProtocolItemId ?? null
+      const isNew     = !oldItem
 
-      if (newParent === oldParent) {
-        // Link unchanged — keep sub-item in sync with topic/responsible
-        if (newParent) {
-          agendaItems = agendaItems.map(it =>
-            it.linkedFromAgendaId === newItem.id
-              ? { ...it, topic: newItem.topic, assignedTo: newItem.responsible || '' }
-              : it
-          )
-        }
+      if (!isNew && newParent === oldParent) {
+        // No structural change — sync topic/responsible on the linked protocol item
+        agendaItems = agendaItems.map(it =>
+          it.linkedFromAgendaId === newItem.id
+            ? { ...it, topic: newItem.topic, assignedTo: newItem.responsible || '' }
+            : it
+        )
         continue
       }
 
-      // Remove old sub-item when link changes
-      if (oldParent) {
-        agendaItems = agendaItems.filter(it => it.linkedFromAgendaId !== newItem.id)
-      }
+      // Remove the previous protocol item tied to this agenda item
+      agendaItems = agendaItems.filter(it => it.linkedFromAgendaId !== newItem.id)
 
-      // Insert new sub-item under the newly selected parent
-      if (newParent) {
+      if (newParent === null) {
+        // "Neu erstellen" → append a new standalone Hauptpunkt
+        const topMax = agendaItems
+          .filter(it => (it.level ?? 1) === 1)
+          .reduce((m, it) => Math.max(m, parseInt(it.no) || 0), 0)
+        agendaItems = [
+          ...agendaItems,
+          {
+            ...emptyAgendaItem(1),
+            no:                 String(topMax + 1),
+            topic:              newItem.topic,
+            assignedTo:         newItem.responsible || '',
+            linkedFromAgendaId: newItem.id,
+          },
+        ]
+      } else {
+        // Link to existing Hauptpunkt → insert as sub-item after its subtree
         const parentIdx = agendaItems.findIndex(it => it.id === newParent)
         if (parentIdx >= 0) {
           const parent      = agendaItems[parentIdx]
@@ -140,10 +154,10 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
             ...agendaItems.slice(0, insertAt),
             {
               ...emptyAgendaItem(childLevel),
-              no:                  `${prefix}.${maxSuffix + 1}`,
-              topic:               newItem.topic,
-              assignedTo:          newItem.responsible || '',
-              linkedFromAgendaId:  newItem.id,
+              no:                 `${prefix}.${maxSuffix + 1}`,
+              topic:              newItem.topic,
+              assignedTo:         newItem.responsible || '',
+              linkedFromAgendaId: newItem.id,
             },
             ...agendaItems.slice(insertAt),
           ]
@@ -151,9 +165,9 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
       }
     }
 
-    // Remove sub-items whose agenda item was deleted
+    // Remove protocol items whose agenda item was deleted
     for (const old of oldAgenda) {
-      if (!newAgenda.find(a => a.id === old.id) && old.linkedProtocolItemId) {
+      if (!newAgenda.find(a => a.id === old.id)) {
         agendaItems = agendaItems.filter(it => it.linkedFromAgendaId !== old.id)
       }
     }

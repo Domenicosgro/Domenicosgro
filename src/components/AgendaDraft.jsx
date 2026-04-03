@@ -27,8 +27,8 @@ export default function AgendaDraft({ agenda, agendaGreeting, agendaSentAt, prot
   const totalMin = agenda.reduce((s, a) => s + (parseInt(a.duration) || 0), 0)
 
   // Protocol points available for linking (open ones only)
-  // Exclude sub-items that were themselves created from an agenda link
-  const linkableItems = (protocolItems ?? []).filter(it => it.topic && !it.linkedFromAgendaId)
+  // Only top-level Hauptpunkte (level 1) are valid assignment targets
+  const linkableItems = (protocolItems ?? []).filter(it => it.topic && (it.level ?? 1) === 1)
 
   return (
     <div className="space-y-4">
@@ -125,7 +125,7 @@ export default function AgendaDraft({ agenda, agendaGreeting, agendaSentAt, prot
                           onChange={e => update(item.id, 'linkedProtocolItemId', e.target.value || null)}
                           title="Diesem Agendapunkt einen bestehenden Protokollpunkt zuordnen"
                         >
-                          <option value="">Neu erstellen</option>
+                          <option value="">Neuer Hauptpunkt</option>
                           {linkableItems.map(p => (
                             <option key={p.id} value={p.id}>
                               {p.no ? `${p.no} – ` : ''}{p.topic.slice(0, 30)}
@@ -133,7 +133,7 @@ export default function AgendaDraft({ agenda, agendaGreeting, agendaSentAt, prot
                           ))}
                         </select>
                       ) : (
-                        <span className="text-xs text-gray-400 italic">Neu erstellen</span>
+                        <span className="text-xs text-gray-400 italic">Neuer Hauptpunkt</span>
                       )}
                       {linkedItem && (
                         <span className="block text-xs text-brand-600 mt-0.5">→ {linkedItem.topic.slice(0, 25)}</span>
