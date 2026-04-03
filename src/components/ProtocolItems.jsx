@@ -1,5 +1,6 @@
-import React, { useState, useRef } from 'react'
-import { Plus, Trash2, FileText, IndentIncrease, IndentDecrease, Search, X, CheckCircle2, Circle, User, Calendar, Paperclip, ExternalLink } from 'lucide-react'
+import React, { useState } from 'react'
+import { Plus, Trash2, FileText, IndentIncrease, IndentDecrease, Search, X,
+         CheckCircle2, Circle, User, Calendar, Paperclip, ExternalLink, GripVertical } from 'lucide-react'
 import { emptyAgendaItem, uid, formatDate } from '../utils'
 import SpellCheckTextarea from './SpellCheckTextarea'
 
@@ -20,8 +21,7 @@ function openAttachment(attachment) {
     const byteArr   = new Uint8Array(byteChars.length)
     for (let i = 0; i < byteChars.length; i++) byteArr[i] = byteChars.charCodeAt(i)
     const blob = new Blob([byteArr], { type: attachment.mimeType })
-    const url  = URL.createObjectURL(blob)
-    window.open(url, '_blank')
+    window.open(URL.createObjectURL(blob), '_blank')
   }
 }
 
@@ -31,7 +31,8 @@ const LEVEL_STYLES = {
   3: { indent: 'ml-12',  label: 'text-sm font-medium text-gray-700',   noStyle: 'text-sm font-medium text-gray-500',    borderL: 'border-l-4 border-gray-300'  },
 }
 
-// Index after the last descendant of items[parentIdx]
+// ── Hierarchy helpers ─────────────────────────────────────────────────────────
+
 function subtreeEnd(items, parentIdx) {
   const parentLevel = items[parentIdx].level ?? 1
   let i = parentIdx + 1
@@ -39,8 +40,39 @@ function subtreeEnd(items, parentIdx) {
   return i
 }
 
-// Suggest number for a new child directly under items[parentIdx]
-// Uses max existing child suffix to avoid gaps from hidden/completed items
+// Move item (+ its subtree) so it is placed at insertBeforeIdx in the result array.
+function moveSubtree(items, sourceId, insertBeforeIdx) {
+  const srcIdx = items.findIndex(it => it.id === sourceId)
+  if (srcIdx < 0) return items
+  const endIdx   = subtreeEnd(items, srcIdx)
+  const subtree  = items.slice(srcIdx, endIdx)
+  const size     = subtree.length
+  // Prevent inserting inside own subtree
+  if (insertBeforeIdx > srcIdx && insertBeforeIdx < endIdx) return items
+  const without  = [...items.slice(0, srcIdx), ...items.slice(endIdx)]
+  let target     = insertBeforeIdx >= endIdx ? insertBeforeIdx - size : insertBeforeIdx
+  target         = Math.max(0, Math.min(target, without.length))
+  return [...without.slice(0, target), ...subtree, ...without.slice(target)]
+}
+
+// Renumber all items based purely on their position in the array.
+function renumberItems(items) {
+  const parentNo = { 1: '', 2: '', 3: '' }
+  const counter  = { 1: 0,  2: 0,  3: 0  }
+  return items.map(item => {
+    const lvl = Math.min(Math.max(item.level ?? 1, 1), 3)
+    if (lvl < 3) counter[3] = 0
+    if (lvl < 2) counter[2] = 0
+    counter[lvl]++
+    let no
+    if      (lvl === 1) { no = String(counter[1]);                       parentNo[1] = no }
+    else if (lvl === 2) { no = `${parentNo[1]}.${counter[2]}`;           parentNo[2] = no }
+    else                { no = `${parentNo[2]}.${counter[3]}` }
+    return { ...item, no }
+  })
+}
+
+// Suggest number for a new child (uses max existing suffix to avoid gaps)
 function suggestChildNo(items, parentIdx) {
   const parent      = items[parentIdx]
   const childLvl    = Math.min((parent.level ?? 1) + 1, 3)
@@ -51,15 +83,13 @@ function suggestChildNo(items, parentIdx) {
     const lvl = items[i].level ?? 1
     if (lvl <= parentLevel) break
     if (lvl === childLvl) {
-      const suffix = parseInt((items[i].no ?? '').split('.').pop()) || 0
-      if (suffix > maxSuffix) maxSuffix = suffix
+      const s = parseInt((items[i].no ?? '').split('.').pop()) || 0
+      if (s > maxSuffix) maxSuffix = s
     }
   }
   return `${prefix}.${maxSuffix + 1}`
 }
 
-// Suggest number for a new top-level item.
-// Uses max existing number to avoid gaps caused by hidden/completed items.
 function suggestTopNo(items) {
   const max = items
     .filter(it => (it.level ?? 1) === 1)
@@ -67,18 +97,23 @@ function suggestTopNo(items) {
   return String(max + 1)
 }
 
+// ── Component ─────────────────────────────────────────────────────────────────
+
 export default function ProtocolItems({ items, onChange, readOnly, projectContacts }) {
   const contactListId = 'protocol-contacts-list'
-  const [search, setSearch]             = useState('')
+  const [search,        setSearch]        = useState('')
   const [showCompleted, setShowCompleted] = useState(true)
+  // Drag-and-drop state
+  const [dragId,  setDragId]  = useState(null)   // id of item being dragged
+  const [dropIdx, setDropIdx] = useState(null)   // insert-before index in `items`
 
-  // Add a new top-level Hauptpunkt at the end
+  // ── Mutations ──────────────────────────────────────────────────────────────
+
   const addTop = () => {
     if (readOnly) return
     onChange([...items, { ...emptyAgendaItem(1), no: suggestTopNo(items) }])
   }
 
-  // Add a child item directly below parentId (after its subtree)
   const addChild = (parentId) => {
     if (readOnly) return
     const parentIdx = items.findIndex(it => it.id === parentId)
@@ -86,15 +121,50 @@ export default function ProtocolItems({ items, onChange, readOnly, projectContac
     const childLevel = Math.min((items[parentIdx].level ?? 1) + 1, 3)
     const no         = suggestChildNo(items, parentIdx)
     const insertAt   = subtreeEnd(items, parentIdx)
-    const newItem    = { ...emptyAgendaItem(childLevel), no }
     const next       = [...items]
-    next.splice(insertAt, 0, newItem)
+    next.splice(insertAt, 0, { ...emptyAgendaItem(childLevel), no })
     onChange(next)
   }
 
   const update = (id, field, value) => {
     if (readOnly) return
     onChange(items.map(it => it.id === id ? { ...it, [field]: value } : it))
+  }
+
+  // Called when the user finishes editing the `no` field.
+  // Interprets the typed number to derive level + parent, then moves the item
+  // to the right position and renumbers the whole list.
+  const handleNoBlur = (id, typedNo) => {
+    if (readOnly) return
+    const raw = typedNo.trim()
+    if (!raw) return
+    const parts    = raw.split('.')
+    const newLevel = Math.min(parts.length, 3)
+
+    // Update level from the typed number
+    let next = items.map(it => it.id === id ? { ...it, no: raw, level: newLevel } : it)
+
+    if (newLevel === 1) {
+      // Top-level: insert after the top-level item whose number is just below the target
+      const targetNum = parseInt(parts[0]) || 1
+      const topItems  = next.filter(it => (it.level ?? 1) === 1 && it.id !== id)
+      const prev      = topItems.filter(it => (parseInt(it.no) || 0) < targetNum).pop()
+      const insertAt  = prev
+        ? subtreeEnd(next, next.findIndex(it => it.id === prev.id))
+        : 0
+      next = moveSubtree(next, id, insertAt)
+    } else {
+      // Find the parent by prefix (e.g., "2" for "2.3")
+      const parentNo  = parts.slice(0, -1).join('.')
+      const parentItem = next.find(it => it.no === parentNo)
+      if (parentItem) {
+        const parentIdx = next.findIndex(it => it.id === parentItem.id)
+        const insertAt  = subtreeEnd(next, parentIdx)
+        next = moveSubtree(next, id, insertAt)
+      }
+    }
+
+    onChange(renumberItems(next))
   }
 
   const handleAttachFile = (id, file) => {
@@ -119,13 +189,46 @@ export default function ProtocolItems({ items, onChange, readOnly, projectContac
 
   const changeLevel = (id, delta) => {
     if (readOnly) return
-    onChange(items.map(it => it.id === id
+    const next = items.map(it => it.id === id
       ? { ...it, level: Math.min(3, Math.max(1, (it.level ?? 1) + delta)) }
-      : it))
+      : it)
+    onChange(renumberItems(next))
   }
 
-  const q = search.trim().toLowerCase()
+  // ── Drag & Drop ────────────────────────────────────────────────────────────
+
+  const handleDragStart = (e, id) => {
+    setDragId(id)
+    e.dataTransfer.effectAllowed = 'move'
+    // Needed for Firefox
+    e.dataTransfer.setData('text/plain', id)
+  }
+
+  const handleDragEnd = () => { setDragId(null); setDropIdx(null) }
+
+  // Called by the drop-zone divs between items
+  const handleDropZoneDragOver = (e, idx) => {
+    if (!dragId) return
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+    setDropIdx(idx)
+  }
+
+  const handleDropZoneDrop = (e, insertBeforeIdx) => {
+    e.preventDefault()
+    if (!dragId) return
+    const moved    = moveSubtree(items, dragId, insertBeforeIdx)
+    const numbered = renumberItems(moved)
+    onChange(numbered)
+    setDragId(null)
+    setDropIdx(null)
+  }
+
+  // ── Filtering ──────────────────────────────────────────────────────────────
+
+  const q             = search.trim().toLowerCase()
   const completedCount = items.filter(it => it.status === 'erledigt' && !it.carriedGray).length
+  const dndActive     = !q && !readOnly   // disable DnD while searching
 
   const visible = items.filter(it => {
     if (q) return (
@@ -140,6 +243,23 @@ export default function ProtocolItems({ items, onChange, readOnly, projectContac
   })
 
   const searchHitsCompleted = q && visible.some(it => it.status === 'erledigt')
+
+  // ── Drop zone (thin bar between items) ────────────────────────────────────
+
+  const DropZone = ({ insertBeforeIdx }) => {
+    if (!dndActive || !dragId) return null
+    const active = dropIdx === insertBeforeIdx
+    return (
+      <div
+        className={`h-1.5 rounded transition-colors ${active ? 'bg-brand-500' : 'bg-transparent'}`}
+        onDragOver={e => handleDropZoneDragOver(e, insertBeforeIdx)}
+        onDragLeave={() => setDropIdx(null)}
+        onDrop={e => handleDropZoneDrop(e, insertBeforeIdx)}
+      />
+    )
+  }
+
+  // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
     <div className="space-y-3">
@@ -205,22 +325,39 @@ export default function ProtocolItems({ items, onChange, readOnly, projectContac
         </datalist>
       )}
 
-      {/* Items */}
-      <div className="space-y-2">
-        {visible.map(item => {
-          const lvl  = item.level ?? 1
-          const s    = LEVEL_STYLES[lvl]
-          const done = item.status === 'erledigt'
-          const gray = done && item.carriedGray
+      {/* Items list */}
+      <div className="space-y-0" onDragLeave={() => setDropIdx(null)}>
+        {/* Drop zone before first item */}
+        <DropZone insertBeforeIdx={0} />
+
+        {visible.map((item, visIdx) => {
+          const realIdx = items.findIndex(it => it.id === item.id)
+          const lvl     = item.level ?? 1
+          const s       = LEVEL_STYLES[lvl]
+          const done    = item.status === 'erledigt'
+          const gray    = done && item.carriedGray
+          const isDragging = dragId === item.id
 
           return (
-            <div key={item.id} className="protocol-item">
+            <div key={item.id} className={`protocol-item ${isDragging ? 'opacity-40' : ''}`}>
               <div
-                className={`${s.indent} rounded-lg ${s.borderL} pl-4 pr-3 py-3 space-y-2
-                  ${gray ? 'bg-gray-50 opacity-60' : done ? 'bg-green-50' : 'bg-white'}`}
+                className={`${s.indent} rounded-lg ${s.borderL} pl-2 pr-3 py-3 space-y-2
+                  ${gray ? 'bg-gray-50 opacity-60' : done ? 'bg-green-50' : 'bg-white'}
+                  ${dndActive ? 'cursor-grab' : ''}`}
+                draggable={dndActive && !gray}
+                onDragStart={e => handleDragStart(e, item.id)}
+                onDragEnd={handleDragEnd}
               >
-                {/* Row 1: number + topic + controls */}
+                {/* Row 1: drag handle + number + topic + controls */}
                 <div className="flex items-start gap-2">
+
+                  {/* Drag handle */}
+                  {dndActive && !gray && (
+                    <div className="flex-shrink-0 mt-1 text-gray-300 hover:text-gray-500 cursor-grab no-print"
+                      title="Verschieben (Drag & Drop)">
+                      <GripVertical size={14} />
+                    </div>
+                  )}
 
                   {/* Editable number */}
                   <div className="flex-shrink-0 w-14">
@@ -229,7 +366,10 @@ export default function ProtocolItems({ items, onChange, readOnly, projectContac
                       : <input
                           className={`input py-0.5 text-center font-semibold ${s.noStyle} ${done ? 'opacity-50' : ''}`}
                           value={item.no}
+                          title="Nummer ändern und Enter/Tab drücken um den Punkt automatisch zu verschieben"
                           onChange={e => update(item.id, 'no', e.target.value)}
+                          onBlur={e  => handleNoBlur(item.id, e.target.value)}
+                          onKeyDown={e => { if (e.key === 'Enter') e.target.blur() }}
                           placeholder="Nr."
                         />
                     }
@@ -260,11 +400,11 @@ export default function ProtocolItems({ items, onChange, readOnly, projectContac
                   {!readOnly && !gray && (
                     <div className="flex items-center gap-1 no-print flex-shrink-0">
                       <button className="btn-ghost p-1 text-gray-400 hover:text-brand-600 disabled:opacity-30"
-                        onClick={() => changeLevel(item.id, 1)} disabled={lvl >= 3} title="Einrücken">
+                        onClick={() => changeLevel(item.id, 1)} disabled={lvl >= 3} title="Einrücken (Unterpunkt)">
                         <IndentIncrease size={13} />
                       </button>
                       <button className="btn-ghost p-1 text-gray-400 hover:text-brand-600 disabled:opacity-30"
-                        onClick={() => changeLevel(item.id, -1)} disabled={lvl <= 1} title="Ausrücken">
+                        onClick={() => changeLevel(item.id, -1)} disabled={lvl <= 1} title="Ausrücken (Hauptpunkt)">
                         <IndentDecrease size={13} />
                       </button>
                       <button className="btn-ghost p-1 text-red-400 hover:text-red-600 hover:bg-red-50"
@@ -283,17 +423,17 @@ export default function ProtocolItems({ items, onChange, readOnly, projectContac
                       {item.createdAt ? formatDate(item.createdAt.slice(0, 10)) : '–'}
                     </span>
                     <div className="flex items-center gap-1 flex-1">
-                    <User size={13} className="text-gray-400 flex-shrink-0" />
-                    {readOnly
-                      ? <span className="text-xs text-gray-500">{item.assignedTo || '–'}</span>
-                      : <input
-                          className="input py-0.5 text-xs max-w-64"
-                          placeholder="Zugewiesen an (Person / Firma)…"
-                          value={item.assignedTo ?? ''}
-                          list={(projectContacts ?? []).length > 0 ? contactListId : undefined}
-                          onChange={e => update(item.id, 'assignedTo', e.target.value)}
-                        />
-                    }
+                      <User size={13} className="text-gray-400 flex-shrink-0" />
+                      {readOnly
+                        ? <span className="text-xs text-gray-500">{item.assignedTo || '–'}</span>
+                        : <input
+                            className="input py-0.5 text-xs max-w-64"
+                            placeholder="Zugewiesen an (Person / Firma)…"
+                            value={item.assignedTo ?? ''}
+                            list={(projectContacts ?? []).length > 0 ? contactListId : undefined}
+                            onChange={e => update(item.id, 'assignedTo', e.target.value)}
+                          />
+                      }
                     </div>
                   </div>
                 )}
@@ -334,36 +474,25 @@ export default function ProtocolItems({ items, onChange, readOnly, projectContac
                           Anlage {item.no ? `${item.no} – ` : ''}{item.attachment.name}
                         </span>
                         <span className="text-xs text-gray-400">{formatFileSize(item.attachment.size)}</span>
-                        <button
-                          className="btn-ghost p-1 text-brand-600 hover:text-brand-800 no-print"
-                          title="Anlage öffnen"
-                          onClick={() => openAttachment(item.attachment)}
-                        >
+                        <button className="btn-ghost p-1 text-brand-600 hover:text-brand-800 no-print"
+                          title="Anlage öffnen" onClick={() => openAttachment(item.attachment)}>
                           <ExternalLink size={12} />
                         </button>
                         {!readOnly && (
-                          <button
-                            className="btn-ghost p-1 text-red-400 hover:text-red-600 no-print"
-                            title="Anlage entfernen"
-                            onClick={() => update(item.id, 'attachment', null)}
-                          >
+                          <button className="btn-ghost p-1 text-red-400 hover:text-red-600 no-print"
+                            title="Anlage entfernen" onClick={() => update(item.id, 'attachment', null)}>
                             <X size={12} />
                           </button>
                         )}
                       </>
                     ) : !readOnly ? (
                       <>
-                        <input
-                          type="file"
-                          id={`attach-${item.id}`}
-                          className="hidden"
+                        <input type="file" id={`attach-${item.id}`} className="hidden"
                           accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.png,.jpg,.jpeg,.dwg,.dxf"
                           onChange={e => { handleAttachFile(item.id, e.target.files?.[0]); e.target.value = '' }}
                         />
-                        <label
-                          htmlFor={`attach-${item.id}`}
-                          className="flex items-center gap-1 text-xs text-gray-400 hover:text-brand-600 cursor-pointer transition-colors no-print"
-                        >
+                        <label htmlFor={`attach-${item.id}`}
+                          className="flex items-center gap-1 text-xs text-gray-400 hover:text-brand-600 cursor-pointer transition-colors no-print">
                           <Paperclip size={12} /> Anlage hinzufügen
                         </label>
                       </>
@@ -380,7 +509,7 @@ export default function ProtocolItems({ items, onChange, readOnly, projectContac
                 )}
               </div>
 
-              {/* Inline add-child button (shown below each item, not when read-only or searching) */}
+              {/* Add-child button */}
               {!readOnly && !gray && !q && lvl < 3 && (
                 <div className={`${s.indent} no-print`}>
                   <button
@@ -393,6 +522,9 @@ export default function ProtocolItems({ items, onChange, readOnly, projectContac
                   </button>
                 </div>
               )}
+
+              {/* Drop zone after this item (maps to real index + 1) */}
+              <DropZone insertBeforeIdx={realIdx + 1} />
             </div>
           )
         })}
