@@ -225,7 +225,46 @@ ipcMain.handle('protocols:import-json', async () => {
 
 // ── Lifecycle ─────────────────────────────────────────────────────────────────
 app.whenReady().then(() => {
-  createWindow()
+  const win = createWindow()
+
+  // Enable German spell checker for all web contents
+  win.webContents.session.setSpellCheckerLanguages(['de-DE', 'de-AT', 'de-CH'])
+
+  // Right-click context menu: spell check suggestions + dictionary add
+  win.webContents.on('context-menu', (_e, params) => {
+    const { misspelledWord, dictionarySuggestions, selectionText } = params
+    if (!misspelledWord && !selectionText) return
+
+    const menuItems = []
+
+    if (misspelledWord) {
+      const suggestions = (dictionarySuggestions ?? []).slice(0, 7)
+      if (suggestions.length > 0) {
+        suggestions.forEach(word => {
+          menuItems.push({
+            label: word,
+            click: () => win.webContents.replaceMisspelling(word),
+          })
+        })
+      } else {
+        menuItems.push({ label: 'Keine Vorschläge', enabled: false })
+      }
+      menuItems.push({ type: 'separator' })
+      menuItems.push({
+        label: `„${misspelledWord}" zum Wörterbuch hinzufügen`,
+        click: () => win.webContents.session.addWordToSpellCheckerDictionary(misspelledWord),
+      })
+      menuItems.push({ type: 'separator' })
+    }
+
+    menuItems.push(
+      { role: 'cut',   label: 'Ausschneiden' },
+      { role: 'copy',  label: 'Kopieren'     },
+      { role: 'paste', label: 'Einfügen'     },
+    )
+
+    Menu.buildFromTemplate(menuItems).popup({ window: win })
+  })
 
   // macOS: re-create window when clicking the dock icon with no windows open
   app.on('activate', () => {

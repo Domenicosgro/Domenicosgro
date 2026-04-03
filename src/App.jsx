@@ -34,6 +34,20 @@ export default function App() {
   const activeIdRef = useRef(activeId)
   activeIdRef.current = activeId
 
+  // ── German spell check on all free-text inputs/textareas ────────────────
+  useEffect(() => {
+    const apply = () => {
+      document.querySelectorAll('input[type="text"], input:not([type]), textarea').forEach(el => {
+        el.spellcheck = true
+        el.lang = 'de'
+      })
+    }
+    apply()
+    const obs = new MutationObserver(apply)
+    obs.observe(document.body, { childList: true, subtree: true })
+    return () => obs.disconnect()
+  }, [])
+
   // ── Electron menu wiring ─────────────────────────────────────────────────
   useEffect(() => {
     if (!isElectron) return
