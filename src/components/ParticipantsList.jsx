@@ -25,7 +25,7 @@ export default function ParticipantsList({ participants, onChange, readOnly, pro
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <h2 className="section-title"><Users size={16} /> Teilnehmer</h2>
+          <h2 className="section-title"><Users size={16} /> Eingeladene Teilnehmer</h2>
           {participants.length > 0 && (
             <span className="text-xs text-gray-500">
               {present.length} anwesend{absent.length > 0 ? `, ${absent.length} entschuldigt` : ''}
@@ -45,7 +45,7 @@ export default function ParticipantsList({ participants, onChange, readOnly, pro
       </div>
 
       {participants.length === 0 && (
-        <p className="text-sm text-gray-400 italic">Keine Teilnehmer erfasst.</p>
+        <p className="text-sm text-gray-400 italic">Keine eingeladenen Teilnehmer erfasst.</p>
       )}
 
       {participants.length > 0 && (

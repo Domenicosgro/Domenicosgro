@@ -207,7 +207,6 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
               <tbody>
                 {[
                   ['Datum',    formatDate(protocol.date)],
-                  ['Uhrzeit',  protocol.time ? protocol.time + ' Uhr' : '–'],
                   ['Ort',      protocol.location || '–'],
                   ['Einladung',protocol.preparedBy || '–'],
                 ].map(([l, v]) => (
@@ -261,7 +260,7 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
 
             {present.length > 0 && (
               <div className="mt-5">
-                <div className="text-xs font-medium text-gray-400 mb-1 uppercase tracking-wide">Teilnehmer</div>
+                <div className="text-xs font-medium text-gray-400 mb-1 uppercase tracking-wide">Eingeladene Teilnehmer</div>
                 <p className="text-sm text-gray-700">{present.map(p => p.name).filter(Boolean).join(' · ')}</p>
               </div>
             )}
@@ -281,13 +280,10 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
               {[
                 ['Protokoll-Nr.', protocolNo],
                 ['Datum',         formatDate(protocol.date)],
-                ['Uhrzeit',       protocol.time ? protocol.time + ' Uhr' : '–'],
                 ['Ort / Raum',    protocol.location || '–'],
                 ['Erstellt von',  protocol.preparedBy || '–'],
                 ...(isClosed ? [['Status', 'Abgeschlossen']] : []),
-                ...(protocol.nextMeeting ? [['Nächste Besprechung',
-                  `${formatDate(protocol.nextMeeting)}${protocol.nextMeetingTime ? ', ' + protocol.nextMeetingTime + ' Uhr' : ''}`
-                ]] : []),
+                ...(protocol.nextMeeting ? [['Nächste Besprechung', formatDate(protocol.nextMeeting)]] : []),
               ].map(([label, value]) => (
                 <tr key={label} className="border-b border-gray-200">
                   <td className="py-2 pr-6 font-medium text-gray-500 w-44 text-xs uppercase tracking-wide">{label}</td>

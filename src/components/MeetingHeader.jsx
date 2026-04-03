@@ -72,15 +72,11 @@ export default function MeetingHeader({ protocol, protocols, projects, logoDataU
         <span className="text-xs text-brand-400 ml-auto hidden sm:inline">automatisch aus Projektname + Datum</span>
       </div>
 
-      {/* Date / time / location */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+      {/* Date / location */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
         <div>
           <label className="block text-xs font-medium text-gray-500 mb-1">Datum</label>
           <input className="input" type="date" value={protocol.date} onChange={set('date')} />
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-gray-500 mb-1">Uhrzeit</label>
-          <input className="input" type="time" value={protocol.time} onChange={set('time')} />
         </div>
         <div className="sm:col-span-2">
           <label className="block text-xs font-medium text-gray-500 mb-1">Ort / Raum</label>
@@ -89,7 +85,7 @@ export default function MeetingHeader({ protocol, protocols, projects, logoDataU
       </div>
 
       {/* Author + next meeting */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
           <label className="block text-xs font-medium text-gray-500 mb-1">Erstellt von</label>
           <input className="input" placeholder="Max Mustermann" value={protocol.preparedBy} onChange={set('preparedBy')} />
@@ -97,10 +93,6 @@ export default function MeetingHeader({ protocol, protocols, projects, logoDataU
         <div>
           <label className="block text-xs font-medium text-gray-500 mb-1">Nächste Besprechung</label>
           <input className="input" type="date" value={protocol.nextMeeting} onChange={set('nextMeeting')} />
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-gray-500 mb-1">Uhrzeit</label>
-          <input className="input" type="time" value={protocol.nextMeetingTime} onChange={set('nextMeetingTime')} />
         </div>
       </div>
 
