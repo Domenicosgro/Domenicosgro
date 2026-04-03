@@ -26,30 +26,70 @@ function carryProtocolItems(predecessorItems) {
     }))
 }
 
-// When closing: promote agenda draft → protocol items
-// agenda items with linkedProtocolItemId update the existing point
-// others create new points
+// When closing: promote agenda draft → protocol items.
+// Linked agenda items become sub-items inserted directly after their parent.
+// Unlinked agenda items become new top-level items at the end.
 function promoteAgenda(agenda, existingItems) {
-  const updated = existingItems.map(it => {
+  // Helper: index after last descendant of result[parentIdx]
+  const subtreeEnd = (result, parentIdx) => {
+    const parentLvl = result[parentIdx].level ?? 1
+    let i = parentIdx + 1
+    while (i < result.length && (result[i].level ?? 1) > parentLvl) i++
+    return i
+  }
+
+  // Start with all existing items unchanged (assignedTo may be merged below)
+  const result = existingItems.map(it => {
     const linked = agenda.find(a => a.linkedProtocolItemId === it.id)
     if (!linked) return it
-    return {
-      ...it,
-      // merge assignedTo from agenda responsible if not already set
-      assignedTo: it.assignedTo || linked.responsible || '',
-    }
+    return { ...it, assignedTo: it.assignedTo || linked.responsible || '' }
   })
 
-  const newItems = agenda
-    .filter(a => !a.linkedProtocolItemId)
-    .map(a => ({
-      ...emptyAgendaItem(1),
-      no:         a.no,
+  // Insert linked agenda items as sub-items after their parent's subtree
+  for (const a of agenda.filter(x => x.linkedProtocolItemId)) {
+    const parentIdx = result.findIndex(it => it.id === a.linkedProtocolItemId)
+    if (parentIdx < 0) continue
+
+    const parent      = result[parentIdx]
+    const childLevel  = Math.min((parent.level ?? 1) + 1, 3)
+    const parentLevel = parent.level ?? 1
+    const prefix      = parent.no || String(parentIdx + 1)
+
+    // Max existing child suffix for this parent
+    let maxSuffix = 0
+    for (let i = parentIdx + 1; i < result.length; i++) {
+      const lvl = result[i].level ?? 1
+      if (lvl <= parentLevel) break
+      if (lvl === childLevel) {
+        const s = parseInt((result[i].no ?? '').split('.').pop()) || 0
+        if (s > maxSuffix) maxSuffix = s
+      }
+    }
+
+    const insertAt = subtreeEnd(result, parentIdx)
+    result.splice(insertAt, 0, {
+      ...emptyAgendaItem(childLevel),
+      no:         `${prefix}.${maxSuffix + 1}`,
       topic:      a.topic,
       assignedTo: a.responsible || '',
-    }))
+    })
+  }
 
-  return [...updated, ...newItems]
+  // Append unlinked agenda items as new top-level items
+  const topMax = result
+    .filter(it => (it.level ?? 1) === 1)
+    .reduce((m, it) => Math.max(m, parseInt(it.no) || 0), 0)
+
+  agenda.filter(a => !a.linkedProtocolItemId).forEach((a, i) => {
+    result.push({
+      ...emptyAgendaItem(1),
+      no:         String(topMax + i + 1),
+      topic:      a.topic,
+      assignedTo: a.responsible || '',
+    })
+  })
+
+  return result
 }
 
 export default function ProtocolEditor({ protocol, protocols, projects, projectContacts, logoDataUrl, onLogoUpdate, onLogoClear, onUpdate, onBack }) {

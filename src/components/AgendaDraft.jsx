@@ -1,6 +1,7 @@
 import React from 'react'
 import { Plus, Trash2, CalendarClock, Link } from 'lucide-react'
 import { emptyAgendaDraftItem } from '../utils'
+import SpellCheckTextarea from './SpellCheckTextarea'
 
 export default function AgendaDraft({ agenda, agendaGreeting, agendaSentAt, protocolItems, projectContacts, onChange, onChangeGreeting }) {
   const contactListId = 'agenda-contacts-list'
@@ -48,7 +49,7 @@ export default function AgendaDraft({ agenda, agendaGreeting, agendaSentAt, prot
         <label className="block text-xs text-gray-500 mb-1">
           Einleitungstext E-Mail <span className="text-gray-400">(optional)</span>
         </label>
-        <textarea className="textarea text-sm" rows={2}
+        <SpellCheckTextarea className="textarea text-sm" rows={2}
           placeholder="Sehr geehrte Damen und Herren, hiermit laden wir Sie herzlich ein …"
           value={agendaGreeting} onChange={e => onChangeGreeting(e.target.value)} />
       </div>

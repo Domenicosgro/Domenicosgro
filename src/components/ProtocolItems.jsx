@@ -1,6 +1,7 @@
 import React, { useState, useRef } from 'react'
 import { Plus, Trash2, FileText, IndentIncrease, IndentDecrease, Search, X, CheckCircle2, Circle, User, Calendar, Paperclip, ExternalLink } from 'lucide-react'
 import { emptyAgendaItem, uid, formatDate } from '../utils'
+import SpellCheckTextarea from './SpellCheckTextarea'
 
 const isElectron = typeof window !== 'undefined' && !!window.electronAPI
 
@@ -30,18 +31,6 @@ const LEVEL_STYLES = {
   3: { indent: 'ml-12',  label: 'text-sm font-medium text-gray-700',   noStyle: 'text-sm font-medium text-gray-500',    borderL: 'border-l-4 border-gray-300'  },
 }
 
-// How many existing direct children does parentIdx have at childLevel?
-function countChildren(items, parentIdx, childLevel) {
-  let count = 0
-  const parentLevel = items[parentIdx].level ?? 1
-  for (let i = parentIdx + 1; i < items.length; i++) {
-    const lvl = items[i].level ?? 1
-    if (lvl <= parentLevel) break       // back to parent level or higher → stop
-    if (lvl === childLevel) count++
-  }
-  return count
-}
-
 // Index after the last descendant of items[parentIdx]
 function subtreeEnd(items, parentIdx) {
   const parentLevel = items[parentIdx].level ?? 1
@@ -51,18 +40,31 @@ function subtreeEnd(items, parentIdx) {
 }
 
 // Suggest number for a new child directly under items[parentIdx]
+// Uses max existing child suffix to avoid gaps from hidden/completed items
 function suggestChildNo(items, parentIdx) {
-  const parent    = items[parentIdx]
-  const childLvl  = Math.min((parent.level ?? 1) + 1, 3)
-  const siblings  = countChildren(items, parentIdx, childLvl)
-  const prefix    = parent.no || String(parentIdx + 1)
-  return `${prefix}.${siblings + 1}`
+  const parent      = items[parentIdx]
+  const childLvl    = Math.min((parent.level ?? 1) + 1, 3)
+  const parentLevel = parent.level ?? 1
+  const prefix      = parent.no || String(parentIdx + 1)
+  let maxSuffix     = 0
+  for (let i = parentIdx + 1; i < items.length; i++) {
+    const lvl = items[i].level ?? 1
+    if (lvl <= parentLevel) break
+    if (lvl === childLvl) {
+      const suffix = parseInt((items[i].no ?? '').split('.').pop()) || 0
+      if (suffix > maxSuffix) maxSuffix = suffix
+    }
+  }
+  return `${prefix}.${maxSuffix + 1}`
 }
 
-// Suggest number for a new top-level item (appended at end)
+// Suggest number for a new top-level item.
+// Uses max existing number to avoid gaps caused by hidden/completed items.
 function suggestTopNo(items) {
-  const count = items.filter(it => (it.level ?? 1) === 1).length
-  return String(count + 1)
+  const max = items
+    .filter(it => (it.level ?? 1) === 1)
+    .reduce((m, it) => Math.max(m, parseInt(it.no) || 0), 0)
+  return String(max + 1)
 }
 
 export default function ProtocolItems({ items, onChange, readOnly, projectContacts }) {
@@ -303,7 +305,8 @@ export default function ProtocolItems({ items, onChange, readOnly, projectContac
                       <label className="block text-xs text-gray-400 mb-0.5">Besprechungsinhalt</label>
                       {readOnly
                         ? <p className="text-sm text-gray-700 whitespace-pre-line">{item.discussion || '–'}</p>
-                        : <textarea className={`textarea text-sm ${done ? 'text-gray-400' : ''}`} rows={2}
+                        : <SpellCheckTextarea
+                            className={`textarea text-sm ${done ? 'text-gray-400' : ''}`} rows={2}
                             placeholder="Inhalt…" value={item.discussion}
                             onChange={e => update(item.id, 'discussion', e.target.value)} />
                       }
@@ -312,7 +315,8 @@ export default function ProtocolItems({ items, onChange, readOnly, projectContac
                       <label className="block text-xs text-gray-400 mb-0.5">Ergebnis / Beschluss</label>
                       {readOnly
                         ? <p className="text-sm text-gray-700 whitespace-pre-line">{item.result || '–'}</p>
-                        : <textarea className={`textarea text-sm ${done ? 'text-gray-400' : ''}`} rows={2}
+                        : <SpellCheckTextarea
+                            className={`textarea text-sm ${done ? 'text-gray-400' : ''}`} rows={2}
                             placeholder="Ergebnis…" value={item.result}
                             onChange={e => update(item.id, 'result', e.target.value)} />
                       }
