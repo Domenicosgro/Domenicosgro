@@ -27,7 +27,8 @@ export default function AgendaDraft({ agenda, agendaGreeting, agendaSentAt, prot
   const totalMin = agenda.reduce((s, a) => s + (parseInt(a.duration) || 0), 0)
 
   // Protocol points available for linking (open ones only)
-  const linkableItems = (protocolItems ?? []).filter(it => it.topic)
+  // Exclude sub-items that were themselves created from an agenda link
+  const linkableItems = (protocolItems ?? []).filter(it => it.topic && !it.linkedFromAgendaId)
 
   return (
     <div className="space-y-4">

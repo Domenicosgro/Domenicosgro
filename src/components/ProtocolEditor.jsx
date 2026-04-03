@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useEffect } from 'react'
-import { ArrowLeft, Printer, Download, Send, ArrowDownToLine, RefreshCw, AlertCircle, Lock, Unlock, Building2 } from 'lucide-react'
+import { ArrowLeft, Printer, Download, Send, RefreshCw, AlertCircle, Lock, Unlock, Building2 } from 'lucide-react'
 import MeetingHeader    from './MeetingHeader'
 import ParticipantsList from './ParticipantsList'
 import AgendaDraft      from './AgendaDraft'
@@ -26,70 +26,22 @@ function carryProtocolItems(predecessorItems) {
     }))
 }
 
-// When closing: promote agenda draft → protocol items.
-// Linked agenda items become sub-items inserted directly after their parent.
-// Unlinked agenda items become new top-level items at the end.
+// On close: only promote UNLINKED agenda items (linked ones are already live in agendaItems)
 function promoteAgenda(agenda, existingItems) {
-  // Helper: index after last descendant of result[parentIdx]
-  const subtreeEnd = (result, parentIdx) => {
-    const parentLvl = result[parentIdx].level ?? 1
-    let i = parentIdx + 1
-    while (i < result.length && (result[i].level ?? 1) > parentLvl) i++
-    return i
-  }
-
-  // Start with all existing items unchanged (assignedTo may be merged below)
-  const result = existingItems.map(it => {
-    const linked = agenda.find(a => a.linkedProtocolItemId === it.id)
-    if (!linked) return it
-    return { ...it, assignedTo: it.assignedTo || linked.responsible || '' }
-  })
-
-  // Insert linked agenda items as sub-items after their parent's subtree
-  for (const a of agenda.filter(x => x.linkedProtocolItemId)) {
-    const parentIdx = result.findIndex(it => it.id === a.linkedProtocolItemId)
-    if (parentIdx < 0) continue
-
-    const parent      = result[parentIdx]
-    const childLevel  = Math.min((parent.level ?? 1) + 1, 3)
-    const parentLevel = parent.level ?? 1
-    const prefix      = parent.no || String(parentIdx + 1)
-
-    // Max existing child suffix for this parent
-    let maxSuffix = 0
-    for (let i = parentIdx + 1; i < result.length; i++) {
-      const lvl = result[i].level ?? 1
-      if (lvl <= parentLevel) break
-      if (lvl === childLevel) {
-        const s = parseInt((result[i].no ?? '').split('.').pop()) || 0
-        if (s > maxSuffix) maxSuffix = s
-      }
-    }
-
-    const insertAt = subtreeEnd(result, parentIdx)
-    result.splice(insertAt, 0, {
-      ...emptyAgendaItem(childLevel),
-      no:         `${prefix}.${maxSuffix + 1}`,
-      topic:      a.topic,
-      assignedTo: a.responsible || '',
-    })
-  }
-
-  // Append unlinked agenda items as new top-level items
-  const topMax = result
+  const unlinked = (agenda ?? []).filter(a => !a.linkedProtocolItemId)
+  if (!unlinked.length) return existingItems
+  const topMax = existingItems
     .filter(it => (it.level ?? 1) === 1)
     .reduce((m, it) => Math.max(m, parseInt(it.no) || 0), 0)
-
-  agenda.filter(a => !a.linkedProtocolItemId).forEach((a, i) => {
-    result.push({
+  return [
+    ...existingItems,
+    ...unlinked.map((a, i) => ({
       ...emptyAgendaItem(1),
       no:         String(topMax + i + 1),
       topic:      a.topic,
       assignedTo: a.responsible || '',
-    })
-  })
-
-  return result
+    })),
+  ]
 }
 
 export default function ProtocolEditor({ protocol, protocols, projects, projectContacts, logoDataUrl, onLogoUpdate, onLogoClear, onUpdate, onBack }) {
@@ -131,12 +83,82 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
     change({ agendaItems: [...(protocol.agendaItems ?? []), ...carried] })
   }
 
-  // Promote agenda draft → protocol items (manual, pre-close)
-  const handlePromoteAgenda = () => {
-    if (!(protocol.agenda ?? []).length) return
-    if (!confirm('Agenda-Punkte als Protokollpunkte übernehmen?')) return
-    const promoted = promoteAgenda(protocol.agenda ?? [], protocol.agendaItems ?? [])
-    change({ agendaItems: promoted })
+  // Live sync: when an agenda item is linked/unlinked to a protocol item via the dropdown,
+  // immediately insert/remove/update the corresponding sub-item in agendaItems.
+  const handleAgendaChange = (newAgenda) => {
+    const oldAgenda   = protocol.agenda ?? []
+    let agendaItems   = [...(protocol.agendaItems ?? [])]
+
+    const subtreeEnd = (arr, idx) => {
+      const lvl = arr[idx].level ?? 1
+      let i = idx + 1
+      while (i < arr.length && (arr[i].level ?? 1) > lvl) i++
+      return i
+    }
+
+    for (const newItem of newAgenda) {
+      const oldItem    = oldAgenda.find(a => a.id === newItem.id)
+      const newParent  = newItem.linkedProtocolItemId ?? null
+      const oldParent  = oldItem?.linkedProtocolItemId ?? null
+
+      if (newParent === oldParent) {
+        // Link unchanged — keep sub-item in sync with topic/responsible
+        if (newParent) {
+          agendaItems = agendaItems.map(it =>
+            it.linkedFromAgendaId === newItem.id
+              ? { ...it, topic: newItem.topic, assignedTo: newItem.responsible || '' }
+              : it
+          )
+        }
+        continue
+      }
+
+      // Remove old sub-item when link changes
+      if (oldParent) {
+        agendaItems = agendaItems.filter(it => it.linkedFromAgendaId !== newItem.id)
+      }
+
+      // Insert new sub-item under the newly selected parent
+      if (newParent) {
+        const parentIdx = agendaItems.findIndex(it => it.id === newParent)
+        if (parentIdx >= 0) {
+          const parent      = agendaItems[parentIdx]
+          const childLevel  = Math.min((parent.level ?? 1) + 1, 3)
+          const parentLevel = parent.level ?? 1
+          const prefix      = parent.no || String(parentIdx + 1)
+          let maxSuffix     = 0
+          for (let i = parentIdx + 1; i < agendaItems.length; i++) {
+            const lvl = agendaItems[i].level ?? 1
+            if (lvl <= parentLevel) break
+            if (lvl === childLevel) {
+              const s = parseInt((agendaItems[i].no ?? '').split('.').pop()) || 0
+              if (s > maxSuffix) maxSuffix = s
+            }
+          }
+          const insertAt = subtreeEnd(agendaItems, parentIdx)
+          agendaItems = [
+            ...agendaItems.slice(0, insertAt),
+            {
+              ...emptyAgendaItem(childLevel),
+              no:                  `${prefix}.${maxSuffix + 1}`,
+              topic:               newItem.topic,
+              assignedTo:          newItem.responsible || '',
+              linkedFromAgendaId:  newItem.id,
+            },
+            ...agendaItems.slice(insertAt),
+          ]
+        }
+      }
+    }
+
+    // Remove sub-items whose agenda item was deleted
+    for (const old of oldAgenda) {
+      if (!newAgenda.find(a => a.id === old.id) && old.linkedProtocolItemId) {
+        agendaItems = agendaItems.filter(it => it.linkedFromAgendaId !== old.id)
+      }
+    }
+
+    change({ agenda: newAgenda, agendaItems })
   }
 
   // Close protocol
@@ -430,7 +452,7 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
               agendaSentAt={protocol.agendaSentAt}
               protocolItems={protocol.agendaItems ?? []}
               projectContacts={projectContacts ?? []}
-              onChange={agenda => change({ agenda })}
+              onChange={handleAgendaChange}
               onChangeGreeting={agendaGreeting => change({ agendaGreeting })}
             />
             <div className="flex items-center gap-3 flex-wrap no-print">
@@ -438,11 +460,7 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
                 disabled={!(protocol.agenda ?? []).length}>
                 <Send size={14} /> Agenda versenden
               </button>
-              <button className="btn-secondary" onClick={handlePromoteAgenda}
-                disabled={!(protocol.agenda ?? []).length}>
-                <ArrowDownToLine size={14} /> Agenda → Protokollpunkte
-              </button>
-              <span className="text-xs text-gray-400">Beim Abschließen wird die Agenda automatisch übertragen.</span>
+              <span className="text-xs text-gray-400">Verknüpfte Agendapunkte erscheinen sofort als Unterpunkt im Protokoll.</span>
             </div>
           </div>
         )}
