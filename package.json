@@ -1,124 +1,21 @@
 {
-  "name": "komplizen-protokolle",
-  "version": "1.0.0",
+  "name": "dokuvault",
+  "version": "0.0.1",
   "private": true,
-  "main": "electron/main.js",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "preview": "vite preview",
-    "electron:dev": "concurrently \"vite\" \"wait-on http://localhost:5173 && cross-env NODE_ENV=development electron .\"",
-    "electron:build:win": "vite build && electron-builder --win --publish never",
-    "electron:build:mac": "vite build && electron-builder --mac --publish never",
-    "electron:build:all": "vite build && electron-builder --win --mac --publish never"
-  },
-  "dependencies": {
-    "better-sqlite3": "^12.8.0",
-    "cors": "^2.8.6",
-    "dictionary-de": "^3.0.0",
-    "express": "^5.2.1",
-    "helmet": "^8.1.0",
-    "lucide-react": "^0.462.0",
-    "nspell": "^2.1.5",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "lint": "turbo run lint",
+    "type-check": "turbo run type-check",
+    "clean": "turbo run clean"
   },
   "devDependencies": {
-    "@types/react": "^18.3.12",
-    "@types/react-dom": "^18.3.1",
-    "@vitejs/plugin-react": "^4.3.3",
-    "autoprefixer": "^10.4.20",
-    "concurrently": "^9.1.0",
-    "cross-env": "^7.0.3",
-    "electron": "^33.2.0",
-    "electron-builder": "^25.1.8",
-    "nodemon": "^3.1.14",
-    "postcss": "^8.4.49",
-    "tailwindcss": "^3.4.15",
-    "vite": "^5.4.10",
-    "wait-on": "^8.0.1"
+    "turbo": "^2.3.3",
+    "typescript": "^5.7.3"
   },
-  "build": {
-    "appId": "com.baubesprechung.protokoll",
-    "productName": "Komplizen Protokolle",
-    "copyright": "Copyright © 2026",
-    "files": [
-      "dist/**/*",
-      "electron/**/*"
-    ],
-    "directories": {
-      "output": "release"
-    },
-    "win": {
-      "target": [
-        {
-          "target": "nsis",
-          "arch": [
-            "x64"
-          ]
-        },
-        {
-          "target": "portable",
-          "arch": [
-            "x64"
-          ]
-        }
-      ],
-      "icon": "electron/icon.ico"
-    },
-    "nsis": {
-      "oneClick": false,
-      "allowToChangeInstallationDirectory": true,
-      "installerLanguages": [
-        "de_DE"
-      ],
-      "language": "1031",
-      "createDesktopShortcut": true,
-      "createStartMenuShortcut": true,
-      "shortcutName": "Komplizen Protokolle"
-    },
-    "mac": {
-      "target": [
-        {
-          "target": "dmg",
-          "arch": [
-            "x64",
-            "arm64"
-          ]
-        },
-        {
-          "target": "zip",
-          "arch": [
-            "x64",
-            "arm64"
-          ]
-        }
-      ],
-      "icon": "electron/icon.icns",
-      "category": "public.app-category.productivity",
-      "darkModeSupport": true,
-      "minimumSystemVersion": "12.0",
-      "hardenedRuntime": true,
-      "gatekeeperAssess": false
-    },
-    "dmg": {
-      "title": "${productName} ${version}",
-      "window": {
-        "width": 540,
-        "height": 380
-      },
-      "contents": [
-        {
-          "x": 130,
-          "y": 220
-        },
-        {
-          "x": 410,
-          "y": 220,
-          "type": "link",
-          "path": "/Applications"
-        }
-      ]
-    }
+  "packageManager": "pnpm@9.15.4",
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=9.0.0"
   }
 }
