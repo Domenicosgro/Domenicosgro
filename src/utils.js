@@ -29,11 +29,31 @@ export const statusBadge = (val) =>
 export const priorityBadge = (val) =>
   PRIORITIES.find(p => p.value === val) ?? PRIORITIES[1]
 
-// Auto-generate protocol number: "ProjektName_DD.MM.YYYY"
-export const buildProtocolNo = (projectName, date) => {
+// Returns the chain sequence number for a protocol (1-based).
+// Returns null if the protocol is standalone (no predecessor and not referenced as one).
+export const getChainNo = (protocol, allProtocols) => {
+  const pool = allProtocols ?? []
+  const hasPred = !!protocol.predecessorId
+  const hasSucc = pool.some(p => p.predecessorId === protocol.id)
+  if (!hasPred && !hasSucc) return null   // standalone → no prefix
+
+  let depth = 1
+  let pred = protocol.predecessorId ? pool.find(p => p.id === protocol.predecessorId) : null
+  while (pred) {
+    depth++
+    pred = pred.predecessorId ? pool.find(p => p.id === pred.predecessorId) : null
+    if (depth > 200) break  // safety guard against circular refs
+  }
+  return depth
+}
+
+// Auto-generate protocol number: ["N - "]"ProjektName_DD.MM.YYYY"
+// chainNo is computed via getChainNo() and is optional.
+export const buildProtocolNo = (projectName, date, chainNo = null) => {
   const name = (projectName || '').trim().replace(/\s+/g, '-') || 'Protokoll'
   const d = date ? formatDate(date) : formatDate(today())
-  return `${name}_${d}`
+  const prefix = chainNo !== null ? `${chainNo} - ` : ''
+  return `${prefix}${name}_${d}`
 }
 
 export const emptyContact = () => ({

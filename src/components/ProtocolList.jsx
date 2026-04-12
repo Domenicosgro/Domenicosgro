@@ -1,13 +1,14 @@
 import React, { useState, useRef } from 'react'
 import { Plus, Trash2, Copy, FileText, Search, ChevronRight, Upload, Lock, ArrowLeft, Users } from 'lucide-react'
-import { formatDate, buildProtocolNo } from '../utils'
+import { formatDate, buildProtocolNo, getChainNo } from '../utils'
 
 const isElectron = typeof window !== 'undefined' && !!window.electronAPI
 
 export default function ProtocolList({
-  protocols, project, onCreate, onOpen, onDelete, onDuplicate,
+  protocols, allProtocols, project, onCreate, onOpen, onDelete, onDuplicate,
   onImport, onOpenImported, onBack, onManageContacts,
 }) {
+  const pool = allProtocols ?? protocols  // fall back to current list if not provided
   const fileInputRef = useRef(null)
   const [search, setSearch]       = useState('')
   const [importError, setImportError] = useState('')
@@ -44,7 +45,7 @@ export default function ProtocolList({
   const q = search.toLowerCase()
   const filtered = protocols.filter(p => {
     if (!q) return true
-    const no = buildProtocolNo(p.projectName, p.date)
+    const no = buildProtocolNo(p.projectName, p.date, getChainNo(p, pool))
     return (
       p.projectName.toLowerCase().includes(q) ||
       p.meetingType.toLowerCase().includes(q) ||
@@ -120,7 +121,7 @@ export default function ProtocolList({
       <div className="space-y-3">
         {filtered.map(p => {
           const openActions = (p.actionItems ?? []).filter(a => a.status === 'offen' || a.status === 'in_arbeit').length
-          const no = buildProtocolNo(p.projectName, p.date)
+          const no = buildProtocolNo(p.projectName, p.date, getChainNo(p, pool))
           return (
             <div
               key={p.id}

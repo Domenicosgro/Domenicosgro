@@ -210,6 +210,7 @@ export default function App() {
       <>
         <ProtocolList
           protocols={filtered}
+          allProtocols={protocols}
           project={project}
           onCreate={handleCreateProtocol}
           onOpen={handleOpenProtocol}

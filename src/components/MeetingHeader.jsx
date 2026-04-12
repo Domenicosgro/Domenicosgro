@@ -1,12 +1,13 @@
 import React from 'react'
-import { MEETING_TYPES, formatDate, buildProtocolNo } from '../utils'
+import { MEETING_TYPES, formatDate, buildProtocolNo, getChainNo } from '../utils'
 import LogoUpload from './LogoUpload'
 import { FolderOpen } from 'lucide-react'
 
 export default function MeetingHeader({ protocol, protocols, projects, logoDataUrl, onLogoUpdate, onLogoClear, onChange }) {
   const set = (field) => (e) => onChange({ [field]: e.target.value })
 
-  const protocolNo = buildProtocolNo(protocol.projectName, protocol.date)
+  const chainNo    = getChainNo(protocol, protocols ?? [])
+  const protocolNo = buildProtocolNo(protocol.projectName, protocol.date, chainNo)
 
   // Predecessor dropdown: show all other protocols (not just same project)
   // so the user can pick any predecessor regardless of project name
@@ -58,9 +59,16 @@ export default function MeetingHeader({ protocol, protocols, projects, logoDataU
           </div>
           <div>
             <label className="block text-xs font-medium text-gray-500 mb-1">Besprechungsart</label>
-            <select className="select" value={protocol.meetingType} onChange={set('meetingType')}>
-              {MEETING_TYPES.map(t => <option key={t}>{t}</option>)}
-            </select>
+            <input
+              className="input"
+              list="meeting-types-list"
+              placeholder="Besprechungsart wählen oder eingeben…"
+              value={protocol.meetingType}
+              onChange={set('meetingType')}
+            />
+            <datalist id="meeting-types-list">
+              {MEETING_TYPES.map(t => <option key={t} value={t} />)}
+            </datalist>
           </div>
         </div>
       </div>
@@ -125,7 +133,8 @@ export default function MeetingHeader({ protocol, protocols, projects, logoDataU
         <select className="select max-w-md" value={protocol.predecessorId ?? ''} onChange={handlePredecessorChange}>
           <option value="">– Kein Vorgänger –</option>
           {predecessorOptions.map(p => {
-            const no = buildProtocolNo(p.projectName, p.date)
+            const pChainNo = getChainNo(p, protocols ?? [])
+            const no = buildProtocolNo(p.projectName, p.date, pChainNo)
             return (
               <option key={p.id} value={p.id}>
                 {no}{p.location ? ` – ${p.location}` : ''}

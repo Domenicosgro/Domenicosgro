@@ -7,7 +7,7 @@ import AgendaEmailModal from './AgendaEmailModal'
 import ProtocolItems    from './ProtocolItems'
 import ActionItems      from './ActionItems'
 import NotesSection     from './NotesSection'
-import { formatDate, buildProtocolNo, uid, emptyAgendaItem } from '../utils'
+import { formatDate, buildProtocolNo, getChainNo, uid, emptyAgendaItem } from '../utils'
 
 const isElectron = typeof window !== 'undefined' && !!window.electronAPI
 
@@ -50,7 +50,8 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
   const [showEmailModal, setShowEmailModal] = useState(false)
   const [confirmClose,   setConfirmClose]   = useState(false)
 
-  const protocolNo  = buildProtocolNo(protocol.projectName, protocol.date)
+  const chainNo     = getChainNo(protocol, protocols ?? [])
+  const protocolNo  = buildProtocolNo(protocol.projectName, protocol.date, chainNo)
   const createdDate = formatDate(protocol.createdAt?.slice(0, 10) ?? protocol.date)
   const isClosed    = !!protocol.isClosed
 
