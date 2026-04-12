@@ -1,4 +1,6 @@
 const { app, BrowserWindow, ipcMain, dialog, Menu, shell, nativeTheme } = require('electron')
+const { autoUpdater } = require('electron-updater')
+const log  = require('electron-log')
 const path = require('path')
 const fs   = require('fs')
 const os   = require('os')
@@ -31,6 +33,34 @@ function writeProjects(projects) {
   fs.writeFileSync(projectsFile(), JSON.stringify(projects, null, 2), 'utf-8')
 }
 
+// ── Auto-Updater ──────────────────────────────────────────────────────────────
+// Update-URL konfigurieren: Datei <userData>/update-config.json mit { "url": "..." }
+// anlegen ODER direkt in package.json → build.publish.url setzen.
+log.transports.file.level = 'info'
+autoUpdater.logger         = log
+autoUpdater.autoDownload   = true   // automatisch herunterladen, Nutzer fragt nur zum Installieren
+
+function setupAutoUpdater(win) {
+  if (isDev) return   // keine Update-Prüfung im Entwicklungsmodus
+
+  // Optionale Laufzeit-Konfiguration der Update-URL
+  const cfgPath = path.join(app.getPath('userData'), 'update-config.json')
+  if (fs.existsSync(cfgPath)) {
+    try {
+      const cfg = JSON.parse(fs.readFileSync(cfgPath, 'utf8'))
+      if (cfg.url) autoUpdater.setFeedURL({ provider: 'generic', url: cfg.url })
+    } catch (e) { log.warn('update-config.json ungültig:', e.message) }
+  }
+
+  autoUpdater.on('update-available',  (info) => win.webContents.send('update:available',  info))
+  autoUpdater.on('update-downloaded', (info) => win.webContents.send('update:downloaded', info))
+  autoUpdater.on('error', (err) => log.error('Updater-Fehler:', err.message))
+
+  // Erste Prüfung nach 10 s, dann alle 4 h
+  setTimeout(() => autoUpdater.checkForUpdates(), 10_000)
+  setInterval(() => autoUpdater.checkForUpdates(), 4 * 60 * 60 * 1000)
+}
+
 // ── Window ───────────────────────────────────────────────────────────────────
 function createWindow() {
   const win = new BrowserWindow({
@@ -40,17 +70,18 @@ function createWindow() {
     minHeight: 600,
     title:     APP_NAME,
 
-    // macOS: traffic-light buttons sit inside the window frame (cleaner look)
     titleBarStyle:        isMac ? 'hiddenInset' : 'default',
     trafficLightPosition: isMac ? { x: 16, y: 16 } : undefined,
-
-    // macOS: enable vibrancy for native sidebar-like feel
     vibrancy:             isMac ? 'sidebar' : undefined,
 
     webPreferences: {
-      preload:          path.join(__dirname, 'preload.js'),
-      contextIsolation: true,
-      nodeIntegration:  false,
+      preload:                    path.join(__dirname, 'preload.js'),
+      contextIsolation:           true,
+      nodeIntegration:            false,
+      sandbox:                    true,         // Renderer-Prozess sandboxen
+      webSecurity:                true,
+      allowRunningInsecureContent: false,
+      devTools:                   isDev,        // DevTools nur in Entwicklung
     },
   })
 
@@ -60,12 +91,26 @@ function createWindow() {
     win.loadFile(path.join(__dirname, '../dist/index.html'))
   }
 
-  // On macOS reflect the system dark/light mode automatically
-  if (isMac) {
-    nativeTheme.themeSource = 'system'
-  }
+  if (isMac) nativeTheme.themeSource = 'system'
+
+  // ── Navigation guard: nur lokale URLs erlauben ─────────────────────────────
+  win.webContents.on('will-navigate', (event, url) => {
+    const allowed = isDev
+      ? url.startsWith('http://localhost:5173')
+      : url.startsWith('file://')
+    if (!allowed) event.preventDefault()
+  })
+
+  // Neue Fenster (target="_blank" etc.) im System-Browser öffnen, nie intern
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    if (url.startsWith('https://') || url.startsWith('http://')) {
+      shell.openExternal(url)
+    }
+    return { action: 'deny' }
+  })
 
   buildMenu(win)
+  setupAutoUpdater(win)
   return win
 }
 
@@ -222,6 +267,10 @@ ipcMain.handle('protocols:import-json', async () => {
   try   { return JSON.parse(fs.readFileSync(filePaths[0], 'utf-8')) }
   catch { return null }
 })
+
+// ── Update IPC ────────────────────────────────────────────────────────────────
+ipcMain.handle('update:install', () => autoUpdater.quitAndInstall())
+ipcMain.handle('update:check',   () => { if (!isDev) autoUpdater.checkForUpdates() })
 
 // ── Lifecycle ─────────────────────────────────────────────────────────────────
 app.whenReady().then(() => {

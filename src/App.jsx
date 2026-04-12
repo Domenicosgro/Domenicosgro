@@ -34,6 +34,20 @@ export default function App() {
   const activeIdRef = useRef(activeId)
   activeIdRef.current = activeId
 
+  // ── Auto-updater notifications ────────────────────────────────────────────
+  const [updateAvailable,  setUpdateAvailable]  = useState(null)   // info object or null
+  const [updateDownloaded, setUpdateDownloaded] = useState(null)   // info object or null
+
+  useEffect(() => {
+    if (!isElectron) return
+    window.electronAPI.onUpdateAvailable(info  => setUpdateAvailable(info))
+    window.electronAPI.onUpdateDownloaded(info => setUpdateDownloaded(info))
+    return () => {
+      window.electronAPI.removeAllListeners('update:available')
+      window.electronAPI.removeAllListeners('update:downloaded')
+    }
+  }, [])
+
   // ── German spell check on all free-text inputs/textareas ────────────────
   useEffect(() => {
     const apply = () => {
@@ -111,6 +125,45 @@ export default function App() {
     setView('home')
   }
 
+  // ── Update banner (Electron only) ────────────────────────────────────────
+  const UpdateBanner = () => {
+    if (!isElectron) return null
+    if (updateDownloaded) {
+      return (
+        <div className="fixed bottom-0 inset-x-0 z-50 flex items-center justify-between gap-4 bg-green-700 text-white px-5 py-3 text-sm shadow-lg no-print">
+          <span>
+            <strong>Update {updateDownloaded.version} heruntergeladen.</strong>{' '}
+            Jetzt neu starten, um das Update zu installieren.
+          </span>
+          <button
+            className="shrink-0 px-4 py-1.5 rounded bg-white text-green-800 font-semibold hover:bg-green-100 transition"
+            onClick={() => window.electronAPI.installUpdate()}
+          >
+            Jetzt neu starten
+          </button>
+        </div>
+      )
+    }
+    if (updateAvailable) {
+      return (
+        <div className="fixed bottom-0 inset-x-0 z-50 flex items-center justify-between gap-4 bg-brand-700 text-white px-5 py-3 text-sm shadow-lg no-print">
+          <span>
+            <strong>Update {updateAvailable.version} verfügbar.</strong>{' '}
+            Wird im Hintergrund heruntergeladen…
+          </span>
+          <button
+            className="shrink-0 text-white/70 hover:text-white text-lg leading-none"
+            onClick={() => setUpdateAvailable(null)}
+            title="Schließen"
+          >
+            ×
+          </button>
+        </div>
+      )
+    }
+    return null
+  }
+
   // ── Loading ───────────────────────────────────────────────────────────────
   if (!loaded || !projectsLoaded) {
     return (
@@ -129,17 +182,20 @@ export default function App() {
     if (!activeProtocol) { setView('protocols'); return null }
 
     return (
-      <ProtocolEditor
-        protocol={activeProtocol}
-        protocols={protocols}
-        projects={projects}
-        projectContacts={projectContacts}
-        logoDataUrl={logoDataUrl}
-        onLogoUpdate={updateLogo}
-        onLogoClear={clearLogo}
-        onUpdate={updateProtocol}
-        onBack={handleBackFromEditor}
-      />
+      <>
+        <ProtocolEditor
+          protocol={activeProtocol}
+          protocols={protocols}
+          projects={projects}
+          projectContacts={projectContacts}
+          logoDataUrl={logoDataUrl}
+          onLogoUpdate={updateLogo}
+          onLogoClear={clearLogo}
+          onUpdate={updateProtocol}
+          onBack={handleBackFromEditor}
+        />
+        <UpdateBanner />
+      </>
     )
   }
 
@@ -151,18 +207,21 @@ export default function App() {
     )
 
     return (
-      <ProtocolList
-        protocols={filtered}
-        project={project}
-        onCreate={handleCreateProtocol}
-        onOpen={handleOpenProtocol}
-        onDelete={deleteProtocol}
-        onDuplicate={duplicateProtocol}
-        onImport={importProtocol}
-        onOpenImported={(id) => { setActiveId(id); setView('editor') }}
-        onBack={handleBackFromProtocols}
-        onManageContacts={() => setView('project-contacts')}
-      />
+      <>
+        <ProtocolList
+          protocols={filtered}
+          project={project}
+          onCreate={handleCreateProtocol}
+          onOpen={handleOpenProtocol}
+          onDelete={deleteProtocol}
+          onDuplicate={duplicateProtocol}
+          onImport={importProtocol}
+          onOpenImported={(id) => { setActiveId(id); setView('editor') }}
+          onBack={handleBackFromProtocols}
+          onManageContacts={() => setView('project-contacts')}
+        />
+        <UpdateBanner />
+      </>
     )
   }
 
@@ -171,25 +230,31 @@ export default function App() {
     const project = projects.find(p => p.id === selectedProjectId)
     // Wrap ProjectManager to show only this one project
     return (
-      <ProjectManager
-        projects={project ? [project] : []}
-        onCreate={createProject}
-        onUpdate={updateProject}
-        onDelete={deleteProject}
-        onBack={() => setView('protocols')}
-      />
+      <>
+        <ProjectManager
+          projects={project ? [project] : []}
+          onCreate={createProject}
+          onUpdate={updateProject}
+          onDelete={deleteProject}
+          onBack={() => setView('protocols')}
+        />
+        <UpdateBanner />
+      </>
     )
   }
 
   // ── Start: projects home ──────────────────────────────────────────────────
   return (
-    <ProjectsHome
-      projects={projects}
-      protocols={protocols}
-      onCreate={createProject}
-      onUpdate={updateProject}
-      onDelete={deleteProject}
-      onOpenProject={openProject}
-    />
+    <>
+      <ProjectsHome
+        projects={projects}
+        protocols={protocols}
+        onCreate={createProject}
+        onUpdate={updateProject}
+        onDelete={deleteProject}
+        onOpenProject={openProject}
+      />
+      <UpdateBanner />
+    </>
   )
 }

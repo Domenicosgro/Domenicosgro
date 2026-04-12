@@ -16,7 +16,10 @@
     "better-sqlite3": "^12.8.0",
     "cors": "^2.8.6",
     "dictionary-de": "^3.0.0",
+    "electron-log": "^5.4.3",
+    "electron-updater": "^6.8.3",
     "express": "^5.2.1",
+    "express-rate-limit": "^8.3.2",
     "helmet": "^8.1.0",
     "lucide-react": "^0.462.0",
     "nspell": "^2.1.5",
@@ -119,6 +122,10 @@
           "path": "/Applications"
         }
       ]
+    },
+    "publish": {
+      "provider": "generic",
+      "url": "https://DEIN-UPDATE-SERVER/updates"
     }
   }
 }

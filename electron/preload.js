@@ -26,5 +26,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onMenuPrint:       (cb) => ipcRenderer.on('menu:print',        (_e) => cb()),
   onMenuSendAgenda:  (cb) => ipcRenderer.on('menu:send-agenda',  (_e) => cb()),
 
+  // Auto-updater events pushed from main
+  onUpdateAvailable:  (cb) => ipcRenderer.on('update:available',  (_e, info) => cb(info)),
+  onUpdateDownloaded: (cb) => ipcRenderer.on('update:downloaded', (_e, info) => cb(info)),
+  installUpdate:      ()   => ipcRenderer.invoke('update:install'),
+  checkForUpdates:    ()   => ipcRenderer.invoke('update:check'),
+
   removeAllListeners: (channel) => ipcRenderer.removeAllListeners(channel),
 })
