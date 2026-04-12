@@ -236,7 +236,12 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
           <button className="btn-secondary" onClick={() => exportDocx(protocol, chainNo)}>
             <FileText size={16} /> Word
           </button>
-          <button className="btn-secondary" onClick={() => window.print()}>
+          <button className="btn-secondary" onClick={() => {
+            const prev = document.title
+            document.title = protocolNo
+            window.print()
+            setTimeout(() => { document.title = prev }, 500)
+          }}>
             <Printer size={16} /> Drucken / PDF
           </button>
           {isClosed
@@ -458,9 +463,9 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
           />
         </div>
 
-        {/* Agenda draft + controls */}
+        {/* Agenda draft + controls – screen only; print version is above as hidden print:block */}
         {!isClosed && (
-          <div className="py-6 space-y-4">
+          <div className="py-6 space-y-4 no-print">
             <AgendaDraft
               agenda={protocol.agenda ?? []}
               agendaGreeting={protocol.agendaGreeting ?? ''}

@@ -124,27 +124,43 @@ function buildAgendaPage(protocol) {
   out.push(sp())
   out.push(sectionTitle('Tagesordnung'))
 
-  const cols = [
-    { text: 'Nr.',       width: 8 },
-    { text: 'Thema',     width: 47 },
-    { text: 'Dauer',     width: 14, headerOpts: { alignment: AlignmentType.RIGHT } },
-    { text: 'Zuständig', width: 31 },
-  ]
-  const rows = agenda.map((item, i) => [
-    { text: String(item.no || i + 1), opts: { bold: true, color: BRAND } },
-    item.topic || '–',
-    { text: item.duration ? `${item.duration} min` : '–', opts: { color: GRAY, alignment: AlignmentType.RIGHT } },
-    { text: item.responsible || '–', opts: { color: GRAY } },
-  ])
-  if (totalMin > 0) {
-    rows.push([
-      '',
-      { text: 'Gesamt', opts: { color: GRAY } },
-      { text: `${totalMin} min`, opts: { bold: true, color: BRAND, alignment: AlignmentType.RIGHT } },
-      '',
-    ])
-  }
-  out.push(dataTable(cols, rows))
+  const headerRow = new TableRow({
+    tableHeader: true,
+    children: [
+      tc('Nr.',       8,  { bold: true, color: GRAY, allCaps: true, size: 16 }),
+      tc('Thema',     47, { bold: true, color: GRAY, allCaps: true, size: 16 }),
+      tc('Dauer',     14, { bold: true, color: GRAY, allCaps: true, size: 16, alignment: AlignmentType.RIGHT }),
+      tc('Zuständig', 31, { bold: true, color: GRAY, allCaps: true, size: 16 }),
+    ],
+  })
+  const bodyRows = agenda.map((item, i) => new TableRow({
+    children: [
+      tc(String(item.no || i + 1), 8, { bold: true, color: BRAND }),
+      // Thema cell: topic + optional Unterlagen sub-line
+      new TableCell({
+        width:   { size: 47, type: WidthType.PERCENTAGE },
+        margins: { top: 60, bottom: 60, left: 80, right: 80 },
+        children: [
+          para([run(item.topic || '–')]),
+          ...(item.documents ? [para([run(`Unterlagen: ${item.documents}`, { size: 17, color: GRAY })])] : []),
+        ],
+      }),
+      tc(item.duration ? `${item.duration} min` : '–', 14, { color: GRAY, alignment: AlignmentType.RIGHT }),
+      tc(item.responsible || '–', 31, { color: GRAY }),
+    ],
+  }))
+  const totalRow = totalMin > 0 ? [new TableRow({ children: [
+    tc('', 8, {}),
+    tc('Gesamt', 47, { color: GRAY }),
+    tc(`${totalMin} min`, 14, { bold: true, color: BRAND, alignment: AlignmentType.RIGHT }),
+    tc('', 31, {}),
+  ]})] : []
+  out.push(new Table({
+    width:   { size: 100, type: WidthType.PERCENTAGE },
+    borders: { top: NO_BORDER, bottom: NO_BORDER, left: NO_BORDER, right: NO_BORDER,
+               insideHorizontal: THIN_BORDER, insideVertical: NO_BORDER },
+    rows: [headerRow, ...bodyRows, ...totalRow],
+  }))
 
   // Participants
   if (present.length > 0) {
