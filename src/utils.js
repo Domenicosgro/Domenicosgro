@@ -8,7 +8,7 @@ export const formatDate = (iso) => {
   return `${d}.${m}.${y}`
 }
 
-export const MEETING_TYPES = ['Baubesprechung', 'Jour Fixe', 'Projektbesprechung', 'Abnahme', 'Sonstige']
+export const MEETING_TYPES = ['Baubesprechung', 'Team-Besprechung', 'Projektbesprechung']
 
 export const ACTION_STATUSES = [
   { value: 'offen',       label: 'Offen',       color: 'badge-yellow' },
