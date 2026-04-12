@@ -16,6 +16,7 @@
     "better-sqlite3": "^12.8.0",
     "cors": "^2.8.6",
     "dictionary-de": "^3.0.0",
+    "docx": "^9.6.1",
     "electron-log": "^5.4.3",
     "electron-updater": "^6.8.3",
     "express": "^5.2.1",

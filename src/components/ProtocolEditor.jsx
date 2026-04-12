@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useEffect } from 'react'
-import { ArrowLeft, Printer, Download, Send, RefreshCw, AlertCircle, Lock, Unlock, Building2 } from 'lucide-react'
+import { ArrowLeft, Printer, Download, Send, RefreshCw, AlertCircle, Lock, Unlock, Building2, FileText } from 'lucide-react'
 import MeetingHeader    from './MeetingHeader'
 import ParticipantsList from './ParticipantsList'
 import AgendaDraft      from './AgendaDraft'
@@ -8,6 +8,7 @@ import ProtocolItems    from './ProtocolItems'
 import ActionItems      from './ActionItems'
 import NotesSection     from './NotesSection'
 import { formatDate, buildProtocolNo, getChainNo, uid, emptyAgendaItem } from '../utils'
+import { exportDocx } from '../exportDocx'
 
 const isElectron = typeof window !== 'undefined' && !!window.electronAPI
 
@@ -232,6 +233,9 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
               <Download size={16} /> Exportieren
             </button>
           )}
+          <button className="btn-secondary" onClick={() => exportDocx(protocol, chainNo)}>
+            <FileText size={16} /> Word
+          </button>
           <button className="btn-secondary" onClick={() => window.print()}>
             <Printer size={16} /> Drucken / PDF
           </button>
@@ -294,10 +298,6 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
                 ))}
               </tbody>
             </table>
-
-            {protocol.agendaGreeting && (
-              <p className="text-sm text-gray-700 mb-5 whitespace-pre-line">{protocol.agendaGreeting}</p>
-            )}
 
             <div className="font-semibold text-gray-800 text-sm border-b-2 border-gray-700 pb-1 mb-2">Tagesordnung</div>
             <table className="w-full text-sm border-collapse">
