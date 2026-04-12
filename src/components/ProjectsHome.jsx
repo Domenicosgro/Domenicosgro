@@ -103,6 +103,8 @@ export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, 
   const [modal,     setModal]     = useState(null)   // { mode, projectId }
   // IDs unlocked this session (in-memory only — re-locks on restart)
   const [unlocked,  setUnlocked]  = useState(() => new Set())
+  // ID of the project whose name input should be auto-focused after creation
+  const focusIdRef = useRef(null)
 
   const q = search.trim().toLowerCase()
   const filtered = projects.filter(p => !q || (p.name || '').toLowerCase().includes(q))
@@ -110,8 +112,16 @@ export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, 
   const protocolsFor = (id) => protocols.filter(p => p.projectId === id)
   const lastDate = (arr) => arr.length ? arr.map(p => p.date).sort().reverse()[0] : null
 
+  // ── Create project and auto-focus its name input ────────────────────────────
+  const handleCreate = () => {
+    const id = onCreate()
+    focusIdRef.current = id
+  }
+
   // ── Open project (with lock check) ──────────────────────────────────────────
   const handleCardClick = (project) => {
+    // Block navigation for unnamed projects so the user can type a name first
+    if (!project.name.trim()) return
     if (project.passwordHash && !unlocked.has(project.id)) {
       setModal({ mode: 'unlock', projectId: project.id })
     } else {
@@ -170,7 +180,7 @@ export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, 
           <h1 className="text-2xl font-bold text-gray-900">Komplizen Protokolle</h1>
           <p className="text-sm text-gray-500 mt-0.5">Projekte &amp; Besprechungsprotokolle</p>
         </div>
-        <button className="btn-primary self-start sm:self-auto" onClick={onCreate}>
+        <button className="btn-primary self-start sm:self-auto" onClick={handleCreate}>
           <Plus size={16} /> Neues Projekt
         </button>
       </div>
@@ -190,7 +200,7 @@ export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, 
           <FolderOpen size={44} className="mx-auto text-gray-300 mb-3" />
           <p className="text-gray-500 font-medium text-lg">Noch keine Projekte vorhanden</p>
           <p className="text-sm text-gray-400 mt-1">Lege ein Projekt an – danach kannst du Protokolle erstellen und zuordnen.</p>
-          <button className="btn-primary mt-5" onClick={onCreate}>
+          <button className="btn-primary mt-5" onClick={handleCreate}>
             <Plus size={15} /> Erstes Projekt anlegen
           </button>
         </div>
@@ -222,6 +232,12 @@ export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, 
                       className="font-semibold text-base text-gray-900 bg-transparent border-none outline-none w-full focus:bg-white focus:border focus:border-brand-300 focus:rounded px-1 -ml-1"
                       value={project.name}
                       placeholder="Projektname…"
+                      ref={el => {
+                        if (el && project.id === focusIdRef.current) {
+                          el.focus()
+                          focusIdRef.current = null
+                        }
+                      }}
                       onClick={e => e.stopPropagation()}
                       onChange={e => onUpdate(project.id, { name: e.target.value })}
                     />
