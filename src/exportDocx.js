@@ -259,11 +259,21 @@ function buildContent(protocol, protocolNo) {
         indent: { left: indent },
         spacing: { before: lvl === 1 ? 180 : 60, after: 40 },
       }))
-      if (item.description?.trim()) {
-        out.push(para([run(item.description, { color: isGray ? GRAY : '374151', size: 19 })], {
+      if (item.discussion?.trim()) {
+        out.push(para([run(item.discussion, { color: isGray ? GRAY : '374151', size: 19 })], {
           indent: { left: indent + 200 },
-          spacing: { before: 0, after: 100 },
+          spacing: { before: 0, after: 40 },
         }))
+      }
+      // Per-item tasks
+      const myTasks = actions.filter(t => t.protocolItemId === item.id)
+      for (const task of myTasks) {
+        const taskDone = task.status === 'erledigt'
+        out.push(para([
+          run(taskDone ? '✓ ' : '○ ', { color: taskDone ? GREEN : GRAY, size: 18 }),
+          run(task.description || '–', { color: taskDone ? GRAY : DARK, size: 18 }),
+          ...(task.responsible ? [run(`  [${task.responsible}]`, { color: GRAY, size: 17 })] : []),
+        ], { indent: { left: indent + 360 }, spacing: { before: 20, after: 20 } }))
       }
     }
   }
@@ -316,7 +326,7 @@ function buildContent(protocol, protocolNo) {
 // ── Public API ─────────────────────────────────────────────────────────────────
 
 export async function exportDocx(protocol, chainNo = null) {
-  const protocolNo = buildProtocolNo(protocol.projectName, protocol.date, chainNo)
+  const protocolNo = buildProtocolNo(protocol.projectName, protocol.date, chainNo, protocol.meetingType)
   const agenda     = protocol.agenda ?? []
 
   const children = [

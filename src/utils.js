@@ -8,7 +8,7 @@ export const formatDate = (iso) => {
   return `${d}.${m}.${y}`
 }
 
-export const MEETING_TYPES = ['Baubesprechung', 'Team-Besprechung', 'Projektbesprechung']
+export const MEETING_TYPES = ['Baubesprechung', 'Team-Besprechung', 'Projektbesprechung', 'Jour-Fix']
 
 export const ACTION_STATUSES = [
   { value: 'offen',       label: 'Offen',       color: 'badge-yellow' },
@@ -29,6 +29,22 @@ export const statusBadge = (val) =>
 export const priorityBadge = (val) =>
   PRIORITIES.find(p => p.value === val) ?? PRIORITIES[1]
 
+// Fixed abbreviations for known meeting types; custom types → initials or first 3 chars
+const MEETING_TYPE_ABBREV = {
+  'Baubesprechung':    'BB',
+  'Team-Besprechung':  'TB',
+  'Projektbesprechung':'PB',
+  'Jour-Fix':          'JF',
+}
+export const getMeetingAbbrev = (meetingType) => {
+  if (!meetingType?.trim()) return ''
+  const fixed = MEETING_TYPE_ABBREV[meetingType.trim()]
+  if (fixed) return fixed
+  const words = meetingType.trim().split(/[\s\-_]+/)
+  if (words.length > 1) return words.map(w => w[0]?.toUpperCase() ?? '').join('').slice(0, 4)
+  return meetingType.trim().slice(0, 3).toUpperCase()
+}
+
 // Returns the chain sequence number for a protocol (1-based).
 // Returns null if the protocol is standalone (no predecessor and not referenced as one).
 export const getChainNo = (protocol, allProtocols) => {
@@ -47,13 +63,13 @@ export const getChainNo = (protocol, allProtocols) => {
   return depth
 }
 
-// Auto-generate protocol number: ["N - "]"ProjektName_DD.MM.YYYY"
-// chainNo is computed via getChainNo() and is optional.
-export const buildProtocolNo = (projectName, date, chainNo = null) => {
-  const name = (projectName || '').trim().replace(/\s+/g, '-') || 'Protokoll'
-  const d = date ? formatDate(date) : formatDate(today())
+// Auto-generate protocol number: ["N - "]["TYPE-"]"ProjektName_DD.MM.YYYY"
+export const buildProtocolNo = (projectName, date, chainNo = null, meetingType = null) => {
+  const name   = (projectName || '').trim().replace(/\s+/g, '-') || 'Protokoll'
+  const d      = date ? formatDate(date) : formatDate(today())
   const prefix = chainNo !== null ? `${chainNo} - ` : ''
-  return `${prefix}${name}_${d}`
+  const abbrev = meetingType?.trim() ? `${getMeetingAbbrev(meetingType)}-` : ''
+  return `${prefix}${abbrev}${name}_${d}`
 }
 
 export const emptyContact = () => ({
@@ -85,7 +101,7 @@ export async function hashPassword(password) {
 
 export const emptyProtocol = () => ({
   id: uid(),
-  meetingType: 'Baubesprechung',
+  meetingType: '',
   projectName: '',
   projectId: null,   // link to project database entry
   date: today(),
@@ -212,4 +228,5 @@ export const emptyActionItem = () => ({
   remarks: '',
   carriedFromId: null,
   completedAt: null,
+  protocolItemId: null,   // links to an agendaItem.id when added from within a protocol point
 })

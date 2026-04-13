@@ -52,7 +52,7 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
   const [confirmClose,   setConfirmClose]   = useState(false)
 
   const chainNo     = getChainNo(protocol, protocols ?? [])
-  const protocolNo  = buildProtocolNo(protocol.projectName, protocol.date, chainNo)
+  const protocolNo  = buildProtocolNo(protocol.projectName, protocol.date, chainNo, protocol.meetingType)
   const createdDate = formatDate(protocol.createdAt?.slice(0, 10) ?? protocol.date)
   const isClosed    = !!protocol.isClosed
 
@@ -490,6 +490,8 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
           <ProtocolItems
             items={protocol.agendaItems ?? []}
             onChange={agendaItems => change({ agendaItems })}
+            allTasks={protocol.actionItems ?? []}
+            onTasksChange={actionItems => change({ actionItems })}
             readOnly={isClosed}
             projectContacts={projectContacts ?? []}
           />
@@ -500,6 +502,7 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
           <ActionItems
             items={protocol.actionItems ?? []}
             onChange={actionItems => change({ actionItems })}
+            agendaItems={protocol.agendaItems ?? []}
           />
         </div>
 

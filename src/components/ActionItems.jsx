@@ -15,7 +15,7 @@ function highlight(text, query) {
   )
 }
 
-export default function ActionItems({ items, onChange }) {
+export default function ActionItems({ items, onChange, agendaItems = [] }) {
   const [hideCompleted, setHideCompleted] = useState(false)
   const [search, setSearch] = useState('')
 
@@ -158,6 +158,10 @@ export default function ActionItems({ items, onChange }) {
                   {/* Description */}
                   <div className="space-y-1">
                     {isCarried && <span className="badge-blue text-xs">↩ Übernommen</span>}
+                    {item.protocolItemId && (() => {
+                      const ref = agendaItems.find(it => it.id === item.protocolItemId)
+                      return ref ? <span className="badge text-xs bg-gray-100 text-gray-500">Pkt. {ref.no} – {ref.topic?.slice(0,30)}</span> : null
+                    })()}
                     <input
                       className={`input py-1 text-sm font-medium ${done ? 'line-through text-gray-400 bg-green-50' : ''}`}
                       placeholder="Beschreibung der Maßnahme..."

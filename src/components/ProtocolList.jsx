@@ -45,7 +45,7 @@ export default function ProtocolList({
   const q = search.toLowerCase()
   const filtered = protocols.filter(p => {
     if (!q) return true
-    const no = buildProtocolNo(p.projectName, p.date, getChainNo(p, pool))
+    const no = buildProtocolNo(p.projectName, p.date, getChainNo(p, pool), p.meetingType)
     return (
       p.projectName.toLowerCase().includes(q) ||
       p.meetingType.toLowerCase().includes(q) ||
@@ -121,7 +121,7 @@ export default function ProtocolList({
       <div className="space-y-3">
         {filtered.map(p => {
           const openActions = (p.actionItems ?? []).filter(a => a.status === 'offen' || a.status === 'in_arbeit').length
-          const no = buildProtocolNo(p.projectName, p.date, getChainNo(p, pool))
+          const no = buildProtocolNo(p.projectName, p.date, getChainNo(p, pool), p.meetingType)
           return (
             <div
               key={p.id}

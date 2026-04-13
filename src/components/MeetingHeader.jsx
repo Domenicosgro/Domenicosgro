@@ -7,7 +7,7 @@ export default function MeetingHeader({ protocol, protocols, projects, logoDataU
   const set = (field) => (e) => onChange({ [field]: e.target.value })
 
   const chainNo    = getChainNo(protocol, protocols ?? [])
-  const protocolNo = buildProtocolNo(protocol.projectName, protocol.date, chainNo)
+  const protocolNo = buildProtocolNo(protocol.projectName, protocol.date, chainNo, protocol.meetingType)
 
   // Predecessor dropdown: show all other protocols (not just same project)
   // so the user can pick any predecessor regardless of project name
@@ -19,9 +19,9 @@ export default function MeetingHeader({ protocol, protocols, projects, logoDataU
     const predId = e.target.value || null
     const pred   = predId ? (protocols ?? []).find(p => p.id === predId) : null
     const patch  = { predecessorId: predId }
-    // Auto-fill project name from predecessor if current field is empty
-    if (pred && !protocol.projectName.trim()) {
-      patch.projectName = pred.projectName
+    if (pred) {
+      if (!protocol.projectName.trim())   patch.projectName  = pred.projectName
+      if (!protocol.meetingType?.trim())  patch.meetingType  = pred.meetingType
     }
     onChange(patch)
   }
@@ -134,7 +134,7 @@ export default function MeetingHeader({ protocol, protocols, projects, logoDataU
           <option value="">– Kein Vorgänger –</option>
           {predecessorOptions.map(p => {
             const pChainNo = getChainNo(p, protocols ?? [])
-            const no = buildProtocolNo(p.projectName, p.date, pChainNo)
+            const no = buildProtocolNo(p.projectName, p.date, pChainNo, p.meetingType)
             return (
               <option key={p.id} value={p.id}>
                 {no}{p.location ? ` – ${p.location}` : ''}

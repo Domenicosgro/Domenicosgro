@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import { Plus, Trash2, FileText, IndentIncrease, IndentDecrease, Search, X,
          CheckCircle2, Circle, User, Calendar, Paperclip, ExternalLink, GripVertical } from 'lucide-react'
-import { emptyAgendaItem, uid, formatDate } from '../utils'
+import { emptyAgendaItem, emptyActionItem, uid, formatDate } from '../utils'
 import SpellCheckTextarea from './SpellCheckTextarea'
 
 const isElectron = typeof window !== 'undefined' && !!window.electronAPI
@@ -99,7 +99,7 @@ function suggestTopNo(items) {
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-export default function ProtocolItems({ items, onChange, readOnly, projectContacts }) {
+export default function ProtocolItems({ items, onChange, allTasks = [], onTasksChange = () => {}, readOnly, projectContacts }) {
   const contactListId = 'protocol-contacts-list'
   const [search,        setSearch]        = useState('')
   const [showCompleted, setShowCompleted] = useState(true)
@@ -167,6 +167,27 @@ export default function ProtocolItems({ items, onChange, readOnly, projectContac
     onChange(renumberItems(next))
   }
 
+  // ── Per-item inline tasks ──────────────────────────────────────────────────
+  const itemTasks  = (itemId) => allTasks.filter(t => t.protocolItemId === itemId)
+
+  const addTask = (protocolItemId) => {
+    const newTask = { ...emptyActionItem(), protocolItemId, no: String(allTasks.length + 1) }
+    onTasksChange([...allTasks, newTask])
+  }
+  const updateTask = (taskId, field, value) => {
+    onTasksChange(allTasks.map(t => {
+      if (t.id !== taskId) return t
+      const upd = { ...t, [field]: value }
+      if (field === 'status') upd.completedAt = value === 'erledigt' ? new Date().toISOString() : null
+      return upd
+    }))
+  }
+  const removeTask = (taskId) => onTasksChange(allTasks.filter(t => t.id !== taskId))
+  const toggleTask = (taskId) => onTasksChange(allTasks.map(t =>
+    t.id === taskId ? { ...t, status: t.status === 'erledigt' ? 'offen' : 'erledigt',
+      completedAt: t.status !== 'erledigt' ? new Date().toISOString() : null } : t
+  ))
+
   const handleAttachFile = (id, file) => {
     if (!file) return
     if (file.size > 20 * 1024 * 1024) { alert('Datei ist zu groß (max. 20 MB).'); return }
@@ -186,6 +207,11 @@ export default function ProtocolItems({ items, onChange, readOnly, projectContac
   }
 
   const remove = (id) => { if (!readOnly) onChange(items.filter(it => it.id !== id)) }
+
+  const reactivate = (id) => {
+    if (readOnly) return
+    onChange(items.map(it => it.id === id ? { ...it, status: 'offen', carriedGray: false } : it))
+  }
 
   const changeLevel = (id, delta) => {
     if (readOnly) return
@@ -234,7 +260,6 @@ export default function ProtocolItems({ items, onChange, readOnly, projectContac
     if (q) return (
       it.topic.toLowerCase().includes(q) ||
       it.discussion.toLowerCase().includes(q) ||
-      it.result.toLowerCase().includes(q) ||
       (it.assignedTo ?? '').toLowerCase().includes(q) ||
       (it.no ?? '').toLowerCase().includes(q)
     )
@@ -384,7 +409,17 @@ export default function ProtocolItems({ items, onChange, readOnly, projectContac
                       {done ? <CheckCircle2 size={18} /> : <Circle size={18} />}
                     </button>
                   )}
-                  {gray && <span className="badge text-xs bg-gray-200 text-gray-500 flex-shrink-0">Freigemeldet (Vorgänger)</span>}
+                  {gray && (
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      <span className="badge text-xs bg-gray-200 text-gray-500">Freigemeldet (Vorgänger)</span>
+                      {!readOnly && (
+                        <button className="text-xs text-brand-600 hover:text-brand-800 underline no-print"
+                          onClick={() => reactivate(item.id)} title="Punkt wieder aktivieren">
+                          Reaktivieren
+                        </button>
+                      )}
+                    </div>
+                  )}
                   {!gray && item.carriedFromId && <span className="badge-blue text-xs flex-shrink-0 no-print">↩ Übernommen</span>}
 
                   {/* Topic */}
@@ -417,7 +452,7 @@ export default function ProtocolItems({ items, onChange, readOnly, projectContac
 
                 {/* Row 2: createdAt + assignedTo */}
                 {!gray && (
-                  <div className="flex items-center gap-4 pl-16 flex-wrap">
+                  <div className={`flex items-center gap-4 pl-16 flex-wrap ${!item.assignedTo ? 'print:hidden' : ''}`}>
                     <span className="flex items-center gap-1 text-xs text-gray-400 flex-shrink-0">
                       <Calendar size={11} />
                       {item.createdAt ? formatDate(item.createdAt.slice(0, 10)) : '–'}
@@ -438,27 +473,17 @@ export default function ProtocolItems({ items, onChange, readOnly, projectContac
                   </div>
                 )}
 
-                {/* Discussion + Result */}
+                {/* Discussion */}
                 {!gray && (
-                  <div className="space-y-2 pl-16">
+                  <div className={`space-y-2 pl-16 ${!item.discussion ? 'print:hidden' : ''}`}>
                     <div>
-                      <label className="block text-xs text-gray-400 mb-0.5">Besprechungsinhalt</label>
+                      <label className="block text-xs text-gray-400 mb-0.5 no-print">Besprechungsinhalt</label>
                       {readOnly
-                        ? <p className="text-sm text-gray-700 whitespace-pre-line">{item.discussion || '–'}</p>
+                        ? <p className="text-sm text-gray-700 whitespace-pre-line">{item.discussion}</p>
                         : <SpellCheckTextarea
                             className={`textarea text-sm ${done ? 'text-gray-400' : ''}`} rows={2}
                             placeholder="Inhalt…" value={item.discussion}
                             onChange={e => update(item.id, 'discussion', e.target.value)} />
-                      }
-                    </div>
-                    <div>
-                      <label className="block text-xs text-gray-400 mb-0.5">Ergebnis / Beschluss</label>
-                      {readOnly
-                        ? <p className="text-sm text-gray-700 whitespace-pre-line">{item.result || '–'}</p>
-                        : <SpellCheckTextarea
-                            className={`textarea text-sm ${done ? 'text-gray-400' : ''}`} rows={2}
-                            placeholder="Ergebnis…" value={item.result}
-                            onChange={e => update(item.id, 'result', e.target.value)} />
                       }
                     </div>
                   </div>
@@ -500,11 +525,64 @@ export default function ProtocolItems({ items, onChange, readOnly, projectContac
                   </div>
                 )}
 
+                {/* Inline tasks per item */}
+                {!gray && (itemTasks(item.id).length > 0 || (!readOnly && !q)) && (
+                  <div className={`pl-16 ${itemTasks(item.id).length === 0 ? 'no-print' : ''}`}>
+                    {itemTasks(item.id).length > 0 && (
+                      <div className="mt-1 mb-1">
+                        <div className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-0.5 no-print">Aufgaben</div>
+                        <div className="space-y-0.5">
+                          {itemTasks(item.id).map(task => {
+                            const taskDone = task.status === 'erledigt'
+                            return (
+                              <div key={task.id} className="flex items-center gap-1.5 py-0.5">
+                                <button
+                                  className={`flex-shrink-0 ${taskDone ? 'text-green-600' : 'text-gray-300'} no-print`}
+                                  onClick={() => !readOnly && toggleTask(task.id)}
+                                  disabled={readOnly}
+                                  title={taskDone ? 'Als offen markieren' : 'Als erledigt markieren'}
+                                >
+                                  {taskDone ? <CheckCircle2 size={13} /> : <Circle size={13} />}
+                                </button>
+                                <span className={`hidden print:inline text-xs ${taskDone ? 'text-green-700' : 'text-gray-400'}`}>
+                                  {taskDone ? '✓' : '○'}
+                                </span>
+                                {readOnly
+                                  ? <span className={`text-xs flex-1 ${taskDone ? 'line-through text-gray-400' : 'text-gray-700'}`}>
+                                      {task.description || '–'}{task.responsible ? ` [${task.responsible}]` : ''}
+                                    </span>
+                                  : <>
+                                      <input className={`input py-0.5 text-xs flex-1 ${taskDone ? 'line-through text-gray-400' : ''}`}
+                                        placeholder="Aufgabe…" value={task.description}
+                                        onChange={e => updateTask(task.id, 'description', e.target.value)} />
+                                      <input className={`input py-0.5 text-xs w-28 ${taskDone ? 'text-gray-400' : ''}`}
+                                        placeholder="Zuständig…" value={task.responsible}
+                                        onChange={e => updateTask(task.id, 'responsible', e.target.value)} />
+                                      <button className="no-print btn-ghost p-0.5 text-red-400 hover:text-red-600 flex-shrink-0"
+                                        onClick={() => removeTask(task.id)}><Trash2 size={11} /></button>
+                                    </>
+                                }
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    )}
+                    {!readOnly && (
+                      <button
+                        className="no-print flex items-center gap-1 text-xs text-gray-400 hover:text-brand-600 py-0.5 px-1 rounded hover:bg-brand-50 transition-colors"
+                        onClick={() => addTask(item.id)}
+                      >
+                        <Plus size={11} /> Aufgabe
+                      </button>
+                    )}
+                  </div>
+                )}
+
                 {/* Gray summary */}
-                {gray && (item.discussion || item.result) && (
+                {gray && item.discussion && (
                   <div className="text-xs text-gray-400 pl-16 space-y-0.5">
                     {item.discussion && <p><span className="font-medium">Inhalt:</span> {item.discussion}</p>}
-                    {item.result     && <p><span className="font-medium">Ergebnis:</span> {item.result}</p>}
                   </div>
                 )}
               </div>
