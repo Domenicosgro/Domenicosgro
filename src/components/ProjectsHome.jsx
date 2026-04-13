@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react'
 import { Plus, Trash2, Search, ChevronRight, FileText, Users, FolderOpen,
-         Calendar, Lock, LockOpen, X, Eye, EyeOff } from 'lucide-react'
+         Calendar, Lock, LockOpen, X, Eye, EyeOff, Star } from 'lucide-react'
 import { formatDate, hashPassword } from '../utils'
 
 // ── Password modal ─────────────────────────────────────────────────────────────
@@ -103,11 +103,34 @@ export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, 
   const [modal,     setModal]     = useState(null)   // { mode, projectId }
   // IDs unlocked this session (in-memory only — re-locks on restart)
   const [unlocked,  setUnlocked]  = useState(() => new Set())
+  // User-specific favorites stored in localStorage
+  const [favorites, setFavorites] = useState(() => {
+    try { return new Set(JSON.parse(localStorage.getItem('bb_project_favorites') || '[]')) }
+    catch { return new Set() }
+  })
   // ID of the project whose name input should be auto-focused after creation
   const focusIdRef = useRef(null)
 
+  const toggleFavorite = (projectId, e) => {
+    e.stopPropagation()
+    setFavorites(prev => {
+      const next = new Set(prev)
+      if (next.has(projectId)) next.delete(projectId)
+      else next.add(projectId)
+      try { localStorage.setItem('bb_project_favorites', JSON.stringify([...next])) } catch {}
+      return next
+    })
+  }
+
   const q = search.trim().toLowerCase()
-  const filtered = projects.filter(p => !q || (p.name || '').toLowerCase().includes(q))
+  const filtered = projects
+    .filter(p => !q || (p.name || '').toLowerCase().includes(q))
+    // Favorites first, then original order
+    .sort((a, b) => {
+      const af = favorites.has(a.id) ? 0 : 1
+      const bf = favorites.has(b.id) ? 0 : 1
+      return af - bf
+    })
   const unassigned = protocols.filter(p => !p.projectId)
   const protocolsFor = (id) => protocols.filter(p => p.projectId === id)
   const lastDate = (arr) => arr.length ? arr.map(p => p.date).sort().reverse()[0] : null
@@ -271,6 +294,14 @@ export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, 
 
                 {/* Actions */}
                 <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
+                  {/* Favorite star */}
+                  <button
+                    className={`btn-ghost p-2 transition-colors ${favorites.has(project.id) ? 'text-amber-400 hover:text-amber-500' : 'text-gray-300 hover:text-amber-400'}`}
+                    title={favorites.has(project.id) ? 'Favorit aufheben' : 'Als Favorit markieren'}
+                    onClick={e => toggleFavorite(project.id, e)}
+                  >
+                    <Star size={14} fill={favorites.has(project.id) ? 'currentColor' : 'none'} />
+                  </button>
                   {/* Lock / unlock button */}
                   <button
                     className={`btn-ghost p-2 ${isLocked ? 'text-amber-500 hover:text-amber-700' : 'text-gray-400 hover:text-brand-600'}`}

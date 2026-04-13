@@ -10,8 +10,12 @@ export default function ProtocolList({
 }) {
   const pool = allProtocols ?? protocols  // fall back to current list if not provided
   const fileInputRef = useRef(null)
-  const [search, setSearch]       = useState('')
+  const [search,      setSearch]      = useState('')
+  const [filterType,  setFilterType]  = useState('')
   const [importError, setImportError] = useState('')
+
+  // Unique meeting types present in this project's protocols
+  const meetingTypes = [...new Set(protocols.map(p => p.meetingType).filter(Boolean))].sort()
 
   const handleImportClick = async () => {
     setImportError('')
@@ -44,6 +48,7 @@ export default function ProtocolList({
 
   const q = search.toLowerCase()
   const filtered = protocols.filter(p => {
+    if (filterType && p.meetingType !== filterType) return false
     if (!q) return true
     const no = buildProtocolNo(p.projectName, p.date, getChainNo(p, pool), p.meetingType)
     return (
@@ -95,16 +100,44 @@ export default function ProtocolList({
         <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-2">{importError}</p>
       )}
 
-      {/* Search */}
+      {/* Search + type filter */}
       {protocols.length > 0 && (
-        <div className="relative">
-          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-          <input
-            className="input pl-9"
-            placeholder="Protokolle durchsuchen…"
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-          />
+        <div className="space-y-2">
+          <div className="relative">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input
+              className="input pl-9"
+              placeholder="Protokolle durchsuchen…"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+            />
+          </div>
+          {meetingTypes.length > 1 && (
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-xs text-gray-400 shrink-0">Besprechungsart:</span>
+              {meetingTypes.map(type => (
+                <button
+                  key={type}
+                  onClick={() => setFilterType(filterType === type ? '' : type)}
+                  className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${
+                    filterType === type
+                      ? 'bg-brand-600 text-white border-brand-600'
+                      : 'bg-white text-gray-600 border-gray-300 hover:border-brand-400 hover:text-brand-600'
+                  }`}
+                >
+                  {type}
+                </button>
+              ))}
+              {filterType && (
+                <button
+                  onClick={() => setFilterType('')}
+                  className="text-xs text-gray-400 hover:text-gray-600 underline"
+                >
+                  Alle anzeigen
+                </button>
+              )}
+            </div>
+          )}
         </div>
       )}
 

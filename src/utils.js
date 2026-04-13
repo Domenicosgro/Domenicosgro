@@ -8,7 +8,7 @@ export const formatDate = (iso) => {
   return `${d}.${m}.${y}`
 }
 
-export const MEETING_TYPES = ['Baubesprechung', 'Team-Besprechung', 'Projektbesprechung', 'Jour-Fix']
+export const MEETING_TYPES = ['Baubesprechung', 'Team-Besprechung', 'Projektbesprechung', 'Jour Fixe']
 
 export const ACTION_STATUSES = [
   { value: 'offen',       label: 'Offen',       color: 'badge-yellow' },
@@ -34,7 +34,8 @@ const MEETING_TYPE_ABBREV = {
   'Baubesprechung':    'BB',
   'Team-Besprechung':  'TB',
   'Projektbesprechung':'PB',
-  'Jour-Fix':          'JF',
+  'Jour Fixe':         'JF',
+  'Jour-Fix':          'JF',   // legacy alias
 }
 export const getMeetingAbbrev = (meetingType) => {
   if (!meetingType?.trim()) return ''
