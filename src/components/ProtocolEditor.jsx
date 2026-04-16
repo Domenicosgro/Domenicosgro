@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useEffect } from 'react'
-import { ArrowLeft, Printer, Download, Send, RefreshCw, AlertCircle, Lock, Unlock, Building2, FileText } from 'lucide-react'
+import { ArrowLeft, Printer, Download, Send, RefreshCw, AlertCircle, Lock, Unlock, FileText } from 'lucide-react'
 import MeetingHeader    from './MeetingHeader'
 import ParticipantsList from './ParticipantsList'
 import AgendaDraft      from './AgendaDraft'
@@ -204,15 +204,19 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
 
   // ── Shared print header (agenda page + cover page use same logo/title block)
   const PrintHeader = ({ subtitle }) => (
-    <div className="flex items-start justify-between mb-6">
-      {logoDataUrl
-        ? <img src={logoDataUrl} alt="Logo" className="h-14 max-w-[180px] object-contain" />
-        : <Building2 size={32} className="text-brand-600" />
-      }
-      <div className="text-right">
-        <div className="text-xs text-gray-400 uppercase tracking-widest">{subtitle}</div>
-        <div className="text-xl font-bold text-gray-900">{protocol.meetingType}</div>
-        <div className="text-sm text-gray-600">{protocol.projectName}</div>
+    <div className="mb-4">
+      <div className="flex items-end justify-between pb-3 border-b border-black">
+        <div className="flex-shrink-0">
+          {logoDataUrl
+            ? <img src={logoDataUrl} alt="Logo" className="h-12 max-w-[150px] object-contain" />
+            : <div className="h-12 w-8" />
+          }
+        </div>
+        <div className="text-right">
+          <div className="text-xs uppercase tracking-widest">{subtitle}</div>
+          <div className="text-xl font-bold">{protocol.meetingType}</div>
+          <div className="text-sm">{protocol.projectName}</div>
+        </div>
       </div>
     </div>
   )
@@ -233,7 +237,7 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
               <Download size={16} /> Exportieren
             </button>
           )}
-          <button className="btn-secondary" onClick={() => exportDocx(protocol, chainNo)}>
+          <button className="btn-secondary" onClick={() => exportDocx(protocol, chainNo, logoDataUrl)}>
             <FileText size={16} /> Word
           </button>
           <button className="btn-secondary" onClick={() => {
@@ -289,25 +293,25 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
         <div className="hidden print:block">
           <div className="print-agenda-page">
             <PrintHeader subtitle="Einladung / Agenda" />
-            <table className="w-full text-sm mb-6 border-collapse">
+            <table className="w-full text-sm mb-4 border-collapse">
               <tbody>
                 {[
                   ['Datum',    formatDate(protocol.date)],
                   ['Ort',      protocol.location || '–'],
                   ['Einladung',protocol.preparedBy || '–'],
                 ].map(([l, v]) => (
-                  <tr key={l} className="border-b border-gray-100">
-                    <td className="py-1.5 pr-6 text-xs font-medium text-gray-500 uppercase tracking-wide w-28">{l}</td>
-                    <td className="py-1.5 font-medium text-gray-900">{v}</td>
+                  <tr key={l}>
+                    <td className="py-1 pr-6 text-xs uppercase tracking-wide w-28">{l}</td>
+                    <td className="py-1">{v}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
 
-            <div className="font-semibold text-gray-800 text-sm border-b-2 border-gray-700 pb-1 mb-2">Tagesordnung</div>
+            <div className="font-bold text-sm border-b border-black pb-1 mb-1 mt-4 uppercase tracking-wide">Tagesordnung</div>
             <table className="w-full text-sm border-collapse">
               <thead>
-                <tr className="border-b border-gray-300 text-xs text-gray-500 uppercase">
+                <tr className="border-b border-black text-xs uppercase">
                   <th className="text-left py-1 pr-3 w-10">Nr.</th>
                   <th className="text-left py-1 pr-3">Thema</th>
                   <th className="text-right py-1 pr-3 w-20">Dauer</th>
@@ -316,22 +320,22 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
               </thead>
               <tbody>
                 {(protocol.agenda ?? []).map((item, i) => (
-                  <tr key={item.id} className="border-b border-gray-100">
-                    <td className="py-2 pr-3 font-semibold text-gray-600">{item.no || i + 1}</td>
+                  <tr key={item.id}>
+                    <td className="py-2 pr-3 font-semibold">{item.no || i + 1}</td>
                     <td className="py-2 pr-3">
                       <span className="font-medium">{item.topic || '–'}</span>
-                      {item.documents && <span className="block text-xs text-gray-400">Unterlagen: {item.documents}</span>}
+                      {item.documents && <span className="block text-xs">Unterlagen: {item.documents}</span>}
                     </td>
-                    <td className="py-2 pr-3 text-right text-gray-500">{item.duration ? `${item.duration} min` : '–'}</td>
-                    <td className="py-2 text-gray-500">{item.responsible || '–'}</td>
+                    <td className="py-2 pr-3 text-right">{item.duration ? `${item.duration} min` : '–'}</td>
+                    <td className="py-2">{item.responsible || '–'}</td>
                   </tr>
                 ))}
               </tbody>
               {(protocol.agenda ?? []).reduce((s, a) => s + (parseInt(a.duration) || 0), 0) > 0 && (
                 <tfoot>
-                  <tr className="border-t border-gray-300">
-                    <td colSpan={2} className="pt-2 text-xs text-gray-500">Gesamt</td>
-                    <td className="pt-2 text-right text-sm font-semibold text-brand-700 pr-3">
+                  <tr className="border-t border-black">
+                    <td colSpan={2} className="pt-2 text-xs">Gesamt</td>
+                    <td className="pt-2 text-right text-sm font-bold pr-3">
                       {(protocol.agenda ?? []).reduce((s, a) => s + (parseInt(a.duration) || 0), 0)} min
                     </td>
                     <td />
@@ -342,8 +346,8 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
 
             {present.length > 0 && (
               <div className="mt-5">
-                <div className="text-xs font-medium text-gray-400 mb-1 uppercase tracking-wide">Eingeladene Teilnehmer</div>
-                <p className="text-sm text-gray-700">{present.map(p => p.name).filter(Boolean).join(' · ')}</p>
+                <div className="text-xs mb-1 uppercase tracking-wide">Eingeladene Teilnehmer</div>
+                <p className="text-sm">{present.map(p => p.name).filter(Boolean).join(' · ')}</p>
               </div>
             )}
           </div>
@@ -357,7 +361,7 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
       <div className="hidden print:block">
         <div className="print-cover-page">
           <PrintHeader subtitle="Besprechungsprotokoll" />
-          <table className="w-full text-sm mb-8 border-collapse">
+          <table className="w-full text-sm mb-6 border-collapse">
             <tbody>
               {[
                 ['Protokoll-Nr.', protocolNo],
@@ -367,9 +371,9 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
                 ...(isClosed ? [['Status', 'Abgeschlossen']] : []),
                 ...(protocol.nextMeeting ? [['Nächste Besprechung', formatDate(protocol.nextMeeting)]] : []),
               ].map(([label, value]) => (
-                <tr key={label} className="border-b border-gray-200">
-                  <td className="py-2 pr-6 font-medium text-gray-500 w-44 text-xs uppercase tracking-wide">{label}</td>
-                  <td className="py-2 text-gray-900 font-medium">{value}</td>
+                <tr key={label}>
+                  <td className="py-1 pr-6 w-44 text-xs uppercase tracking-wide">{label}</td>
+                  <td className="py-1 font-medium">{value}</td>
                 </tr>
               ))}
             </tbody>
@@ -377,12 +381,12 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
 
           {(protocol.participants ?? []).length > 0 && (
             <>
-              <div className="font-semibold text-gray-700 mb-2 text-sm border-b border-gray-300 pb-1">
+              <div className="font-bold mb-2 text-sm border-b border-black pb-1 uppercase tracking-wide">
                 Teilnehmerliste ({present.length} anwesend{absent.length > 0 ? `, ${absent.length} entschuldigt` : ''})
               </div>
               <table className="w-full text-sm border-collapse">
                 <thead>
-                  <tr className="border-b-2 border-gray-300 text-xs text-gray-500 uppercase">
+                  <tr className="border-b border-black text-xs uppercase">
                     <th className="text-left py-1 pr-4 w-6">#</th>
                     <th className="text-left py-1 pr-4">Name</th>
                     <th className="text-left py-1 pr-4">Firma</th>
@@ -393,8 +397,8 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
                 </thead>
                 <tbody>
                   {protocol.participants.map((p, i) => (
-                    <tr key={p.id} className={`border-b border-gray-100 ${!p.present ? 'text-gray-400 italic' : ''}`}>
-                      <td className="py-1.5 pr-4 text-gray-400 text-xs">{i + 1}</td>
+                    <tr key={p.id} className={!p.present ? 'italic' : ''}>
+                      <td className="py-1.5 pr-4 text-xs">{i + 1}</td>
                       <td className="py-1.5 pr-4 font-medium">{p.name || '–'}</td>
                       <td className="py-1.5 pr-4">{p.company || '–'}</td>
                       <td className="py-1.5 pr-4">{p.role || '–'}</td>
@@ -411,8 +415,8 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
       </div>
 
       {/* ── Print running header ── */}
-      <div className="hidden print:flex items-center justify-between border-b border-gray-300 pb-1 mb-6 text-xs text-gray-500">
-        <span className="font-semibold text-gray-700">{protocol.projectName} – {protocol.meetingType}</span>
+      <div className="hidden print:flex items-center justify-between border-b border-black pb-1 mb-6 text-xs">
+        <span className="font-bold">{protocol.projectName} – {protocol.meetingType}</span>
         <span>{protocolNo}{isClosed ? ' · Abgeschlossen' : ''}</span>
       </div>
 
@@ -518,9 +522,8 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
 
       {/* ── Print footer (every page) ── */}
       <div className="print-footer hidden print:flex">
-        <span>{protocol.projectName || '–'} · {protocol.meetingType}</span>
-        <span className="font-semibold">{protocolNo}</span>
-        <span>Erstellt: {createdDate}{protocol.preparedBy ? ' · ' + protocol.preparedBy : ''}{isClosed ? ' · Abgeschlossen' : ''}</span>
+        <span className="font-bold">{protocol.projectName || '–'} · {protocol.meetingType}</span>
+        <span>{protocolNo}</span>
       </div>
 
       <div className="h-16 no-print" />

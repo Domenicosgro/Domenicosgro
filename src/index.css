@@ -63,16 +63,29 @@
   /* Leave bottom margin for the running footer */
   @page { size: A4; margin: 12mm 12mm 20mm 12mm; }
 
-  html { font-size: 10px; }   /* shrink everything proportionally */
+  html { font-size: 10px; font-family: Arial, sans-serif; }
   body { background: white !important; font-size: 9pt; }
+
+  /* B&W typography — Arial only, pure black */
+  * {
+    font-family: Arial, sans-serif !important;
+    color: #000 !important;
+  }
 
   .no-print { display: none !important; }
 
+  /* Flat cards — no border, no shadow, no rounding */
   .card {
-    border: 0.5pt solid #ccc !important;
+    border: none !important;
     box-shadow: none !important;
-    border-radius: 2px !important;
+    border-radius: 0 !important;
     margin-bottom: 6px !important;
+  }
+
+  /* Badges — no coloured backgrounds */
+  .badge, .badge-blue, .badge-green, .badge-yellow, .badge-red, .badge-gray {
+    background-color: white !important;
+    border: none !important;
   }
 
   h1, h2, h3 { page-break-after: avoid; }
@@ -82,6 +95,19 @@
   .protocol-item {
     page-break-inside: avoid;
     break-inside: avoid;
+  }
+
+  /* Protocol item cards: 2px black left bar, flat (no rounding, no background) */
+  .protocol-item > div {
+    border-radius: 0 !important;
+    background-color: white !important;
+    opacity: 1 !important;
+    border-top: none !important;
+    border-right: none !important;
+    border-bottom: none !important;
+    border-left-width: 2px !important;
+    border-left-style: solid !important;
+    border-left-color: #000 !important;
   }
 
   input, textarea, select {
@@ -115,9 +141,10 @@
     display: flex !important;
     align-items: center;
     justify-content: space-between;
-    font-size: 7pt;
-    color: #666;
-    border-top: 0.5pt solid #ccc;
+    font-family: Arial, sans-serif !important;
+    font-size: 7.5pt;
+    color: #000 !important;
+    border-top: 0.5pt solid #000;
     background: white;
     padding-top: 2mm;
   }

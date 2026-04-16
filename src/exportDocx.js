@@ -1,22 +1,22 @@
 import {
   AlignmentType, BorderStyle, convertInchesToTwip,
-  Document, Packer, PageBreak, Paragraph, Table, TableCell, TableRow, TextRun, WidthType,
+  Document, Footer, ImageRun, Packer, PageBreak, PageNumber,
+  Paragraph, Table, TableCell, TableRow, TextRun, VerticalAlign, WidthType,
 } from 'docx'
 import { buildProtocolNo, formatDate } from './utils'
 
 // ── Design tokens ──────────────────────────────────────────────────────────────
-const BRAND = '1a56db'
-const GRAY  = '6b7280'
-const DARK  = '111827'
-const GREEN = '15803d'
+const BLACK = '000000'
+const FONT  = 'Arial'
 
-const NO_BORDER   = { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' }
-const THIN_BORDER = { style: BorderStyle.SINGLE, size: 1, color: 'e5e7eb' }
+const NO_BORDER   = { style: BorderStyle.NONE,   size: 0,  color: 'FFFFFF' }
+const LINE_BORDER = { style: BorderStyle.SINGLE, size: 4,  color: BLACK }   // ~0.5 pt
+const LEFT_BAR    = { style: BorderStyle.SINGLE, size: 12, color: BLACK }   // ~1.5 pt
 
 // ── Low-level helpers ──────────────────────────────────────────────────────────
 
 function run(text, opts = {}) {
-  return new TextRun({ text: String(text ?? ''), size: 20, color: DARK, ...opts })
+  return new TextRun({ text: String(text ?? ''), size: 20, color: BLACK, font: FONT, ...opts })
 }
 
 function para(runs, opts = {}) {
@@ -24,60 +24,75 @@ function para(runs, opts = {}) {
   return new Paragraph({ children, spacing: { before: 0, after: 0 }, ...opts })
 }
 
-function sp() { return para('') }
+function sp(after = 120) { return para('', { spacing: { before: 0, after } }) }
 
-function pageBreakPara() {
-  return new Paragraph({ children: [new PageBreak()] })
-}
+function pageBreakPara() { return new Paragraph({ children: [new PageBreak()] }) }
 
 function sectionTitle(text) {
-  return para([run(text, { bold: true, size: 24, color: DARK })], {
-    spacing: { before: 300, after: 120 },
-    border: { bottom: THIN_BORDER },
+  return para([run(text, { bold: true, size: 22, font: FONT })], {
+    spacing: { before: 280, after: 100 },
+    border: { bottom: LINE_BORDER },
   })
 }
 
-// Table cell helper
+// Body cell — no borders
 function tc(text, widthPct, opts = {}) {
-  const { bold, color, allCaps, size, alignment } = opts
+  const { bold, italic, allCaps, size, alignment } = opts
   return new TableCell({
     width:    { size: widthPct, type: WidthType.PERCENTAGE },
     margins:  { top: 60, bottom: 60, left: 80, right: 80 },
+    borders:  { top: NO_BORDER, bottom: NO_BORDER, left: NO_BORDER, right: NO_BORDER },
     children: [new Paragraph({
       alignment: alignment ?? AlignmentType.LEFT,
       children:  [new TextRun({
         text:    String(text ?? ''),
         bold:    bold    ?? false,
-        color:   color   ?? DARK,
+        italic:  italic  ?? false,
+        color:   BLACK,
         allCaps: allCaps ?? false,
         size:    size    ?? 20,
+        font:    FONT,
       })],
     })],
   })
 }
 
-// No-border table (for metadata key-value pairs)
+// Header cell — bottom border only
+function tcH(text, widthPct, opts = {}) {
+  return new TableCell({
+    width:   { size: widthPct, type: WidthType.PERCENTAGE },
+    margins: { top: 60, bottom: 80, left: 80, right: 80 },
+    borders: { top: NO_BORDER, left: NO_BORDER, right: NO_BORDER, bottom: LINE_BORDER },
+    children: [new Paragraph({
+      alignment: opts.alignment ?? AlignmentType.LEFT,
+      children:  [new TextRun({
+        text: String(text ?? ''), bold: true, color: BLACK,
+        allCaps: true, size: 16, font: FONT,
+      })],
+    })],
+  })
+}
+
+// Metadata block — label allCaps small, value normal, no borders
 function metaTable(rows) {
   const filtered = rows.filter(r => r[1] != null && r[1] !== '')
   if (!filtered.length) return sp()
   return new Table({
     width:   { size: 100, type: WidthType.PERCENTAGE },
     borders: { top: NO_BORDER, bottom: NO_BORDER, left: NO_BORDER, right: NO_BORDER,
-               insideHorizontal: THIN_BORDER, insideVertical: NO_BORDER },
+               insideHorizontal: NO_BORDER, insideVertical: NO_BORDER },
     rows: filtered.map(([label, value]) => new TableRow({ children: [
-      tc(label, 28, { color: GRAY, allCaps: true, size: 17 }),
-      tc(value,  72, { color: DARK }),
+      tc(label, 28, { allCaps: true, size: 16 }),
+      tc(value,  72),
     ]})),
   })
 }
 
-// Data table with column header row
+// Data table — header row has bottom border, body rows have no borders
 function dataTable(columns, dataRows) {
-  // columns: [{ text, width, opts }]
-  // dataRows: [[cell-text-or-opts, ...], ...]
   const headerRow = new TableRow({
     tableHeader: true,
-    children: columns.map(c => tc(c.text, c.width, { bold: true, color: GRAY, allCaps: true, size: 16, ...c.headerOpts })),
+    children: columns.map(c => tcH(c.text, c.width, { alignment: c.headerOpts?.alignment })),
   })
   const bodyRows = dataRows.map(cells => new TableRow({
     children: cells.map((cell, i) => {
@@ -90,105 +105,131 @@ function dataTable(columns, dataRows) {
   return new Table({
     width:   { size: 100, type: WidthType.PERCENTAGE },
     borders: { top: NO_BORDER, bottom: NO_BORDER, left: NO_BORDER, right: NO_BORDER,
-               insideHorizontal: THIN_BORDER, insideVertical: NO_BORDER },
+               insideHorizontal: NO_BORDER, insideVertical: NO_BORDER },
     rows: [headerRow, ...bodyRows],
   })
 }
 
+// Page header: logo left · doc-type/title/project right · bottom black line
+function buildPageHeader(protocol, subtitle, logoImage) {
+  const textChildren = [
+    new Paragraph({
+      alignment: AlignmentType.RIGHT,
+      spacing:   { before: 0, after: 20 },
+      children:  [new TextRun({ text: subtitle.toUpperCase(), size: 16, allCaps: true, color: BLACK, font: FONT })],
+    }),
+    new Paragraph({
+      alignment: AlignmentType.RIGHT,
+      spacing:   { before: 0, after: 20 },
+      children:  [new TextRun({ text: protocol.meetingType || '', bold: true, size: 32, color: BLACK, font: FONT })],
+    }),
+    new Paragraph({
+      alignment: AlignmentType.RIGHT,
+      spacing:   { before: 0, after: 0 },
+      children:  [new TextRun({ text: protocol.projectName || '', size: 20, color: BLACK, font: FONT })],
+    }),
+  ]
+  const leftCell = new TableCell({
+    width:         { size: 35, type: WidthType.PERCENTAGE },
+    borders:       { top: NO_BORDER, left: NO_BORDER, right: NO_BORDER, bottom: LINE_BORDER },
+    verticalAlign: VerticalAlign.BOTTOM,
+    margins:       { top: 0, bottom: 80, left: 0, right: 160 },
+    children:      logoImage
+      ? [new Paragraph({ children: [logoImage], spacing: { before: 0, after: 0 } })]
+      : [sp(0)],
+  })
+  const rightCell = new TableCell({
+    width:         { size: 65, type: WidthType.PERCENTAGE },
+    borders:       { top: NO_BORDER, left: NO_BORDER, right: NO_BORDER, bottom: LINE_BORDER },
+    verticalAlign: VerticalAlign.BOTTOM,
+    margins:       { top: 0, bottom: 80, left: 160, right: 0 },
+    children:      textChildren,
+  })
+  return [
+    new Table({
+      width:   { size: 100, type: WidthType.PERCENTAGE },
+      borders: { top: NO_BORDER, bottom: NO_BORDER, left: NO_BORDER, right: NO_BORDER,
+                 insideHorizontal: NO_BORDER, insideVertical: NO_BORDER },
+      rows:    [new TableRow({ children: [leftCell, rightCell] })],
+    }),
+    sp(200),
+  ]
+}
+
 // ── Section builders ──────────────────────────────────────────────────────────
 
-function buildAgendaPage(protocol) {
+function buildAgendaPage(protocol, logoImage) {
   const agenda   = protocol.agenda ?? []
   const present  = (protocol.participants ?? []).filter(p => p.present)
   const totalMin = agenda.reduce((s, a) => s + (parseInt(a.duration) || 0), 0)
 
   const out = []
-
-  // Page title
-  out.push(para([run('Einladung / Agenda', { bold: true, size: 40, color: DARK })],
-    { spacing: { before: 0, after: 80 } }))
-  out.push(para([run(protocol.meetingType, { size: 28, color: BRAND })],
-    { spacing: { before: 0, after: 40 } }))
-  out.push(para([run(protocol.projectName || '', { size: 22, color: GRAY })],
-    { spacing: { before: 0, after: 280 } }))
-
-  // Metadata
+  out.push(...buildPageHeader(protocol, 'Einladung / Agenda', logoImage))
   out.push(metaTable([
     ['Datum',     formatDate(protocol.date)],
     ['Ort',       protocol.location || '–'],
     ['Einladung', protocol.preparedBy || '–'],
   ]))
-
-  // Agenda table
-  out.push(sp())
-  out.push(sp())
+  out.push(sp(80))
   out.push(sectionTitle('Tagesordnung'))
 
-  const headerRow = new TableRow({
-    tableHeader: true,
-    children: [
-      tc('Nr.',       8,  { bold: true, color: GRAY, allCaps: true, size: 16 }),
-      tc('Thema',     47, { bold: true, color: GRAY, allCaps: true, size: 16 }),
-      tc('Dauer',     14, { bold: true, color: GRAY, allCaps: true, size: 16, alignment: AlignmentType.RIGHT }),
-      tc('Zuständig', 31, { bold: true, color: GRAY, allCaps: true, size: 16 }),
-    ],
-  })
   const bodyRows = agenda.map((item, i) => new TableRow({
     children: [
-      tc(String(item.no || i + 1), 8, { bold: true, color: BRAND }),
-      // Thema cell: topic + optional Unterlagen sub-line
+      tc(String(item.no || i + 1), 8, { bold: true }),
       new TableCell({
         width:   { size: 47, type: WidthType.PERCENTAGE },
         margins: { top: 60, bottom: 60, left: 80, right: 80 },
+        borders: { top: NO_BORDER, bottom: NO_BORDER, left: NO_BORDER, right: NO_BORDER },
         children: [
           para([run(item.topic || '–')]),
-          ...(item.documents ? [para([run(`Unterlagen: ${item.documents}`, { size: 17, color: GRAY })])] : []),
+          ...(item.documents ? [para([run(`Unterlagen: ${item.documents}`, { size: 17 })])] : []),
         ],
       }),
-      tc(item.duration ? `${item.duration} min` : '–', 14, { color: GRAY, alignment: AlignmentType.RIGHT }),
-      tc(item.responsible || '–', 31, { color: GRAY }),
+      tc(item.duration ? `${item.duration} min` : '–', 14, { alignment: AlignmentType.RIGHT }),
+      tc(item.responsible || '–', 31),
     ],
   }))
   const totalRow = totalMin > 0 ? [new TableRow({ children: [
-    tc('', 8, {}),
-    tc('Gesamt', 47, { color: GRAY }),
-    tc(`${totalMin} min`, 14, { bold: true, color: BRAND, alignment: AlignmentType.RIGHT }),
-    tc('', 31, {}),
+    tc('', 8),
+    tc('Gesamt', 47),
+    tc(`${totalMin} min`, 14, { bold: true, alignment: AlignmentType.RIGHT }),
+    tc('', 31),
   ]})] : []
   out.push(new Table({
     width:   { size: 100, type: WidthType.PERCENTAGE },
     borders: { top: NO_BORDER, bottom: NO_BORDER, left: NO_BORDER, right: NO_BORDER,
-               insideHorizontal: THIN_BORDER, insideVertical: NO_BORDER },
-    rows: [headerRow, ...bodyRows, ...totalRow],
+               insideHorizontal: NO_BORDER, insideVertical: NO_BORDER },
+    rows: [
+      new TableRow({ tableHeader: true, children: [
+        tcH('Nr.',       8),
+        tcH('Thema',     47),
+        tcH('Dauer',     14, { alignment: AlignmentType.RIGHT }),
+        tcH('Zuständig', 31),
+      ]}),
+      ...bodyRows,
+      ...totalRow,
+    ],
   }))
 
-  // Participants
   if (present.length > 0) {
-    out.push(sp())
+    out.push(sp(120))
     out.push(para([
-      run('Eingeladene Teilnehmer  ', { size: 17, color: GRAY, allCaps: true }),
-      run(present.map(p => p.name).filter(Boolean).join(' · '), { color: DARK }),
-    ], { spacing: { before: 120, after: 0 } }))
+      run('Eingeladene Teilnehmer   ', { size: 16, allCaps: true }),
+      run(present.map(p => p.name).filter(Boolean).join(' · ')),
+    ], { spacing: { before: 80, after: 0 } }))
   }
 
   out.push(pageBreakPara())
   return out
 }
 
-function buildCoverPage(protocol, protocolNo) {
+function buildCoverPage(protocol, protocolNo, logoImage) {
   const present  = (protocol.participants ?? []).filter(p => p.present)
   const absent   = (protocol.participants ?? []).filter(p => !p.present)
   const isClosed = !!protocol.isClosed
 
   const out = []
-
-  out.push(para([run('Besprechungsprotokoll', { bold: true, size: 40, color: DARK })],
-    { spacing: { before: 0, after: 80 } }))
-  out.push(para([run(protocol.meetingType, { size: 28, color: BRAND })],
-    { spacing: { before: 0, after: 40 } }))
-  out.push(para([run(protocol.projectName || '', { size: 22, color: GRAY })],
-    { spacing: { before: 0, after: 280 } }))
-
+  out.push(...buildPageHeader(protocol, 'Besprechungsprotokoll', logoImage))
   out.push(metaTable([
     ['Protokoll-Nr.',      protocolNo],
     ['Datum',              formatDate(protocol.date)],
@@ -199,31 +240,27 @@ function buildCoverPage(protocol, protocolNo) {
   ]))
 
   if ((protocol.participants ?? []).length > 0) {
-    out.push(sp())
-    out.push(sp())
+    out.push(sp(120))
     out.push(sectionTitle(
       `Teilnehmerliste (${present.length} anwesend${absent.length > 0 ? `, ${absent.length} entschuldigt` : ''})`
     ))
     out.push(dataTable(
       [
         { text: '#',        width: 5  },
-        { text: 'Name',     width: 22 },
+        { text: 'Name',     width: 23 },
         { text: 'Firma',    width: 21 },
         { text: 'Funktion', width: 18 },
-        { text: 'E-Mail',   width: 24 },
+        { text: 'E-Mail',   width: 23 },
         { text: '✓',        width: 10, headerOpts: { alignment: AlignmentType.CENTER } },
       ],
-      protocol.participants.map((p, i) => {
-        const clr = p.present ? DARK : GRAY
-        return [
-          { text: String(i + 1), opts: { color: GRAY } },
-          { text: p.name    || '–', opts: { bold: p.present, color: clr } },
-          { text: p.company || '–', opts: { color: clr } },
-          { text: p.role    || '–', opts: { color: clr } },
-          { text: p.email   || '–', opts: { color: clr, size: 18 } },
-          { text: p.present ? '✓' : '–', opts: { alignment: AlignmentType.CENTER, color: p.present ? GREEN : GRAY } },
-        ]
-      })
+      protocol.participants.map((p, i) => [
+        { text: String(i + 1) },
+        { text: p.name    || '–', opts: { bold: p.present, italic: !p.present } },
+        { text: p.company || '–', opts: { italic: !p.present } },
+        { text: p.role    || '–', opts: { italic: !p.present } },
+        { text: p.email   || '–', opts: { size: 18, italic: !p.present } },
+        { text: p.present ? '✓' : '–', opts: { alignment: AlignmentType.CENTER } },
+      ])
     ))
   }
 
@@ -232,17 +269,16 @@ function buildCoverPage(protocol, protocolNo) {
 }
 
 function buildContent(protocol, protocolNo) {
-  const items   = protocol.agendaItems ?? []
-  const actions = protocol.actionItems ?? []
-  const isClosed = !!protocol.isClosed
+  const items    = protocol.agendaItems ?? []
+  const actions  = protocol.actionItems ?? []
 
   const out = []
 
   // Running header line
   out.push(para([
-    run(`${protocol.projectName} – ${protocol.meetingType}`, { bold: true, size: 19, color: DARK }),
-    run(`   ${protocolNo}`, { size: 17, color: GRAY }),
-  ], { spacing: { before: 0, after: 200 }, border: { bottom: THIN_BORDER } }))
+    run(`${protocol.projectName} – ${protocol.meetingType}`, { bold: true, size: 19 }),
+    run(`   ${protocolNo}`, { size: 17 }),
+  ], { spacing: { before: 0, after: 200 }, border: { bottom: LINE_BORDER } }))
 
   // Protocol items
   if (items.length > 0) {
@@ -250,88 +286,102 @@ function buildContent(protocol, protocolNo) {
     for (const item of items) {
       const lvl    = item.level ?? 1
       const isGray = !!item.carriedGray
-      const indent = (lvl - 1) * 360
+      const indent = (lvl - 1) * 400
+
       out.push(para([
-        run(`${item.no}  `, { bold: true, color: isGray ? GRAY : BRAND, size: lvl === 1 ? 22 : 20 }),
-        run(item.topic || '–', { bold: lvl === 1, color: isGray ? GRAY : DARK, size: lvl === 1 ? 22 : 20 }),
-        ...(item.assignedTo ? [run(`   [${item.assignedTo}]`, { color: GRAY, size: 18 })] : []),
+        run(`${item.no}  `, { bold: true, size: lvl === 1 ? 22 : 20 }),
+        run(item.topic || '–', { bold: lvl === 1, size: lvl === 1 ? 22 : 20, italic: isGray }),
+        ...(item.assignedTo ? [run(`   [${item.assignedTo}]`, { size: 18, italic: isGray })] : []),
       ], {
-        indent: { left: indent },
-        spacing: { before: lvl === 1 ? 180 : 60, after: 40 },
+        indent:  { left: indent },
+        spacing: { before: lvl === 1 ? 200 : 80, after: 40 },
+        border:  lvl === 1 && !isGray ? { left: LEFT_BAR } : {},
       }))
+
       if (item.discussion?.trim()) {
-        out.push(para([run(item.discussion, { color: isGray ? GRAY : '374151', size: 19 })], {
-          indent: { left: indent + 200 },
+        out.push(para([run(item.discussion, { size: 19, italic: isGray })], {
+          indent:  { left: indent + 280 },
           spacing: { before: 0, after: 40 },
         }))
       }
+
       // Per-item tasks
       const myTasks = actions.filter(t => t.protocolItemId === item.id)
       for (const task of myTasks) {
         const taskDone = task.status === 'erledigt'
         out.push(para([
-          run(taskDone ? '✓ ' : '○ ', { color: taskDone ? GREEN : GRAY, size: 18 }),
-          run(task.description || '–', { color: taskDone ? GRAY : DARK, size: 18 }),
-          ...(task.responsible ? [run(`  [${task.responsible}]`, { color: GRAY, size: 17 })] : []),
-        ], { indent: { left: indent + 360 }, spacing: { before: 20, after: 20 } }))
+          run(taskDone ? '✓ ' : '○ ', { size: 18 }),
+          run(task.description || '–', { size: 18, italic: taskDone }),
+          ...(task.responsible ? [run(`  [${task.responsible}]`, { size: 17 })] : []),
+        ], { indent: { left: indent + 440 }, spacing: { before: 20, after: 20 } }))
       }
     }
   }
 
-  // Action items
+  // Action items summary
   if (actions.length > 0) {
-    out.push(sp())
+    out.push(sp(80))
     out.push(sectionTitle('Maßnahmen'))
     const STATUS_LABELS = { offen: 'Offen', in_arbeit: 'In Arbeit', erledigt: 'Erledigt', verschoben: 'Verschoben' }
-    const STATUS_COLORS = { offen: 'b45309', in_arbeit: '1d4ed8', erledigt: GREEN, verschoben: 'b91c1c' }
     out.push(dataTable(
       [
-        { text: '#',        width: 5  },
-        { text: 'Aufgabe',  width: 38 },
-        { text: 'Zuständig',width: 19 },
-        { text: 'Fällig',   width: 13 },
-        { text: 'Status',   width: 14 },
-        { text: 'Priorität',width: 11 },
+        { text: '#',         width: 5  },
+        { text: 'Aufgabe',   width: 38 },
+        { text: 'Zuständig', width: 19 },
+        { text: 'Fällig',    width: 13 },
+        { text: 'Status',    width: 14 },
+        { text: 'Priorität', width: 11 },
       ],
       actions.map((a, i) => [
-        { text: String(i + 1), opts: { color: GRAY } },
-        a.task || '–',
-        { text: a.assignedTo || '–', opts: { color: GRAY } },
-        { text: a.dueDate ? formatDate(a.dueDate) : '–', opts: { color: GRAY } },
-        { text: STATUS_LABELS[a.status] ?? a.status ?? '–', opts: { bold: true, color: STATUS_COLORS[a.status] ?? GRAY } },
-        { text: a.priority ?? '–', opts: { color: GRAY } },
+        { text: String(i + 1) },
+        a.description || '–',
+        { text: a.responsible || '–' },
+        { text: a.deadline ? formatDate(a.deadline) : '–' },
+        { text: STATUS_LABELS[a.status] ?? a.status ?? '–', opts: { bold: true } },
+        { text: a.priority ?? '–' },
       ])
     ))
   }
 
   // Notes
   if (protocol.notes?.trim()) {
-    out.push(sp())
+    out.push(sp(80))
     out.push(sectionTitle('Notizen'))
-    out.push(para([run(protocol.notes, { size: 20, color: DARK })],
-      { spacing: { before: 100, after: 0 } }))
+    out.push(para([run(protocol.notes)], { spacing: { before: 100, after: 0 } }))
   }
-
-  // Footer line
-  out.push(sp())
-  out.push(para([
-    run(`Erstellt: ${formatDate(protocol.date)}`, { size: 17, color: GRAY }),
-    ...(protocol.preparedBy ? [run(`   · ${protocol.preparedBy}`, { size: 17, color: GRAY })] : []),
-    ...(isClosed ? [run('   · Abgeschlossen', { size: 17, color: GRAY })] : []),
-  ], { spacing: { before: 200, after: 0 }, border: { top: THIN_BORDER } }))
 
   return out
 }
 
 // ── Public API ─────────────────────────────────────────────────────────────────
 
-export async function exportDocx(protocol, chainNo = null) {
+export async function exportDocx(protocol, chainNo = null, logoDataUrl = null) {
   const protocolNo = buildProtocolNo(protocol.projectName, protocol.date, chainNo, protocol.meetingType)
   const agenda     = protocol.agenda ?? []
 
+  // Prepare logo image for Word
+  let logoImage = null
+  if (logoDataUrl) {
+    try {
+      const typeMatch  = logoDataUrl.match(/data:image\/(\w+);/)
+      const typeRaw    = (typeMatch?.[1] ?? 'png').toLowerCase().replace('jpeg', 'jpg')
+      const validTypes = ['png', 'jpg', 'gif', 'bmp', 'svg']
+      const type       = validTypes.includes(typeRaw) ? typeRaw : 'png'
+      const base64     = logoDataUrl.split(',')[1]
+      const img        = new Image()
+      img.src          = logoDataUrl
+      await new Promise(r => { img.onload = r; img.onerror = r })
+      const maxW  = 120
+      const scale = img.naturalWidth > 0 ? Math.min(1, maxW / img.naturalWidth) : 1
+      const w     = Math.round((img.naturalWidth  || maxW) * scale)
+      const h     = Math.round((img.naturalHeight || 50)  * scale)
+      logoImage = new ImageRun({ data: base64, type, transformation: { width: w, height: h } })
+    } catch { /* logo silently omitted on error */ }
+  }
+
   const children = [
-    ...(agenda.length > 0 ? buildAgendaPage(protocol) : []),
-    ...buildCoverPage(protocol, protocolNo),
+    ...(agenda.length > 0 ? buildAgendaPage(protocol, logoImage) : []),
+    ...buildCoverPage(protocol, protocolNo, logoImage),
     ...buildContent(protocol, protocolNo),
   ]
 
@@ -341,7 +391,7 @@ export async function exportDocx(protocol, chainNo = null) {
     description: `${protocol.meetingType} – ${protocol.projectName}`,
     styles: {
       default: {
-        document: { run: { font: 'Calibri', size: 20, color: DARK } },
+        document: { run: { font: FONT, size: 20, color: BLACK } },
       },
     },
     sections: [{
@@ -349,11 +399,26 @@ export async function exportDocx(protocol, chainNo = null) {
         page: {
           margin: {
             top:    convertInchesToTwip(1.0),
-            bottom: convertInchesToTwip(0.8),
+            bottom: convertInchesToTwip(0.9),
             left:   convertInchesToTwip(1.2),
             right:  convertInchesToTwip(1.2),
           },
         },
+      },
+      footers: {
+        default: new Footer({
+          children: [new Paragraph({
+            border:   { top: LINE_BORDER },
+            spacing:  { before: 80, after: 0 },
+            children: [
+              new TextRun({ text: `${protocol.projectName || '–'} · ${protocol.meetingType || ''}   `, font: FONT, size: 16, color: BLACK }),
+              new TextRun({ text: 'Seite ', font: FONT, size: 16, color: BLACK }),
+              new TextRun({ children: [PageNumber.CURRENT], font: FONT, size: 16, color: BLACK }),
+              new TextRun({ text: ' / ', font: FONT, size: 16, color: BLACK }),
+              new TextRun({ children: [PageNumber.TOTAL_PAGES], font: FONT, size: 16, color: BLACK }),
+            ],
+          })],
+        }),
       },
       children,
     }],
