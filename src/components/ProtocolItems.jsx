@@ -557,6 +557,7 @@ export default function ProtocolItems({ items, onChange, allTasks = [], onTasksC
                                         onChange={e => updateTask(task.id, 'description', e.target.value)} />
                                       <input className={`input py-0.5 text-xs w-28 ${taskDone ? 'text-gray-400' : ''}`}
                                         placeholder="Zuständig…" value={task.responsible}
+                                        list={(projectContacts ?? []).length > 0 ? contactListId : undefined}
                                         onChange={e => updateTask(task.id, 'responsible', e.target.value)} />
                                       <button className="no-print btn-ghost p-0.5 text-red-400 hover:text-red-600 flex-shrink-0"
                                         onClick={() => removeTask(task.id)}><Trash2 size={11} /></button>

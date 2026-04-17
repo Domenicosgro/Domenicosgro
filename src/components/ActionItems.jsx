@@ -15,9 +15,10 @@ function highlight(text, query) {
   )
 }
 
-export default function ActionItems({ items, onChange, agendaItems = [] }) {
+export default function ActionItems({ items, onChange, agendaItems = [], projectContacts = [] }) {
   const [hideCompleted, setHideCompleted] = useState(false)
   const [search, setSearch] = useState('')
+  const contactListId = 'action-contacts-list'
 
   const add = () => {
     const no = String(items.length + 1)
@@ -109,6 +110,14 @@ export default function ActionItems({ items, onChange, agendaItems = [] }) {
         </p>
       )}
 
+      {projectContacts.length > 0 && (
+        <datalist id={contactListId}>
+          {projectContacts.map(c => (
+            <option key={c.id} value={c.name ? (c.company ? `${c.name} (${c.company})` : c.name) : c.company} />
+          ))}
+        </datalist>
+      )}
+
       {items.length === 0 && (
         <p className="text-sm text-gray-400 italic">Keine Maßnahmen erfasst.</p>
       )}
@@ -192,6 +201,7 @@ export default function ActionItems({ items, onChange, agendaItems = [] }) {
                     className={`input py-1 text-xs ${done ? 'text-gray-400' : ''}`}
                     placeholder="Name / Firma"
                     value={item.responsible}
+                    list={projectContacts.length > 0 ? contactListId : undefined}
                     onChange={e => update(item.id, 'responsible', e.target.value)}
                   />
 

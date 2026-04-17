@@ -503,6 +503,7 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
             items={protocol.actionItems ?? []}
             onChange={actionItems => change({ actionItems })}
             agendaItems={protocol.agendaItems ?? []}
+            projectContacts={projectContacts ?? []}
           />
         </div>
 
