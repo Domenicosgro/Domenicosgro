@@ -385,14 +385,12 @@ export async function exportDocx(protocol, chainNo = null, logoDataUrl = null) {
   for (const item of (protocol.agendaItems ?? []).filter(it => it.attachment)) {
     const att = item.attachment
     if (!att.mimeType?.startsWith('image/')) {
-      // Non-image: add a notice page
+      // Non-image: reference line only
       attachmentPages.push(
         pageBreakPara(),
         para([run(`Anlage ${item.no} – ${att.name}`, { bold: true })], {
-          spacing: { before: 0, after: 160 }, border: { bottom: LINE_BORDER },
-        }),
-        para([run(`Diese Anlage (${att.mimeType?.split('/')[1]?.toUpperCase() ?? 'Datei'}) kann nicht direkt eingebettet werden – bitte separat beifügen.`, { size: 18 })],
-          { spacing: { before: 200, after: 0 } })
+          spacing: { before: 0, after: 0 }, border: { bottom: LINE_BORDER },
+        })
       )
       continue
     }

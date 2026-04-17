@@ -565,13 +565,7 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
                   </span>
                 </div>
               </div>
-            ) : (
-              /* Non-image: printed notice */
-              <p style={{ fontFamily: 'Arial, sans-serif', fontSize: '9pt', paddingTop: '8mm' }}>
-                Diese Anlage ({att.mimeType?.split('/')[1]?.toUpperCase() ?? 'Datei'}) kann nicht direkt
-                eingebettet werden – bitte separat öffnen und dem Ausdruck beifügen.
-              </p>
-            )}
+            ) : null}
           </div>
         )
       })}
