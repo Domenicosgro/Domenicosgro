@@ -523,6 +523,59 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
         <span>{protocolNo}</span>
       </div>
 
+      {/* ── Print: Anlagen ─────────────────────────────────────────────────────
+           Each attachment gets its own page. Images get a diagonal watermark
+           (the protocol item number). Non-image files get a printed notice.
+           ────────────────────────────────────────────────────────────────── */}
+      {(protocol.agendaItems ?? []).filter(item => item.attachment).map(item => {
+        const att     = item.attachment
+        const isImage = att.mimeType?.startsWith('image/')
+        return (
+          <div key={`pa-${item.id}`} className="hidden print:block"
+            style={{ pageBreakBefore: 'always', breakBefore: 'page' }}>
+            {/* Attachment label */}
+            <div style={{
+              borderBottom: '0.5pt solid #000', paddingBottom: '3mm', marginBottom: '6mm',
+              fontSize: '8pt', textTransform: 'uppercase', letterSpacing: '0.08em',
+              fontFamily: 'Arial, sans-serif',
+            }}>
+              Anlage {item.no} – {att.name}
+            </div>
+
+            {isImage ? (
+              /* Image with diagonal item-number watermark */
+              <div style={{ position: 'relative' }}>
+                <img
+                  src={`data:${att.mimeType};base64,${att.data}`}
+                  alt={att.name}
+                  style={{ display: 'block', width: '100%', maxHeight: '248mm', objectFit: 'contain' }}
+                />
+                <div style={{
+                  position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  overflow: 'hidden', pointerEvents: 'none',
+                }}>
+                  <span style={{
+                    fontFamily: 'Arial, sans-serif', fontWeight: 900,
+                    fontSize: '160pt', lineHeight: 1, whiteSpace: 'nowrap',
+                    transform: 'rotate(-45deg)', opacity: 0.08,
+                    color: '#000', userSelect: 'none',
+                  }}>
+                    {item.no}
+                  </span>
+                </div>
+              </div>
+            ) : (
+              /* Non-image: printed notice */
+              <p style={{ fontFamily: 'Arial, sans-serif', fontSize: '9pt', paddingTop: '8mm' }}>
+                Diese Anlage ({att.mimeType?.split('/')[1]?.toUpperCase() ?? 'Datei'}) kann nicht direkt
+                eingebettet werden – bitte separat öffnen und dem Ausdruck beifügen.
+              </p>
+            )}
+          </div>
+        )
+      })}
+
       <div className="h-16 no-print" />
 
       {showEmailModal && (

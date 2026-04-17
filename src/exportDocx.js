@@ -379,10 +379,52 @@ export async function exportDocx(protocol, chainNo = null, logoDataUrl = null) {
     } catch { /* logo silently omitted on error */ }
   }
 
+  // Pre-process image attachments on protocol items
+  const attachmentPages = []
+  const VALID_IMG = ['png', 'jpg', 'gif', 'bmp']
+  for (const item of (protocol.agendaItems ?? []).filter(it => it.attachment)) {
+    const att = item.attachment
+    if (!att.mimeType?.startsWith('image/')) {
+      // Non-image: add a notice page
+      attachmentPages.push(
+        pageBreakPara(),
+        para([run(`Anlage ${item.no} – ${att.name}`, { bold: true })], {
+          spacing: { before: 0, after: 160 }, border: { bottom: LINE_BORDER },
+        }),
+        para([run(`Diese Anlage (${att.mimeType?.split('/')[1]?.toUpperCase() ?? 'Datei'}) kann nicht direkt eingebettet werden – bitte separat beifügen.`, { size: 18 })],
+          { spacing: { before: 200, after: 0 } })
+      )
+      continue
+    }
+    try {
+      const typeMatch = att.mimeType.match(/image\/(\w+)/)
+      const typeRaw   = (typeMatch?.[1] ?? 'png').toLowerCase().replace('jpeg', 'jpg')
+      const type      = VALID_IMG.includes(typeRaw) ? typeRaw : 'png'
+      const img       = new Image()
+      img.src         = `data:${att.mimeType};base64,${att.data}`
+      await new Promise(r => { img.onload = r; img.onerror = r })
+      const maxW  = 500
+      const scale = img.naturalWidth > 0 ? Math.min(1, maxW / img.naturalWidth) : 1
+      const w     = Math.round((img.naturalWidth  || maxW) * scale)
+      const h     = Math.round((img.naturalHeight || 350) * scale)
+      attachmentPages.push(
+        pageBreakPara(),
+        para([run(`Anlage ${item.no} – ${att.name}`, { bold: true })], {
+          spacing: { before: 0, after: 160 }, border: { bottom: LINE_BORDER },
+        }),
+        new Paragraph({
+          spacing: { before: 120, after: 0 },
+          children: [new ImageRun({ data: att.data, type, transformation: { width: w, height: h } })],
+        })
+      )
+    } catch { /* skip attachment on error */ }
+  }
+
   const children = [
     ...(agenda.length > 0 ? buildAgendaPage(protocol, logoImage) : []),
     ...buildCoverPage(protocol, protocolNo, logoImage),
     ...buildContent(protocol, protocolNo),
+    ...attachmentPages,
   ]
 
   const doc = new Document({
