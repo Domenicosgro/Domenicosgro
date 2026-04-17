@@ -85,6 +85,13 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
     change({ agendaItems: [...(protocol.agendaItems ?? []), ...carried] })
   }
 
+  // Auto-carry protocol items from predecessor — no manual confirmation needed
+  useEffect(() => {
+    if (pendingItemCarryover.length > 0 && !isClosed) {
+      handleItemCarryover()
+    }
+  }, [pendingItemCarryover.length]) // eslint-disable-line react-hooks/exhaustive-deps
+
   // Live sync: whenever agenda changes, create/move/remove protocol items immediately.
   // "Neu erstellen" (null)  → standalone new Hauptpunkt appended at the end.
   // Linked to Hauptpunkt    → sub-item inserted directly after that parent.
@@ -421,17 +428,6 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
       </div>
 
       {/* ── Carryover banners ── */}
-      {pendingItemCarryover.length > 0 && !isClosed && (
-        <div className="no-print flex items-center gap-3 bg-indigo-50 border border-indigo-200 rounded-lg p-4 text-sm text-indigo-800 mb-4">
-          <AlertCircle size={18} className="flex-shrink-0 text-indigo-500" />
-          <div className="flex-1">
-            <strong>{pendingItemCarryover.length} Protokollpunkt{pendingItemCarryover.length !== 1 ? 'e' : ''}</strong>{' '}
-            aus dem Vorgänger noch nicht übernommen.
-            <span className="block text-xs text-indigo-600 mt-0.5">Erledigte werden grau dargestellt, danach ausgeblendet.</span>
-          </div>
-          <button className="btn-primary text-xs" onClick={handleItemCarryover}><RefreshCw size={14} /> Übernehmen</button>
-        </div>
-      )}
       {pendingActionCarryover.length > 0 && !isClosed && (
         <div className="no-print flex items-center gap-3 bg-blue-50 border border-blue-200 rounded-lg p-4 text-sm text-blue-800 mb-4">
           <AlertCircle size={18} className="flex-shrink-0 text-blue-500" />
