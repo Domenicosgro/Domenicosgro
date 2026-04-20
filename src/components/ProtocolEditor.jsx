@@ -85,12 +85,12 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
     change({ agendaItems: [...(protocol.agendaItems ?? []), ...carried] })
   }
 
-  // Auto-carry protocol items from predecessor — no manual confirmation needed
+  // Auto-carry protocol items from predecessor — fires once per predecessor, not on every re-render
   useEffect(() => {
     if (pendingItemCarryover.length > 0 && !isClosed) {
       handleItemCarryover()
     }
-  }, [pendingItemCarryover.length]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [predecessor?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Live sync: whenever agenda changes, create/move/remove protocol items immediately.
   // "Neu erstellen" (null)  → standalone new Hauptpunkt appended at the end.
