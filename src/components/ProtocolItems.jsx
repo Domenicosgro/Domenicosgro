@@ -549,7 +549,7 @@ export default function ProtocolItems({ items, onChange, allTasks = [], onTasksC
                                 </span>
                                 {readOnly
                                   ? <span className={`text-xs flex-1 ${taskDone ? 'line-through text-gray-400' : 'text-gray-700'}`}>
-                                      {task.description || '–'}{task.responsible ? ` [${task.responsible}]` : ''}
+                                      {task.description || '–'}{task.responsible ? ` [${task.responsible}]` : ''}{task.deadline ? ` · bis ${formatDate(task.deadline)}` : ''}
                                     </span>
                                   : <>
                                       <input className={`input py-0.5 text-xs flex-1 ${taskDone ? 'line-through text-gray-400' : ''}`}
@@ -559,6 +559,9 @@ export default function ProtocolItems({ items, onChange, allTasks = [], onTasksC
                                         placeholder="Zuständig…" value={task.responsible}
                                         list={(projectContacts ?? []).length > 0 ? contactListId : undefined}
                                         onChange={e => updateTask(task.id, 'responsible', e.target.value)} />
+                                      <input type="date" className={`input py-0.5 text-xs w-32 no-print ${taskDone ? 'text-gray-400' : ''}`}
+                                        value={task.deadline ?? ''}
+                                        onChange={e => updateTask(task.id, 'deadline', e.target.value)} />
                                       <button className="no-print btn-ghost p-0.5 text-red-400 hover:text-red-600 flex-shrink-0"
                                         onClick={() => removeTask(task.id)}><Trash2 size={11} /></button>
                                     </>

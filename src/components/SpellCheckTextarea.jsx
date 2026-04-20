@@ -43,6 +43,18 @@ export default function SpellCheckTextarea({ value, onChange, className, rows = 
     }, 600)
   }, [checkWord])
 
+  const handleKeyDown = (e) => {
+    if (e.altKey && e.key === 'Enter') {
+      e.preventDefault()
+      const el    = e.target
+      const start = el.selectionStart
+      const end   = el.selectionEnd
+      const newVal = value.slice(0, start) + '\n' + value.slice(end)
+      onChange({ target: { value: newVal } })
+      requestAnimationFrame(() => { el.selectionStart = el.selectionEnd = start + 1 })
+    }
+  }
+
   const handleKeyUp = (e) => scheduleCheck(e.target)
   const handleClick = (e) => scheduleCheck(e.target)
 
@@ -64,6 +76,7 @@ export default function SpellCheckTextarea({ value, onChange, className, rows = 
         placeholder={placeholder}
         value={value}
         onChange={handleChange}
+        onKeyDown={handleKeyDown}
         onKeyUp={handleKeyUp}
         onClick={handleClick}
         onBlur={() => { clearTimeout(timerRef.current); setHint(null) }}
