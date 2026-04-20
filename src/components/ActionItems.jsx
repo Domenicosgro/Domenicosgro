@@ -1,5 +1,6 @@
 import React, { useState } from 'react'
-import { Plus, Trash2, CheckSquare, EyeOff, Eye, Search, X } from 'lucide-react'
+import { Plus, Trash2, CheckSquare, EyeOff, Eye, Search, X,
+         CheckCircle2, Circle, User, Calendar, Flag } from 'lucide-react'
 import { emptyActionItem, ACTION_STATUSES, PRIORITIES, formatDate } from '../utils'
 
 function highlight(text, query) {
@@ -36,6 +37,13 @@ export default function ActionItems({ items, onChange, agendaItems = [], project
     }))
   }
 
+  const toggleDone = (id) => {
+    const item = items.find(it => it.id === id)
+    if (!item) return
+    const next = item.status === 'erledigt' ? 'offen' : 'erledigt'
+    update(id, 'status', next)
+  }
+
   const remove = (id) => onChange(items.filter(it => it.id !== id))
 
   const completedCount = items.filter(it => it.status === 'erledigt').length
@@ -43,7 +51,6 @@ export default function ActionItems({ items, onChange, agendaItems = [], project
 
   const q = search.trim().toLowerCase()
 
-  // Search matches all fields including completed ones (ignores hideCompleted when searching)
   const visible = items.filter(it => {
     if (q) {
       return (
@@ -56,7 +63,6 @@ export default function ActionItems({ items, onChange, agendaItems = [], project
     return hideCompleted ? it.status !== 'erledigt' : true
   })
 
-  // When searching and hitting a completed item, show a hint
   const searchHitsCompleted = q && visible.some(it => it.status === 'erledigt')
 
   return (
@@ -70,10 +76,7 @@ export default function ActionItems({ items, onChange, agendaItems = [], project
         </div>
         <div className="flex gap-2 no-print flex-wrap">
           {completedCount > 0 && !q && (
-            <button
-              className="btn-secondary text-xs"
-              onClick={() => setHideCompleted(v => !v)}
-            >
+            <button className="btn-secondary text-xs" onClick={() => setHideCompleted(v => !v)}>
               {hideCompleted ? <Eye size={14} /> : <EyeOff size={14} />}
               {hideCompleted ? 'Erledigte einblenden' : 'Erledigte ausblenden'}
             </button>
@@ -93,17 +96,14 @@ export default function ActionItems({ items, onChange, agendaItems = [], project
             onChange={e => setSearch(e.target.value)}
           />
           {search && (
-            <button
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-              onClick={() => setSearch('')}
-            >
+            <button className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+              onClick={() => setSearch('')}>
               <X size={14} />
             </button>
           )}
         </div>
       )}
 
-      {/* Search hint when completed items appear */}
       {searchHitsCompleted && (
         <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded px-3 py-1.5 no-print">
           Die Suche zeigt auch erledigte Punkte.
@@ -130,96 +130,95 @@ export default function ActionItems({ items, onChange, agendaItems = [], project
 
       {visible.length > 0 && (
         <div className="space-y-2">
-          {/* Column header */}
-          <div className="hidden sm:grid grid-cols-[2rem_1fr_8rem_8rem_7rem_7rem_2rem] gap-2 px-3 pb-1 border-b border-gray-100">
-            <span className="text-xs font-medium text-gray-400">Nr.</span>
-            <span className="text-xs font-medium text-gray-400">Maßnahme</span>
-            <span className="text-xs font-medium text-gray-400">Verantwortlich</span>
-            <span className="text-xs font-medium text-gray-400 no-print">Termin</span>
-            <span className="text-xs font-medium text-gray-400 no-print">Priorität</span>
-            <span className="text-xs font-medium text-gray-400">Status</span>
-            <span className="no-print" />
-          </div>
-
           {visible.map((item) => {
-            const done     = item.status === 'erledigt'
+            const done      = item.status === 'erledigt'
             const isOverdue = item.deadline && !done && new Date(item.deadline) < new Date()
             const isCarried = !!item.carriedFromId
 
+            const borderColor = done      ? 'border-green-400'
+                              : isOverdue ? 'border-red-400'
+                              : isCarried ? 'border-blue-400'
+                              : 'border-gray-300'
+            const bgColor     = done      ? 'bg-green-50'
+                              : isOverdue ? 'bg-red-50'
+                              : isCarried ? 'bg-blue-50'
+                              : 'bg-white'
+
             return (
-              <div
-                key={item.id}
-                className={`rounded-lg border px-3 py-2 transition-all ${
-                  done      ? 'bg-green-50 border-green-200 opacity-70'
-                  : isOverdue ? 'bg-red-50 border-red-200'
-                  : isCarried ? 'bg-blue-50 border-blue-200'
-                  : 'bg-white border-gray-200'
-                }`}
+              <div key={item.id}
+                className={`rounded-lg border-l-4 ${borderColor} ${bgColor} pl-3 pr-3 py-3 space-y-1.5 transition-all ${done ? 'opacity-75' : ''}`}
               >
-                <div className="grid grid-cols-1 sm:grid-cols-[2rem_1fr_8rem_8rem_7rem_7rem_2rem] gap-2 items-start">
-                  {/* Nr */}
+                {/* Row 1: number + done toggle + description + delete */}
+                <div className="flex items-start gap-2">
                   <input
-                    className={`input py-1 text-center w-8 text-xs ${done ? 'line-through text-gray-400' : ''}`}
+                    className={`input py-0.5 text-center w-8 text-xs font-semibold flex-shrink-0 ${done ? 'line-through text-gray-400' : 'text-brand-700'}`}
                     value={item.no}
                     onChange={e => update(item.id, 'no', e.target.value)}
                   />
-
-                  {/* Description */}
-                  <div className="space-y-1">
-                    {isCarried && <span className="badge-blue text-xs">↩ Übernommen</span>}
-                    {item.protocolItemId && (() => {
-                      const ref = agendaItems.find(it => it.id === item.protocolItemId)
-                      return ref ? <span className="badge text-xs bg-gray-100 text-gray-500">Pkt. {ref.no} – {ref.topic?.slice(0,30)}</span> : null
-                    })()}
+                  <button
+                    className={`flex-shrink-0 mt-0.5 no-print transition-colors ${done ? 'text-green-600 hover:text-gray-400' : 'text-gray-300 hover:text-green-500'}`}
+                    onClick={() => toggleDone(item.id)}
+                    title={done ? 'Als offen markieren' : 'Als erledigt markieren'}
+                  >
+                    {done ? <CheckCircle2 size={18} /> : <Circle size={18} />}
+                  </button>
+                  <span className={`hidden print:inline text-xs mt-0.5 flex-shrink-0 ${done ? 'text-green-700' : 'text-gray-400'}`}>
+                    {done ? '✓' : '○'}
+                  </span>
+                  <div className="flex-1 min-w-0 space-y-0.5">
+                    {(isCarried || item.protocolItemId) && (
+                      <div className="flex flex-wrap gap-1 mb-0.5">
+                        {isCarried && <span className="badge-blue text-xs">↩ Übernommen</span>}
+                        {item.protocolItemId && (() => {
+                          const ref = agendaItems.find(it => it.id === item.protocolItemId)
+                          return ref
+                            ? <span className="badge text-xs bg-gray-100 text-gray-500">Pkt. {ref.no} – {ref.topic?.slice(0, 30)}</span>
+                            : null
+                        })()}
+                      </div>
+                    )}
                     <input
-                      className={`input py-1 text-sm font-medium ${done ? 'line-through text-gray-400 bg-green-50' : ''}`}
-                      placeholder="Beschreibung der Maßnahme..."
+                      className={`input py-0.5 text-sm font-medium w-full ${done ? 'line-through text-gray-400' : ''}`}
+                      placeholder="Beschreibung der Maßnahme…"
                       value={item.description}
                       onChange={e => update(item.id, 'description', e.target.value)}
                     />
-                    <input
-                      className={`input py-1 text-xs text-gray-500 ${done ? 'line-through text-gray-300' : ''}`}
-                      placeholder="Bemerkungen (optional)"
-                      value={item.remarks}
-                      onChange={e => update(item.id, 'remarks', e.target.value)}
-                    />
-                    {done && item.completedAt && (
-                      <p className="text-xs text-green-600">
-                        Erledigt am {formatDate(item.completedAt.slice(0, 10))}
-                      </p>
-                    )}
-                    {/* Highlight match in read mode (shown below when searching) */}
-                    {q && (
-                      <p className="text-xs text-gray-400 italic">
-                        {highlight(item.description, q)}
-                      </p>
-                    )}
                   </div>
+                  <button
+                    className="btn-ghost p-1 text-red-400 hover:text-red-600 hover:bg-red-50 no-print flex-shrink-0"
+                    onClick={() => remove(item.id)}
+                    title="Entfernen"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
 
-                  {/* Responsible */}
-                  <input
-                    className={`input py-1 text-xs ${done ? 'text-gray-400' : ''}`}
-                    placeholder="Name / Firma"
-                    value={item.responsible}
-                    list={projectContacts.length > 0 ? contactListId : undefined}
-                    onChange={e => update(item.id, 'responsible', e.target.value)}
-                  />
-
-                  {/* Deadline */}
-                  <div className="no-print">
+                {/* Row 2: responsible · deadline · priority · status */}
+                <div className="flex items-center gap-3 pl-14 flex-wrap">
+                  <div className="flex items-center gap-1">
+                    <User size={12} className="text-gray-400 flex-shrink-0" />
                     <input
-                      className={`input py-1 text-xs ${isOverdue ? 'border-red-400 bg-red-50' : ''} ${done ? 'text-gray-400' : ''}`}
+                      className={`input py-0.5 text-xs w-36 ${done ? 'text-gray-400' : ''}`}
+                      placeholder="Zuständig…"
+                      value={item.responsible}
+                      list={projectContacts.length > 0 ? contactListId : undefined}
+                      onChange={e => update(item.id, 'responsible', e.target.value)}
+                    />
+                  </div>
+                  <div className="flex items-center gap-1 no-print">
+                    <Calendar size={12} className="text-gray-400 flex-shrink-0" />
+                    <input
+                      className={`input py-0.5 text-xs w-32 ${isOverdue ? 'border-red-400' : ''} ${done ? 'text-gray-400' : ''}`}
                       type="date"
                       value={item.deadline}
                       onChange={e => update(item.id, 'deadline', e.target.value)}
                     />
-                    {isOverdue && <p className="text-red-500 text-xs mt-0.5 font-medium">Überfällig</p>}
+                    {isOverdue && <span className="text-red-500 text-xs font-medium">Überfällig</span>}
                   </div>
-
-                  {/* Priority */}
-                  <div className="no-print">
+                  <div className="flex items-center gap-1 no-print">
+                    <Flag size={12} className="text-gray-400 flex-shrink-0" />
                     <select
-                      className={`select py-1 text-xs ${done ? 'text-gray-400' : ''}`}
+                      className={`select py-0.5 text-xs w-24 ${done ? 'text-gray-400' : ''}`}
                       value={item.priority}
                       onChange={e => update(item.id, 'priority', e.target.value)}
                       disabled={done}
@@ -227,25 +226,34 @@ export default function ActionItems({ items, onChange, agendaItems = [], project
                       {PRIORITIES.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
                     </select>
                   </div>
-
-                  {/* Status */}
                   <select
-                    className={`select py-1 text-xs font-medium ${done ? 'text-green-700 bg-green-100 border-green-300' : ''}`}
+                    className={`select py-0.5 text-xs w-28 font-medium ${done ? 'text-green-700 bg-green-100 border-green-300' : ''}`}
                     value={item.status}
                     onChange={e => update(item.id, 'status', e.target.value)}
                   >
                     {ACTION_STATUSES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
                   </select>
-
-                  {/* Delete */}
-                  <button
-                    className="btn-ghost p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 no-print justify-self-center"
-                    onClick={() => remove(item.id)}
-                    title="Entfernen"
-                  >
-                    <Trash2 size={14} />
-                  </button>
+                  {done && item.completedAt && (
+                    <span className="text-xs text-green-600">
+                      Erledigt {formatDate(item.completedAt.slice(0, 10))}
+                    </span>
+                  )}
                 </div>
+
+                {/* Row 3: remarks */}
+                <div className="pl-14">
+                  <input
+                    className={`input py-0.5 text-xs text-gray-500 w-full ${done ? 'line-through text-gray-300' : ''}`}
+                    placeholder="Bemerkungen (optional)"
+                    value={item.remarks}
+                    onChange={e => update(item.id, 'remarks', e.target.value)}
+                  />
+                </div>
+
+                {/* Search highlight */}
+                {q && (
+                  <p className="pl-14 text-xs text-gray-400 italic">{highlight(item.description, q)}</p>
+                )}
               </div>
             )
           })}
