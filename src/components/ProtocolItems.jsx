@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { Plus, Trash2, FileText, IndentIncrease, IndentDecrease, Search, X,
-         CheckCircle2, Circle, User, Calendar, Paperclip, ExternalLink, GripVertical } from 'lucide-react'
+         CheckCircle2, Circle, User, Calendar, Paperclip, ExternalLink, GripVertical,
+         ChevronRight, ChevronDown } from 'lucide-react'
 import { emptyAgendaItem, emptyActionItem, uid, formatDate } from '../utils'
 import SpellCheckTextarea from './SpellCheckTextarea'
 
@@ -97,6 +98,20 @@ function suggestTopNo(items) {
   return String(max + 1)
 }
 
+function isHiddenByCollapse(items, idx, collapsed) {
+  const lvl = items[idx].level ?? 1
+  if (lvl === 1) return false
+  let targetLvl = lvl - 1
+  for (let i = idx - 1; i >= 0; i--) {
+    if ((items[i].level ?? 1) === targetLvl) {
+      if (collapsed.has(items[i].id)) return true
+      targetLvl--
+      if (targetLvl === 0) break
+    }
+  }
+  return false
+}
+
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function ProtocolItems({ items, onChange, allTasks = [], onTasksChange = () => {}, readOnly, projectContacts }) {
@@ -106,6 +121,15 @@ export default function ProtocolItems({ items, onChange, allTasks = [], onTasksC
   // Drag-and-drop state
   const [dragId,  setDragId]  = useState(null)   // id of item being dragged
   const [dropIdx, setDropIdx] = useState(null)   // insert-before index in `items`
+  // Collapse state
+  const [collapsed, setCollapsed] = useState(new Set())
+  const toggleCollapse = (id) => setCollapsed(prev => {
+    const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next
+  })
+  const hasChildren = (id) => {
+    const idx = items.findIndex(it => it.id === id)
+    return idx >= 0 && idx + 1 < items.length && (items[idx + 1].level ?? 1) > (items[idx].level ?? 1)
+  }
 
   // ── Mutations ──────────────────────────────────────────────────────────────
 
@@ -256,13 +280,14 @@ export default function ProtocolItems({ items, onChange, allTasks = [], onTasksC
   const completedCount = items.filter(it => it.status === 'erledigt' && !it.carriedGray).length
   const dndActive     = !q && !readOnly   // disable DnD while searching
 
-  const visible = items.filter(it => {
+  const visible = items.filter((it, idx) => {
     if (q) return (
       it.topic.toLowerCase().includes(q) ||
       it.discussion.toLowerCase().includes(q) ||
       (it.assignedTo ?? '').toLowerCase().includes(q) ||
       (it.no ?? '').toLowerCase().includes(q)
     )
+    if (isHiddenByCollapse(items, idx, collapsed)) return false
     if (!showCompleted && it.status === 'erledigt' && !it.carriedGray) return false
     return true
   })
@@ -373,8 +398,22 @@ export default function ProtocolItems({ items, onChange, allTasks = [], onTasksC
                 onDragStart={e => handleDragStart(e, item.id)}
                 onDragEnd={handleDragEnd}
               >
-                {/* Row 1: drag handle + number + topic + controls */}
+                {/* Row 1: collapse + drag handle + number + topic + controls */}
                 <div className="flex items-start gap-2">
+
+                  {/* Collapse toggle */}
+                  {lvl <= 2 && (
+                    <button
+                      className={`flex-shrink-0 mt-0.5 no-print transition-colors ${
+                        hasChildren(item.id) ? 'text-gray-400 hover:text-brand-600' : 'invisible'
+                      }`}
+                      onClick={() => toggleCollapse(item.id)}
+                      tabIndex={hasChildren(item.id) ? 0 : -1}
+                      title={collapsed.has(item.id) ? 'Unterpunkte einblenden' : 'Unterpunkte ausblenden'}
+                    >
+                      {collapsed.has(item.id) ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
+                    </button>
+                  )}
 
                   {/* Drag handle */}
                   {dndActive && !gray && (
@@ -592,7 +631,7 @@ export default function ProtocolItems({ items, onChange, allTasks = [], onTasksC
               </div>
 
               {/* Add-child button */}
-              {!readOnly && !gray && !q && lvl < 3 && (
+              {!readOnly && !gray && !q && lvl < 3 && !collapsed.has(item.id) && (
                 <div className={`${s.indent} no-print`}>
                   <button
                     className="ml-[calc(1rem+4px)] mt-1 flex items-center gap-1 text-xs text-gray-400 hover:text-brand-600 transition-colors py-0.5 px-2 rounded hover:bg-brand-50"
