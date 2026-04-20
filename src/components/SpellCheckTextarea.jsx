@@ -5,7 +5,7 @@
  * checked and up to 7 suggestions are shown as clickable chips.
  * Clicking a chip replaces the misspelled word in the textarea.
  */
-import React, { useState, useRef, useCallback } from 'react'
+import React, { useState, useRef, useCallback, useEffect } from 'react'
 import { useSpellCheck } from '../hooks/useSpellCheck'
 
 // Return the word currently under/just-before the cursor in a textarea
@@ -25,9 +25,19 @@ function wordAtCursor(el) {
 export default function SpellCheckTextarea({ value, onChange, className, rows = 2, placeholder, disabled }) {
   const checkWord      = useSpellCheck()
   const timerRef       = useRef(null)
+  const textareaRef    = useRef(null)
   const [hint, setHint] = useState(null)  // { word, start, end, suggestions }
 
-  const handleChange = (e) => onChange(e)  // pass through
+  const autoResize = useCallback(() => {
+    const el = textareaRef.current
+    if (!el) return
+    el.style.height = 'auto'
+    el.style.height = el.scrollHeight + 'px'
+  }, [])
+
+  useEffect(() => { autoResize() }, [value, autoResize])
+
+  const handleChange = (e) => { onChange(e); autoResize() }
 
   const scheduleCheck = useCallback((el) => {
     clearTimeout(timerRef.current)
@@ -71,10 +81,12 @@ export default function SpellCheckTextarea({ value, onChange, className, rows = 
   return (
     <div className="relative">
       <textarea
+        ref={textareaRef}
         className={className}
         rows={rows}
         placeholder={placeholder}
         value={value}
+        style={{ overflow: 'hidden', resize: 'none' }}
         onChange={handleChange}
         onKeyDown={handleKeyDown}
         onKeyUp={handleKeyUp}
