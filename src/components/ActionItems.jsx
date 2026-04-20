@@ -129,7 +129,7 @@ export default function ActionItems({ items, onChange, agendaItems = [], project
       )}
 
       {visible.length > 0 && (
-        <div className="space-y-2">
+        <div className="space-y-0">
           {visible.map((item) => {
             const done      = item.status === 'erledigt'
             const isOverdue = item.deadline && !done && new Date(item.deadline) < new Date()
@@ -146,7 +146,7 @@ export default function ActionItems({ items, onChange, agendaItems = [], project
 
             return (
               <div key={item.id}
-                className={`rounded-lg border-l-4 ${borderColor} ${bgColor} pl-3 pr-3 py-3 space-y-1.5 transition-all ${done ? 'opacity-75' : ''}`}
+                className={`border-l-4 ${borderColor} ${bgColor} pl-3 pr-3 py-2.5 space-y-1.5 transition-all border-b border-gray-100 ${done ? 'opacity-75' : ''}`}
               >
                 {/* Row 1: number + done toggle + description + delete */}
                 <div className="flex items-start gap-2">
