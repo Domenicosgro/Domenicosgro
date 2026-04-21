@@ -1,7 +1,7 @@
 import React from 'react'
 import { MEETING_TYPES, formatDate, buildProtocolNo, getChainNo } from '../utils'
 import LogoUpload from './LogoUpload'
-import { FolderOpen } from 'lucide-react'
+import { FolderOpen, Star } from 'lucide-react'
 
 export default function MeetingHeader({ protocol, protocols, projects, logoDataUrl, onLogoUpdate, onLogoClear, onChange }) {
   const set = (field) => (e) => onChange({ [field]: e.target.value })
@@ -9,11 +9,16 @@ export default function MeetingHeader({ protocol, protocols, projects, logoDataU
   const chainNo    = getChainNo(protocol, protocols ?? [])
   const protocolNo = buildProtocolNo(protocol.projectName, protocol.date, chainNo, protocol.meetingType)
 
-  // Predecessor dropdown: show all other protocols (not just same project)
-  // so the user can pick any predecessor regardless of project name
-  const predecessorOptions = (protocols ?? [])
-    .filter(p => p.id !== protocol.id)
+  // Predecessor dropdown: only protocols from starred (favorited) projects
+  const starredIds = (() => {
+    try { return new Set(JSON.parse(localStorage.getItem('bb_project_favorites') || '[]')) }
+    catch { return new Set() }
+  })()
+  const allOther = (protocols ?? []).filter(p => p.id !== protocol.id)
+  const predecessorOptions = allOther
+    .filter(p => p.projectId && starredIds.has(p.projectId))
     .sort((a, b) => b.date.localeCompare(a.date))
+  const hasUnstarredOnly = predecessorOptions.length === 0 && allOther.length > 0
 
   const handlePredecessorChange = (e) => {
     const predId = e.target.value || null
@@ -142,6 +147,17 @@ export default function MeetingHeader({ protocol, protocols, projects, logoDataU
             )
           })}
         </select>
+        {hasUnstarredOnly ? (
+          <p className="mt-1 text-xs text-amber-600 flex items-center gap-1">
+            <Star size={11} fill="currentColor" />
+            Keine Protokolle aus markierten Projekten. Projekte in der Projektliste mit ★ markieren.
+          </p>
+        ) : (
+          <p className="mt-1 text-xs text-gray-400 flex items-center gap-1">
+            <Star size={11} fill="currentColor" className="text-amber-400" />
+            Nur Protokolle aus mit ★ markierten Projekten werden angezeigt.
+          </p>
+        )}
       </div>
     </div>
   )
