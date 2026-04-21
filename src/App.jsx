@@ -164,9 +164,32 @@ export default function App() {
     return null
   }
 
+  // ── Logo watermark helper ─────────────────────────────────────────────────
+  // Watermark sits at z-index:0 (above body bg); content wrapper at z-index:1.
+  const wrap = (children) => (
+    <>
+      {logoDataUrl && (
+        <div
+          aria-hidden="true"
+          className="no-print"
+          style={{
+            position: 'fixed', inset: 0, zIndex: 0, pointerEvents: 'none',
+            backgroundImage: `url(${logoDataUrl})`,
+            backgroundRepeat: 'repeat',
+            backgroundSize: '180px',
+            opacity: 0.05,
+          }}
+        />
+      )}
+      <div style={{ position: 'relative', zIndex: 1, minHeight: '100vh' }}>
+        {children}
+      </div>
+    </>
+  )
+
   // ── Loading ───────────────────────────────────────────────────────────────
   if (!loaded || !projectsLoaded) {
-    return (
+    return wrap(
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-gray-400 text-sm">Lade Daten…</div>
       </div>
@@ -181,7 +204,7 @@ export default function App() {
 
     if (!activeProtocol) { setView('protocols'); return null }
 
-    return (
+    return wrap(
       <>
         <ProtocolEditor
           protocol={activeProtocol}
@@ -206,7 +229,7 @@ export default function App() {
       selectedProjectId ? p.projectId === selectedProjectId : !p.projectId
     )
 
-    return (
+    return wrap(
       <>
         <ProtocolList
           protocols={filtered}
@@ -230,7 +253,7 @@ export default function App() {
   if (view === 'project-contacts') {
     const project = projects.find(p => p.id === selectedProjectId)
     // Wrap ProjectManager to show only this one project
-    return (
+    return wrap(
       <>
         <ProjectManager
           projects={project ? [project] : []}
@@ -245,7 +268,7 @@ export default function App() {
   }
 
   // ── Start: projects home ──────────────────────────────────────────────────
-  return (
+  return wrap(
     <>
       <ProjectsHome
         projects={projects}
