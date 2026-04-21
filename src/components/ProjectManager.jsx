@@ -1,7 +1,8 @@
 import React, { useState, useRef } from 'react'
 import { Plus, Trash2, ArrowLeft, Users, FolderOpen, ChevronRight, ChevronDown,
-         Mail, Phone, Upload, X, CheckCircle2 } from 'lucide-react'
+         Mail, Phone, Upload, X, CheckCircle2, List } from 'lucide-react'
 import { emptyContact, uid } from '../utils'
+import ParticipantsList from './ParticipantsList'
 
 // ── CSV helpers ───────────────────────────────────────────────────────────────
 
@@ -55,10 +56,11 @@ function parseCSVContacts(text) {
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-export default function ProjectManager({ projects, onCreate, onUpdate, onDelete, onBack }) {
-  const [expandedId,  setExpandedId]  = useState(() => projects.length === 1 ? projects[0]?.id : null)
-  const [importState, setImportState] = useState(null) // { projectId, contacts, rawHeaders }
-  const [importError, setImportError] = useState('')
+export default function ProjectManager({ projects, onCreate, onUpdate, onDelete, onBack, logoDataUrl }) {
+  const [expandedId,       setExpandedId]       = useState(() => projects.length === 1 ? projects[0]?.id : null)
+  const [importState,      setImportState]      = useState(null)
+  const [importError,      setImportError]      = useState('')
+  const [participantsFor,  setParticipantsFor]  = useState(null) // project id
   const fileInputRef = useRef(null)
 
   const updateContacts = (projectId, contacts) => onUpdate(projectId, { contacts })
@@ -185,6 +187,13 @@ export default function ProjectManager({ projects, onCreate, onUpdate, onDelete,
                     <Upload size={14} /> Importieren
                   </button>
                   <button
+                    className="btn-secondary"
+                    title="Projektbeteiligtenliste erstellen"
+                    onClick={() => setParticipantsFor(project.id)}
+                  >
+                    <List size={14} /> Beteiligtenliste
+                  </button>
+                  <button
                     className="btn-ghost p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50"
                     title="Projekt löschen"
                     onClick={() => {
@@ -281,6 +290,18 @@ export default function ProjectManager({ projects, onCreate, onUpdate, onDelete,
           )
         })}
       </div>
+
+      {/* Participants list modal */}
+      {participantsFor && (() => {
+        const proj = projects.find(p => p.id === participantsFor)
+        return proj ? (
+          <ParticipantsList
+            project={proj}
+            logoDataUrl={logoDataUrl}
+            onClose={() => setParticipantsFor(null)}
+          />
+        ) : null
+      })()}
 
       {/* Import preview modal */}
       {importState && (

@@ -243,6 +243,7 @@ export default function App() {
           onUpdate={updateProject}
           onDelete={deleteProject}
           onBack={() => setView('protocols')}
+          logoDataUrl={logoDataUrl}
         />
         <UpdateBanner />
       </>
