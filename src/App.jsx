@@ -165,27 +165,8 @@ export default function App() {
   }
 
   // ── Logo watermark helper ─────────────────────────────────────────────────
-  // Watermark sits at z-index:0 (above body bg); content wrapper at z-index:1.
   const wrap = (children) => (
-    <>
-      {logoDataUrl && (
-        <div
-          aria-hidden="true"
-          className="no-print"
-          style={{
-            position: 'fixed', inset: 0, zIndex: 0, pointerEvents: 'none',
-            backgroundImage: `url(${logoDataUrl})`,
-            backgroundRepeat: 'repeat',
-            backgroundSize: '180px',
-            opacity: 0.12,
-            filter: 'grayscale(1) brightness(1.8)',
-          }}
-        />
-      )}
-      <div style={{ position: 'relative', zIndex: 1, minHeight: '100vh' }}>
-        {children}
-      </div>
-    </>
+    <>{children}</>
   )
 
   // ── Loading ───────────────────────────────────────────────────────────────
