@@ -177,7 +177,8 @@ export default function App() {
             backgroundImage: `url(${logoDataUrl})`,
             backgroundRepeat: 'repeat',
             backgroundSize: '180px',
-            opacity: 0.05,
+            opacity: 0.12,
+            filter: 'grayscale(1) brightness(1.8)',
           }}
         />
       )}
