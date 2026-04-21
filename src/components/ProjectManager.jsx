@@ -3,7 +3,7 @@ import { Plus, Trash2, ArrowLeft, Users, FolderOpen, ChevronRight, ChevronDown, 
 import { emptyContact } from '../utils'
 
 export default function ProjectManager({ projects, onCreate, onUpdate, onDelete, onBack }) {
-  const [expandedId, setExpandedId] = useState(null)
+  const [expandedId, setExpandedId] = useState(() => projects.length === 1 ? projects[0]?.id : null)
 
   const handleCreate = () => {
     const id = onCreate()
@@ -27,17 +27,12 @@ export default function ProjectManager({ projects, onCreate, onUpdate, onDelete,
   return (
     <div className="max-w-4xl mx-auto p-4 sm:p-6 space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <button className="btn-secondary" onClick={onBack}><ArrowLeft size={16} /> Zurück</button>
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">Projektdatenbank</h1>
-            <p className="text-sm text-gray-500 mt-0.5">Projekte und Kontakte verwalten</p>
-          </div>
+      <div className="flex items-center gap-3">
+        <button className="btn-secondary" onClick={onBack}><ArrowLeft size={16} /> Zurück</button>
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Kontakte verwalten</h1>
+          <p className="text-sm text-gray-500 mt-0.5">Beteiligte Firmen und Personen für die Protokoll-Zuweisung</p>
         </div>
-        <button className="btn-primary self-start sm:self-auto" onClick={handleCreate}>
-          <Plus size={16} /> Neues Projekt
-        </button>
       </div>
 
       {projects.length === 0 && (
@@ -73,7 +68,14 @@ export default function ProjectManager({ projects, onCreate, onUpdate, onDelete,
                     {contacts.length} Kontakt{contacts.length !== 1 ? 'e' : ''}
                   </div>
                 </div>
-                <div className="flex items-center gap-1 no-print" onClick={e => e.stopPropagation()}>
+                <div className="flex items-center gap-2 no-print" onClick={e => e.stopPropagation()}>
+                  <button
+                    className="btn-primary"
+                    title="Kontakt hinzufügen"
+                    onClick={() => { setExpandedId(project.id); addContact(project) }}
+                  >
+                    <Plus size={14} /> Kontakt hinzufügen
+                  </button>
                   <button
                     className="btn-ghost p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50"
                     title="Projekt löschen"
