@@ -25,8 +25,9 @@ export default function MeetingHeader({ protocol, protocols, projects, logoDataU
     const pred   = predId ? (protocols ?? []).find(p => p.id === predId) : null
     const patch  = { predecessorId: predId }
     if (pred) {
-      if (!protocol.projectName.trim())   patch.projectName  = pred.projectName
-      if (!protocol.meetingType?.trim())  patch.meetingType  = pred.meetingType
+      if (!protocol.projectName.trim())  patch.projectName = pred.projectName
+      if (!protocol.meetingType?.trim()) patch.meetingType = pred.meetingType
+      if (pred.preparedBy?.trim())       patch.preparedBy  = pred.preparedBy
     }
     onChange(patch)
   }
@@ -98,10 +99,23 @@ export default function MeetingHeader({ protocol, protocols, projects, logoDataU
       </div>
 
       {/* Author + next meeting */}
+      {linkedProject?.contacts?.length > 0 && (
+        <datalist id="preparedby-contacts-list">
+          {linkedProject.contacts.map(c => (
+            <option key={c.id} value={c.name ? (c.company ? `${c.name} (${c.company})` : c.name) : c.company} />
+          ))}
+        </datalist>
+      )}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
           <label className="block text-xs font-medium text-gray-500 mb-1">Erstellt von</label>
-          <input className="input" placeholder="Max Mustermann" value={protocol.preparedBy} onChange={set('preparedBy')} />
+          <input
+            className="input"
+            placeholder="Max Mustermann"
+            value={protocol.preparedBy}
+            list={linkedProject?.contacts?.length > 0 ? 'preparedby-contacts-list' : undefined}
+            onChange={set('preparedBy')}
+          />
         </div>
         <div>
           <label className="block text-xs font-medium text-gray-500 mb-1">Nächste Besprechung</label>
