@@ -1,5 +1,5 @@
 import React from 'react'
-import { X, Printer, FileDown, Users } from 'lucide-react'
+import { X, Printer, FileDown, Users, TableProperties } from 'lucide-react'
 import { formatDate } from '../utils'
 import { exportParticipantsListDocx } from '../exportParticipantsList'
 
@@ -7,32 +7,28 @@ function esc(str) {
   return (str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }
 
-export default function ParticipantsList({ project, logoDataUrl, onClose }) {
-  const today    = new Date().toISOString().slice(0, 10)
-  const contacts = project.contacts ?? []
+function buildPrintHtml(project, contacts, logoDataUrl, today) {
+  const logoHtml = logoDataUrl
+    ? `<img src="${logoDataUrl}" style="height:48px;max-width:150px;object-fit:contain;display:block;" />`
+    : '<div style="height:48px"></div>'
 
-  const handlePrint = () => {
-    const logoHtml = logoDataUrl
-      ? `<img src="${logoDataUrl}" style="height:48px;max-width:150px;object-fit:contain;display:block;" />`
-      : '<div style="height:48px"></div>'
+  const rows = contacts.map((c, i) => `
+    <tr>
+      <td class="nr">${i + 1}</td>
+      <td>${esc(c.name)}</td>
+      <td>${esc(c.company)}</td>
+      <td>${esc(c.role)}</td>
+      <td>${esc(c.email)}</td>
+      <td>${esc(c.phone)}</td>
+    </tr>`).join('')
 
-    const rows = contacts.map((c, i) => `
-      <tr>
-        <td class="nr">${i + 1}</td>
-        <td>${esc(c.name)}</td>
-        <td>${esc(c.company)}</td>
-        <td>${esc(c.role)}</td>
-        <td>${esc(c.email)}</td>
-        <td>${esc(c.phone)}</td>
-      </tr>`).join('')
-
-    const win = window.open('', '_blank', 'width=900,height=700')
-    win.document.write(`<!DOCTYPE html>
+  return `<!DOCTYPE html>
 <html lang="de"><head><meta charset="UTF-8">
 <title>Projektbeteiligte – ${esc(project.name)}</title>
 <style>
   @page { size: A4; margin: 15mm 15mm 20mm 15mm; }
-  body  { font-family: Arial, sans-serif; font-size: 9pt; color: #000; margin: 0; }
+  * { box-sizing: border-box; }
+  body { font-family: Arial, sans-serif; font-size: 9pt; color: #000; margin: 0; background: #fff; }
   .header { display: flex; align-items: flex-end; justify-content: space-between;
             border-bottom: 1pt solid #000; padding-bottom: 4mm; margin-bottom: 8mm; }
   .header-right { text-align: right; line-height: 1.4; }
@@ -61,10 +57,66 @@ export default function ParticipantsList({ project, logoDataUrl, onClose }) {
   </tr></thead>
   <tbody>${rows}</tbody>
 </table>
-</body></html>`)
-    win.document.close()
-    win.focus()
-    setTimeout(() => { win.print(); win.close() }, 400)
+</body></html>`
+}
+
+export default function ParticipantsList({ project, logoDataUrl, onClose }) {
+  const today    = new Date().toISOString().slice(0, 10)
+  const contacts = project.contacts ?? []
+
+  // ── Print via hidden iframe (avoids popup-blocker issues) ──────────────────
+  const handlePrint = () => {
+    const html    = buildPrintHtml(project, contacts, logoDataUrl, today)
+    const iframe  = document.createElement('iframe')
+    iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:210mm;height:297mm;border:none;visibility:hidden;'
+    document.body.appendChild(iframe)
+
+    const doc = iframe.contentDocument || iframe.contentWindow.document
+    doc.open(); doc.write(html); doc.close()
+
+    const doPrint = () => {
+      iframe.style.visibility = 'visible'
+      iframe.contentWindow.focus()
+      iframe.contentWindow.print()
+      // Remove after print dialog closes
+      setTimeout(() => {
+        if (document.body.contains(iframe)) document.body.removeChild(iframe)
+      }, 2000)
+    }
+
+    // Wait for logo image to load before printing
+    const img = doc.querySelector('img')
+    if (img && !img.complete) {
+      img.onload  = doPrint
+      img.onerror = doPrint
+    } else {
+      setTimeout(doPrint, 150)
+    }
+  }
+
+  // ── Excel / CSV export (UTF-8 BOM + semicolons for German Excel) ───────────
+  const handleExcel = () => {
+    const SEP = ';'
+    const wrap = (v) => {
+      const s = String(v ?? '')
+      return (s.includes(SEP) || s.includes('"') || s.includes('\n'))
+        ? `"${s.replace(/"/g, '""')}"` : s
+    }
+    const lines = [
+      ['Nr.', 'Name', 'Firma', 'Funktion', 'E-Mail', 'Telefon'].map(wrap).join(SEP),
+      ...contacts.map((c, i) =>
+        [i + 1, c.name, c.company, c.role, c.email, c.phone].map(wrap).join(SEP)
+      ),
+    ]
+    const csv  = '﻿' + lines.join('\r\n')          // BOM for Excel UTF-8
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+    const url  = URL.createObjectURL(blob)
+    const a    = Object.assign(document.createElement('a'), {
+      href: url,
+      download: `Projektbeteiligte_${(project.name || 'Projekt').replace(/[^a-zA-Z0-9_\-]/g, '_')}.csv`,
+    })
+    a.click()
+    setTimeout(() => URL.revokeObjectURL(url), 5000)
   }
 
   const handleWord = () => exportParticipantsListDocx(project, logoDataUrl)
@@ -81,6 +133,9 @@ export default function ParticipantsList({ project, logoDataUrl, onClose }) {
             <span className="badge-gray">{contacts.length} Kontakt{contacts.length !== 1 ? 'e' : ''}</span>
           </div>
           <div className="flex items-center gap-2">
+            <button className="btn-secondary text-xs" onClick={handleExcel} title="Als CSV für Excel exportieren">
+              <TableProperties size={14} /> Excel
+            </button>
             <button className="btn-secondary text-xs" onClick={handleWord}>
               <FileDown size={14} /> Word
             </button>
