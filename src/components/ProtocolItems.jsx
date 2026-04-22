@@ -491,12 +491,12 @@ export default function ProtocolItems({ items, onChange, allTasks = [], onTasksC
 
                 {/* Row 2: createdAt + assignedTo */}
                 {!gray && (
-                  <div className={`flex items-center gap-4 pl-16 flex-wrap ${!item.assignedTo ? 'print:hidden' : ''}`}>
+                  <div className="flex items-center gap-4 pl-16 flex-wrap">
                     <span className="flex items-center gap-1 text-xs text-gray-400 flex-shrink-0">
                       <Calendar size={11} />
                       {item.createdAt ? formatDate(item.createdAt.slice(0, 10)) : '–'}
                     </span>
-                    <div className="flex items-center gap-1 flex-1">
+                    <div className={`flex items-center gap-1 flex-1 ${!item.assignedTo ? 'print:hidden' : ''}`}>
                       <User size={13} className="text-gray-400 flex-shrink-0" />
                       {readOnly
                         ? <span className="text-xs text-gray-500">{item.assignedTo || '–'}</span>
@@ -623,8 +623,14 @@ export default function ProtocolItems({ items, onChange, allTasks = [], onTasksC
                 )}
 
                 {/* Gray summary */}
-                {gray && item.discussion && (
+                {gray && (
                   <div className="text-xs text-gray-400 pl-16 space-y-0.5">
+                    {item.createdAt && (
+                      <span className="flex items-center gap-1">
+                        <Calendar size={10} />
+                        {formatDate(item.createdAt.slice(0, 10))}
+                      </span>
+                    )}
                     {item.discussion && <p><span className="font-medium">Inhalt:</span> {item.discussion}</p>}
                   </div>
                 )}

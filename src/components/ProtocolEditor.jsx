@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useEffect } from 'react'
-import { ArrowLeft, Printer, Download, Send, RefreshCw, AlertCircle, Lock, Unlock, FileText } from 'lucide-react'
+import { ArrowLeft, Printer, Download, Send, RefreshCw, AlertCircle, Lock, Unlock, FileText, RotateCcw, Layers } from 'lucide-react'
 import MeetingHeader    from './MeetingHeader'
 import ParticipantsList from './ParticipantsList'
 import AgendaDraft      from './AgendaDraft'
@@ -9,6 +9,7 @@ import ActionItems      from './ActionItems'
 import NotesSection     from './NotesSection'
 import { formatDate, buildProtocolNo, getChainNo, uid, emptyAgendaItem } from '../utils'
 import { exportDocx } from '../exportDocx'
+import GesamtprotokollModal from './GesamtprotokollModal'
 
 const isElectron = typeof window !== 'undefined' && !!window.electronAPI
 
@@ -48,11 +49,13 @@ function promoteAgenda(agenda, existingItems) {
 export default function ProtocolEditor({ protocol, protocols, projects, projectContacts, logoDataUrl, onLogoUpdate, onLogoClear, onUpdate, onBack }) {
   const change = (patch) => onUpdate(protocol.id, patch)
 
-  const [showEmailModal, setShowEmailModal] = useState(false)
-  const [confirmClose,   setConfirmClose]   = useState(false)
+  const [showEmailModal,      setShowEmailModal]      = useState(false)
+  const [confirmClose,        setConfirmClose]        = useState(false)
+  const [showGesamtprotokoll, setShowGesamtprotokoll] = useState(false)
 
   const chainNo     = getChainNo(protocol, protocols ?? [])
   const protocolNo  = buildProtocolNo(protocol.projectName, protocol.date, chainNo, protocol.meetingType)
+  const hasChain    = chainNo !== null
   const createdDate = formatDate(protocol.createdAt?.slice(0, 10) ?? protocol.date)
   const isClosed    = !!protocol.isClosed
 
@@ -233,7 +236,12 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
 
       {/* ── Top bar ── */}
       <div className="flex items-center justify-between mb-4 no-print flex-wrap gap-2">
-        <button className="btn-secondary" onClick={onBack}><ArrowLeft size={16} /> Zurück</button>
+        <div className="flex items-center gap-2">
+          <button className="btn-secondary" onClick={onBack}><ArrowLeft size={16} /> Zurück</button>
+          <button className="btn-ghost p-2 text-gray-400" title="Seite neu laden" onClick={() => window.location.reload()}>
+            <RotateCcw size={15} />
+          </button>
+        </div>
         <div className="flex items-center gap-2 flex-wrap justify-end">
           <span className="text-xs text-gray-400 hidden sm:inline">
             Gespeichert: {new Date(protocol.updatedAt).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })}
@@ -242,6 +250,11 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
           {isElectron && (
             <button className="btn-secondary" onClick={() => window.electronAPI.exportJSON(protocol)}>
               <Download size={16} /> Exportieren
+            </button>
+          )}
+          {hasChain && (
+            <button className="btn-secondary" onClick={() => setShowGesamtprotokoll(true)}>
+              <Layers size={16} /> Gesamtprotokoll
             </button>
           )}
           <button className="btn-secondary" onClick={() => exportDocx(protocol, chainNo, logoDataUrl)}>
@@ -577,6 +590,15 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
           protocol={protocol}
           onClose={() => setShowEmailModal(false)}
           onSent={() => change({ agendaSentAt: new Date().toISOString() })}
+        />
+      )}
+
+      {showGesamtprotokoll && (
+        <GesamtprotokollModal
+          protocol={protocol}
+          protocols={protocols ?? []}
+          logoDataUrl={logoDataUrl}
+          onClose={() => setShowGesamtprotokoll(false)}
         />
       )}
     </div>

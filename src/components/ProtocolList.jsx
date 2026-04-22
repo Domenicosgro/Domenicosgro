@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react'
-import { Plus, Trash2, Copy, FileText, Search, ChevronRight, Upload, Lock, ArrowLeft, Users } from 'lucide-react'
+import { Plus, Trash2, Copy, FileText, Search, ChevronRight, Upload, Lock, ArrowLeft, Users, RotateCcw } from 'lucide-react'
 import { formatDate, buildProtocolNo, getChainNo } from '../utils'
 
 const isElectron = typeof window !== 'undefined' && !!window.electronAPI
@@ -80,6 +80,9 @@ export default function ProtocolList({
         </div>
 
         <div className="flex gap-2 self-start sm:self-auto flex-wrap">
+          <button className="btn-ghost p-2 text-gray-400" title="Seite neu laden" onClick={() => window.location.reload()}>
+            <RotateCcw size={15} />
+          </button>
           <input ref={fileInputRef} type="file" accept=".json" className="hidden" onChange={handleFileChange} />
           {project && contacts.length >= 0 && (
             <button className="btn-secondary" onClick={onManageContacts} title="Projektkontakte verwalten">
