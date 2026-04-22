@@ -2,7 +2,7 @@ import React, { useState, useRef } from 'react'
 import { Plus, Trash2, ArrowLeft, Users, FolderOpen, ChevronRight, ChevronDown,
          Mail, Phone, Upload, X, CheckCircle2, List } from 'lucide-react'
 import { emptyContact, uid } from '../utils'
-import ParticipantsList from './ParticipantsList'
+import BeteiligtenModal from './BeteiligtenModal'
 
 // ── CSV helpers ───────────────────────────────────────────────────────────────
 
@@ -295,7 +295,7 @@ export default function ProjectManager({ projects, onCreate, onUpdate, onDelete,
       {participantsFor && (() => {
         const proj = projects.find(p => p.id === participantsFor)
         return proj ? (
-          <ParticipantsList
+          <BeteiligtenModal
             project={proj}
             logoDataUrl={logoDataUrl}
             onClose={() => setParticipantsFor(null)}
