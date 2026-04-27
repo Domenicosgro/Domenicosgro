@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect } from 'react'
+import React, { useMemo, useState, useEffect, useRef } from 'react'
 import { ArrowLeft, Printer, Download, Send, RefreshCw, AlertCircle, Lock, Unlock, FileText, RotateCcw, Layers } from 'lucide-react'
 import MeetingHeader    from './MeetingHeader'
 import ParticipantsList from './ParticipantsList'
@@ -53,6 +53,10 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
   const [confirmClose,        setConfirmClose]        = useState(false)
   const [showGesamtprotokoll, setShowGesamtprotokoll] = useState(false)
 
+  // Tracks which predecessorId we have already initiated item-carryover for.
+  // Prevents double-firing (React Strict Mode, rapid predecessor switches, etc.)
+  const carriedForRef = useRef(null)
+
   const chainNo     = getChainNo(protocol, protocols ?? [])
   const protocolNo  = buildProtocolNo(protocol.projectName, protocol.date, chainNo, protocol.meetingType)
   const hasChain    = chainNo !== null
@@ -79,20 +83,44 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
     })
   }, [predecessor, protocol.agendaItems])
 
+  // Both handlers recompute which items are genuinely missing at call-time
+  // (independent of the memos), so they are safe to call multiple times.
+
   const handleActionCarryover = () => {
-    const carried = pendingActionCarryover.map(a => ({ ...a, id: uid(), carriedFromId: a.id, completedAt: null }))
+    if (!predecessor) return
+    const already = new Set((protocol.actionItems ?? []).map(a => a.carriedFromId).filter(Boolean))
+    const toCarry = (predecessor.actionItems ?? []).filter(
+      a => a.status !== 'erledigt' && !already.has(a.id)
+    )
+    if (toCarry.length === 0) return
+    const carried = toCarry.map(a => ({ ...a, id: uid(), carriedFromId: a.id, completedAt: null }))
     change({ actionItems: [...(protocol.actionItems ?? []), ...carried] })
   }
+
   const handleItemCarryover = () => {
-    const carried = carryProtocolItems(pendingItemCarryover)
+    if (!predecessor) return
+    const already = new Set((protocol.agendaItems ?? []).map(i => i.carriedFromId).filter(Boolean))
+    const toCarry = (predecessor.agendaItems ?? []).filter(it => {
+      if (it.status === 'erledigt' && it.carriedGray === true) return false
+      return !already.has(it.id)
+    })
+    if (toCarry.length === 0) return
+    const carried = carryProtocolItems(toCarry)
     change({ agendaItems: [...(protocol.agendaItems ?? []), ...carried] })
   }
 
-  // Auto-carry protocol items from predecessor — fires once per predecessor, not on every re-render
+  // Auto-carry protocol items from predecessor.
+  // Guard 1 (ref): prevents double-fire within the same component lifecycle
+  //   (React Strict Mode runs effects twice; rapid predecessor changes can also
+  //   trigger a re-run before the previous state update has propagated).
+  // Guard 2 (pendingItemCarryover.length): data-level check so a remount of a
+  //   protocol whose items are already present skips the carry silently.
   useEffect(() => {
-    if (pendingItemCarryover.length > 0 && !isClosed) {
-      handleItemCarryover()
-    }
+    if (!predecessor?.id || isClosed) return
+    if (carriedForRef.current === predecessor.id) return
+    if (pendingItemCarryover.length === 0) return
+    carriedForRef.current = predecessor.id
+    handleItemCarryover()
   }, [predecessor?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Live sync: whenever agenda changes, create/move/remove protocol items immediately.
