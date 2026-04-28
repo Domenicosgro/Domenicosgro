@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react'
 import { Plus, Trash2, ArrowLeft, Users, FolderOpen, ChevronRight, ChevronDown,
-         Mail, Phone, Upload, X, CheckCircle2, List } from 'lucide-react'
+         Mail, Phone, Upload, Download, X, CheckCircle2, List } from 'lucide-react'
 import { emptyContact, uid } from '../utils'
 import BeteiligtenModal from './BeteiligtenModal'
 
@@ -52,6 +52,31 @@ function parseCSVContacts(text) {
   }).filter(c => c.name || c.company)
 
   return { contacts, mappedHeaders: map, rawHeaders }
+}
+
+function exportContactsCSV(project) {
+  const contacts = project.contacts ?? []
+  const SEP  = ';'
+  const wrap = (v) => {
+    const s = String(v ?? '')
+    return (s.includes(SEP) || s.includes('"') || s.includes('\n'))
+      ? `"${s.replace(/"/g, '""')}"` : s
+  }
+  const lines = [
+    ['Name', 'Firma', 'Funktion', 'E-Mail', 'Telefon'].map(wrap).join(SEP),
+    ...contacts.map(c =>
+      [c.name, c.company, c.role, c.email, c.phone].map(wrap).join(SEP)
+    ),
+  ]
+  const csv  = '﻿' + lines.join('\r\n')   // UTF-8 BOM for Excel
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+  const url  = URL.createObjectURL(blob)
+  const a    = Object.assign(document.createElement('a'), {
+    href: url,
+    download: `Kontakte_${(project.name || 'Projekt').replace(/[^a-zA-Z0-9_\-]/g, '_')}.csv`,
+  })
+  a.click()
+  setTimeout(() => URL.revokeObjectURL(url), 5000)
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -186,6 +211,15 @@ export default function ProjectManager({ projects, onCreate, onUpdate, onDelete,
                   >
                     <Upload size={14} /> Importieren
                   </button>
+                  {contacts.length > 0 && (
+                    <button
+                      className="btn-secondary"
+                      title="Kontakte als CSV exportieren"
+                      onClick={() => exportContactsCSV(project)}
+                    >
+                      <Download size={14} /> CSV
+                    </button>
+                  )}
                   <button
                     className="btn-secondary"
                     title="Projektbeteiligtenliste erstellen"
@@ -222,6 +256,12 @@ export default function ProjectManager({ projects, onCreate, onUpdate, onDelete,
                       >
                         <Upload size={13} /> CSV importieren
                       </button>
+                      {contacts.length > 0 && (
+                        <button className="btn-secondary btn-sm" onClick={() => exportContactsCSV(project)}
+                          title="Kontakte als CSV exportieren">
+                          <Download size={13} /> CSV exportieren
+                        </button>
+                      )}
                       <button className="btn-primary btn-sm" onClick={() => addContact(project)}>
                         <Plus size={13} /> Kontakt hinzufügen
                       </button>
