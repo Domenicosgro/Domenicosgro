@@ -1,6 +1,7 @@
 import React from 'react'
 import { X, Printer, Layers } from 'lucide-react'
 import { formatDate, buildProtocolNo, getChainNo } from '../utils'
+import { stripHtml } from './RichTextEditor'
 
 function esc(str) {
   return (str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -39,7 +40,7 @@ function buildPrintHtml(chain, allProtocols, logoDataUrl, today) {
         <td style="padding:1mm 2mm 1mm ${pl};font-weight:${lvl === 1 ? 'bold' : 'normal'};white-space:nowrap;width:14mm;vertical-align:top;border-bottom:0.3pt solid #eee;">${esc(item.no || String(i + 1))}</td>
         <td style="padding:1mm 2mm;vertical-align:top;white-space:nowrap;width:20mm;border-bottom:0.3pt solid #eee;">${item.createdAt ? formatDate(item.createdAt.slice(0, 10)) : '–'}</td>
         <td style="padding:1mm 2mm;vertical-align:top;font-weight:${lvl === 1 ? 'bold' : 'normal'};border-bottom:0.3pt solid #eee;${done ? 'text-decoration:line-through;' : ''}">${esc(item.topic || '–')}</td>
-        <td style="padding:1mm 2mm;vertical-align:top;color:#444;border-bottom:0.3pt solid #eee;">${esc(item.discussion || '')}</td>
+        <td style="padding:1mm 2mm;vertical-align:top;color:#444;border-bottom:0.3pt solid #eee;">${esc(stripHtml(item.discussion || ''))}</td>
         <td style="padding:1mm 2mm;vertical-align:top;white-space:nowrap;width:26mm;border-bottom:0.3pt solid #eee;">${esc(item.assignedTo || '–')}</td>
         <td style="padding:1mm 2mm;vertical-align:top;text-align:center;width:16mm;border-bottom:0.3pt solid #eee;">${done ? '✓' : '○'}</td>
       </tr>`
@@ -223,7 +224,7 @@ export default function GesamtprotokollModal({ protocol, protocols, logoDataUrl,
                                 {item.topic || '–'}
                               </td>
                               <td className="py-1.5 pr-2 text-gray-500 max-w-xs">
-                                <span className="line-clamp-2">{item.discussion || ''}</span>
+                                <span className="line-clamp-2">{stripHtml(item.discussion || '')}</span>
                               </td>
                               <td className="py-1.5 pr-2 text-gray-500">{item.assignedTo || '–'}</td>
                               <td className="py-1.5 text-center text-gray-500">{done ? '✓' : '○'}</td>

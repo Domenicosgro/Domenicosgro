@@ -58,7 +58,61 @@
   .badge-gray   { @apply badge bg-gray-100 text-gray-600; }
 }
 
-/* ── Print styles ────────────────────────────────────── */
+/* ── Rich-text editor (Tiptap) ───────────────────────────── */
+
+/* Content area — styled like .textarea */
+.rich-editor-content .ProseMirror {
+  width: 100%;
+  padding: 0.375rem 0.625rem;
+  border: 1px solid #d1d5db;      /* border-gray-300 */
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  background: #fff;
+  outline: none;
+  min-height: 2.5rem;
+  line-height: 1.5;
+}
+.rich-editor-content .ProseMirror:focus {
+  border-color: transparent;
+  box-shadow: 0 0 0 2px var(--tw-ring-color, #3b82f6); /* ring-brand-500 */
+}
+
+/* Placeholder text */
+.rich-editor-content .ProseMirror p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  color: #9ca3af;    /* gray-400 */
+  pointer-events: none;
+  float: left;
+  height: 0;
+}
+
+/* ── Shared rich-text rendering (editor + read-only view) ─── */
+.rich-text p + p   { margin-top: 0.2em; }
+.rich-text ul,
+.rich-editor-content .ProseMirror ul {
+  list-style: disc outside;
+  padding-left: 1.4em;
+  margin: 0.2em 0;
+}
+.rich-text ol,
+.rich-editor-content .ProseMirror ol {
+  list-style: decimal outside;
+  padding-left: 1.4em;
+  margin: 0.2em 0;
+}
+.rich-text li,
+.rich-editor-content .ProseMirror li { margin-top: 0.1em; }
+
+.rich-text strong,
+.rich-editor-content .ProseMirror strong { font-weight: 600; }
+.rich-text em,
+.rich-editor-content .ProseMirror em    { font-style: italic; }
+.rich-text u,
+.rich-editor-content .ProseMirror u     { text-decoration: underline; }
+.rich-text s,
+.rich-editor-content .ProseMirror s     { text-decoration: line-through; }
+
+/* ── Print ───────────────────────────────────────────────── */
 @media print {
   /* Leave bottom margin for the running footer */
   @page { size: A4; margin: 12mm 12mm 20mm 12mm; }
@@ -117,6 +171,26 @@
     box-shadow: none !important;
     resize: none !important;
     outline: none !important;
+  }
+
+  /* Rich-text editor in print: hide toolbar, strip chrome */
+  .rich-editor-toolbar { display: none !important; }
+  .rich-editor-content .ProseMirror {
+    border: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    min-height: 0 !important;
+  }
+  /* Ensure list styles survive print reset */
+  .rich-text ul,
+  .rich-editor-content .ProseMirror ul {
+    list-style: disc outside !important;
+    padding-left: 1.4em !important;
+  }
+  .rich-text ol,
+  .rich-editor-content .ProseMirror ol {
+    list-style: decimal outside !important;
+    padding-left: 1.4em !important;
   }
 
   /* ── Page breaks ── */

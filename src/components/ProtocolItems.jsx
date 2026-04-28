@@ -3,7 +3,7 @@ import { Plus, Trash2, FileText, IndentIncrease, IndentDecrease, Search, X,
          CheckCircle2, Circle, User, Calendar, Paperclip, ExternalLink, GripVertical,
          ChevronRight, ChevronDown } from 'lucide-react'
 import { emptyAgendaItem, emptyActionItem, uid, formatDate } from '../utils'
-import SpellCheckTextarea from './SpellCheckTextarea'
+import RichTextEditor, { stripHtml } from './RichTextEditor'
 
 const isElectron = typeof window !== 'undefined' && !!window.electronAPI
 
@@ -514,15 +514,19 @@ export default function ProtocolItems({ items, onChange, allTasks = [], onTasksC
 
                 {/* Discussion */}
                 {!gray && (
-                  <div className={`space-y-2 pl-16 ${!item.discussion ? 'print:hidden' : ''}`}>
+                  <div className={`space-y-2 pl-16 ${!stripHtml(item.discussion).trim() ? 'print:hidden' : ''}`}>
                     <div>
                       <label className="block text-xs text-gray-400 mb-0.5 no-print">Besprechungsinhalt</label>
                       {readOnly
-                        ? <p className="text-sm text-gray-700 whitespace-pre-line">{item.discussion}</p>
-                        : <SpellCheckTextarea
-                            className={`textarea text-sm ${done ? 'text-gray-400' : ''}`} rows={2}
-                            placeholder="Inhalt…" value={item.discussion}
-                            onChange={e => update(item.id, 'discussion', e.target.value)} />
+                        ? <div
+                            className={`text-sm text-gray-700 rich-text ${done ? 'text-gray-400' : ''}`}
+                            dangerouslySetInnerHTML={{ __html: item.discussion || '' }}
+                          />
+                        : <RichTextEditor
+                            value={item.discussion}
+                            placeholder="Inhalt… (- oder 1. für Listen, Strg+B für Fett)"
+                            onChange={html => update(item.id, 'discussion', html)}
+                          />
                       }
                     </div>
                   </div>
@@ -631,7 +635,12 @@ export default function ProtocolItems({ items, onChange, allTasks = [], onTasksC
                         {formatDate(item.createdAt.slice(0, 10))}
                       </span>
                     )}
-                    {item.discussion && <p><span className="font-medium">Inhalt:</span> {item.discussion}</p>}
+                    {item.discussion && (
+                      <p>
+                        <span className="font-medium">Inhalt:</span>{' '}
+                        {stripHtml(item.discussion)}
+                      </p>
+                    )}
                   </div>
                 )}
               </div>
