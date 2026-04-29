@@ -18,7 +18,7 @@ const isElectron = typeof window !== 'undefined' && !!window.electronAPI
 export default function App() {
   const {
     protocols, loaded,
-    createProtocol, updateProtocol, deleteProtocol, duplicateProtocol, importProtocol,
+    createProtocol, updateProtocol, deleteProtocol, duplicateProtocol, importProtocol, syncProjectName,
   } = useProtocols()
 
   const {
@@ -95,6 +95,13 @@ export default function App() {
   }, [protocols, importProtocol])
 
   // ── Helpers ───────────────────────────────────────────────────────────────
+
+  // Wraps updateProject: when the name changes, sync it to all linked protocols.
+  const handleUpdateProject = (projectId, patch) => {
+    updateProject(projectId, patch)
+    if ('name' in patch) syncProjectName(projectId, patch.name)
+  }
+
   const openProject = (projectId) => {
     setSelectedProjectId(projectId)
     setView('protocols')
@@ -240,7 +247,7 @@ export default function App() {
         <ProjectManager
           projects={project ? [project] : []}
           onCreate={createProject}
-          onUpdate={updateProject}
+          onUpdate={handleUpdateProject}
           onDelete={deleteProject}
           onBack={() => setView('protocols')}
           logoDataUrl={logoDataUrl}
@@ -257,7 +264,7 @@ export default function App() {
         projects={projects}
         protocols={protocols}
         onCreate={createProject}
-        onUpdate={updateProject}
+        onUpdate={handleUpdateProject}
         onDelete={deleteProject}
         onOpenProject={openProject}
       />

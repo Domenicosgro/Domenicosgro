@@ -81,5 +81,14 @@ export function useProtocols() {
     return p.id
   }, [])
 
-  return { protocols, loaded, createProtocol, updateProtocol, deleteProtocol, duplicateProtocol, importProtocol }
+  const syncProjectName = useCallback((projectId, name) => {
+    setProtocols(prev =>
+      prev.map(p => p.projectId === projectId
+        ? { ...p, projectName: name, updatedAt: new Date().toISOString() }
+        : p
+      )
+    )
+  }, [])
+
+  return { protocols, loaded, createProtocol, updateProtocol, deleteProtocol, duplicateProtocol, importProtocol, syncProjectName }
 }
