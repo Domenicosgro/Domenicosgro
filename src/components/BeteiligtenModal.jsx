@@ -17,6 +17,7 @@ function buildPrintHtml(project, contacts, logoDataUrl, today) {
       <td class="nr">${i + 1}</td>
       <td>${esc(c.name)}</td>
       <td>${esc(c.company)}</td>
+      <td>${esc(c.gewerk)}</td>
       <td>${esc(c.role)}</td>
       <td>${esc(c.email)}</td>
       <td>${esc(c.phone)}</td>
@@ -53,7 +54,7 @@ function buildPrintHtml(project, contacts, logoDataUrl, today) {
 <table>
   <thead><tr>
     <th class="nr">Nr.</th><th>Name</th><th>Firma</th>
-    <th>Funktion</th><th>E-Mail</th><th>Telefon</th>
+    <th>Gewerk</th><th>Funktion</th><th>E-Mail</th><th>Telefon</th>
   </tr></thead>
   <tbody>${rows}</tbody>
 </table>
@@ -101,9 +102,9 @@ export default function BeteiligtenModal({ project, logoDataUrl, onClose }) {
         ? `"${s.replace(/"/g, '""')}"` : s
     }
     const lines = [
-      ['Nr.', 'Name', 'Firma', 'Funktion', 'E-Mail', 'Telefon'].map(wrap).join(SEP),
+      ['Nr.', 'Name', 'Firma', 'Gewerk', 'Funktion', 'E-Mail', 'Telefon'].map(wrap).join(SEP),
       ...contacts.map((c, i) =>
-        [i + 1, c.name, c.company, c.role, c.email, c.phone].map(wrap).join(SEP)
+        [i + 1, c.name, c.company, c.gewerk, c.role, c.email, c.phone].map(wrap).join(SEP)
       ),
     ]
     const csv  = '﻿' + lines.join('\r\n')
@@ -173,6 +174,7 @@ export default function BeteiligtenModal({ project, logoDataUrl, onClose }) {
                     <th className="text-left pb-2 pr-3 w-8">Nr.</th>
                     <th className="text-left pb-2 pr-3">Name</th>
                     <th className="text-left pb-2 pr-3">Firma</th>
+                    <th className="text-left pb-2 pr-3">Gewerk</th>
                     <th className="text-left pb-2 pr-3">Funktion</th>
                     <th className="text-left pb-2 pr-3">E-Mail</th>
                     <th className="text-left pb-2">Telefon</th>
@@ -184,6 +186,7 @@ export default function BeteiligtenModal({ project, logoDataUrl, onClose }) {
                       <td className="py-2 pr-3 text-gray-400">{i + 1}</td>
                       <td className="py-2 pr-3 font-medium text-gray-800">{c.name || <span className="text-gray-300">–</span>}</td>
                       <td className="py-2 pr-3 text-gray-600">{c.company || <span className="text-gray-300">–</span>}</td>
+                      <td className="py-2 pr-3 text-gray-500">{c.gewerk || <span className="text-gray-300">–</span>}</td>
                       <td className="py-2 pr-3 text-gray-500">{c.role || <span className="text-gray-300">–</span>}</td>
                       <td className="py-2 pr-3 text-gray-500">{c.email || <span className="text-gray-300">–</span>}</td>
                       <td className="py-2 text-gray-500">{c.phone || <span className="text-gray-300">–</span>}</td>

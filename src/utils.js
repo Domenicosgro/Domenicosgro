@@ -77,6 +77,7 @@ export const emptyContact = () => ({
   id: uid(),
   name: '',
   company: '',
+  gewerk: '',
   role: '',
   email: '',
   phone: '',

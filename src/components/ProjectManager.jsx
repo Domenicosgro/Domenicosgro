@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react'
 import { Plus, Trash2, ArrowLeft, Users, FolderOpen, ChevronRight, ChevronDown,
-         Mail, Phone, Upload, Download, X, CheckCircle2, List } from 'lucide-react'
+         Mail, Phone, Upload, Download, X, CheckCircle2, List, GripVertical, ArrowUpDown } from 'lucide-react'
 import { emptyContact, uid } from '../utils'
 import BeteiligtenModal from './BeteiligtenModal'
 
@@ -32,6 +32,7 @@ function parseCSVContacts(text) {
   const map = {
     name:    find('name', 'person', 'vorname', 'nachname'),
     company: find('firma', 'company', 'organisation', 'unternehmen', 'gesellschaft'),
+    gewerk:  find('gewerk', 'trade', 'gewerke'),
     role:    find('funktion', 'rolle', 'role', 'position', 'titel', 'beruf'),
     email:   find('email', 'mail'),
     phone:   find('telefon', 'phone', 'tel', 'mobil', 'handy', 'fax'),
@@ -45,6 +46,7 @@ function parseCSVContacts(text) {
       id:      uid(),
       name:    get(cols, map.name),
       company: get(cols, map.company),
+      gewerk:  get(cols, map.gewerk),
       role:    get(cols, map.role),
       email:   get(cols, map.email),
       phone:   get(cols, map.phone),
@@ -63,9 +65,9 @@ function exportContactsCSV(project) {
       ? `"${s.replace(/"/g, '""')}"` : s
   }
   const lines = [
-    ['Name', 'Firma', 'Funktion', 'E-Mail', 'Telefon'].map(wrap).join(SEP),
+    ['Name', 'Firma', 'Gewerk', 'Funktion', 'E-Mail', 'Telefon'].map(wrap).join(SEP),
     ...contacts.map(c =>
-      [c.name, c.company, c.role, c.email, c.phone].map(wrap).join(SEP)
+      [c.name, c.company, c.gewerk, c.role, c.email, c.phone].map(wrap).join(SEP)
     ),
   ]
   const csv  = '﻿' + lines.join('\r\n')   // UTF-8 BOM for Excel
@@ -79,13 +81,50 @@ function exportContactsCSV(project) {
   setTimeout(() => URL.revokeObjectURL(url), 5000)
 }
 
+// ── Sort helpers ──────────────────────────────────────────────────────────────
+
+function sortContacts(contacts, sort) {
+  if (!sort) return contacts
+  const { field, dir } = sort
+  return [...contacts].sort((a, b) => {
+    const av = (a[field] ?? '').toLowerCase()
+    const bv = (b[field] ?? '').toLowerCase()
+    const cmp = av.localeCompare(bv, 'de')
+    return dir === 'asc' ? cmp : -cmp
+  })
+}
+
+function SortTh({ label, field, sort, onSort, children, className = '' }) {
+  const active = sort?.field === field
+  const dir    = active ? sort.dir : null
+  return (
+    <th
+      className={`text-left pb-2 pr-3 cursor-pointer select-none group ${className}`}
+      onClick={() => onSort(field)}
+      title={`Nach ${label} sortieren`}
+    >
+      <span className="inline-flex items-center gap-1">
+        {children ?? label}
+        <ArrowUpDown
+          size={11}
+          className={`transition-colors ${active ? (dir === 'asc' ? 'text-brand-500' : 'text-brand-600') : 'text-gray-300 group-hover:text-gray-400'}`}
+          style={active && dir === 'desc' ? { transform: 'scaleY(-1)' } : undefined}
+        />
+      </span>
+    </th>
+  )
+}
+
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function ProjectManager({ projects, onCreate, onUpdate, onDelete, onBack, logoDataUrl }) {
   const [expandedId,       setExpandedId]       = useState(() => projects.length === 1 ? projects[0]?.id : null)
   const [importState,      setImportState]      = useState(null)
   const [importError,      setImportError]      = useState('')
-  const [participantsFor,  setParticipantsFor]  = useState(null) // project id
+  const [participantsFor,  setParticipantsFor]  = useState(null)
+  const [sortBy,           setSortBy]           = useState({}) // { [projectId]: { field, dir } }
+  const [dropTarget,       setDropTarget]       = useState(null) // { projectId, idx }
+  const dragRef = useRef(null) // { projectId, contactId, fromIdx }
   const fileInputRef = useRef(null)
 
   const updateContacts = (projectId, contacts) => onUpdate(projectId, { contacts })
@@ -101,6 +140,44 @@ export default function ProjectManager({ projects, onCreate, onUpdate, onDelete,
   const removeContact = (project, contactId) =>
     updateContacts(project.id, (project.contacts ?? []).filter(c => c.id !== contactId))
 
+  const handleSort = (projectId, field) => {
+    setSortBy(prev => {
+      const cur = prev[projectId]
+      if (!cur || cur.field !== field) return { ...prev, [projectId]: { field, dir: 'asc' } }
+      if (cur.dir === 'asc')          return { ...prev, [projectId]: { field, dir: 'desc' } }
+      const next = { ...prev }; delete next[projectId]; return next
+    })
+  }
+
+  const handleDragStart = (projectId, contactId, fromIdx) => {
+    dragRef.current = { projectId, contactId, fromIdx }
+  }
+
+  const handleDragOver = (e, projectId, toIdx) => {
+    e.preventDefault()
+    setDropTarget({ projectId, idx: toIdx })
+  }
+
+  const handleDrop = (e, project, toIdx) => {
+    e.preventDefault()
+    const info = dragRef.current
+    if (!info || info.projectId !== project.id) { setDropTarget(null); return }
+    const contacts = [...(project.contacts ?? [])]
+    const from = contacts.findIndex(c => c.id === info.contactId)
+    if (from < 0 || from === toIdx) { setDropTarget(null); dragRef.current = null; return }
+    const [item] = contacts.splice(from, 1)
+    const insertAt = from < toIdx ? toIdx - 1 : toIdx
+    contacts.splice(insertAt, 0, item)
+    updateContacts(project.id, contacts)
+    setDropTarget(null)
+    dragRef.current = null
+  }
+
+  const handleDragEnd = () => {
+    setDropTarget(null)
+    dragRef.current = null
+  }
+
   const handleImportFile = (projectId, file) => {
     if (!file) return
     setImportError('')
@@ -109,7 +186,7 @@ export default function ProjectManager({ projects, onCreate, onUpdate, onDelete,
       const text = e.target.result
       const result = parseCSVContacts(text)
       if (!result || result.contacts.length === 0) {
-        setImportError('Keine Kontakte erkannt. Bitte CSV mit Kopfzeile (Name, Firma, Funktion, E-Mail, Telefon) verwenden.')
+        setImportError('Keine Kontakte erkannt. Bitte CSV mit Kopfzeile (Name, Firma, Gewerk, Funktion, E-Mail, Telefon) verwenden.')
         return
       }
       setImportState({ projectId, ...result })
@@ -127,7 +204,7 @@ export default function ProjectManager({ projects, onCreate, onUpdate, onDelete,
   }
 
   return (
-    <div className="max-w-4xl mx-auto p-4 sm:p-6 space-y-6">
+    <div className="max-w-5xl mx-auto p-4 sm:p-6 space-y-6">
       {/* Hidden file input */}
       <input
         ref={fileInputRef}
@@ -171,8 +248,12 @@ export default function ProjectManager({ projects, onCreate, onUpdate, onDelete,
 
       <div className="space-y-3">
         {projects.map(project => {
-          const expanded = expandedId === project.id
-          const contacts = project.contacts ?? []
+          const expanded    = expandedId === project.id
+          const contacts    = project.contacts ?? []
+          const sort        = sortBy[project.id] ?? null
+          const isSortActive = !!sort
+          const displayContacts = sortContacts(contacts, sort)
+
           return (
             <div key={project.id} className="card">
               {/* Project row */}
@@ -246,6 +327,11 @@ export default function ProjectManager({ projects, onCreate, onUpdate, onDelete,
                   <div className="flex items-center justify-between">
                     <h3 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
                       <Users size={14} /> Kontakte
+                      {isSortActive && (
+                        <span className="text-xs font-normal text-brand-600 bg-brand-50 px-1.5 py-0.5 rounded">
+                          Sortiert · Drag & Drop deaktiviert
+                        </span>
+                      )}
                     </h3>
                     <div className="flex gap-2">
                       <button className="btn-secondary btn-sm"
@@ -272,54 +358,85 @@ export default function ProjectManager({ projects, onCreate, onUpdate, onDelete,
                     <div className="text-center py-6 border-2 border-dashed border-gray-200 rounded-lg">
                       <Users size={28} className="mx-auto text-gray-300 mb-2" />
                       <p className="text-sm text-gray-400">Noch keine Kontakte. Manuell hinzufügen oder CSV importieren.</p>
-                      <p className="text-xs text-gray-400 mt-1">CSV-Spalten: Name · Firma · Funktion · E-Mail · Telefon</p>
+                      <p className="text-xs text-gray-400 mt-1">CSV-Spalten: Name · Firma · Gewerk · Funktion · E-Mail · Telefon</p>
                     </div>
                   )}
 
                   {contacts.length > 0 && (
                     <div className="overflow-x-auto">
-                      <table className="w-full text-sm min-w-[720px]">
+                      <table className="w-full text-sm min-w-[900px]">
                         <thead>
                           <tr className="border-b border-gray-200 text-xs text-gray-500">
-                            <th className="text-left pb-2 pr-3">Name</th>
-                            <th className="text-left pb-2 pr-3">Firma</th>
-                            <th className="text-left pb-2 pr-3">Funktion</th>
-                            <th className="text-left pb-2 pr-3"><span className="flex items-center gap-1"><Mail size={11} /> E-Mail</span></th>
-                            <th className="text-left pb-2 pr-3"><span className="flex items-center gap-1"><Phone size={11} /> Telefon</span></th>
+                            {!isSortActive && <th className="pb-2 pr-2 w-6" />}
+                            <SortTh label="Name"     field="name"    sort={sort} onSort={f => handleSort(project.id, f)} />
+                            <SortTh label="Firma"    field="company" sort={sort} onSort={f => handleSort(project.id, f)} />
+                            <SortTh label="Gewerk"   field="gewerk"  sort={sort} onSort={f => handleSort(project.id, f)} />
+                            <SortTh label="Funktion" field="role"    sort={sort} onSort={f => handleSort(project.id, f)} />
+                            <SortTh label="E-Mail"   field="email"   sort={sort} onSort={f => handleSort(project.id, f)}>
+                              <span className="flex items-center gap-1"><Mail size={11} /> E-Mail</span>
+                            </SortTh>
+                            <SortTh label="Telefon"  field="phone"   sort={sort} onSort={f => handleSort(project.id, f)}>
+                              <span className="flex items-center gap-1"><Phone size={11} /> Telefon</span>
+                            </SortTh>
                             <th className="pb-2 w-8" />
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-100">
-                          {contacts.map(c => (
-                            <tr key={c.id}>
-                              <td className="py-2 pr-3">
-                                <input className="input py-1" placeholder="Max Mustermann"
-                                  value={c.name} onChange={e => updateContact(project, c.id, 'name', e.target.value)} />
-                              </td>
-                              <td className="py-2 pr-3">
-                                <input className="input py-1" placeholder="Baufirma GmbH"
-                                  value={c.company} onChange={e => updateContact(project, c.id, 'company', e.target.value)} />
-                              </td>
-                              <td className="py-2 pr-3">
-                                <input className="input py-1" placeholder="Bauleiter"
-                                  value={c.role} onChange={e => updateContact(project, c.id, 'role', e.target.value)} />
-                              </td>
-                              <td className="py-2 pr-3">
-                                <input className="input py-1" type="email" placeholder="max@firma.de"
-                                  value={c.email} onChange={e => updateContact(project, c.id, 'email', e.target.value)} />
-                              </td>
-                              <td className="py-2 pr-3">
-                                <input className="input py-1" type="tel" placeholder="+49 …"
-                                  value={c.phone} onChange={e => updateContact(project, c.id, 'phone', e.target.value)} />
-                              </td>
-                              <td className="py-2">
-                                <button className="btn-ghost p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50"
-                                  onClick={() => removeContact(project, c.id)}>
-                                  <Trash2 size={13} />
-                                </button>
-                              </td>
-                            </tr>
-                          ))}
+                          {displayContacts.map((c, idx) => {
+                            const isDropTarget = dropTarget?.projectId === project.id && dropTarget?.idx === idx
+                            return (
+                              <tr
+                                key={c.id}
+                                draggable={!isSortActive}
+                                onDragStart={() => handleDragStart(project.id, c.id, idx)}
+                                onDragOver={e => handleDragOver(e, project.id, idx)}
+                                onDrop={e => handleDrop(e, project, idx)}
+                                onDragEnd={handleDragEnd}
+                                className={`transition-colors ${isDropTarget ? 'border-t-2 border-brand-400' : ''}`}
+                              >
+                                {!isSortActive && (
+                                  <td className="py-2 pr-2 w-6">
+                                    <span
+                                      className="cursor-grab text-gray-300 hover:text-gray-500 flex items-center"
+                                      title="Reihenfolge ändern"
+                                    >
+                                      <GripVertical size={14} />
+                                    </span>
+                                  </td>
+                                )}
+                                <td className="py-2 pr-3">
+                                  <input className="input py-1" placeholder="Max Mustermann"
+                                    value={c.name} onChange={e => updateContact(project, c.id, 'name', e.target.value)} />
+                                </td>
+                                <td className="py-2 pr-3">
+                                  <input className="input py-1" placeholder="Baufirma GmbH"
+                                    value={c.company} onChange={e => updateContact(project, c.id, 'company', e.target.value)} />
+                                </td>
+                                <td className="py-2 pr-3">
+                                  <input className="input py-1" placeholder="Rohbau"
+                                    value={c.gewerk ?? ''} onChange={e => updateContact(project, c.id, 'gewerk', e.target.value)} />
+                                </td>
+                                <td className="py-2 pr-3">
+                                  <input className="input py-1" placeholder="Bauleiter"
+                                    value={c.role} onChange={e => updateContact(project, c.id, 'role', e.target.value)} />
+                                </td>
+                                <td className="py-2 pr-3">
+                                  <input className="input py-1" type="email" placeholder="max@firma.de"
+                                    value={c.email} onChange={e => updateContact(project, c.id, 'email', e.target.value)} />
+                                </td>
+                                <td className="py-2 pr-3">
+                                  <input className="input py-1" type="tel" placeholder="+49 …"
+                                    value={c.phone} onChange={e => updateContact(project, c.id, 'phone', e.target.value)} />
+                                </td>
+                                <td className="py-2">
+                                  <button className="btn-ghost p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50"
+                                    onClick={() => removeContact(project, c.id)}>
+                                    <Trash2 size={13} />
+                                  </button>
+                                </td>
+                              </tr>
+                            )
+                          })}
                         </tbody>
                       </table>
                     </div>
@@ -360,11 +477,12 @@ export default function ProjectManager({ projects, onCreate, onUpdate, onDelete,
 
             {/* Preview table */}
             <div className="overflow-auto flex-1 px-6 py-4">
-              <table className="w-full text-sm min-w-[600px]">
+              <table className="w-full text-sm min-w-[640px]">
                 <thead>
                   <tr className="border-b border-gray-200 text-xs text-gray-500">
                     <th className="text-left pb-2 pr-3">Name</th>
                     <th className="text-left pb-2 pr-3">Firma</th>
+                    <th className="text-left pb-2 pr-3">Gewerk</th>
                     <th className="text-left pb-2 pr-3">Funktion</th>
                     <th className="text-left pb-2 pr-3"><span className="flex items-center gap-1"><Mail size={11} /> E-Mail</span></th>
                     <th className="text-left pb-2"><span className="flex items-center gap-1"><Phone size={11} /> Telefon</span></th>
@@ -375,6 +493,7 @@ export default function ProjectManager({ projects, onCreate, onUpdate, onDelete,
                     <tr key={c.id} className="text-xs">
                       <td className="py-1.5 pr-3 text-gray-800">{c.name || <span className="text-gray-300">–</span>}</td>
                       <td className="py-1.5 pr-3 text-gray-600">{c.company || <span className="text-gray-300">–</span>}</td>
+                      <td className="py-1.5 pr-3 text-gray-500">{c.gewerk || <span className="text-gray-300">–</span>}</td>
                       <td className="py-1.5 pr-3 text-gray-500">{c.role || <span className="text-gray-300">–</span>}</td>
                       <td className="py-1.5 pr-3 text-gray-500">{c.email || <span className="text-gray-300">–</span>}</td>
                       <td className="py-1.5 text-gray-500">{c.phone || <span className="text-gray-300">–</span>}</td>
@@ -386,7 +505,7 @@ export default function ProjectManager({ projects, onCreate, onUpdate, onDelete,
 
             {/* CSV hint */}
             <div className="px-6 py-2 bg-gray-50 border-t border-gray-100 text-xs text-gray-400">
-              Unterstützte CSV-Spalten (Reihenfolge beliebig): <span className="font-medium text-gray-500">Name · Firma / Company · Funktion / Role · E-Mail · Telefon / Phone</span>
+              Unterstützte CSV-Spalten (Reihenfolge beliebig): <span className="font-medium text-gray-500">Name · Firma · Gewerk · Funktion / Role · E-Mail · Telefon / Phone</span>
             </div>
 
             {/* Modal footer */}

@@ -112,16 +112,17 @@ export async function exportParticipantsListDocx(project, logoDataUrl = null) {
   })
 
   // ── Contacts table ──────────────────────────────────────────────────────────
-  const COL = [6, 20, 22, 18, 22, 12] // Nr · Name · Firma · Funktion · E-Mail · Telefon
+  const COL = [5, 17, 17, 14, 15, 20, 12] // Nr · Name · Firma · Gewerk · Funktion · E-Mail · Telefon
 
   const headerRow = new TableRow({
     children: [
       tcH('Nr.',      COL[0]),
       tcH('Name',     COL[1]),
       tcH('Firma',    COL[2]),
-      tcH('Funktion', COL[3]),
-      tcH('E-Mail',   COL[4]),
-      tcH('Telefon',  COL[5]),
+      tcH('Gewerk',   COL[3]),
+      tcH('Funktion', COL[4]),
+      tcH('E-Mail',   COL[5]),
+      tcH('Telefon',  COL[6]),
     ],
   })
 
@@ -130,9 +131,10 @@ export async function exportParticipantsListDocx(project, logoDataUrl = null) {
       tc(String(i + 1),   COL[0], { size: 16 }),
       tc(c.name,          COL[1]),
       tc(c.company,       COL[2]),
-      tc(c.role,          COL[3]),
-      tc(c.email,         COL[4], { size: 16 }),
-      tc(c.phone,         COL[5], { size: 16 }),
+      tc(c.gewerk,        COL[3]),
+      tc(c.role,          COL[4]),
+      tc(c.email,         COL[5], { size: 16 }),
+      tc(c.phone,         COL[6], { size: 16 }),
     ],
   }))
 
