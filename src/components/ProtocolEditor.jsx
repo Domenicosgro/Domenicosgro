@@ -30,7 +30,8 @@ function carryProtocolItems(predecessorItems) {
 
 // On close: only promote UNLINKED agenda items (linked ones are already live in agendaItems)
 function promoteAgenda(agenda, existingItems) {
-  const unlinked = (agenda ?? []).filter(a => !a.linkedProtocolItemId)
+  const existingLinkedIds = new Set(existingItems.map(it => it.linkedFromAgendaId).filter(Boolean))
+  const unlinked = (agenda ?? []).filter(a => !a.linkedProtocolItemId && !existingLinkedIds.has(a.id))
   if (!unlinked.length) return existingItems
   const topMax = existingItems
     .filter(it => (it.level ?? 1) === 1)
