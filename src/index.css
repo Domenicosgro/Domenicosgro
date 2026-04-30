@@ -7,7 +7,7 @@
     font-size: 14px;   /* base: 16px → 14px; all rem values scale down */
   }
   body {
-    @apply bg-white text-gray-900 font-sans;
+    @apply bg-gray-100 text-gray-900 font-sans;
   }
 
   /* macOS hiddenInset titlebar: push content below the traffic-light buttons */
@@ -19,7 +19,7 @@
 
 @layer components {
   .btn {
-    @apply inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-medium text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-offset-1;
+    @apply inline-flex items-center gap-1.5 px-3 py-1.5 font-medium text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-offset-1;
   }
   .btn-primary {
     @apply btn bg-brand-600 text-white hover:bg-brand-700 focus:ring-brand-500;
@@ -34,7 +34,7 @@
     @apply btn text-gray-500 hover:bg-gray-100 hover:text-gray-700 focus:ring-gray-300;
   }
   .input {
-    @apply w-full px-2.5 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent bg-white;
+    @apply w-full px-2.5 py-1.5 border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent bg-white;
   }
   .select {
     @apply input appearance-none cursor-pointer;
@@ -43,13 +43,13 @@
     @apply input resize-none;
   }
   .card {
-    @apply bg-white rounded-xl border border-gray-200 shadow-sm;
+    @apply bg-white border border-gray-200;
   }
   .section-title {
     @apply text-sm font-semibold text-gray-800 flex items-center gap-2;
   }
   .badge {
-    @apply inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium;
+    @apply inline-flex items-center px-2 py-0.5 text-xs font-medium;
   }
   .badge-blue   { @apply badge bg-blue-100 text-blue-700; }
   .badge-green  { @apply badge bg-green-100 text-green-700; }
@@ -65,7 +65,6 @@
   width: 100%;
   padding: 0.375rem 0.625rem;
   border: 1px solid #d1d5db;      /* border-gray-300 */
-  border-radius: 0.5rem;
   font-size: 0.875rem;
   background: #fff;
   outline: none;
