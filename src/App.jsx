@@ -18,15 +18,20 @@ const isElectron = typeof window !== 'undefined' && !!window.electronAPI
 export default function App() {
   const {
     protocols, loaded,
+    saveError: protocolSaveError, clearSaveError: clearProtocolError,
     createProtocol, updateProtocol, deleteProtocol, duplicateProtocol, importProtocol, syncProjectName,
   } = useProtocols()
 
   const {
     projects, loaded: projectsLoaded,
+    saveError: projectSaveError, clearSaveError: clearProjectError,
     createProject, updateProject, deleteProject,
   } = useProjects()
 
-  const { logoDataUrl, updateLogo, clearLogo } = useLogo()
+  const { logoDataUrl, updateLogo, clearLogo, saveError: logoSaveError, clearSaveError: clearLogoError } = useLogo()
+
+  const activeSaveError = protocolSaveError || projectSaveError || logoSaveError
+  const clearActiveSaveError = () => { clearProtocolError(); clearProjectError(); clearLogoError() }
 
   const [view,              setView]              = useState('home')
   const [selectedProjectId, setSelectedProjectId] = useState(null)   // null = unassigned
@@ -171,6 +176,25 @@ export default function App() {
     return null
   }
 
+  // ── Speicherfehler-Banner ─────────────────────────────────────────────────
+  const SaveErrorBanner = () => {
+    if (!activeSaveError) return null
+    return (
+      <div className="fixed top-0 inset-x-0 z-50 flex items-center justify-between gap-4 bg-red-700 text-white px-5 py-3 text-sm no-print">
+        <span>
+          <strong>Speichern fehlgeschlagen.</strong>{' '}{activeSaveError}
+        </span>
+        <button
+          className="shrink-0 text-white/70 hover:text-white text-lg leading-none"
+          onClick={clearActiveSaveError}
+          title="Schließen"
+        >
+          ×
+        </button>
+      </div>
+    )
+  }
+
   // ── Logo watermark helper ─────────────────────────────────────────────────
   const wrap = (children) => (
     <>{children}</>
@@ -207,6 +231,7 @@ export default function App() {
           onBack={handleBackFromEditor}
         />
         <UpdateBanner />
+        <SaveErrorBanner />
       </>
     )
   }
@@ -234,6 +259,7 @@ export default function App() {
           onManageContacts={() => setView('project-contacts')}
         />
         <UpdateBanner />
+        <SaveErrorBanner />
       </>
     )
   }
@@ -241,7 +267,6 @@ export default function App() {
   // ── Project contacts manager ──────────────────────────────────────────────
   if (view === 'project-contacts') {
     const project = projects.find(p => p.id === selectedProjectId)
-    // Wrap ProjectManager to show only this one project
     return wrap(
       <>
         <ProjectManager
@@ -253,6 +278,7 @@ export default function App() {
           logoDataUrl={logoDataUrl}
         />
         <UpdateBanner />
+        <SaveErrorBanner />
       </>
     )
   }
@@ -269,6 +295,7 @@ export default function App() {
         onOpenProject={openProject}
       />
       <UpdateBanner />
+      <SaveErrorBanner />
     </>
   )
 }

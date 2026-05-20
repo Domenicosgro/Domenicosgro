@@ -12,14 +12,27 @@ async function loadData() {
   } catch { return [] }
 }
 
+// Throws on failure so the caller can report the error to the user.
 async function saveData(projects) {
-  if (isElectron && window.electronAPI.saveProjects) return window.electronAPI.saveProjects(projects)
+  if (isElectron && window.electronAPI.saveProjects) {
+    const ok = await window.electronAPI.saveProjects(projects)
+    if (ok === false) throw new Error('Electron-Speichern fehlgeschlagen')
+    return
+  }
   localStorage.setItem(STORAGE_KEY, JSON.stringify(projects))
+}
+
+function buildSaveErrorMessage(err) {
+  if (err instanceof DOMException && err.name === 'QuotaExceededError') {
+    return 'Speicher voll – Projekte konnten nicht gespeichert werden. Bitte löschen Sie nicht mehr benötigte Daten.'
+  }
+  return 'Projekte konnten nicht gespeichert werden – Daten sind möglicherweise nicht gesichert.'
 }
 
 export function useProjects() {
   const [projects, setProjects] = useState([])
   const [loaded, setLoaded]     = useState(false)
+  const [saveError, setSaveError] = useState(null)
   const saveTimer               = useRef(null)
 
   useEffect(() => {
@@ -32,9 +45,18 @@ export function useProjects() {
   useEffect(() => {
     if (!loaded) return
     clearTimeout(saveTimer.current)
-    saveTimer.current = setTimeout(() => saveData(projects), 400)
+    saveTimer.current = setTimeout(async () => {
+      try {
+        await saveData(projects)
+        setSaveError(null)
+      } catch (err) {
+        setSaveError(buildSaveErrorMessage(err))
+      }
+    }, 400)
     return () => clearTimeout(saveTimer.current)
   }, [projects, loaded])
+
+  const clearSaveError = useCallback(() => setSaveError(null), [])
 
   const createProject = useCallback(() => {
     const p = emptyProject()
@@ -55,5 +77,5 @@ export function useProjects() {
     setProjects(prev => prev.filter(p => p.id !== id))
   }, [])
 
-  return { projects, loaded, createProject, updateProject, deleteProject }
+  return { projects, loaded, saveError, clearSaveError, createProject, updateProject, deleteProject }
 }
