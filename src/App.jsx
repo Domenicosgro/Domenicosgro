@@ -18,15 +18,20 @@ const isElectron = typeof window !== 'undefined' && !!window.electronAPI
 export default function App() {
   const {
     protocols, loaded,
+    saveError: protocolSaveError, clearSaveError: clearProtocolError,
     createProtocol, updateProtocol, deleteProtocol, duplicateProtocol, importProtocol, syncProjectName,
   } = useProtocols()
 
   const {
     projects, loaded: projectsLoaded,
+    saveError: projectSaveError, clearSaveError: clearProjectError,
     createProject, updateProject, deleteProject,
   } = useProjects()
 
-  const { logoDataUrl, updateLogo, clearLogo } = useLogo()
+  const { logoDataUrl, updateLogo, clearLogo, saveError: logoSaveError, clearSaveError: clearLogoError } = useLogo()
+
+  const activeSaveError = protocolSaveError || projectSaveError || logoSaveError
+  const clearActiveSaveError = () => { clearProtocolError(); clearProjectError(); clearLogoError() }
 
   const [view,              setView]              = useState('home')
   const [selectedProjectId, setSelectedProjectId] = useState(null)   // null = unassigned
@@ -34,7 +39,7 @@ export default function App() {
   const activeIdRef = useRef(activeId)
   activeIdRef.current = activeId
 
-  // ── Auto-updater notifications ────────────────────────────────────────────
+  // ── Auto-updater notifications ─────────────────────────────────────────────
   const [updateAvailable,  setUpdateAvailable]  = useState(null)   // info object or null
   const [updateDownloaded, setUpdateDownloaded] = useState(null)   // info object or null
 
@@ -48,7 +53,7 @@ export default function App() {
     }
   }, [])
 
-  // ── German spell check on all free-text inputs/textareas ────────────────
+  // ── German spell check on all free-text inputs/textareas ────────────────────
   useEffect(() => {
     const apply = () => {
       document.querySelectorAll('input[type="text"], input:not([type]), textarea').forEach(el => {
@@ -62,7 +67,7 @@ export default function App() {
     return () => obs.disconnect()
   }, [])
 
-  // ── Electron menu wiring ─────────────────────────────────────────────────
+  // ── Electron menu wiring ───────────────────────────────────────────────
   useEffect(() => {
     if (!isElectron) return
 
@@ -81,7 +86,7 @@ export default function App() {
       if (p) await window.electronAPI.exportJSON(p)
     })
 
-    window.electronAPI.onMenuPrint(() => window.print())
+    window.electronAPI.onMenuPrint(() => window.dispatchEvent(new CustomEvent('app:print')))
 
     window.electronAPI.onMenuSendAgenda(() => {
       window.dispatchEvent(new CustomEvent('app:send-agenda'))
@@ -94,7 +99,7 @@ export default function App() {
     }
   }, [protocols, importProtocol])
 
-  // ── Helpers ───────────────────────────────────────────────────────────────
+  // ── Helpers ───────────────────────────────────────────────────────────────────
 
   // Wraps updateProject: when the name changes, sync it to all linked protocols.
   const handleUpdateProject = (projectId, patch) => {
@@ -132,7 +137,7 @@ export default function App() {
     setView('home')
   }
 
-  // ── Update banner (Electron only) ────────────────────────────────────────
+  // ── Update banner (Electron only) ─────────────────────────────────────────
   const UpdateBanner = () => {
     if (!isElectron) return null
     if (updateDownloaded) {
@@ -171,12 +176,31 @@ export default function App() {
     return null
   }
 
+  // ── Speicherfehler-Banner ───────────────────────────────────────────────────
+  const SaveErrorBanner = () => {
+    if (!activeSaveError) return null
+    return (
+      <div className="fixed top-0 inset-x-0 z-50 flex items-center justify-between gap-4 bg-red-700 text-white px-5 py-3 text-sm no-print">
+        <span>
+          <strong>Speichern fehlgeschlagen.</strong>{' '}{activeSaveError}
+        </span>
+        <button
+          className="shrink-0 text-white/70 hover:text-white text-lg leading-none"
+          onClick={clearActiveSaveError}
+          title="Schließen"
+        >
+          ×
+        </button>
+      </div>
+    )
+  }
+
   // ── Logo watermark helper ─────────────────────────────────────────────────
   const wrap = (children) => (
     <>{children}</>
   )
 
-  // ── Loading ───────────────────────────────────────────────────────────────
+  // ── Loading ───────────────────────────────────────────────────────────────────
   if (!loaded || !projectsLoaded) {
     return wrap(
       <div className="min-h-screen flex items-center justify-center">
@@ -185,7 +209,7 @@ export default function App() {
     )
   }
 
-  // ── Protocol editor ───────────────────────────────────────────────────────
+  // ── Protocol editor ─────────────────────────────────────────────────────────────
   if (view === 'editor') {
     const activeProtocol    = protocols.find(p => p.id === activeId)
     const linkedProject     = projects.find(p => p.id === activeProtocol?.projectId) ?? null
@@ -207,11 +231,12 @@ export default function App() {
           onBack={handleBackFromEditor}
         />
         <UpdateBanner />
+        <SaveErrorBanner />
       </>
     )
   }
 
-  // ── Protocol list for a project ───────────────────────────────────────────
+  // ── Protocol list for a project ───────────────────────────────────────────────
   if (view === 'protocols') {
     const project  = projects.find(p => p.id === selectedProjectId) ?? null
     const filtered = protocols.filter(p =>
@@ -234,14 +259,14 @@ export default function App() {
           onManageContacts={() => setView('project-contacts')}
         />
         <UpdateBanner />
+        <SaveErrorBanner />
       </>
     )
   }
 
-  // ── Project contacts manager ──────────────────────────────────────────────
+  // ── Project contacts manager ────────────────────────────────────────────────
   if (view === 'project-contacts') {
     const project = projects.find(p => p.id === selectedProjectId)
-    // Wrap ProjectManager to show only this one project
     return wrap(
       <>
         <ProjectManager
@@ -253,11 +278,12 @@ export default function App() {
           logoDataUrl={logoDataUrl}
         />
         <UpdateBanner />
+        <SaveErrorBanner />
       </>
     )
   }
 
-  // ── Start: projects home ──────────────────────────────────────────────────
+  // ── Start: projects home ──────────────────────────────────────────────────────
   return wrap(
     <>
       <ProjectsHome
@@ -269,6 +295,7 @@ export default function App() {
         onOpenProject={openProject}
       />
       <UpdateBanner />
+      <SaveErrorBanner />
     </>
   )
 }
