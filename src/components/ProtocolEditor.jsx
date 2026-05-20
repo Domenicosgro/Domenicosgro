@@ -1,4 +1,5 @@
-import React, { useMemo, useState, useEffect, useRef } from 'react'
+import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react'
+import { flushSync } from 'react-dom'
 import { ArrowLeft, Printer, Download, Send, RefreshCw, AlertCircle, Lock, Unlock, FileText, RotateCcw, Layers } from 'lucide-react'
 import MeetingHeader    from './MeetingHeader'
 import ParticipantsList from './ParticipantsList'
@@ -9,11 +10,12 @@ import ActionItems      from './ActionItems'
 import NotesSection     from './NotesSection'
 import { formatDate, buildProtocolNo, getChainNo, uid, emptyAgendaItem } from '../utils'
 import { exportDocx } from '../exportDocx'
+import { attachmentStore } from '../attachmentStore'
 import GesamtprotokollModal from './GesamtprotokollModal'
 
 const isElectron = typeof window !== 'undefined' && !!window.electronAPI
 
-// ── Carryover helpers ─────────────────────────────────────────────────────────
+// ── Carryover helpers ────────────────────────────────────────────────────────────────
 function carryProtocolItems(predecessorItems) {
   return predecessorItems
     .filter(it => !(it.status === 'erledigt' && it.carriedGray === true))
@@ -50,9 +52,10 @@ function promoteAgenda(agenda, existingItems) {
 export default function ProtocolEditor({ protocol, protocols, projects, projectContacts, logoDataUrl, onLogoUpdate, onLogoClear, onUpdate, onBack }) {
   const change = (patch) => onUpdate(protocol.id, patch)
 
-  const [showEmailModal,      setShowEmailModal]      = useState(false)
-  const [confirmClose,        setConfirmClose]        = useState(false)
-  const [showGesamtprotokoll, setShowGesamtprotokoll] = useState(false)
+  const [showEmailModal,       setShowEmailModal]       = useState(false)
+  const [confirmClose,         setConfirmClose]         = useState(false)
+  const [showGesamtprotokoll,  setShowGesamtprotokoll]  = useState(false)
+  const [printAttachmentData,  setPrintAttachmentData]  = useState({})  // attId → base64
 
   // Tracks which predecessorId we have already initiated item-carryover for.
   // Prevents double-firing (React Strict Mode, rapid predecessor switches, etc.)
@@ -125,9 +128,6 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
   }, [predecessor?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Live sync: whenever agenda changes, create/move/remove protocol items immediately.
-  // "Neu erstellen" (null)  → standalone new Hauptpunkt appended at the end.
-  // Linked to Hauptpunkt    → sub-item inserted directly after that parent.
-  // Topic/responsible edits → kept in sync on the linked protocol item.
   const handleAgendaChange = (newAgenda) => {
     const oldAgenda = protocol.agenda ?? []
     let agendaItems = [...(protocol.agendaItems ?? [])]
@@ -146,7 +146,6 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
       const isNew     = !oldItem
 
       if (!isNew && newParent === oldParent) {
-        // No structural change — sync topic/responsible on the linked protocol item
         agendaItems = agendaItems.map(it =>
           it.linkedFromAgendaId === newItem.id
             ? { ...it, topic: newItem.topic, assignedTo: newItem.responsible || '' }
@@ -155,11 +154,9 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
         continue
       }
 
-      // Remove the previous protocol item tied to this agenda item
       agendaItems = agendaItems.filter(it => it.linkedFromAgendaId !== newItem.id)
 
       if (newParent === null) {
-        // "Neu erstellen" → append a new standalone Hauptpunkt
         const topMax = agendaItems
           .filter(it => (it.level ?? 1) === 1)
           .reduce((m, it) => Math.max(m, parseInt(it.no) || 0), 0)
@@ -174,7 +171,6 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
           },
         ]
       } else {
-        // Link to existing Hauptpunkt → insert as sub-item after its subtree
         const parentIdx = agendaItems.findIndex(it => it.id === newParent)
         if (parentIdx >= 0) {
           const parent      = agendaItems[parentIdx]
@@ -206,7 +202,6 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
       }
     }
 
-    // Remove protocol items whose agenda item was deleted
     for (const old of oldAgenda) {
       if (!newAgenda.find(a => a.id === old.id)) {
         agendaItems = agendaItems.filter(it => it.linkedFromAgendaId !== old.id)
@@ -215,6 +210,46 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
 
     change({ agenda: newAgenda, agendaItems })
   }
+
+  // Pre-load attachment blobs for the print view, then call window.print().
+  // Uses flushSync to ensure React re-renders before the print dialog opens.
+  const handlePrint = useCallback(async () => {
+    const prev = document.title
+    document.title = protocolNo
+
+    const imageItems = (protocol.agendaItems ?? []).filter(
+      item => item.attachment?.id && item.attachment.mimeType?.startsWith('image/')
+    )
+    if (imageItems.length > 0) {
+      const resolved = {}
+      await Promise.allSettled(
+        imageItems.map(async (item) => {
+          try {
+            const b64 = await attachmentStore.load(item.attachment.id)
+            if (b64) resolved[item.attachment.id] = b64
+          } catch {}
+        })
+      )
+      if (Object.keys(resolved).length > 0) {
+        flushSync(() => setPrintAttachmentData(resolved))
+      }
+    }
+
+    window.print()
+    setTimeout(() => {
+      document.title = prev
+      setPrintAttachmentData({})
+    }, 500)
+  }, [protocol.agendaItems, protocolNo])
+
+  // Allow the Electron menu shortcut (Cmd+P) to also use our async print handler
+  const handlePrintRef = useRef(null)
+  handlePrintRef.current = handlePrint
+  useEffect(() => {
+    const handler = () => handlePrintRef.current?.()
+    window.addEventListener('app:print', handler)
+    return () => window.removeEventListener('app:print', handler)
+  }, [])
 
   // Close protocol
   const handleClose = () => {
@@ -289,12 +324,7 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
           <button className="btn-secondary" onClick={() => exportDocx(protocol, chainNo, logoDataUrl)}>
             <FileText size={16} /> Word
           </button>
-          <button className="btn-secondary" onClick={() => {
-            const prev = document.title
-            document.title = protocolNo
-            window.print()
-            setTimeout(() => { document.title = prev }, 500)
-          }}>
+          <button className="btn-secondary" onClick={handlePrint}>
             <Printer size={16} /> Drucken / PDF
           </button>
           {isClosed
@@ -565,17 +595,16 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
         <span>{protocolNo}</span>
       </div>
 
-      {/* ── Print: Anlagen ─────────────────────────────────────────────────────
+      {/* ── Print: Anlagen ───────────────────────────────────────────────────────────────────
            Each attachment gets its own page. Images get a diagonal watermark
            (the protocol item number). Non-image files get a printed notice.
-           ────────────────────────────────────────────────────────────────── */}
+           ──────────────────────────────────────────────────────────────────── */}
       {(protocol.agendaItems ?? []).filter(item => item.attachment).map(item => {
         const att     = item.attachment
         const isImage = att.mimeType?.startsWith('image/')
         return (
           <div key={`pa-${item.id}`} className="hidden print:block"
             style={{ pageBreakBefore: 'always', breakBefore: 'page' }}>
-            {/* Attachment label */}
             <div style={{
               borderBottom: '0.5pt solid #000', paddingBottom: '3mm', marginBottom: '6mm',
               fontSize: '8pt', textTransform: 'uppercase', letterSpacing: '0.08em',
@@ -585,10 +614,9 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
             </div>
 
             {isImage ? (
-              /* Image with diagonal item-number watermark */
               <div style={{ position: 'relative' }}>
                 <img
-                  src={`data:${att.mimeType};base64,${att.data}`}
+                  src={`data:${att.mimeType};base64,${printAttachmentData[att.id] ?? att.data ?? ''}`}
                   alt={att.name}
                   style={{ display: 'block', width: '100%', maxHeight: '248mm', objectFit: 'contain' }}
                 />
