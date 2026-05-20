@@ -81,7 +81,7 @@ export default function App() {
       if (p) await window.electronAPI.exportJSON(p)
     })
 
-    window.electronAPI.onMenuPrint(() => window.print())
+    window.electronAPI.onMenuPrint(() => window.dispatchEvent(new CustomEvent('app:print')))
 
     window.electronAPI.onMenuSendAgenda(() => {
       window.dispatchEvent(new CustomEvent('app:send-agenda'))

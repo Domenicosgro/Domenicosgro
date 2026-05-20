@@ -257,6 +257,36 @@ ipcMain.handle('attachment:open', async (_e, { data, mimeType, name }) => {
   } catch { return false }
 })
 
+// ── Attachment blob storage ───────────────────────────────────────────────────
+function attachmentsDir() {
+  const dir = path.join(app.getPath('userData'), 'attachments')
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })
+  return dir
+}
+
+ipcMain.handle('attachment:save', (_e, id, base64) => {
+  try {
+    fs.writeFileSync(path.join(attachmentsDir(), id), Buffer.from(base64, 'base64'))
+    return true
+  } catch { return false }
+})
+
+ipcMain.handle('attachment:load', (_e, id) => {
+  try {
+    const p = path.join(attachmentsDir(), id)
+    if (!fs.existsSync(p)) return null
+    return fs.readFileSync(p).toString('base64')
+  } catch { return null }
+})
+
+ipcMain.handle('attachment:delete', (_e, id) => {
+  try {
+    const p = path.join(attachmentsDir(), id)
+    if (fs.existsSync(p)) fs.unlinkSync(p)
+    return true
+  } catch { return false }
+})
+
 ipcMain.handle('protocols:import-json', async () => {
   const { filePaths, canceled } = await dialog.showOpenDialog({
     title:      'Protokoll importieren',

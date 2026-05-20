@@ -4,6 +4,7 @@ import { Plus, Trash2, FileText, IndentIncrease, IndentDecrease, Search, X,
          ChevronRight, ChevronDown } from 'lucide-react'
 import { emptyAgendaItem, emptyActionItem, uid, formatDate } from '../utils'
 import RichTextEditor, { stripHtml } from './RichTextEditor'
+import { attachmentStore } from '../attachmentStore'
 
 const isElectron = typeof window !== 'undefined' && !!window.electronAPI
 
@@ -14,16 +15,25 @@ function formatFileSize(bytes) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
-function openAttachment(attachment) {
-  if (isElectron && window.electronAPI.openAttachment) {
-    window.electronAPI.openAttachment(attachment)
-  } else {
-    const byteChars = atob(attachment.data)
-    const byteArr   = new Uint8Array(byteChars.length)
-    for (let i = 0; i < byteChars.length; i++) byteArr[i] = byteChars.charCodeAt(i)
-    const blob = new Blob([byteArr], { type: attachment.mimeType })
-    window.open(URL.createObjectURL(blob), '_blank')
+async function openAttachment(attachment) {
+  // Support both old format (attachment.data) and new format (attachment.id)
+  let base64 = attachment.data ?? null
+  if (!base64 && attachment.id) {
+    try { base64 = await attachmentStore.load(attachment.id) } catch {}
   }
+  if (!base64) {
+    alert('Anlage nicht gefunden. Die Datei wurde möglicherweise auf einem anderen Gerät gespeichert.')
+    return
+  }
+  if (isElectron && window.electronAPI.openAttachment) {
+    window.electronAPI.openAttachment({ ...attachment, data: base64 })
+    return
+  }
+  const byteChars = atob(base64)
+  const byteArr   = new Uint8Array(byteChars.length)
+  for (let i = 0; i < byteChars.length; i++) byteArr[i] = byteChars.charCodeAt(i)
+  const blob = new Blob([byteArr], { type: attachment.mimeType })
+  window.open(URL.createObjectURL(blob), '_blank')
 }
 
 const LEVEL_STYLES = {
@@ -216,9 +226,15 @@ export default function ProtocolItems({ items, onChange, allTasks = [], onTasksC
     if (!file) return
     if (file.size > 20 * 1024 * 1024) { alert('Datei ist zu groß (max. 20 MB).'); return }
     const reader = new FileReader()
-    reader.onload = (e) => {
+    reader.onload = async (e) => {
       const base64 = e.target.result.split(',')[1]
-      update(id, 'attachment', { name: file.name, mimeType: file.type || 'application/octet-stream', data: base64, size: file.size })
+      const attId  = uid()
+      try {
+        await attachmentStore.save(attId, base64)
+        update(id, 'attachment', { name: file.name, mimeType: file.type || 'application/octet-stream', size: file.size, id: attId })
+      } catch {
+        alert('Anlage konnte nicht gespeichert werden.')
+      }
     }
     reader.readAsDataURL(file)
   }

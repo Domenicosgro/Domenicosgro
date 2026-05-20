@@ -20,6 +20,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   openExternal:   (url)        => ipcRenderer.invoke('shell:open-external', url),
   openAttachment: (attachment) => ipcRenderer.invoke('attachment:open', attachment),
 
+  // Attachment blob storage
+  saveAttachment:   (id, base64) => ipcRenderer.invoke('attachment:save', id, base64),
+  loadAttachment:   (id)         => ipcRenderer.invoke('attachment:load', id),
+  deleteAttachment: (id)         => ipcRenderer.invoke('attachment:delete', id),
+
   // Menu events pushed from main → renderer
   onMenuImport:      (cb) => ipcRenderer.on('menu:import',       (_e) => cb()),
   onMenuExportJSON:  (cb) => ipcRenderer.on('menu:export-json',  (_e) => cb()),

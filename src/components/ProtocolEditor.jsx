@@ -1,4 +1,5 @@
-import React, { useMemo, useState, useEffect, useRef } from 'react'
+import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react'
+import { flushSync } from 'react-dom'
 import { ArrowLeft, Printer, Download, Send, RefreshCw, AlertCircle, Lock, Unlock, FileText, RotateCcw, Layers } from 'lucide-react'
 import MeetingHeader    from './MeetingHeader'
 import ParticipantsList from './ParticipantsList'
@@ -9,6 +10,7 @@ import ActionItems      from './ActionItems'
 import NotesSection     from './NotesSection'
 import { formatDate, buildProtocolNo, getChainNo, uid, emptyAgendaItem } from '../utils'
 import { exportDocx } from '../exportDocx'
+import { attachmentStore } from '../attachmentStore'
 import GesamtprotokollModal from './GesamtprotokollModal'
 
 const isElectron = typeof window !== 'undefined' && !!window.electronAPI
@@ -50,9 +52,10 @@ function promoteAgenda(agenda, existingItems) {
 export default function ProtocolEditor({ protocol, protocols, projects, projectContacts, logoDataUrl, onLogoUpdate, onLogoClear, onUpdate, onBack }) {
   const change = (patch) => onUpdate(protocol.id, patch)
 
-  const [showEmailModal,      setShowEmailModal]      = useState(false)
-  const [confirmClose,        setConfirmClose]        = useState(false)
-  const [showGesamtprotokoll, setShowGesamtprotokoll] = useState(false)
+  const [showEmailModal,       setShowEmailModal]       = useState(false)
+  const [confirmClose,         setConfirmClose]         = useState(false)
+  const [showGesamtprotokoll,  setShowGesamtprotokoll]  = useState(false)
+  const [printAttachmentData,  setPrintAttachmentData]  = useState({})  // attId → base64
 
   // Tracks which predecessorId we have already initiated item-carryover for.
   // Prevents double-firing (React Strict Mode, rapid predecessor switches, etc.)
@@ -216,6 +219,46 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
     change({ agenda: newAgenda, agendaItems })
   }
 
+  // Pre-load attachment blobs for the print view, then call window.print().
+  // Uses flushSync to ensure React re-renders before the print dialog opens.
+  const handlePrint = useCallback(async () => {
+    const prev = document.title
+    document.title = protocolNo
+
+    const imageItems = (protocol.agendaItems ?? []).filter(
+      item => item.attachment?.id && item.attachment.mimeType?.startsWith('image/')
+    )
+    if (imageItems.length > 0) {
+      const resolved = {}
+      await Promise.allSettled(
+        imageItems.map(async (item) => {
+          try {
+            const b64 = await attachmentStore.load(item.attachment.id)
+            if (b64) resolved[item.attachment.id] = b64
+          } catch {}
+        })
+      )
+      if (Object.keys(resolved).length > 0) {
+        flushSync(() => setPrintAttachmentData(resolved))
+      }
+    }
+
+    window.print()
+    setTimeout(() => {
+      document.title = prev
+      setPrintAttachmentData({})
+    }, 500)
+  }, [protocol.agendaItems, protocolNo])
+
+  // Allow the Electron menu shortcut (Cmd+P) to also use our async print handler
+  const handlePrintRef = useRef(null)
+  handlePrintRef.current = handlePrint
+  useEffect(() => {
+    const handler = () => handlePrintRef.current?.()
+    window.addEventListener('app:print', handler)
+    return () => window.removeEventListener('app:print', handler)
+  }, [])
+
   // Close protocol
   const handleClose = () => {
     const promoted = promoteAgenda(protocol.agenda ?? [], protocol.agendaItems ?? [])
@@ -289,12 +332,7 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
           <button className="btn-secondary" onClick={() => exportDocx(protocol, chainNo, logoDataUrl)}>
             <FileText size={16} /> Word
           </button>
-          <button className="btn-secondary" onClick={() => {
-            const prev = document.title
-            document.title = protocolNo
-            window.print()
-            setTimeout(() => { document.title = prev }, 500)
-          }}>
+          <button className="btn-secondary" onClick={handlePrint}>
             <Printer size={16} /> Drucken / PDF
           </button>
           {isClosed
@@ -588,7 +626,7 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
               /* Image with diagonal item-number watermark */
               <div style={{ position: 'relative' }}>
                 <img
-                  src={`data:${att.mimeType};base64,${att.data}`}
+                  src={`data:${att.mimeType};base64,${printAttachmentData[att.id] ?? att.data ?? ''}`}
                   alt={att.name}
                   style={{ display: 'block', width: '100%', maxHeight: '248mm', objectFit: 'contain' }}
                 />

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { emptyProtocol, uid } from '../utils'
+import { attachmentStore } from '../attachmentStore'
 
 const STORAGE_KEY = 'bb_protocols_v1'
 
@@ -19,15 +20,42 @@ async function saveData(protocols) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(protocols))
 }
 
+// Migrate old inline-base64 attachments to the external store.
+// Idempotent: items with attachment.data are old-format; items with attachment.id are already migrated.
+async function migrateAttachments(protocols) {
+  let changed = false
+  const result = await Promise.all(protocols.map(async (protocol) => {
+    let pChanged = false
+    const agendaItems = await Promise.all((protocol.agendaItems ?? []).map(async (item) => {
+      if (!item.attachment?.data) return item
+      const id = uid()
+      try {
+        await attachmentStore.save(id, item.attachment.data)
+        pChanged = true
+        changed  = true
+        const { data: _omit, ...rest } = item.attachment
+        return { ...item, attachment: { ...rest, id } }
+      } catch {
+        return item  // keep original on error — no data loss
+      }
+    }))
+    return pChanged ? { ...protocol, agendaItems } : protocol
+  }))
+  return { result, changed }
+}
+
 export function useProtocols() {
   const [protocols, setProtocols] = useState([])
   const [loaded, setLoaded]       = useState(false)
   const saveTimer                  = useRef(null)
 
-  // Initial load
+  // Initial load + one-time migration of inline base64 attachments
   useEffect(() => {
-    loadData().then(data => {
-      setProtocols(Array.isArray(data) ? data : [])
+    loadData().then(async (raw) => {
+      const data = Array.isArray(raw) ? raw : []
+      const { result, changed } = await migrateAttachments(data)
+      setProtocols(result)
+      if (changed) saveData(result)   // persist immediately without the inline base64
       setLoaded(true)
     })
   }, [])
