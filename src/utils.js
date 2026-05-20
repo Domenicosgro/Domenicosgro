@@ -133,6 +133,7 @@ export const emptyParticipant = () => ({
   role: '',
   email: '',
   present: true,
+  contactId: null,   // link to project contact (for sync detection)
 })
 
 // Pre-meeting agenda draft item

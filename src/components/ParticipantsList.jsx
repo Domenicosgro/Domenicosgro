@@ -1,5 +1,5 @@
 import React from 'react'
-import { Plus, Trash2, Users, FolderOpen } from 'lucide-react'
+import { Plus, Trash2, Users, FolderOpen, RefreshCw, AlertCircle } from 'lucide-react'
 import { emptyParticipant, uid } from '../utils'
 
 export default function ParticipantsList({ participants, onChange, readOnly, projectContacts }) {
@@ -7,16 +7,49 @@ export default function ParticipantsList({ participants, onChange, readOnly, pro
     const existing = new Set(participants.map(p => p.email).filter(Boolean))
     const toAdd = (projectContacts ?? [])
       .filter(c => !existing.has(c.email) || !c.email)
-      .map(c => ({ ...emptyParticipant(), id: uid(), name: c.name, company: c.company, role: c.role, email: c.email ?? '' }))
+      .map(c => ({
+        ...emptyParticipant(),
+        id:        uid(),
+        name:      c.name      ?? '',
+        company:   c.company   ?? '',
+        role:      c.role      ?? '',
+        email:     c.email     ?? '',
+        contactId: c.id,       // track source for later sync detection
+      }))
     if (toAdd.length === 0) return
     onChange([...participants, ...toAdd])
   }
+
   const add = () => onChange([...participants, emptyParticipant()])
 
   const update = (id, field, value) =>
     onChange(participants.map(p => p.id === id ? { ...p, [field]: value } : p))
 
   const remove = (id) => onChange(participants.filter(p => p.id !== id))
+
+  // Detect participants whose Stammdaten (name/company/role/email) differ from the source contact.
+  // Only applies to participants imported via "Aus Projekt" (contactId is set).
+  const stale = !readOnly ? participants.filter(p => {
+    if (!p.contactId) return false
+    const c = (projectContacts ?? []).find(c => c.id === p.contactId)
+    if (!c) return false
+    return (
+      (p.name    ?? '') !== (c.name    ?? '') ||
+      (p.company ?? '') !== (c.company ?? '') ||
+      (p.role    ?? '') !== (c.role    ?? '') ||
+      (p.email   ?? '') !== (c.email   ?? '')
+    )
+  }) : []
+
+  // Update only Stammdaten; preserve attendance status and any manual edits to other fields.
+  const syncStale = () => {
+    onChange(participants.map(p => {
+      if (!p.contactId) return p
+      const c = (projectContacts ?? []).find(c => c.id === p.contactId)
+      if (!c) return p
+      return { ...p, name: c.name ?? '', company: c.company ?? '', role: c.role ?? '', email: c.email ?? '' }
+    }))
+  }
 
   const present = participants.filter(p => p.present)
   const absent  = participants.filter(p => !p.present)
@@ -44,6 +77,22 @@ export default function ParticipantsList({ participants, onChange, readOnly, pro
         )}
       </div>
 
+      {/* Stale-data hint — only when linked contacts have changed */}
+      {stale.length > 0 && (
+        <div className="no-print flex items-center gap-3 bg-amber-50 border border-amber-200 p-3 text-sm text-amber-800">
+          <AlertCircle size={16} className="flex-shrink-0 text-amber-500" />
+          <span className="flex-1">
+            {stale.length === 1
+              ? <>Kontaktdaten von <strong>{stale[0].name || 'einem Teilnehmer'}</strong> haben sich geändert.</>
+              : <><strong>{stale.length} Teilnehmer</strong> haben geänderte Kontaktdaten.</>
+            }{' '}Anwesenheitsstatus bleibt erhalten.
+          </span>
+          <button className="btn-secondary text-xs flex-shrink-0" onClick={syncStale}>
+            <RefreshCw size={13} /> Kontaktdaten aktualisieren
+          </button>
+        </div>
+      )}
+
       {participants.length === 0 && (
         <p className="text-sm text-gray-400 italic">Keine eingeladenen Teilnehmer erfasst.</p>
       )}
@@ -63,55 +112,58 @@ export default function ParticipantsList({ participants, onChange, readOnly, pro
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {participants.map((p, i) => (
-                <tr key={p.id} className={p.present ? '' : 'opacity-60'}>
-                  <td className="py-2 pr-3 text-gray-400 text-xs">{i + 1}</td>
-                  <td className="py-2 pr-3">
-                    {readOnly
-                      ? <span className="text-sm text-gray-800">{p.name || '–'}</span>
-                      : <input className="input py-1" placeholder="Max Mustermann" value={p.name} onChange={e => update(p.id, 'name', e.target.value)} />
-                    }
-                  </td>
-                  <td className="py-2 pr-3">
-                    {readOnly
-                      ? <span className="text-sm text-gray-700">{p.company || '–'}</span>
-                      : <input className="input py-1" placeholder="Baufirma GmbH" value={p.company} onChange={e => update(p.id, 'company', e.target.value)} />
-                    }
-                  </td>
-                  <td className="py-2 pr-3">
-                    {readOnly
-                      ? <span className="text-sm text-gray-700">{p.role || '–'}</span>
-                      : <input className="input py-1" placeholder="Bauleiter" value={p.role} onChange={e => update(p.id, 'role', e.target.value)} />
-                    }
-                  </td>
-                  <td className="py-2 pr-3">
-                    {readOnly
-                      ? <span className="text-sm text-gray-500">{p.email || '–'}</span>
-                      : <input className="input py-1" type="email" placeholder="max@firma.de" value={p.email ?? ''} onChange={e => update(p.id, 'email', e.target.value)} />
-                    }
-                  </td>
-                  <td className="py-2 pr-3 text-center">
-                    <input
-                      type="checkbox"
-                      className="w-4 h-4 accent-brand-600 cursor-pointer"
-                      checked={p.present}
-                      onChange={e => !readOnly && update(p.id, 'present', e.target.checked)}
-                      disabled={readOnly}
-                    />
-                  </td>
-                  {!readOnly && (
-                    <td className="py-2 no-print">
-                      <button
-                        className="btn-ghost p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50"
-                        onClick={() => remove(p.id)}
-                        title="Entfernen"
-                      >
-                        <Trash2 size={14} />
-                      </button>
+              {participants.map((p, i) => {
+                const isStale = stale.some(s => s.id === p.id)
+                return (
+                  <tr key={p.id} className={p.present ? '' : 'opacity-60'}>
+                    <td className="py-2 pr-3 text-gray-400 text-xs">{i + 1}</td>
+                    <td className="py-2 pr-3">
+                      {readOnly
+                        ? <span className="text-sm text-gray-800">{p.name || '–'}</span>
+                        : <input className={`input py-1 ${isStale ? 'border-amber-300' : ''}`} placeholder="Max Mustermann" value={p.name} onChange={e => update(p.id, 'name', e.target.value)} />
+                      }
                     </td>
-                  )}
-                </tr>
-              ))}
+                    <td className="py-2 pr-3">
+                      {readOnly
+                        ? <span className="text-sm text-gray-700">{p.company || '–'}</span>
+                        : <input className={`input py-1 ${isStale ? 'border-amber-300' : ''}`} placeholder="Baufirma GmbH" value={p.company} onChange={e => update(p.id, 'company', e.target.value)} />
+                      }
+                    </td>
+                    <td className="py-2 pr-3">
+                      {readOnly
+                        ? <span className="text-sm text-gray-700">{p.role || '–'}</span>
+                        : <input className={`input py-1 ${isStale ? 'border-amber-300' : ''}`} placeholder="Bauleiter" value={p.role} onChange={e => update(p.id, 'role', e.target.value)} />
+                      }
+                    </td>
+                    <td className="py-2 pr-3">
+                      {readOnly
+                        ? <span className="text-sm text-gray-500">{p.email || '–'}</span>
+                        : <input className={`input py-1 ${isStale ? 'border-amber-300' : ''}`} type="email" placeholder="max@firma.de" value={p.email ?? ''} onChange={e => update(p.id, 'email', e.target.value)} />
+                      }
+                    </td>
+                    <td className="py-2 pr-3 text-center">
+                      <input
+                        type="checkbox"
+                        className="w-4 h-4 accent-brand-600 cursor-pointer"
+                        checked={p.present}
+                        onChange={e => !readOnly && update(p.id, 'present', e.target.checked)}
+                        disabled={readOnly}
+                      />
+                    </td>
+                    {!readOnly && (
+                      <td className="py-2 no-print">
+                        <button
+                          className="btn-ghost p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50"
+                          onClick={() => remove(p.id)}
+                          title="Entfernen"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </td>
+                    )}
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         </div>
