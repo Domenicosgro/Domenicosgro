@@ -1,4 +1,4 @@
-export const uid = () => Math.random().toString(36).slice(2, 9)
+export const uid = () => crypto.randomUUID()
 
 export const today = () => new Date().toISOString().slice(0, 10)
 
@@ -133,6 +133,7 @@ export const emptyParticipant = () => ({
   role: '',
   email: '',
   present: true,
+  contactId: null,   // link to project contact (for sync detection)
 })
 
 // Pre-meeting agenda draft item
@@ -216,7 +217,7 @@ export const emptyAgendaItem = (level = 1) => ({
   carriedGray: false,
   carriedFromId: null,
   createdAt: new Date().toISOString(),
-  attachment: null,   // { name, mimeType, data (base64), size }
+  attachment: null,   // { name, mimeType, size, id: attachmentId }
 })
 
 export const emptyActionItem = () => ({

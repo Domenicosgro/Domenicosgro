@@ -1,9 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { emptyProtocol, uid } from '../utils'
+import { attachmentStore } from '../attachmentStore'
 
 const STORAGE_KEY = 'bb_protocols_v1'
 
-// Detect Electron context (preload script exposes window.electronAPI)
 const isElectron = typeof window !== 'undefined' && !!window.electronAPI
 
 async function loadData() {
@@ -14,20 +14,64 @@ async function loadData() {
   } catch { return [] }
 }
 
+// Throws on failure so the caller can report the error to the user.
 async function saveData(protocols) {
-  if (isElectron) return window.electronAPI.saveProtocols(protocols)
+  if (isElectron) {
+    const ok = await window.electronAPI.saveProtocols(protocols)
+    if (ok === false) throw new Error('Electron-Speichern fehlgeschlagen')
+    return
+  }
+  // localStorage.setItem throws QuotaExceededError when storage is full.
+  // If it throws, the previous data is still intact — no silent overwrite.
   localStorage.setItem(STORAGE_KEY, JSON.stringify(protocols))
+}
+
+// Migrate old inline-base64 attachments to the external store.
+// Idempotent: items with attachment.data are old-format; items with attachment.id are already migrated.
+async function migrateAttachments(protocols) {
+  let changed = false
+  const result = await Promise.all(protocols.map(async (protocol) => {
+    let pChanged = false
+    const agendaItems = await Promise.all((protocol.agendaItems ?? []).map(async (item) => {
+      if (!item.attachment?.data) return item
+      const id = uid()
+      try {
+        await attachmentStore.save(id, item.attachment.data)
+        pChanged = true
+        changed  = true
+        const { data: _omit, ...rest } = item.attachment
+        return { ...item, attachment: { ...rest, id } }
+      } catch {
+        return item  // keep original on error — no data loss
+      }
+    }))
+    return pChanged ? { ...protocol, agendaItems } : protocol
+  }))
+  return { result, changed }
+}
+
+function buildSaveErrorMessage(err) {
+  if (err instanceof DOMException && err.name === 'QuotaExceededError') {
+    return 'Speicher voll – Protokolle konnten nicht gespeichert werden. Bitte löschen Sie alte Protokolle oder Anhänge.'
+  }
+  return 'Protokolle konnten nicht gespeichert werden – Daten sind möglicherweise nicht gesichert.'
 }
 
 export function useProtocols() {
   const [protocols, setProtocols] = useState([])
   const [loaded, setLoaded]       = useState(false)
+  const [saveError, setSaveError] = useState(null)
   const saveTimer                  = useRef(null)
 
-  // Initial load
+  // Initial load + one-time migration of inline base64 attachments
   useEffect(() => {
-    loadData().then(data => {
-      setProtocols(Array.isArray(data) ? data : [])
+    loadData().then(async (raw) => {
+      const data = Array.isArray(raw) ? raw : []
+      const { result, changed } = await migrateAttachments(data)
+      setProtocols(result)
+      if (changed) {
+        try { await saveData(result) } catch {}   // best-effort; errors reported on next change
+      }
       setLoaded(true)
     })
   }, [])
@@ -36,9 +80,18 @@ export function useProtocols() {
   useEffect(() => {
     if (!loaded) return
     clearTimeout(saveTimer.current)
-    saveTimer.current = setTimeout(() => saveData(protocols), 400)
+    saveTimer.current = setTimeout(async () => {
+      try {
+        await saveData(protocols)
+        setSaveError(null)
+      } catch (err) {
+        setSaveError(buildSaveErrorMessage(err))
+      }
+    }, 400)
     return () => clearTimeout(saveTimer.current)
   }, [protocols, loaded])
+
+  const clearSaveError = useCallback(() => setSaveError(null), [])
 
   const createProtocol = useCallback((initial = {}) => {
     const p = { ...emptyProtocol(), ...initial }
@@ -73,7 +126,6 @@ export function useProtocols() {
     })
   }, [])
 
-  // Import a single protocol from JSON (Electron file dialog or parsed object)
   const importProtocol = useCallback((data) => {
     if (!data || typeof data !== 'object') return false
     const p = { ...data, id: uid(), createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }
@@ -90,5 +142,8 @@ export function useProtocols() {
     )
   }, [])
 
-  return { protocols, loaded, createProtocol, updateProtocol, deleteProtocol, duplicateProtocol, importProtocol, syncProjectName }
+  return {
+    protocols, loaded, saveError, clearSaveError,
+    createProtocol, updateProtocol, deleteProtocol, duplicateProtocol, importProtocol, syncProjectName,
+  }
 }
