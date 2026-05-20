@@ -83,9 +83,14 @@ src/
   status ('offen'|'erledigt'),
   assignedTo, carriedGray, carriedFromId,
   linkedFromAgendaId,       // Link auf Agenda-Entwurfspunkt
-  createdAt, attachment: { name, mimeType, data (base64), size }
+  createdAt, attachment: { name, mimeType, size, id: attachmentId }  // Ref auf attachmentStore
 }
 ```
+Anhänge werden **nicht** im Protokoll-Objekt (localStorage) gespeichert. Nur die Referenz (`attachment.id`) bleibt.
+Die Base64-Daten liegen in:
+- Web: IndexedDB `bb_attachments_v1` Store `files`
+- Electron: `userData/attachments/{id}`
+Abstraktion: `src/attachmentStore.js` → `attachmentStore.save/load/remove(id, base64?)`
 
 ### Maßnahme (actionItem)
 ```js

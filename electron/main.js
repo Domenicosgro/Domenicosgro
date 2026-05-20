@@ -11,7 +11,7 @@ const isWin  = process.platform === 'win32'
 
 const APP_NAME = 'Komplizen Protokolle'
 
-// ── Data files ───────────────────────────────────────────────────────────────
+// ── Data files ───────────────────────────────────────────────────────────────────
 function dataFile()     { return path.join(app.getPath('userData'), 'protocols.json') }
 function projectsFile() { return path.join(app.getPath('userData'), 'projects.json')  }
 
@@ -33,17 +33,14 @@ function writeProjects(projects) {
   fs.writeFileSync(projectsFile(), JSON.stringify(projects, null, 2), 'utf-8')
 }
 
-// ── Auto-Updater ──────────────────────────────────────────────────────────────
-// Update-URL konfigurieren: Datei <userData>/update-config.json mit { "url": "..." }
-// anlegen ODER direkt in package.json → build.publish.url setzen.
+// ── Auto-Updater ────────────────────────────────────────────────────────────────
 log.transports.file.level = 'info'
 autoUpdater.logger         = log
-autoUpdater.autoDownload   = true   // automatisch herunterladen, Nutzer fragt nur zum Installieren
+autoUpdater.autoDownload   = true
 
 function setupAutoUpdater(win) {
-  if (isDev) return   // keine Update-Prüfung im Entwicklungsmodus
+  if (isDev) return
 
-  // Optionale Laufzeit-Konfiguration der Update-URL
   const cfgPath = path.join(app.getPath('userData'), 'update-config.json')
   if (fs.existsSync(cfgPath)) {
     try {
@@ -56,12 +53,11 @@ function setupAutoUpdater(win) {
   autoUpdater.on('update-downloaded', (info) => win.webContents.send('update:downloaded', info))
   autoUpdater.on('error', (err) => log.error('Updater-Fehler:', err.message))
 
-  // Erste Prüfung nach 10 s, dann alle 4 h
   setTimeout(() => autoUpdater.checkForUpdates(), 10_000)
   setInterval(() => autoUpdater.checkForUpdates(), 4 * 60 * 60 * 1000)
 }
 
-// ── Window ───────────────────────────────────────────────────────────────────
+// ── Window ───────────────────────────────────────────────────────────────────────
 function createWindow() {
   const win = new BrowserWindow({
     width:     1360,
@@ -78,10 +74,10 @@ function createWindow() {
       preload:                    path.join(__dirname, 'preload.js'),
       contextIsolation:           true,
       nodeIntegration:            false,
-      sandbox:                    true,         // Renderer-Prozess sandboxen
+      sandbox:                    true,
       webSecurity:                true,
       allowRunningInsecureContent: false,
-      devTools:                   isDev,        // DevTools nur in Entwicklung
+      devTools:                   isDev,
     },
   })
 
@@ -93,7 +89,6 @@ function createWindow() {
 
   if (isMac) nativeTheme.themeSource = 'system'
 
-  // ── Navigation guard: nur lokale URLs erlauben ─────────────────────────────
   win.webContents.on('will-navigate', (event, url) => {
     const allowed = isDev
       ? url.startsWith('http://localhost:5173')
@@ -101,7 +96,6 @@ function createWindow() {
     if (!allowed) event.preventDefault()
   })
 
-  // Neue Fenster (target="_blank" etc.) im System-Browser öffnen, nie intern
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (url.startsWith('https://') || url.startsWith('http://')) {
       shell.openExternal(url)
@@ -114,7 +108,7 @@ function createWindow() {
   return win
 }
 
-// ── App menu ─────────────────────────────────────────────────────────────────
+// ── App menu ─────────────────────────────────────────────────────────────────────
 function buildMenu(win) {
   const send = (channel) => () => win.webContents.send(channel)
 
@@ -127,7 +121,6 @@ function buildMenu(win) {
       { type: 'separator' },
       { label: 'Protokoll exportieren (JSON)…', click: send('menu:export-json'),  accelerator: 'CmdOrCtrl+S' },
       { label: 'Als PDF drucken…',              click: send('menu:print'),         accelerator: 'CmdOrCtrl+P' },
-      // On macOS "Beenden" lives in the app menu – omit it here
       ...(!isMac ? [{ type: 'separator' }, { role: 'quit', label: 'Beenden' }] : []),
     ],
   }
@@ -135,14 +128,13 @@ function buildMenu(win) {
   const editMenu = {
     label: 'Bearbeiten',
     submenu: [
-      { role: 'undo',      label: 'Rückgängig'       },
+      { role: 'undo',      label: 'Rükgängig'       },
       { role: 'redo',      label: 'Wiederholen'       },
       { type: 'separator' },
       { role: 'cut',       label: 'Ausschneiden'      },
       { role: 'copy',      label: 'Kopieren'          },
       { role: 'paste',     label: 'Einfügen'          },
       { role: 'selectAll', label: 'Alles auswählen'   },
-      // macOS: spell checking and substitutions
       ...(isMac ? [
         { type: 'separator' },
         { label: 'Sprachdienste', role: 'startSpeaking', label: 'Vorlesen' },
@@ -179,7 +171,6 @@ function buildMenu(win) {
     ],
   }
 
-  // macOS: the first menu entry is always the app name menu
   const macAppMenu = {
     label: app.name,
     submenu: [
@@ -206,7 +197,7 @@ function buildMenu(win) {
   Menu.setApplicationMenu(Menu.buildFromTemplate(template))
 }
 
-// ── macOS About panel ─────────────────────────────────────────────────────────
+// ── macOS About panel ────────────────────────────────────────────────────────────
 if (isMac) {
   app.setAboutPanelOptions({
     applicationName:    APP_NAME,
@@ -216,7 +207,7 @@ if (isMac) {
   })
 }
 
-// ── IPC handlers ─────────────────────────────────────────────────────────────
+// ── IPC handlers ─────────────────────────────────────────────────────────────────
 
 ipcMain.handle('protocols:load', () => readData())
 
@@ -231,7 +222,7 @@ ipcMain.handle('projects:save', (_e, projects) => {
 })
 
 ipcMain.handle('protocols:export-json', async (_e, protocol) => {
-  const name = (protocol.projectName || 'Protokoll').replace(/[/\\:*?"<>|]/g, '-')
+  const name = (protocol.projectName || 'Protokoll').replace(/[\/\\:*?"<>|]/g, '-')
   const { filePath, canceled } = await dialog.showSaveDialog({
     title:       'Protokoll als JSON exportieren',
     defaultPath: `${name}_${protocol.date || 'Datum'}.json`,
@@ -257,6 +248,36 @@ ipcMain.handle('attachment:open', async (_e, { data, mimeType, name }) => {
   } catch { return false }
 })
 
+// ── Attachment blob storage ──────────────────────────────────────────────────────────
+function attachmentsDir() {
+  const dir = path.join(app.getPath('userData'), 'attachments')
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })
+  return dir
+}
+
+ipcMain.handle('attachment:save', (_e, id, base64) => {
+  try {
+    fs.writeFileSync(path.join(attachmentsDir(), id), Buffer.from(base64, 'base64'))
+    return true
+  } catch { return false }
+})
+
+ipcMain.handle('attachment:load', (_e, id) => {
+  try {
+    const p = path.join(attachmentsDir(), id)
+    if (!fs.existsSync(p)) return null
+    return fs.readFileSync(p).toString('base64')
+  } catch { return null }
+})
+
+ipcMain.handle('attachment:delete', (_e, id) => {
+  try {
+    const p = path.join(attachmentsDir(), id)
+    if (fs.existsSync(p)) fs.unlinkSync(p)
+    return true
+  } catch { return false }
+})
+
 ipcMain.handle('protocols:import-json', async () => {
   const { filePaths, canceled } = await dialog.showOpenDialog({
     title:      'Protokoll importieren',
@@ -268,18 +289,16 @@ ipcMain.handle('protocols:import-json', async () => {
   catch { return null }
 })
 
-// ── Update IPC ────────────────────────────────────────────────────────────────
+// ── Update IPC ──────────────────────────────────────────────────────────────────────
 ipcMain.handle('update:install', () => autoUpdater.quitAndInstall())
 ipcMain.handle('update:check',   () => { if (!isDev) autoUpdater.checkForUpdates() })
 
-// ── Lifecycle ─────────────────────────────────────────────────────────────────
+// ── Lifecycle ────────────────────────────────────────────────────────────────────────
 app.whenReady().then(() => {
   const win = createWindow()
 
-  // Enable German spell checker for all web contents
   win.webContents.session.setSpellCheckerLanguages(['de-DE', 'de-AT', 'de-CH'])
 
-  // Right-click context menu: spell check suggestions + dictionary add
   win.webContents.on('context-menu', (_e, params) => {
     const { misspelledWord, dictionarySuggestions, selectionText } = params
     if (!misspelledWord && !selectionText) return
@@ -300,7 +319,7 @@ app.whenReady().then(() => {
       }
       menuItems.push({ type: 'separator' })
       menuItems.push({
-        label: `„${misspelledWord}" zum Wörterbuch hinzufügen`,
+        label: `„${misspelledWord}“ zum Wörterbuch hinzufügen`,
         click: () => win.webContents.session.addWordToSpellCheckerDictionary(misspelledWord),
       })
       menuItems.push({ type: 'separator' })
@@ -315,13 +334,11 @@ app.whenReady().then(() => {
     Menu.buildFromTemplate(menuItems).popup({ window: win })
   })
 
-  // macOS: re-create window when clicking the dock icon with no windows open
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
 })
 
-// macOS: keep the process alive when all windows are closed (standard macOS behaviour)
 app.on('window-all-closed', () => {
   if (!isMac) app.quit()
 })
