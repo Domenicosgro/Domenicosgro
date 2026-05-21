@@ -5,7 +5,8 @@ import { useLogo }      from './hooks/useLogo'
 import ProjectsHome    from './components/ProjectsHome'
 import ProjectManager  from './components/ProjectManager'
 import ProtocolList    from './components/ProtocolList'
-import ProtocolEditor  from './components/ProtocolEditor'
+import ProtocolEditor        from './components/ProtocolEditor'
+import MassnahmenDashboard   from './components/MassnahmenDashboard'
 import { hashPassword } from './utils'
 import { deriveKey, encryptJSON, decryptJSON, newSalt } from './crypto'
 
@@ -244,6 +245,14 @@ export default function App() {
     setView('home')
   }
 
+  // Open a protocol from the dashboard: pre-set project context so back-from-editor lands correctly.
+  const openProtocolFromDashboard = (protocolId) => {
+    const p = protocols.find(x => x.id === protocolId)
+    if (p) setSelectedProjectId(p.projectId ?? null)
+    setActiveId(protocolId)
+    setView('editor')
+  }
+
   // ── Update banner (Electron only) ────────────────────────────────────────
   const UpdateBanner = () => {
     if (!isElectron) return null
@@ -389,6 +398,22 @@ export default function App() {
     )
   }
 
+  // ── Maßnahmen-Dashboard ───────────────────────────────────────────────────
+  if (view === 'dashboard') {
+    return wrap(
+      <>
+        <MassnahmenDashboard
+          protocols={protocols}
+          projects={projectsWithContacts}
+          onOpenProtocol={openProtocolFromDashboard}
+          onBack={() => setView('home')}
+        />
+        <UpdateBanner />
+        <SaveErrorBanner />
+      </>
+    )
+  }
+
   // ── Start: projects home ──────────────────────────────────────────────────
   return wrap(
     <>
@@ -402,6 +427,7 @@ export default function App() {
         onUnlock={handleUnlockProject}
         onSetPassword={handleSetProjectPassword}
         onRemovePassword={handleRemoveProjectPassword}
+        onOpenDashboard={() => setView('dashboard')}
       />
       <UpdateBanner />
       <SaveErrorBanner />

@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react'
 import { Plus, Trash2, Search, ChevronRight, FileText, Users, FolderOpen,
-         Calendar, Lock, LockOpen, X, Eye, EyeOff, Star } from 'lucide-react'
+         Calendar, Lock, LockOpen, X, Eye, EyeOff, Star, BarChart2 } from 'lucide-react'
 import { formatDate } from '../utils'
 
 // ── Password modal ─────────────────────────────────────────────────────────────
@@ -111,7 +111,7 @@ function PasswordModal({ mode, projectName, onConfirm, onCancel }) {
 
 // ── Main component ─────────────────────────────────────────────────────────────
 export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, onDelete, onOpenProject,
-                                       onUnlock, onSetPassword, onRemovePassword }) {
+                                       onUnlock, onSetPassword, onRemovePassword, onOpenDashboard }) {
   const [search,    setSearch]    = useState('')
   const [modal,     setModal]     = useState(null)   // { mode, projectId }
   // User-specific favorites stored in localStorage
@@ -202,9 +202,16 @@ export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, 
           <h1 className="text-2xl font-bold text-gray-900">Komplizen Protokolle</h1>
           <p className="text-sm text-gray-500 mt-0.5">Projekte &amp; Besprechungsprotokolle</p>
         </div>
-        <button className="btn-primary self-start sm:self-auto" onClick={handleCreate}>
-          <Plus size={16} /> Neues Projekt
-        </button>
+        <div className="flex gap-2 self-start sm:self-auto">
+          {onOpenDashboard && (
+            <button className="btn-secondary" onClick={onOpenDashboard} title="Maßnahmen-Dashboard öffnen">
+              <BarChart2 size={15} /> Dashboard
+            </button>
+          )}
+          <button className="btn-primary" onClick={handleCreate}>
+            <Plus size={16} /> Neues Projekt
+          </button>
+        </div>
       </div>
 
       {/* Search */}
