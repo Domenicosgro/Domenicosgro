@@ -3,10 +3,119 @@ import { emptyProtocol, uid } from '../utils'
 import { attachmentStore } from '../attachmentStore'
 
 const STORAGE_KEY = 'bb_protocols_v1'
+const API_PATH    = '/api/protocols'
 
 const isElectron = typeof window !== 'undefined' && !!window.electronAPI
+const isServer   = typeof window !== 'undefined' && !!window.__SERVER_MODE__
 
-async function loadData() {
+// ── Server-mode tracking (module-level, one instance per app) ─────────────────
+const _sv = new Map()   // id → server version number
+const _st = new Map()   // id → updatedAt as of last successful server write
+const _sk = new Set()   // ids currently known on server
+
+function apiHeaders() {
+  const h = { 'Content-Type': 'application/json' }
+  const key = typeof window !== 'undefined' && window.__API_KEY__
+  if (key) h['X-API-Key'] = key
+  return h
+}
+
+function stripMeta({ _version, _updatedAt, ...rest }) {
+  return rest
+}
+
+async function serverLoad() {
+  const res = await fetch(API_PATH, { headers: apiHeaders() })
+  if (!res.ok) throw new Error(`Server-Laden fehlgeschlagen (${res.status})`)
+  const items = await res.json()
+  _sk.clear(); _sv.clear(); _st.clear()
+  for (const item of items) {
+    _sk.add(item.id)
+    _sv.set(item.id, item._version || 1)
+    _st.set(item.id, item.updatedAt)
+  }
+  return items.map(stripMeta)
+}
+
+async function serverSave(protocols) {
+  const currentIds = new Set(protocols.map(p => p.id))
+
+  // Deletions: IDs known to server but no longer in local state
+  for (const knownId of _sk) {
+    if (!currentIds.has(knownId)) {
+      try {
+        await fetch(`${API_PATH}/${knownId}`, { method: 'DELETE', headers: apiHeaders() })
+        _sk.delete(knownId)
+        _sv.delete(knownId)
+        _st.delete(knownId)
+      } catch (e) {
+        console.warn(`[server] DELETE Protokoll ${knownId}:`, e.message)
+      }
+    }
+  }
+
+  // Creates + Updates
+  for (const p of protocols) {
+    if (!_sk.has(p.id)) {
+      // New record
+      try {
+        const res = await fetch(API_PATH, {
+          method:  'POST',
+          headers: apiHeaders(),
+          body:    JSON.stringify(p),
+        })
+        if (res.ok) {
+          const { version } = await res.json()
+          _sk.add(p.id)
+          _sv.set(p.id, version)
+          _st.set(p.id, p.updatedAt)
+        } else if (res.status === 409) {
+          // ID exists on server (e.g. from another session) — treat as update
+          const { serverVersion } = await res.json()
+          _sk.add(p.id)
+          _sv.set(p.id, serverVersion)
+          // fall through to update path on next save cycle
+        }
+      } catch (e) {
+        console.warn(`[server] POST Protokoll ${p.id}:`, e.message)
+      }
+    } else if (p.updatedAt !== _st.get(p.id)) {
+      // Modified record
+      try {
+        const version = _sv.get(p.id) || 1
+        const res = await fetch(`${API_PATH}/${p.id}`, {
+          method:  'PATCH',
+          headers: apiHeaders(),
+          body:    JSON.stringify({ data: p, version }),
+        })
+        if (res.status === 409) {
+          // Conflict: server has newer version — retry once with server version (client wins)
+          const { serverVersion } = await res.json()
+          _sv.set(p.id, serverVersion)
+          const res2 = await fetch(`${API_PATH}/${p.id}`, {
+            method:  'PATCH',
+            headers: apiHeaders(),
+            body:    JSON.stringify({ data: p, version: serverVersion }),
+          })
+          if (res2.ok) {
+            const { version: v2 } = await res2.json()
+            _sv.set(p.id, v2)
+            _st.set(p.id, p.updatedAt)
+          }
+        } else if (res.ok) {
+          const { version: newVersion } = await res.json()
+          _sv.set(p.id, newVersion)
+          _st.set(p.id, p.updatedAt)
+        }
+      } catch (e) {
+        console.warn(`[server] PATCH Protokoll ${p.id}:`, e.message)
+      }
+    }
+  }
+}
+
+// ── Local-mode helpers ────────────────────────────────────────────────────────
+async function localLoad() {
   if (isElectron) return window.electronAPI.loadProtocols()
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
@@ -14,20 +123,16 @@ async function loadData() {
   } catch { return [] }
 }
 
-// Throws on failure so the caller can report the error to the user.
-async function saveData(protocols) {
+async function localSave(protocols) {
   if (isElectron) {
     const ok = await window.electronAPI.saveProtocols(protocols)
     if (ok === false) throw new Error('Electron-Speichern fehlgeschlagen')
     return
   }
-  // localStorage.setItem throws QuotaExceededError when storage is full.
-  // If it throws, the previous data is still intact — no silent overwrite.
   localStorage.setItem(STORAGE_KEY, JSON.stringify(protocols))
 }
 
-// Migrate old inline-base64 attachments to the external store.
-// Idempotent: items with attachment.data are old-format; items with attachment.id are already migrated.
+// ── Attachment migration (local mode only) ────────────────────────────────────
 async function migrateAttachments(protocols) {
   let changed = false
   const result = await Promise.all(protocols.map(async (protocol) => {
@@ -42,7 +147,7 @@ async function migrateAttachments(protocols) {
         const { data: _omit, ...rest } = item.attachment
         return { ...item, attachment: { ...rest, id } }
       } catch {
-        return item  // keep original on error — no data loss
+        return item
       }
     }))
     return pChanged ? { ...protocol, agendaItems } : protocol
@@ -57,32 +162,41 @@ function buildSaveErrorMessage(err) {
   return 'Protokolle konnten nicht gespeichert werden – Daten sind möglicherweise nicht gesichert.'
 }
 
+// ── Hook ──────────────────────────────────────────────────────────────────────
 export function useProtocols() {
   const [protocols, setProtocols] = useState([])
   const [loaded, setLoaded]       = useState(false)
   const [saveError, setSaveError] = useState(null)
   const saveTimer                  = useRef(null)
 
-  // Initial load + one-time migration of inline base64 attachments
   useEffect(() => {
-    loadData().then(async (raw) => {
-      const data = Array.isArray(raw) ? raw : []
-      const { result, changed } = await migrateAttachments(data)
-      setProtocols(result)
-      if (changed) {
-        try { await saveData(result) } catch {}   // best-effort; errors reported on next change
-      }
-      setLoaded(true)
-    })
+    if (isServer) {
+      serverLoad()
+        .then(data => { setProtocols(Array.isArray(data) ? data : []); setLoaded(true) })
+        .catch(e  => { setSaveError(`Laden vom Server fehlgeschlagen: ${e.message}`); setLoaded(true) })
+    } else {
+      localLoad().then(async (raw) => {
+        const data = Array.isArray(raw) ? raw : []
+        const { result, changed } = await migrateAttachments(data)
+        setProtocols(result)
+        if (changed) {
+          try { await localSave(result) } catch {}
+        }
+        setLoaded(true)
+      })
+    }
   }, [])
 
-  // Debounced save on every change (after initial load)
   useEffect(() => {
     if (!loaded) return
     clearTimeout(saveTimer.current)
     saveTimer.current = setTimeout(async () => {
       try {
-        await saveData(protocols)
+        if (isServer) {
+          await serverSave(protocols)
+        } else {
+          await localSave(protocols)
+        }
         setSaveError(null)
       } catch (err) {
         setSaveError(buildSaveErrorMessage(err))
@@ -118,7 +232,7 @@ export function useProtocols() {
       if (!src) return prev
       const copy = {
         ...JSON.parse(JSON.stringify(src)),
-        id: uid(),
+        id:        uid(),
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       }

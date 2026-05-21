@@ -2,9 +2,114 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { emptyProject, uid } from '../utils'
 
 const STORAGE_KEY = 'bb_projects_v1'
-const isElectron  = typeof window !== 'undefined' && !!window.electronAPI
+const API_PATH    = '/api/projects'
 
-async function loadData() {
+const isElectron = typeof window !== 'undefined' && !!window.electronAPI
+const isServer   = typeof window !== 'undefined' && !!window.__SERVER_MODE__
+
+// ── Server-mode tracking (module-level, one instance per app) ─────────────────
+const _sv = new Map()   // id → server version number
+const _st = new Map()   // id → updatedAt as of last successful server write
+const _sk = new Set()   // ids currently known on server
+
+function apiHeaders() {
+  const h = { 'Content-Type': 'application/json' }
+  const key = typeof window !== 'undefined' && window.__API_KEY__
+  if (key) h['X-API-Key'] = key
+  return h
+}
+
+function stripMeta({ _version, _updatedAt, ...rest }) {
+  return rest
+}
+
+async function serverLoad() {
+  const res = await fetch(API_PATH, { headers: apiHeaders() })
+  if (!res.ok) throw new Error(`Server-Laden fehlgeschlagen (${res.status})`)
+  const items = await res.json()
+  _sk.clear(); _sv.clear(); _st.clear()
+  for (const item of items) {
+    _sk.add(item.id)
+    _sv.set(item.id, item._version || 1)
+    _st.set(item.id, item.updatedAt)
+  }
+  return items.map(stripMeta)
+}
+
+async function serverSave(projects) {
+  const currentIds = new Set(projects.map(p => p.id))
+
+  // Deletions
+  for (const knownId of _sk) {
+    if (!currentIds.has(knownId)) {
+      try {
+        await fetch(`${API_PATH}/${knownId}`, { method: 'DELETE', headers: apiHeaders() })
+        _sk.delete(knownId)
+        _sv.delete(knownId)
+        _st.delete(knownId)
+      } catch (e) {
+        console.warn(`[server] DELETE Projekt ${knownId}:`, e.message)
+      }
+    }
+  }
+
+  // Creates + Updates
+  for (const p of projects) {
+    if (!_sk.has(p.id)) {
+      try {
+        const res = await fetch(API_PATH, {
+          method:  'POST',
+          headers: apiHeaders(),
+          body:    JSON.stringify(p),
+        })
+        if (res.ok) {
+          const { version } = await res.json()
+          _sk.add(p.id)
+          _sv.set(p.id, version)
+          _st.set(p.id, p.updatedAt)
+        } else if (res.status === 409) {
+          const { serverVersion } = await res.json()
+          _sk.add(p.id)
+          _sv.set(p.id, serverVersion)
+        }
+      } catch (e) {
+        console.warn(`[server] POST Projekt ${p.id}:`, e.message)
+      }
+    } else if (p.updatedAt !== _st.get(p.id)) {
+      try {
+        const version = _sv.get(p.id) || 1
+        const res = await fetch(`${API_PATH}/${p.id}`, {
+          method:  'PATCH',
+          headers: apiHeaders(),
+          body:    JSON.stringify({ data: p, version }),
+        })
+        if (res.status === 409) {
+          const { serverVersion } = await res.json()
+          _sv.set(p.id, serverVersion)
+          const res2 = await fetch(`${API_PATH}/${p.id}`, {
+            method:  'PATCH',
+            headers: apiHeaders(),
+            body:    JSON.stringify({ data: p, version: serverVersion }),
+          })
+          if (res2.ok) {
+            const { version: v2 } = await res2.json()
+            _sv.set(p.id, v2)
+            _st.set(p.id, p.updatedAt)
+          }
+        } else if (res.ok) {
+          const { version: newVersion } = await res.json()
+          _sv.set(p.id, newVersion)
+          _st.set(p.id, p.updatedAt)
+        }
+      } catch (e) {
+        console.warn(`[server] PATCH Projekt ${p.id}:`, e.message)
+      }
+    }
+  }
+}
+
+// ── Local-mode helpers ────────────────────────────────────────────────────────
+async function localLoad() {
   if (isElectron && window.electronAPI.loadProjects) return window.electronAPI.loadProjects()
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
@@ -12,8 +117,7 @@ async function loadData() {
   } catch { return [] }
 }
 
-// Throws on failure so the caller can report the error to the user.
-async function saveData(projects) {
+async function localSave(projects) {
   if (isElectron && window.electronAPI.saveProjects) {
     const ok = await window.electronAPI.saveProjects(projects)
     if (ok === false) throw new Error('Electron-Speichern fehlgeschlagen')
@@ -29,6 +133,7 @@ function buildSaveErrorMessage(err) {
   return 'Projekte konnten nicht gespeichert werden – Daten sind möglicherweise nicht gesichert.'
 }
 
+// ── Hook ──────────────────────────────────────────────────────────────────────
 export function useProjects() {
   const [projects, setProjects] = useState([])
   const [loaded, setLoaded]     = useState(false)
@@ -36,10 +141,16 @@ export function useProjects() {
   const saveTimer               = useRef(null)
 
   useEffect(() => {
-    loadData().then(data => {
-      setProjects(Array.isArray(data) ? data : [])
-      setLoaded(true)
-    })
+    if (isServer) {
+      serverLoad()
+        .then(data => { setProjects(Array.isArray(data) ? data : []); setLoaded(true) })
+        .catch(e  => { setSaveError(`Laden vom Server fehlgeschlagen: ${e.message}`); setLoaded(true) })
+    } else {
+      localLoad().then(data => {
+        setProjects(Array.isArray(data) ? data : [])
+        setLoaded(true)
+      })
+    }
   }, [])
 
   useEffect(() => {
@@ -47,7 +158,11 @@ export function useProjects() {
     clearTimeout(saveTimer.current)
     saveTimer.current = setTimeout(async () => {
       try {
-        await saveData(projects)
+        if (isServer) {
+          await serverSave(projects)
+        } else {
+          await localSave(projects)
+        }
         setSaveError(null)
       } catch (err) {
         setSaveError(buildSaveErrorMessage(err))
