@@ -38,4 +38,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   checkForUpdates:    ()   => ipcRenderer.invoke('update:check'),
 
   removeAllListeners: (channel) => ipcRenderer.removeAllListeners(channel),
+
+  // Microsoft Graph (Electron only – requires Azure App Registration)
+  graphGetStatus:    ()     => ipcRenderer.invoke('graph:get-status'),
+  graphLogin:        ()     => ipcRenderer.invoke('graph:login'),
+  graphLogout:       ()     => ipcRenderer.invoke('graph:logout'),
+  graphSendAgenda:   (data) => ipcRenderer.invoke('graph:send-agenda',   data),
+  graphCreateEvent:  (data) => ipcRenderer.invoke('graph:create-event',  data),
+  graphSendProtocol: (data) => ipcRenderer.invoke('graph:send-protocol', data),
 })

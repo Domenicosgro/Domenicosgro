@@ -1,6 +1,6 @@
 import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react'
 import { flushSync } from 'react-dom'
-import { ArrowLeft, Printer, Download, Send, RefreshCw, AlertCircle, Lock, Unlock, FileText, RotateCcw, Layers } from 'lucide-react'
+import { ArrowLeft, Printer, Download, Send, RefreshCw, AlertCircle, Lock, Unlock, FileText, RotateCcw, Layers, Loader } from 'lucide-react'
 import MeetingHeader    from './MeetingHeader'
 import ParticipantsList from './ParticipantsList'
 import AgendaDraft      from './AgendaDraft'
@@ -56,6 +56,7 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
   const [confirmClose,         setConfirmClose]         = useState(false)
   const [showGesamtprotokoll,  setShowGesamtprotokoll]  = useState(false)
   const [printAttachmentData,  setPrintAttachmentData]  = useState({})  // attId → base64
+  const [graphSendState,       setGraphSendState]       = useState(null)  // null | 'confirm' | 'sending' | { error } | 'done'
 
   // Tracks which predecessorId we have already initiated item-carryover for.
   // Prevents double-firing (React Strict Mode, rapid predecessor switches, etc.)
@@ -275,6 +276,37 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
     change({ isClosed: false, closedAt: null })
   }
 
+  // Send protocol Word document via Microsoft Graph
+  const handleGraphSendProtocol = async () => {
+    if (graphSendState === 'confirm') {
+      setGraphSendState('sending')
+      try {
+        const { blob, filename } = await exportDocx(protocol, chainNo, logoDataUrl, true)
+        const base64 = await new Promise((res, rej) => {
+          const reader = new FileReader()
+          reader.onload = () => res(reader.result.split(',')[1])
+          reader.onerror = rej
+          reader.readAsDataURL(blob)
+        })
+        const to = (protocol.participants ?? []).filter(p => p.email).map(p => p.email)
+        const result = await window.electronAPI.graphSendProtocol({
+          to,
+          subject:          `Protokoll: ${protocolNo}`,
+          bodyText:         `Anbei das Protokoll zur ${protocol.meetingType}${protocol.projectName ? ' – ' + protocol.projectName : ''} vom ${protocol.date ? new Date(protocol.date + 'T12:00:00').toLocaleDateString('de-DE') : ''}.`,
+          attachmentBase64: base64,
+          attachmentName:   filename,
+        })
+        if (!result.ok) throw new Error(result.error)
+        setGraphSendState('done')
+        setTimeout(() => setGraphSendState(null), 4000)
+      } catch (err) {
+        setGraphSendState({ error: err.message || 'Versand fehlgeschlagen.' })
+      }
+    } else {
+      setGraphSendState('confirm')
+    }
+  }
+
   useEffect(() => {
     const handler = () => { if ((protocol.agenda ?? []).length) setShowEmailModal(true) }
     window.addEventListener('app:send-agenda', handler)
@@ -332,6 +364,30 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
           <button className="btn-secondary" onClick={() => exportDocx(protocol, chainNo, logoDataUrl)}>
             <FileText size={16} /> Word
           </button>
+          {isElectron && window.electronAPI?.graphSendProtocol && (
+            graphSendState === 'confirm' ? (
+              <div className="flex items-center gap-1">
+                <span className="text-xs text-gray-500">An Teilnehmer senden?</span>
+                <button className="btn-primary text-xs" onClick={handleGraphSendProtocol}>Ja, senden</button>
+                <button className="btn-secondary text-xs" onClick={() => setGraphSendState(null)}>Abbrechen</button>
+              </div>
+            ) : graphSendState === 'sending' ? (
+              <button className="btn-secondary text-xs" disabled>
+                <Loader size={12} className="animate-spin" /> Sende…
+              </button>
+            ) : graphSendState === 'done' ? (
+              <span className="text-xs text-green-600 font-medium">✓ Gesendet</span>
+            ) : graphSendState?.error ? (
+              <div className="flex items-center gap-1">
+                <span className="text-xs text-red-600 max-w-xs truncate" title={graphSendState.error}>{graphSendState.error}</span>
+                <button className="btn-ghost text-xs text-gray-400" onClick={() => setGraphSendState(null)}>×</button>
+              </div>
+            ) : (
+              <button className="btn-secondary text-xs" onClick={handleGraphSendProtocol} title="Protokoll als Word-Anhang per Outlook versenden">
+                <Send size={14} /> Per E-Mail
+              </button>
+            )
+          )}
           <button className="btn-secondary" onClick={handlePrint}>
             <Printer size={16} /> Drucken / PDF
           </button>

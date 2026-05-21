@@ -355,7 +355,8 @@ function buildContent(protocol, protocolNo) {
 
 // ── Public API ─────────────────────────────────────────────────────────────────
 
-export async function exportDocx(protocol, chainNo = null, logoDataUrl = null) {
+// returnBlob: when true, returns { blob, filename } instead of triggering a download
+export async function exportDocx(protocol, chainNo = null, logoDataUrl = null, returnBlob = false) {
   const protocolNo = buildProtocolNo(protocol.projectName, protocol.date, chainNo, protocol.meetingType)
   const agenda     = protocol.agenda ?? []
 
@@ -466,6 +467,9 @@ export async function exportDocx(protocol, chainNo = null, logoDataUrl = null) {
 
   const blob     = await Packer.toBlob(doc)
   const filename = `${protocolNo.replace(/[/\\:*?"<>|]/g, '-')}.docx`
+
+  if (returnBlob) return { blob, filename }
+
   const url      = URL.createObjectURL(blob)
   const a        = document.createElement('a')
   a.href         = url

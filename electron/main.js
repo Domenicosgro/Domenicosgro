@@ -9,6 +9,32 @@ const isDev  = !app.isPackaged
 const isMac  = process.platform === 'darwin'
 const isWin  = process.platform === 'win32'
 
+// ── Optional Graph / MSAL modules ────────────────────────────────────────────
+let msalAuth, graphClient
+try { msalAuth    = require('./msalAuth')    } catch {}
+try { graphClient = require('./graphClient') } catch {}
+
+// ── Custom protocol for Microsoft Auth redirect ───────────────────────────────
+app.setAsDefaultProtocolClient('msprotokoll')
+
+// Single-instance lock required for Windows protocol-handler callbacks
+const gotSingleInstanceLock = app.requestSingleInstanceLock()
+if (!gotSingleInstanceLock) { app.quit(); process.exit(0) }
+
+// Windows: second instance carries the redirect URL in argv
+app.on('second-instance', (_e, argv) => {
+  const url = argv.find(a => a.startsWith('msprotokoll://'))
+  if (url && msalAuth) msalAuth.handleProtocolUrl(url)
+  const [win] = BrowserWindow.getAllWindows()
+  if (win) { if (win.isMinimized()) win.restore(); win.focus() }
+})
+
+// macOS: OS delivers the URL directly as an open-url event
+app.on('open-url', (e, url) => {
+  e.preventDefault()
+  if (url.startsWith('msprotokoll://') && msalAuth) msalAuth.handleProtocolUrl(url)
+})
+
 const APP_NAME = 'Komplizen Protokolle'
 
 // ── Data files ───────────────────────────────────────────────────────────────
@@ -301,6 +327,70 @@ ipcMain.handle('protocols:import-json', async () => {
 // ── Update IPC ────────────────────────────────────────────────────────────────
 ipcMain.handle('update:install', () => autoUpdater.quitAndInstall())
 ipcMain.handle('update:check',   () => { if (!isDev) autoUpdater.checkForUpdates() })
+
+// ── Microsoft Graph IPC ───────────────────────────────────────────────────────
+function escapeHtml(s) {
+  return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+}
+
+ipcMain.handle('graph:get-status', async () => {
+  if (!msalAuth) return { configured: false, account: null }
+  const config = msalAuth.loadConfig()
+  if (!config) return { configured: false, account: null }
+  const account = await msalAuth.getCurrentAccount().catch(() => null)
+  return { configured: true, account }
+})
+
+ipcMain.handle('graph:login', async () => {
+  if (!msalAuth) return { ok: false, error: 'MSAL nicht verfügbar.' }
+  try {
+    await msalAuth.getAccessToken()
+    const account = await msalAuth.getCurrentAccount()
+    return { ok: true, account }
+  } catch (err) { return { ok: false, error: err.message } }
+})
+
+ipcMain.handle('graph:logout', async () => {
+  if (!msalAuth) return { ok: false, error: 'MSAL nicht verfügbar.' }
+  try { await msalAuth.logout(); return { ok: true } }
+  catch (err) { return { ok: false, error: err.message } }
+})
+
+ipcMain.handle('graph:send-agenda', async (_e, { to, subject, bodyText }) => {
+  if (!msalAuth || !graphClient) return { ok: false, error: 'Graph nicht verfügbar.' }
+  try {
+    const token    = await msalAuth.getAccessToken()
+    const bodyHtml = `<pre style="font-family:Consolas,monospace;white-space:pre-wrap;font-size:13px">${escapeHtml(bodyText)}</pre>`
+    await graphClient.sendMail(token, { to, subject, bodyHtml })
+    return { ok: true }
+  } catch (err) { return { ok: false, error: err.message } }
+})
+
+ipcMain.handle('graph:create-event', async (_e, { subject, startDateTime, endDateTime, location, bodyText, attendees }) => {
+  if (!msalAuth || !graphClient) return { ok: false, error: 'Graph nicht verfügbar.' }
+  try {
+    const token = await msalAuth.getAccessToken()
+    const event = await graphClient.createCalendarEvent(token, { subject, startDateTime, endDateTime, location, bodyText, attendees: attendees || [] })
+    return { ok: true, webLink: event?.webLink ?? null }
+  } catch (err) { return { ok: false, error: err.message } }
+})
+
+ipcMain.handle('graph:send-protocol', async (_e, { to, subject, bodyText, attachmentBase64, attachmentName }) => {
+  if (!msalAuth || !graphClient) return { ok: false, error: 'Graph nicht verfügbar.' }
+  try {
+    const token    = await msalAuth.getAccessToken()
+    const bodyHtml = `<p>${escapeHtml(bodyText)}</p>`
+    await graphClient.sendMail(token, {
+      to, subject, bodyHtml,
+      attachments: attachmentBase64 ? [{
+        name:         attachmentName || 'Protokoll.docx',
+        contentType:  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        contentBytes: attachmentBase64,
+      }] : [],
+    })
+    return { ok: true }
+  } catch (err) { return { ok: false, error: err.message } }
+})
 
 // ── Lifecycle ─────────────────────────────────────────────────────────────────
 app.whenReady().then(() => {
