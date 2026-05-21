@@ -87,7 +87,11 @@ export const emptyProject = () => ({
   id: uid(),
   name: '',
   contacts: [],
-  passwordHash: null,   // SHA-256 hex of password; null = no protection
+  passwordHash: null,        // legacy SHA-256 hex – null after migration to AES-GCM
+  isEncrypted: false,
+  encryptedContacts: null,   // base64 AES-GCM ciphertext
+  cryptoSalt: null,          // base64 32-byte PBKDF2 salt (stable per password)
+  cryptoIv: null,            // base64 12-byte AES-GCM IV (refreshed on every save)
   createdAt: new Date().toISOString(),
   updatedAt: new Date().toISOString(),
 })

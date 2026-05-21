@@ -1,7 +1,7 @@
 import React, { useState, useRef } from 'react'
 import { Plus, Trash2, Search, ChevronRight, FileText, Users, FolderOpen,
          Calendar, Lock, LockOpen, X, Eye, EyeOff, Star } from 'lucide-react'
-import { formatDate, hashPassword } from '../utils'
+import { formatDate } from '../utils'
 
 // ── Password modal ─────────────────────────────────────────────────────────────
 function PasswordModal({ mode, projectName, onConfirm, onCancel }) {
@@ -83,6 +83,18 @@ function PasswordModal({ mode, projectName, onConfirm, onCancel }) {
             </div>
           )}
 
+          {(mode === 'set' || mode === 'change') && (
+            <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 px-3 py-2">
+              <strong>Wichtig:</strong> Bei verlorenem Passwort sind die verschlüsselten Kontakte unwiederbringlich verloren.
+            </p>
+          )}
+
+          {mode === 'remove' && (
+            <p className="text-xs text-gray-500 bg-gray-50 border border-gray-200 px-3 py-2">
+              Nach Verifikation werden die Kontakte wieder unverschlüsselt gespeichert.
+            </p>
+          )}
+
           {error && <p className="text-xs text-red-600 bg-red-50 rounded px-3 py-2">{error}</p>}
 
           <div className="flex gap-2 justify-end pt-1">
@@ -98,11 +110,10 @@ function PasswordModal({ mode, projectName, onConfirm, onCancel }) {
 }
 
 // ── Main component ─────────────────────────────────────────────────────────────
-export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, onDelete, onOpenProject }) {
+export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, onDelete, onOpenProject,
+                                       onUnlock, onSetPassword, onRemovePassword }) {
   const [search,    setSearch]    = useState('')
   const [modal,     setModal]     = useState(null)   // { mode, projectId }
-  // IDs unlocked this session (in-memory only — re-locks on restart)
-  const [unlocked,  setUnlocked]  = useState(() => new Set())
   // User-specific favorites stored in localStorage
   const [favorites, setFavorites] = useState(() => {
     try { return new Set(JSON.parse(localStorage.getItem('bb_project_favorites') || '[]')) }
@@ -145,7 +156,7 @@ export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, 
   const handleCardClick = (project) => {
     // Block navigation for unnamed projects so the user can type a name first
     if (!project.name.trim()) return
-    if (project.passwordHash && !unlocked.has(project.id)) {
+    if (!project.isUnlocked) {
       setModal({ mode: 'unlock', projectId: project.id })
     } else {
       onOpenProject(project.id)
@@ -155,8 +166,7 @@ export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, 
   // ── Lock button click ────────────────────────────────────────────────────────
   const handleLockClick = (e, project) => {
     e.stopPropagation()
-    if (project.passwordHash) {
-      // Already locked — offer change or remove (require current password first)
+    if (project.isEncrypted || project.passwordHash) {
       setModal({ mode: 'remove', projectId: project.id })
     } else {
       setModal({ mode: 'set', projectId: project.id })
@@ -166,28 +176,17 @@ export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, 
   // ── Modal confirm ────────────────────────────────────────────────────────────
   const handleModalConfirm = async (pw) => {
     const { mode, projectId } = modal
-    const project = projects.find(p => p.id === projectId)
-
     if (mode === 'unlock') {
-      const hash = await hashPassword(pw)
-      if (hash !== project.passwordHash) throw new Error('Falsches Passwort.')
-      setUnlocked(prev => new Set([...prev, projectId]))
+      await onUnlock(projectId, pw)   // throws on wrong password
       setModal(null)
       onOpenProject(projectId)
     }
-
     if (mode === 'set' || mode === 'change') {
-      const hash = await hashPassword(pw)
-      onUpdate(projectId, { passwordHash: hash })
-      setUnlocked(prev => new Set([...prev, projectId]))
+      await onSetPassword(projectId, pw)
       setModal(null)
     }
-
     if (mode === 'remove') {
-      const hash = await hashPassword(pw)
-      if (hash !== project.passwordHash) throw new Error('Falsches Passwort.')
-      onUpdate(projectId, { passwordHash: null })
-      setUnlocked(prev => { const s = new Set(prev); s.delete(projectId); return s })
+      await onRemovePassword(projectId, pw)   // throws on wrong password
       setModal(null)
     }
   }
@@ -236,8 +235,8 @@ export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, 
           const last      = lastDate(protos)
           const open      = protos.filter(p => !p.isClosed).length
           const closed    = protos.filter(p =>  p.isClosed).length
-          const isLocked  = !!project.passwordHash
-          const isSession = unlocked.has(project.id)
+          const isLocked  = project.isEncrypted || !!project.passwordHash
+          const isSession = project.isUnlocked
 
           return (
             <div key={project.id}
@@ -281,7 +280,10 @@ export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, 
                     </span>
                     <span className="flex items-center gap-1">
                       <Users size={11} />
-                      {(project.contacts ?? []).length} Kontakt{(project.contacts ?? []).length !== 1 ? 'e' : ''}
+                      {isLocked && !isSession
+                        ? <span className="text-amber-600">Kontakte gesperrt</span>
+                        : `${(project.contacts ?? []).length} Kontakt${(project.contacts ?? []).length !== 1 ? 'e' : ''}`
+                      }
                     </span>
                     {last && (
                       <span className="flex items-center gap-1">
