@@ -4,6 +4,7 @@ import { Plus, Trash2, FileText, IndentIncrease, IndentDecrease, Search, X,
          ChevronRight, ChevronDown } from 'lucide-react'
 import { emptyAgendaItem, emptyActionItem, uid, formatDate } from '../utils'
 import RichTextEditor, { stripHtml } from './RichTextEditor'
+import { attachmentStore } from '../attachmentStore'
 
 const isElectron = typeof window !== 'undefined' && !!window.electronAPI
 
@@ -14,16 +15,25 @@ function formatFileSize(bytes) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
-function openAttachment(attachment) {
-  if (isElectron && window.electronAPI.openAttachment) {
-    window.electronAPI.openAttachment(attachment)
-  } else {
-    const byteChars = atob(attachment.data)
-    const byteArr   = new Uint8Array(byteChars.length)
-    for (let i = 0; i < byteChars.length; i++) byteArr[i] = byteChars.charCodeAt(i)
-    const blob = new Blob([byteArr], { type: attachment.mimeType })
-    window.open(URL.createObjectURL(blob), '_blank')
+async function openAttachment(attachment) {
+  // Support both old format (attachment.data) and new format (attachment.id)
+  let base64 = attachment.data ?? null
+  if (!base64 && attachment.id) {
+    try { base64 = await attachmentStore.load(attachment.id) } catch {}
   }
+  if (!base64) {
+    alert('Anlage nicht gefunden. Die Datei wurde möglicherweise auf einem anderen Gerät gespeichert.')
+    return
+  }
+  if (isElectron && window.electronAPI.openAttachment) {
+    window.electronAPI.openAttachment({ ...attachment, data: base64 })
+    return
+  }
+  const byteChars = atob(base64)
+  const byteArr   = new Uint8Array(byteChars.length)
+  for (let i = 0; i < byteChars.length; i++) byteArr[i] = byteChars.charCodeAt(i)
+  const blob = new Blob([byteArr], { type: attachment.mimeType })
+  window.open(URL.createObjectURL(blob), '_blank')
 }
 
 const LEVEL_STYLES = {
@@ -32,7 +42,7 @@ const LEVEL_STYLES = {
   3: { indent: 'ml-12',  label: 'text-sm font-medium text-gray-700',   noStyle: 'text-sm font-medium text-gray-500',    borderL: 'border-l-4 border-gray-300'  },
 }
 
-// ── Hierarchy helpers ─────────────────────────────────────────────────────────
+// ── Hierarchy helpers ────────────────────────────────────────────────────────────────
 
 function subtreeEnd(items, parentIdx) {
   const parentLevel = items[parentIdx].level ?? 1
@@ -112,7 +122,7 @@ function isHiddenByCollapse(items, idx, collapsed) {
   return false
 }
 
-// ── Component ─────────────────────────────────────────────────────────────────
+// ── Component ───────────────────────────────────────────────────────────────────────
 
 export default function ProtocolItems({ items, onChange, allTasks = [], onTasksChange = () => {}, readOnly, projectContacts }) {
   const contactListId = 'protocol-contacts-list'
@@ -131,7 +141,7 @@ export default function ProtocolItems({ items, onChange, allTasks = [], onTasksC
     return idx >= 0 && idx + 1 < items.length && (items[idx + 1].level ?? 1) > (items[idx].level ?? 1)
   }
 
-  // ── Mutations ──────────────────────────────────────────────────────────────
+  // ── Mutations ───────────────────────────────────────────────────────────────────
 
   const addTop = () => {
     if (readOnly) return
@@ -191,7 +201,7 @@ export default function ProtocolItems({ items, onChange, allTasks = [], onTasksC
     onChange(renumberItems(next))
   }
 
-  // ── Per-item inline tasks ──────────────────────────────────────────────────
+  // ── Per-item inline tasks ───────────────────────────────────────────────────────
   const itemTasks  = (itemId) => allTasks.filter(t => t.protocolItemId === itemId)
 
   const addTask = (protocolItemId) => {
@@ -216,9 +226,15 @@ export default function ProtocolItems({ items, onChange, allTasks = [], onTasksC
     if (!file) return
     if (file.size > 20 * 1024 * 1024) { alert('Datei ist zu groß (max. 20 MB).'); return }
     const reader = new FileReader()
-    reader.onload = (e) => {
+    reader.onload = async (e) => {
       const base64 = e.target.result.split(',')[1]
-      update(id, 'attachment', { name: file.name, mimeType: file.type || 'application/octet-stream', data: base64, size: file.size })
+      const attId  = uid()
+      try {
+        await attachmentStore.save(attId, base64)
+        update(id, 'attachment', { name: file.name, mimeType: file.type || 'application/octet-stream', size: file.size, id: attId })
+      } catch {
+        alert('Anlage konnte nicht gespeichert werden.')
+      }
     }
     reader.readAsDataURL(file)
   }
@@ -245,7 +261,7 @@ export default function ProtocolItems({ items, onChange, allTasks = [], onTasksC
     onChange(renumberItems(next))
   }
 
-  // ── Drag & Drop ────────────────────────────────────────────────────────────
+  // ── Drag & Drop ────────────────────────────────────────────────────────────────────
 
   const handleDragStart = (e, id) => {
     setDragId(id)
@@ -274,7 +290,7 @@ export default function ProtocolItems({ items, onChange, allTasks = [], onTasksC
     setDropIdx(null)
   }
 
-  // ── Filtering ──────────────────────────────────────────────────────────────
+  // ── Filtering ────────────────────────────────────────────────────────────────────
 
   const q             = search.trim().toLowerCase()
   const completedCount = items.filter(it => it.status === 'erledigt' && !it.carriedGray).length
@@ -294,7 +310,7 @@ export default function ProtocolItems({ items, onChange, allTasks = [], onTasksC
 
   const searchHitsCompleted = q && visible.some(it => it.status === 'erledigt')
 
-  // ── Drop zone (thin bar between items) ────────────────────────────────────
+  // ── Drop zone (thin bar between items) ─────────────────────────────────────────────
 
   const DropZone = ({ insertBeforeIdx }) => {
     if (!dndActive || !dragId) return null
@@ -309,7 +325,7 @@ export default function ProtocolItems({ items, onChange, allTasks = [], onTasksC
     )
   }
 
-  // ── Render ─────────────────────────────────────────────────────────────────
+  // ── Render ──────────────────────────────────────────────────────────────────────────
 
   return (
     <div className="space-y-3">
