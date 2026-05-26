@@ -406,7 +406,8 @@ app.get('/api/health',  (_req, res) => res.json({ status: 'ok', time: new Date()
 app.get('/api/version', (_req, res) => res.json({ version: require('../package.json').version }))
 
 // ── SPA fallback ──────────────────────────────────────────────────────────────
-app.get('*', serveHtml)
+// Express 5 requires named wildcards (path-to-regexp v8)
+app.get('/{*path}', serveHtml)
 
 // ── Error handler ─────────────────────────────────────────────────────────────
 app.use((err, req, res, _next) => {
