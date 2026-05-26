@@ -35,6 +35,18 @@ logs/
 
 ### 2. Image bauen (auf dem Entwicklungsrechner)
 
+**Windows (PowerShell) – automatisch mit Skript:**
+
+```powershell
+# Im Projektverzeichnis ausführen:
+.\build-deploy.ps1
+```
+
+Das Skript baut das Image, exportiert es und kopiert alles direkt auf
+`\\192.168.178.250\docker\komplizen-protokolle\`.
+
+**Manuell (Bash / Linux / Mac):**
+
 ```bash
 # Im Projektverzeichnis (wo die Dockerfile liegt):
 docker build -t komplizen-protokolle:latest .
@@ -45,9 +57,18 @@ docker save -o komplizen-protokolle.tar komplizen-protokolle:latest
 
 ### 3. Image auf die Synology übertragen
 
+**Per Netzwerkfreigabe (Windows):**
+
+```
+Quelle:  <Projektordner>\komplizen-protokolle.tar
+         <Projektordner>\docker-compose.yml
+Ziel:    \\192.168.178.250\docker\komplizen-protokolle\
+```
+
+**Per SCP (SSH):**
+
 ```bash
-# Per SCP
-scp komplizen-protokolle.tar admin@192.168.1.100:/volume1/docker/komplizen-protokolle/
+scp komplizen-protokolle.tar admin@192.168.178.250:/volume1/docker/komplizen-protokolle/
 ```
 
 Dann im **Container Manager → Image → Hinzufügen → Aus Datei hinzufügen**
@@ -105,7 +126,7 @@ Nach dem ersten Start ist die App im **offenen Modus** – jeder im Netzwerk
 kann zugreifen. Lege sofort einen Admin-Benutzer an:
 
 ```bash
-curl -s -X POST http://192.168.1.100:3000/api/auth/users \
+curl -s -X POST http://192.168.178.250:3000/api/auth/users \
   -H "Content-Type: application/json" \
   -d '{"username":"admin","displayName":"Administrator","password":"SicheresPasswort123!","role":"admin"}'
 ```
