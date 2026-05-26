@@ -24,8 +24,9 @@ const path      = require('path')
 const fs        = require('fs')
 const http      = require('http')
 const https     = require('https')
-const db        = require('./db')
-const auth      = require('./auth')
+const db          = require('./db')
+const auth        = require('./auth')
+const attachments = require('./attachments')
 
 const app  = express()
 const PORT = parseInt(process.env.PORT  || '3000', 10)
@@ -265,6 +266,45 @@ app.post('/api/auth/users/:username/password', requireAuth, async (req, res) => 
     }
     db.users.updatePassword(username, await auth.hashPassword(newPassword))
     logEvent('PASSWORD_CHANGED', req, `user=${username}`)
+    res.json({ ok: true })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// ── Attachment API ────────────────────────────────────────────────────────────
+// ID validation helper used in all three routes.
+function validAttachmentId(id) {
+  return typeof id === 'string' && /^[a-zA-Z0-9_-]+$/.test(id)
+}
+
+// POST /api/attachments  { id, data: base64 }
+app.post('/api/attachments', requireAuth, writeLimiter, async (req, res) => {
+  try {
+    const { id, data } = req.body
+    if (!validAttachmentId(id) || typeof data !== 'string') {
+      return res.status(400).json({ error: '"id" (alphanumerisch) und "data" (base64) erwartet.' })
+    }
+    // Idempotent: if the file already exists we skip re-writing it.
+    if (await attachments.exists(id)) return res.json({ ok: true, id })
+    await attachments.save(id, data)
+    res.status(201).json({ ok: true, id })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// GET /api/attachments/:id  → { id, data: base64 }
+app.get('/api/attachments/:id', requireAuth, async (req, res) => {
+  try {
+    if (!validAttachmentId(req.params.id)) return res.status(400).json({ error: 'Ungültige ID.' })
+    const data = await attachments.load(req.params.id)
+    if (!data) return res.status(404).json({ error: 'Anhang nicht gefunden.' })
+    res.json({ id: req.params.id, data })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// DELETE /api/attachments/:id
+app.delete('/api/attachments/:id', requireAuth, writeLimiter, async (req, res) => {
+  try {
+    if (!validAttachmentId(req.params.id)) return res.status(400).json({ error: 'Ungültige ID.' })
+    await attachments.remove(req.params.id)
     res.json({ ok: true })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
