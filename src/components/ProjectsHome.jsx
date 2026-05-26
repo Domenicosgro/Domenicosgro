@@ -1,6 +1,7 @@
 import React, { useState, useRef } from 'react'
 import { Plus, Trash2, Search, ChevronRight, FileText, Users, FolderOpen,
-         Calendar, Lock, LockOpen, X, Eye, EyeOff, Star, BarChart2 } from 'lucide-react'
+         Calendar, Lock, LockOpen, X, Eye, EyeOff, Star, BarChart2,
+         User, Settings, LogOut } from 'lucide-react'
 import { formatDate } from '../utils'
 
 // ── Password modal ─────────────────────────────────────────────────────────────
@@ -111,7 +112,8 @@ function PasswordModal({ mode, projectName, onConfirm, onCancel }) {
 
 // ── Main component ─────────────────────────────────────────────────────────────
 export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, onDelete, onOpenProject,
-                                       onUnlock, onSetPassword, onRemovePassword, onOpenDashboard }) {
+                                       onUnlock, onSetPassword, onRemovePassword, onOpenDashboard,
+                                       serverUser, onLogout, onOpenAdmin }) {
   const [search,    setSearch]    = useState('')
   const [modal,     setModal]     = useState(null)   // { mode, projectId }
   // User-specific favorites stored in localStorage
@@ -196,19 +198,51 @@ export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, 
   return (
     <div className="max-w-4xl mx-auto p-4 sm:p-6 space-y-6">
 
+      {/* Dev-Mode-Banner: Server ohne Benutzer */}
+      {serverUser?.devMode && onOpenAdmin && (
+        <div className="bg-amber-50 border border-amber-200 text-amber-800 px-4 py-3 text-sm flex items-center justify-between gap-4">
+          <span>
+            <strong>Server-Modus: Offener Zugang.</strong>{' '}
+            Noch kein Benutzer angelegt – Anmeldung ist deaktiviert.
+          </span>
+          <button className="btn btn-secondary text-xs whitespace-nowrap" onClick={onOpenAdmin}>
+            <Settings size={13} /> Admin einrichten
+          </button>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Komplizen Protokolle</h1>
           <p className="text-sm text-gray-500 mt-0.5">Projekte &amp; Besprechungsprotokolle</p>
         </div>
-        <div className="flex gap-2 self-start sm:self-auto">
+        <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+          {/* Server-Benutzer-Info */}
+          {serverUser && !serverUser.devMode && (
+            <>
+              <div className="flex items-center gap-1.5 text-sm text-gray-600 border-r border-gray-200 pr-2">
+                <User size={13} className="text-gray-400" />
+                <span className="font-medium">{serverUser.displayName || serverUser.username}</span>
+              </div>
+              {onOpenAdmin && serverUser.role === 'admin' && (
+                <button className="btn btn-ghost p-1.5" onClick={onOpenAdmin} title="Server-Einstellungen">
+                  <Settings size={14} className="text-gray-500" />
+                </button>
+              )}
+              {onLogout && (
+                <button className="btn btn-ghost p-1.5" onClick={onLogout} title="Abmelden">
+                  <LogOut size={14} className="text-gray-500" />
+                </button>
+              )}
+            </>
+          )}
           {onOpenDashboard && (
-            <button className="btn-secondary" onClick={onOpenDashboard} title="Maßnahmen-Dashboard öffnen">
+            <button className="btn btn-secondary" onClick={onOpenDashboard} title="Maßnahmen-Dashboard öffnen">
               <BarChart2 size={15} /> Dashboard
             </button>
           )}
-          <button className="btn-primary" onClick={handleCreate}>
+          <button className="btn btn-primary" onClick={handleCreate}>
             <Plus size={16} /> Neues Projekt
           </button>
         </div>
