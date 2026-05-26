@@ -20,11 +20,12 @@ LABEL org.opencontainers.image.title="Komplizen Protokolle" \
       org.opencontainers.image.description="Besprechungsprotokoll-Tool für Bauprojekte" \
       org.opencontainers.image.source="https://github.com/domenicosgro/domenicosgro"
 
-# Build-Tools nur zum Kompilieren von better-sqlite3 notwendig
+# Build-Tools zum Kompilieren von better-sqlite3
 RUN apk add --no-cache python3 make g++
 
-COPY package*.json ./
-RUN npm ci --omit=dev && \
+# Nur Server-Abhängigkeiten installieren (kein Electron, keine Dev-Tools)
+COPY server/package.json ./package.json
+RUN npm install --omit=dev && \
     apk del python3 make g++ && \
     rm -rf /root/.npm /tmp/npm-*
 
