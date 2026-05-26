@@ -15,8 +15,11 @@ const _sk = new Set()   // ids currently known on server
 
 function apiHeaders() {
   const h = { 'Content-Type': 'application/json' }
-  const key = typeof window !== 'undefined' && window.__API_KEY__
-  if (key) h['X-API-Key'] = key
+  if (typeof window !== 'undefined') {
+    if (window.__API_KEY__) h['X-API-Key'] = window.__API_KEY__
+    const token = localStorage.getItem('kp_session_token')
+    if (token) h['Authorization'] = `Bearer ${token}`
+  }
   return h
 }
 

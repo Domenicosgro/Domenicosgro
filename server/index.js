@@ -8,8 +8,7 @@
  *   PORT             – HTTP(S)-Port (Standard: 3000)
  *   HOST             – Bind-Adresse (Standard: 0.0.0.0)
  *   DB_PATH          – Verzeichnis für SQLite-Datenbank (Standard: ./data)
- *   API_KEY          – Wenn gesetzt, müssen alle API-Anfragen den Header
- *                      "X-API-Key: <wert>" senden (empfohlen für Produktion)
+ *   API_KEY          – Optionaler statischer API-Schlüssel (X-API-Key Header)
  *   ALLOWED_ORIGINS  – Kommaliste erlaubter CORS-Origins
  *   HTTPS_CERT       – Pfad zum TLS-Zertifikat (PEM) für HTTPS
  *   HTTPS_KEY        – Pfad zum TLS-Schlüssel (PEM) für HTTPS
@@ -26,12 +25,13 @@ const fs        = require('fs')
 const http      = require('http')
 const https     = require('https')
 const db        = require('./db')
+const auth      = require('./auth')
 
 const app  = express()
 const PORT = parseInt(process.env.PORT  || '3000', 10)
 const HOST = process.env.HOST || '0.0.0.0'
 
-// ── Security headers (Helmet) ─────────────────────────────────────────────────
+// ── Security headers ──────────────────────────────────────────────────────────
 app.use(helmet({
   contentSecurityPolicy: {
     directives: {
@@ -62,7 +62,7 @@ app.use(cors({
       }
     : true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'X-API-Key'],
+  allowedHeaders: ['Content-Type', 'X-API-Key', 'Authorization'],
 }))
 
 // ── Rate limiting ─────────────────────────────────────────────────────────────
@@ -80,17 +80,12 @@ const writeLimiter = rateLimit({
   message: { error: 'Zu viele Schreiboperationen – bitte kurz warten.' },
 })
 
-// ── API key authentication ────────────────────────────────────────────────────
-const API_KEY = process.env.API_KEY
-const requireApiKey = (req, res, next) => {
-  if (!API_KEY) return next()
-  const provided = req.headers['x-api-key']
-  if (!provided || provided !== API_KEY) {
-    logEvent('AUTH_FAIL', req)
-    return res.status(401).json({ error: 'Nicht autorisiert.' })
-  }
-  next()
-}
+// Brute-force-Schutz für Login
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  message: { error: 'Zu viele Anmeldeversuche – bitte in 15 Minuten erneut versuchen.' },
+})
 
 // ── Access logging ────────────────────────────────────────────────────────────
 const LOG_DIR  = process.env.LOG_PATH || path.join(__dirname, '../logs')
@@ -108,7 +103,143 @@ app.use((req, _res, next) => { logEvent('REQ', req); next() })
 // ── Body parser ───────────────────────────────────────────────────────────────
 app.use(express.json({ limit: '200mb' }))
 
-// ── Static frontend (index: false so we can inject server mode flag) ──────────
+// ── Authentication middleware ─────────────────────────────────────────────────
+const API_KEY = process.env.API_KEY
+
+function requireAuth(req, res, next) {
+  // 1) Session token (Bearer)
+  const authHeader = req.headers['authorization']
+  if (authHeader?.startsWith('Bearer ')) {
+    const token   = authHeader.slice(7)
+    const session = db.sessions.get(token)
+    if (session) {
+      db.users.updateLastLogin(session.username)
+      req.user = session.username
+      return next()
+    }
+  }
+
+  // 2) Static API key (für CLI/Skripte)
+  if (API_KEY && req.headers['x-api-key'] === API_KEY) {
+    req.user = '__apikey__'
+    return next()
+  }
+
+  // 3) Offener Modus: noch kein Benutzer angelegt (Erst-Setup)
+  if (!db.users.hasAny()) {
+    req.user = '__anonymous__'
+    return next()
+  }
+
+  logEvent('AUTH_FAIL', req)
+  res.status(401).json({ error: 'Nicht angemeldet. Bitte zuerst einloggen.' })
+}
+
+function requireAdmin(req, res, next) {
+  if (req.user === '__apikey__' || req.user === '__anonymous__') return next()
+  const user = db.users.get(req.user)
+  if (!user || user.role !== 'admin') {
+    return res.status(403).json({ error: 'Administratorrechte erforderlich.' })
+  }
+  next()
+}
+
+// ── Auth endpoints ────────────────────────────────────────────────────────────
+
+// POST /api/auth/login
+app.post('/api/auth/login', loginLimiter, async (req, res) => {
+  try {
+    const { username, password } = req.body
+    if (!username || !password) {
+      return res.status(400).json({ error: 'Benutzername und Passwort erforderlich.' })
+    }
+    const user = db.users.get(username)
+    if (!user || !(await auth.verifyPassword(password, user.password_hash))) {
+      logEvent('AUTH_FAIL', req, `user=${username}`)
+      return res.status(401).json({ error: 'Ungültige Anmeldedaten.' })
+    }
+    const token     = auth.generateToken()
+    const expiresAt = new Date(Date.now() + auth.SESSION_HOURS * 60 * 60 * 1000).toISOString()
+    db.sessions.create(token, username, expiresAt)
+    db.users.updateLastLogin(username)
+    logEvent('LOGIN', req, `user=${username}`)
+    res.json({
+      token, expiresAt,
+      user: { username: user.username, displayName: user.display_name, role: user.role },
+    })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// POST /api/auth/logout
+app.post('/api/auth/logout', requireAuth, (req, res) => {
+  const authHeader = req.headers['authorization']
+  if (authHeader?.startsWith('Bearer ')) db.sessions.delete(authHeader.slice(7))
+  logEvent('LOGOUT', req, `user=${req.user}`)
+  res.json({ ok: true })
+})
+
+// GET /api/auth/me
+app.get('/api/auth/me', requireAuth, (req, res) => {
+  if (req.user === '__apikey__')    return res.json({ username: 'apikey',   displayName: 'API Key', role: 'admin' })
+  if (req.user === '__anonymous__') return res.json({ username: '', displayName: '', role: 'admin', devMode: true })
+  const user = db.users.get(req.user)
+  if (!user) return res.status(404).json({ error: 'Benutzer nicht gefunden.' })
+  res.json({ username: user.username, displayName: user.display_name, role: user.role })
+})
+
+// GET /api/auth/users (admin: list users)
+app.get('/api/auth/users', requireAuth, requireAdmin, (_req, res) => {
+  res.json(db.users.list())
+})
+
+// POST /api/auth/users (admin: create user)
+app.post('/api/auth/users', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { username, displayName, password, role = 'user' } = req.body
+    if (!username || !password) {
+      return res.status(400).json({ error: 'Benutzername und Passwort erforderlich.' })
+    }
+    if (password.length < 8) {
+      return res.status(400).json({ error: 'Passwort muss mindestens 8 Zeichen lang sein.' })
+    }
+    if (db.users.get(username)) {
+      return res.status(409).json({ error: 'Benutzername bereits vergeben.' })
+    }
+    const hash = await auth.hashPassword(password)
+    db.users.create(username, displayName || username, hash, role)
+    logEvent('USER_CREATED', req, `newUser=${username} role=${role}`)
+    res.status(201).json({ ok: true, username })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// POST /api/auth/users/:username/password (Passwort ändern)
+app.post('/api/auth/users/:username/password', requireAuth, async (req, res) => {
+  try {
+    const { username }                  = req.params
+    const { currentPassword, newPassword } = req.body
+    const callerUser = db.users.get(req.user)
+    const isAdmin    = callerUser?.role === 'admin' || req.user === '__apikey__' || req.user === '__anonymous__'
+
+    if (req.user !== username && !isAdmin) {
+      return res.status(403).json({ error: 'Nur das eigene Passwort kann geändert werden.' })
+    }
+    if (!newPassword || newPassword.length < 8) {
+      return res.status(400).json({ error: 'Neues Passwort muss mindestens 8 Zeichen lang sein.' })
+    }
+    if (!isAdmin) {
+      const target = db.users.get(username)
+      if (!target || !(await auth.verifyPassword(currentPassword, target.password_hash))) {
+        return res.status(401).json({ error: 'Aktuelles Passwort falsch.' })
+      }
+    }
+    const hash = await auth.hashPassword(newPassword)
+    db.users.updatePassword(username, hash)
+    logEvent('PASSWORD_CHANGED', req, `user=${username}`)
+    res.json({ ok: true })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// ── Static frontend ───────────────────────────────────────────────────────────
 const distDir = path.join(__dirname, '../dist')
 
 function serveHtml(_req, res) {
@@ -117,35 +248,28 @@ function serveHtml(_req, res) {
     return res.status(503).send('Frontend nicht gebaut. Bitte zuerst "npm run build" ausführen.')
   }
   let html = fs.readFileSync(htmlPath, 'utf8')
-  const inject = API_KEY
-    ? `<script>window.__SERVER_MODE__=true;window.__API_KEY__=${JSON.stringify(API_KEY)}</script>`
-    : `<script>window.__SERVER_MODE__=true</script>`
-  html = html.replace('</head>', inject + '</head>')
+  const vars = [`window.__SERVER_MODE__=true`]
+  if (API_KEY) vars.push(`window.__API_KEY__=${JSON.stringify(API_KEY)}`)
+  html = html.replace('</head>', `<script>${vars.join(';')}</script></head>`)
   res.setHeader('Content-Type', 'text/html; charset=utf-8')
   res.setHeader('X-Content-Type-Options', 'nosniff')
   res.send(html)
 }
 
-// Serve index.html explicitly so injection fires before express.static
 app.get('/', serveHtml)
-
 app.use(express.static(distDir, {
   index: false,
-  setHeaders: (res) => {
-    res.setHeader('X-Content-Type-Options', 'nosniff')
-  },
+  setHeaders: (res) => { res.setHeader('X-Content-Type-Options', 'nosniff') },
 }))
 
-// ── Row-level API helpers ─────────────────────────────────────────────────────
+// ── Row-level API routes ──────────────────────────────────────────────────────
 function makeRoutes(router, store) {
-  // GET all
-  router.get('/', requireApiKey, (req, res) => {
+  router.get('/',    requireAuth,              (req, res) => {
     try { res.json(store.list()) }
     catch (e) { res.status(500).json({ error: e.message }) }
   })
 
-  // GET one
-  router.get('/:id', requireApiKey, (req, res) => {
+  router.get('/:id', requireAuth, (req, res) => {
     try {
       const item = store.get(req.params.id)
       if (!item) return res.status(404).json({ error: 'Nicht gefunden.' })
@@ -153,33 +277,28 @@ function makeRoutes(router, store) {
     } catch (e) { res.status(500).json({ error: e.message }) }
   })
 
-  // POST create
-  router.post('/', requireApiKey, writeLimiter, (req, res) => {
+  router.post('/', requireAuth, writeLimiter, (req, res) => {
     try {
       const data = req.body
       if (!data || typeof data !== 'object' || !data.id) {
         return res.status(400).json({ error: 'Objekt mit "id"-Feld erwartet.' })
       }
-      const existing = store.get(data.id)
-      if (existing) return res.status(409).json({ error: 'ID existiert bereits.', serverVersion: existing._version })
-      const result = store.create(data)
+      if (store.get(data.id)) {
+        return res.status(409).json({ error: 'ID existiert bereits.' })
+      }
+      const result = store.create(data, req.user)
       res.status(201).json(result)
     } catch (e) { res.status(500).json({ error: e.message }) }
   })
 
-  // PATCH update with optimistic lock
-  router.patch('/:id', requireApiKey, writeLimiter, (req, res) => {
+  router.patch('/:id', requireAuth, writeLimiter, (req, res) => {
     try {
       const { data, version } = req.body
-      if (!data || typeof data !== 'object') {
-        return res.status(400).json({ error: '"data"-Objekt erwartet.' })
-      }
-      if (typeof version !== 'number') {
-        return res.status(400).json({ error: '"version" (Zahl) erwartet.' })
-      }
-      const result = store.update(req.params.id, data, version)
-      if (result.notFound) return res.status(404).json({ error: 'Nicht gefunden.' })
-      if (result.conflict) return res.status(409).json({
+      if (!data || typeof data !== 'object') return res.status(400).json({ error: '"data"-Objekt erwartet.' })
+      if (typeof version !== 'number')       return res.status(400).json({ error: '"version" (Zahl) erwartet.' })
+      const result = store.update(req.params.id, data, version, req.user)
+      if (result.notFound)  return res.status(404).json({ error: 'Nicht gefunden.' })
+      if (result.conflict)  return res.status(409).json({
         error: 'Konflikt – Eintrag wurde zwischenzeitlich geändert.',
         serverVersion: result.serverVersion,
         serverData:    result.serverData,
@@ -188,20 +307,18 @@ function makeRoutes(router, store) {
     } catch (e) { res.status(500).json({ error: e.message }) }
   })
 
-  // DELETE
-  router.delete('/:id', requireApiKey, writeLimiter, (req, res) => {
+  router.delete('/:id', requireAuth, writeLimiter, (req, res) => {
     try {
-      const found = store.delete(req.params.id)
-      if (!found) return res.status(404).json({ error: 'Nicht gefunden.' })
+      if (!store.delete(req.params.id)) return res.status(404).json({ error: 'Nicht gefunden.' })
       res.json({ ok: true })
     } catch (e) { res.status(500).json({ error: e.message }) }
   })
 
-  // PUT – legacy bulk replace (keeps backward compat with non-server hooks)
-  router.put('/', requireApiKey, writeLimiter, (req, res) => {
+  // Legacy bulk replace
+  router.put('/', requireAuth, writeLimiter, (req, res) => {
     try {
       if (!Array.isArray(req.body)) return res.status(400).json({ error: 'Array erwartet.' })
-      store.replaceAll(req.body)
+      store.replaceAll(req.body, req.user)
       res.json({ ok: true, count: req.body.length })
     } catch (e) { res.status(500).json({ error: e.message }) }
   })
@@ -215,7 +332,7 @@ makeRoutes(projectRouter,  db.projects)
 app.use('/api/protocols', protocolRouter)
 app.use('/api/projects',  projectRouter)
 
-// ── Misc API routes ───────────────────────────────────────────────────────────
+// ── Misc routes ───────────────────────────────────────────────────────────────
 app.get('/api/health',  (_req, res) => res.json({ status: 'ok', time: new Date().toISOString(), version: require('../package.json').version }))
 app.get('/api/version', (_req, res) => res.json({ version: require('../package.json').version }))
 
@@ -234,9 +351,26 @@ const keyFile  = process.env.HTTPS_KEY
 
 const onListen = (protocol) => () => {
   console.log(`✓ Komplizen Protokolle läuft auf ${protocol}://${HOST}:${PORT}`)
-  console.log(`  Datenbank : ${process.env.DB_PATH || path.join(__dirname, '../data')}`)
-  console.log(`  API-Auth  : ${API_KEY ? 'Aktiv (X-API-Key)' : 'Deaktiviert'}`)
-  console.log(`  CORS      : ${allowedOrigins ? allowedOrigins.join(', ') : 'Alle erlaubt'}`)
+  console.log(`  Datenbank  : ${process.env.DB_PATH || path.join(__dirname, '../data')}`)
+  console.log(`  API-Schlüssel : ${API_KEY ? 'Aktiv (X-API-Key)' : 'Deaktiviert'}`)
+  console.log(`  CORS       : ${allowedOrigins ? allowedOrigins.join(', ') : 'Alle erlaubt'}`)
+
+  if (!db.users.hasAny()) {
+    console.log('')
+    console.log('  ⚠  Noch kein Benutzer angelegt – offener Modus aktiv.')
+    console.log('     Ersten Admin-Benutzer anlegen:')
+    console.log('     POST /api/auth/users  { username, password, role: "admin" }')
+    console.log('')
+  } else {
+    console.log(`  Benutzer   : ${db.users.list().length} registriert`)
+  }
+
+  // Abgelaufene Sessions beim Start bereinigen
+  const cleaned = db.sessions.deleteExpired()
+  if (cleaned > 0) console.log(`  Sessions   : ${cleaned} abgelaufene bereinigt`)
+
+  // Stündliche Session-Bereinigung
+  setInterval(() => db.sessions.deleteExpired(), 60 * 60 * 1000)
 }
 
 if (certFile && keyFile && fs.existsSync(certFile) && fs.existsSync(keyFile)) {

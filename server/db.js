@@ -188,7 +188,41 @@ function makeStore(tableName) {
   }
 }
 
+// ── Users ─────────────────────────────────────────────────────────────────────
+const _uHasAny     = db.prepare('SELECT 1 FROM users LIMIT 1')
+const _uGet        = db.prepare('SELECT username, display_name, password_hash, role, created_at, last_login FROM users WHERE username = ?')
+const _uList       = db.prepare('SELECT username, display_name, role, created_at, last_login FROM users ORDER BY created_at ASC')
+const _uInsert     = db.prepare('INSERT INTO users (username, display_name, password_hash, role) VALUES (@username, @displayName, @hash, @role)')
+const _uLastLogin  = db.prepare("UPDATE users SET last_login = datetime('now') WHERE username = ?")
+const _uPassword   = db.prepare('UPDATE users SET password_hash = @hash WHERE username = @username')
+
+const users = {
+  hasAny()                          { return !!_uHasAny.get() },
+  get(username)                     { return _uGet.get(username) || null },
+  list()                            { return _uList.all() },
+  create(username, displayName, hash, role = 'user') {
+    _uInsert.run({ username, displayName, hash, role })
+  },
+  updateLastLogin(username)         { _uLastLogin.run(username) },
+  updatePassword(username, hash)    { _uPassword.run({ hash, username }) },
+}
+
+// ── Sessions ──────────────────────────────────────────────────────────────────
+const _sGet    = db.prepare("SELECT token, username, expires_at FROM sessions WHERE token = ? AND expires_at > datetime('now')")
+const _sInsert = db.prepare('INSERT INTO sessions (token, username, expires_at) VALUES (@token, @username, @expiresAt)')
+const _sDelete = db.prepare('DELETE FROM sessions WHERE token = ?')
+const _sExpire = db.prepare("DELETE FROM sessions WHERE expires_at <= datetime('now')")
+
+const sessions = {
+  get(token)                         { return _sGet.get(token) || null },
+  create(token, username, expiresAt) { _sInsert.run({ token, username, expiresAt }) },
+  delete(token)                      { _sDelete.run(token) },
+  deleteExpired()                    { return _sExpire.run().changes },
+}
+
 module.exports = {
   protocols: makeStore('protocols'),
   projects:  makeStore('projects'),
+  users,
+  sessions,
 }
