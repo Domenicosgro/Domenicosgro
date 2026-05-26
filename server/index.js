@@ -80,7 +80,6 @@ const writeLimiter = rateLimit({
   message: { error: 'Zu viele Schreiboperationen – bitte kurz warten.' },
 })
 
-// Brute-force-Schutz für Login
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 10,
@@ -103,34 +102,33 @@ app.use((req, _res, next) => { logEvent('REQ', req); next() })
 // ── Body parser ───────────────────────────────────────────────────────────────
 app.use(express.json({ limit: '200mb' }))
 
-// ── Authentication middleware ─────────────────────────────────────────────────
+// ── Authentication ────────────────────────────────────────────────────────────
 const API_KEY = process.env.API_KEY
 
+// Resolves a token string to a username or null.
+function resolveToken(token) {
+  if (!token) return null
+  const session = db.sessions.get(token)
+  if (!session) return null
+  db.users.updateLastLogin(session.username)
+  return session.username
+}
+
 function requireAuth(req, res, next) {
-  // 1) Session token (Bearer)
+  // 1) Bearer session token
   const authHeader = req.headers['authorization']
   if (authHeader?.startsWith('Bearer ')) {
-    const token   = authHeader.slice(7)
-    const session = db.sessions.get(token)
-    if (session) {
-      db.users.updateLastLogin(session.username)
-      req.user = session.username
-      return next()
-    }
+    const username = resolveToken(authHeader.slice(7))
+    if (username) { req.user = username; return next() }
   }
-
-  // 2) Static API key (für CLI/Skripte)
+  // 2) Static API key
   if (API_KEY && req.headers['x-api-key'] === API_KEY) {
-    req.user = '__apikey__'
-    return next()
+    req.user = '__apikey__'; return next()
   }
-
-  // 3) Offener Modus: noch kein Benutzer angelegt (Erst-Setup)
+  // 3) Open mode: no users registered yet (first-time setup)
   if (!db.users.hasAny()) {
-    req.user = '__anonymous__'
-    return next()
+    req.user = '__anonymous__'; return next()
   }
-
   logEvent('AUTH_FAIL', req)
   res.status(401).json({ error: 'Nicht angemeldet. Bitte zuerst einloggen.' })
 }
@@ -144,15 +142,68 @@ function requireAdmin(req, res, next) {
   next()
 }
 
-// ── Auth endpoints ────────────────────────────────────────────────────────────
+// ── SSE broadcast ─────────────────────────────────────────────────────────────
+const sseClients = new Set()   // Set of { res }
 
-// POST /api/auth/login
+function broadcast(resourceType, action, id, updatedAt) {
+  if (sseClients.size === 0) return
+  const payload = `event: change\ndata: ${JSON.stringify({ type: resourceType, action, id, updatedAt })}\n\n`
+  const dead = []
+  for (const client of sseClients) {
+    try { client.res.write(payload) }
+    catch { dead.push(client) }
+  }
+  dead.forEach(c => sseClients.delete(c))
+}
+
+// ── SSE endpoint ──────────────────────────────────────────────────────────────
+app.get('/api/events', (req, res) => {
+  // EventSource can't set headers → accept token via query param as well
+  const token =
+    req.query.token ||
+    (req.headers['authorization']?.startsWith('Bearer ') ? req.headers['authorization'].slice(7) : null)
+
+  if (token) {
+    const username = resolveToken(token)
+    if (!username && db.users.hasAny()) {
+      return res.status(401).json({ error: 'Ungültige oder abgelaufene Sitzung.' })
+    }
+  } else if (API_KEY && req.headers['x-api-key'] !== API_KEY && db.users.hasAny()) {
+    return res.status(401).json({ error: 'Nicht angemeldet.' })
+  }
+
+  res.setHeader('Content-Type',      'text/event-stream')
+  res.setHeader('Cache-Control',     'no-cache')
+  res.setHeader('Connection',        'keep-alive')
+  res.setHeader('X-Accel-Buffering', 'no')   // disable nginx proxy buffering
+  res.flushHeaders()
+
+  const client = { res }
+  sseClients.add(client)
+
+  // Initial handshake
+  res.write(`event: connected\ndata: ${JSON.stringify({ clients: sseClients.size })}\n\n`)
+
+  // Heartbeat keeps the connection alive through proxies (every 25 s)
+  const heartbeat = setInterval(() => {
+    try { res.write(': heartbeat\n\n') }
+    catch { cleanup() }
+  }, 25_000)
+
+  function cleanup() {
+    clearInterval(heartbeat)
+    sseClients.delete(client)
+  }
+
+  req.on('close',  cleanup)
+  req.on('error',  cleanup)
+})
+
+// ── Auth endpoints ────────────────────────────────────────────────────────────
 app.post('/api/auth/login', loginLimiter, async (req, res) => {
   try {
     const { username, password } = req.body
-    if (!username || !password) {
-      return res.status(400).json({ error: 'Benutzername und Passwort erforderlich.' })
-    }
+    if (!username || !password) return res.status(400).json({ error: 'Benutzername und Passwort erforderlich.' })
     const user = db.users.get(username)
     if (!user || !(await auth.verifyPassword(password, user.password_hash))) {
       logEvent('AUTH_FAIL', req, `user=${username}`)
@@ -163,14 +214,10 @@ app.post('/api/auth/login', loginLimiter, async (req, res) => {
     db.sessions.create(token, username, expiresAt)
     db.users.updateLastLogin(username)
     logEvent('LOGIN', req, `user=${username}`)
-    res.json({
-      token, expiresAt,
-      user: { username: user.username, displayName: user.display_name, role: user.role },
-    })
+    res.json({ token, expiresAt, user: { username: user.username, displayName: user.display_name, role: user.role } })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
-// POST /api/auth/logout
 app.post('/api/auth/logout', requireAuth, (req, res) => {
   const authHeader = req.headers['authorization']
   if (authHeader?.startsWith('Bearer ')) db.sessions.delete(authHeader.slice(7))
@@ -178,33 +225,24 @@ app.post('/api/auth/logout', requireAuth, (req, res) => {
   res.json({ ok: true })
 })
 
-// GET /api/auth/me
 app.get('/api/auth/me', requireAuth, (req, res) => {
   if (req.user === '__apikey__')    return res.json({ username: 'apikey',   displayName: 'API Key', role: 'admin' })
-  if (req.user === '__anonymous__') return res.json({ username: '', displayName: '', role: 'admin', devMode: true })
+  if (req.user === '__anonymous__') return res.json({ username: '',          displayName: '',        role: 'admin', devMode: true })
   const user = db.users.get(req.user)
   if (!user) return res.status(404).json({ error: 'Benutzer nicht gefunden.' })
   res.json({ username: user.username, displayName: user.display_name, role: user.role })
 })
 
-// GET /api/auth/users (admin: list users)
 app.get('/api/auth/users', requireAuth, requireAdmin, (_req, res) => {
   res.json(db.users.list())
 })
 
-// POST /api/auth/users (admin: create user)
 app.post('/api/auth/users', requireAuth, requireAdmin, async (req, res) => {
   try {
     const { username, displayName, password, role = 'user' } = req.body
-    if (!username || !password) {
-      return res.status(400).json({ error: 'Benutzername und Passwort erforderlich.' })
-    }
-    if (password.length < 8) {
-      return res.status(400).json({ error: 'Passwort muss mindestens 8 Zeichen lang sein.' })
-    }
-    if (db.users.get(username)) {
-      return res.status(409).json({ error: 'Benutzername bereits vergeben.' })
-    }
+    if (!username || !password)   return res.status(400).json({ error: 'Benutzername und Passwort erforderlich.' })
+    if (password.length < 8)      return res.status(400).json({ error: 'Passwort muss mindestens 8 Zeichen lang sein.' })
+    if (db.users.get(username))   return res.status(409).json({ error: 'Benutzername bereits vergeben.' })
     const hash = await auth.hashPassword(password)
     db.users.create(username, displayName || username, hash, role)
     logEvent('USER_CREATED', req, `newUser=${username} role=${role}`)
@@ -212,28 +250,20 @@ app.post('/api/auth/users', requireAuth, requireAdmin, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
-// POST /api/auth/users/:username/password (Passwort ändern)
 app.post('/api/auth/users/:username/password', requireAuth, async (req, res) => {
   try {
-    const { username }                  = req.params
+    const { username }                     = req.params
     const { currentPassword, newPassword } = req.body
     const callerUser = db.users.get(req.user)
     const isAdmin    = callerUser?.role === 'admin' || req.user === '__apikey__' || req.user === '__anonymous__'
-
-    if (req.user !== username && !isAdmin) {
-      return res.status(403).json({ error: 'Nur das eigene Passwort kann geändert werden.' })
-    }
-    if (!newPassword || newPassword.length < 8) {
-      return res.status(400).json({ error: 'Neues Passwort muss mindestens 8 Zeichen lang sein.' })
-    }
+    if (req.user !== username && !isAdmin) return res.status(403).json({ error: 'Nur das eigene Passwort kann geändert werden.' })
+    if (!newPassword || newPassword.length < 8) return res.status(400).json({ error: 'Neues Passwort muss mindestens 8 Zeichen lang sein.' })
     if (!isAdmin) {
       const target = db.users.get(username)
-      if (!target || !(await auth.verifyPassword(currentPassword, target.password_hash))) {
+      if (!target || !(await auth.verifyPassword(currentPassword, target.password_hash)))
         return res.status(401).json({ error: 'Aktuelles Passwort falsch.' })
-      }
     }
-    const hash = await auth.hashPassword(newPassword)
-    db.users.updatePassword(username, hash)
+    db.users.updatePassword(username, await auth.hashPassword(newPassword))
     logEvent('PASSWORD_CHANGED', req, `user=${username}`)
     res.json({ ok: true })
   } catch (e) { res.status(500).json({ error: e.message }) }
@@ -248,7 +278,7 @@ function serveHtml(_req, res) {
     return res.status(503).send('Frontend nicht gebaut. Bitte zuerst "npm run build" ausführen.')
   }
   let html = fs.readFileSync(htmlPath, 'utf8')
-  const vars = [`window.__SERVER_MODE__=true`]
+  const vars = ['window.__SERVER_MODE__=true']
   if (API_KEY) vars.push(`window.__API_KEY__=${JSON.stringify(API_KEY)}`)
   html = html.replace('</head>', `<script>${vars.join(';')}</script></head>`)
   res.setHeader('Content-Type', 'text/html; charset=utf-8')
@@ -262,9 +292,9 @@ app.use(express.static(distDir, {
   setHeaders: (res) => { res.setHeader('X-Content-Type-Options', 'nosniff') },
 }))
 
-// ── Row-level API routes ──────────────────────────────────────────────────────
-function makeRoutes(router, store) {
-  router.get('/',    requireAuth,              (req, res) => {
+// ── Row-level data API ────────────────────────────────────────────────────────
+function makeRoutes(router, store, resourceType) {
+  router.get('/', requireAuth, (req, res) => {
     try { res.json(store.list()) }
     catch (e) { res.status(500).json({ error: e.message }) }
   })
@@ -280,13 +310,10 @@ function makeRoutes(router, store) {
   router.post('/', requireAuth, writeLimiter, (req, res) => {
     try {
       const data = req.body
-      if (!data || typeof data !== 'object' || !data.id) {
-        return res.status(400).json({ error: 'Objekt mit "id"-Feld erwartet.' })
-      }
-      if (store.get(data.id)) {
-        return res.status(409).json({ error: 'ID existiert bereits.' })
-      }
+      if (!data?.id) return res.status(400).json({ error: 'Objekt mit "id"-Feld erwartet.' })
+      if (store.get(data.id)) return res.status(409).json({ error: 'ID existiert bereits.' })
       const result = store.create(data, req.user)
+      broadcast(resourceType, 'create', data.id, data.updatedAt)
       res.status(201).json(result)
     } catch (e) { res.status(500).json({ error: e.message }) }
   })
@@ -294,15 +321,15 @@ function makeRoutes(router, store) {
   router.patch('/:id', requireAuth, writeLimiter, (req, res) => {
     try {
       const { data, version } = req.body
-      if (!data || typeof data !== 'object') return res.status(400).json({ error: '"data"-Objekt erwartet.' })
-      if (typeof version !== 'number')       return res.status(400).json({ error: '"version" (Zahl) erwartet.' })
+      if (!data || typeof version !== 'number') return res.status(400).json({ error: '"data" und "version" erwartet.' })
       const result = store.update(req.params.id, data, version, req.user)
-      if (result.notFound)  return res.status(404).json({ error: 'Nicht gefunden.' })
-      if (result.conflict)  return res.status(409).json({
+      if (result.notFound) return res.status(404).json({ error: 'Nicht gefunden.' })
+      if (result.conflict) return res.status(409).json({
         error: 'Konflikt – Eintrag wurde zwischenzeitlich geändert.',
         serverVersion: result.serverVersion,
         serverData:    result.serverData,
       })
+      broadcast(resourceType, 'update', req.params.id, data.updatedAt)
       res.json(result)
     } catch (e) { res.status(500).json({ error: e.message }) }
   })
@@ -310,15 +337,17 @@ function makeRoutes(router, store) {
   router.delete('/:id', requireAuth, writeLimiter, (req, res) => {
     try {
       if (!store.delete(req.params.id)) return res.status(404).json({ error: 'Nicht gefunden.' })
+      broadcast(resourceType, 'delete', req.params.id, new Date().toISOString())
       res.json({ ok: true })
     } catch (e) { res.status(500).json({ error: e.message }) }
   })
 
-  // Legacy bulk replace
+  // Legacy bulk replace – broadcasts a full-reload signal
   router.put('/', requireAuth, writeLimiter, (req, res) => {
     try {
       if (!Array.isArray(req.body)) return res.status(400).json({ error: 'Array erwartet.' })
       store.replaceAll(req.body, req.user)
+      broadcast(resourceType, 'reload', null, new Date().toISOString())
       res.json({ ok: true, count: req.body.length })
     } catch (e) { res.status(500).json({ error: e.message }) }
   })
@@ -326,8 +355,8 @@ function makeRoutes(router, store) {
 
 const protocolRouter = express.Router()
 const projectRouter  = express.Router()
-makeRoutes(protocolRouter, db.protocols)
-makeRoutes(projectRouter,  db.projects)
+makeRoutes(protocolRouter, db.protocols, 'protocol')
+makeRoutes(projectRouter,  db.projects,  'project')
 
 app.use('/api/protocols', protocolRouter)
 app.use('/api/projects',  projectRouter)
@@ -351,31 +380,29 @@ const keyFile  = process.env.HTTPS_KEY
 
 const onListen = (protocol) => () => {
   console.log(`✓ Komplizen Protokolle läuft auf ${protocol}://${HOST}:${PORT}`)
-  console.log(`  Datenbank  : ${process.env.DB_PATH || path.join(__dirname, '../data')}`)
+  console.log(`  Datenbank     : ${process.env.DB_PATH || path.join(__dirname, '../data')}`)
   console.log(`  API-Schlüssel : ${API_KEY ? 'Aktiv (X-API-Key)' : 'Deaktiviert'}`)
-  console.log(`  CORS       : ${allowedOrigins ? allowedOrigins.join(', ') : 'Alle erlaubt'}`)
+  console.log(`  CORS          : ${allowedOrigins ? allowedOrigins.join(', ') : 'Alle erlaubt'}`)
 
   if (!db.users.hasAny()) {
     console.log('')
-    console.log('  ⚠  Noch kein Benutzer angelegt – offener Modus aktiv.')
-    console.log('     Ersten Admin-Benutzer anlegen:')
-    console.log('     POST /api/auth/users  { username, password, role: "admin" }')
+    console.log('  ⚠  Kein Benutzer angelegt – offener Modus aktiv.')
+    console.log('     Ersten Admin anlegen:')
+    console.log('     POST /api/auth/users  { "username": "admin", "password": "...", "role": "admin" }')
     console.log('')
   } else {
-    console.log(`  Benutzer   : ${db.users.list().length} registriert`)
+    console.log(`  Benutzer      : ${db.users.list().length} registriert`)
   }
 
-  // Abgelaufene Sessions beim Start bereinigen
   const cleaned = db.sessions.deleteExpired()
-  if (cleaned > 0) console.log(`  Sessions   : ${cleaned} abgelaufene bereinigt`)
+  if (cleaned > 0) console.log(`  Sessions      : ${cleaned} abgelaufene bereinigt`)
 
-  // Stündliche Session-Bereinigung
   setInterval(() => db.sessions.deleteExpired(), 60 * 60 * 1000)
 }
 
 if (certFile && keyFile && fs.existsSync(certFile) && fs.existsSync(keyFile)) {
-  const tlsOpts = { cert: fs.readFileSync(certFile), key: fs.readFileSync(keyFile) }
-  https.createServer(tlsOpts, app).listen(PORT, HOST, onListen('https'))
+  https.createServer({ cert: fs.readFileSync(certFile), key: fs.readFileSync(keyFile) }, app)
+    .listen(PORT, HOST, onListen('https'))
 } else {
   http.createServer(app).listen(PORT, HOST, onListen('http'))
 }

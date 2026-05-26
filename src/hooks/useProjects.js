@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { emptyProject, uid } from '../utils'
+import { subscribeToServerEvents } from '../serverEvents'
 
 const STORAGE_KEY = 'bb_projects_v1'
 const API_PATH    = '/api/projects'
@@ -173,6 +174,54 @@ export function useProjects() {
     }, 400)
     return () => clearTimeout(saveTimer.current)
   }, [projects, loaded])
+
+  // SSE: live updates from other sessions/users
+  useEffect(() => {
+    if (!isServer || !loaded) return
+    return subscribeToServerEvents(async (event) => {
+      if (event.type !== 'project') return
+
+      if (event.action === 'reload') {
+        try {
+          const data = await serverLoad()
+          setProjects(Array.isArray(data) ? data : [])
+        } catch {}
+        return
+      }
+
+      if (event.action === 'delete') {
+        setProjects(prev => {
+          if (!prev.some(p => p.id === event.id)) return prev
+          return prev.filter(p => p.id !== event.id)
+        })
+        _sk.delete(event.id)
+        _sv.delete(event.id)
+        _st.delete(event.id)
+        return
+      }
+
+      // create / update — skip self-echo
+      if (event.updatedAt && _st.get(event.id) === event.updatedAt) return
+
+      try {
+        const res = await fetch(`${API_PATH}/${event.id}`, { headers: apiHeaders() })
+        if (!res.ok) return
+        const item = await res.json()
+        const { _version, _updatedAt, ...data } = item
+        _sk.add(data.id)
+        _sv.set(data.id, _version)
+        _st.set(data.id, data.updatedAt)
+        setProjects(prev => {
+          const idx = prev.findIndex(p => p.id === data.id)
+          if (idx === -1) return [data, ...prev]
+          if (prev[idx].updatedAt === data.updatedAt) return prev
+          return prev.map((p, i) => i === idx ? data : p)
+        })
+      } catch (e) {
+        console.warn('[SSE] Projekt-Fetch fehlgeschlagen:', e.message)
+      }
+    })
+  }, [loaded])
 
   const clearSaveError = useCallback(() => setSaveError(null), [])
 

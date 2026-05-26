@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { emptyProtocol, uid } from '../utils'
 import { attachmentStore } from '../attachmentStore'
+import { subscribeToServerEvents } from '../serverEvents'
 
 const STORAGE_KEY = 'bb_protocols_v1'
 const API_PATH    = '/api/protocols'
@@ -207,6 +208,55 @@ export function useProtocols() {
     }, 400)
     return () => clearTimeout(saveTimer.current)
   }, [protocols, loaded])
+
+  // SSE: live updates from other sessions/users
+  useEffect(() => {
+    if (!isServer || !loaded) return
+    return subscribeToServerEvents(async (event) => {
+      if (event.type !== 'protocol') return
+
+      if (event.action === 'reload') {
+        // Legacy bulk-PUT from another client → full re-load
+        try {
+          const data = await serverLoad()
+          setProtocols(Array.isArray(data) ? data : [])
+        } catch {}
+        return
+      }
+
+      if (event.action === 'delete') {
+        setProtocols(prev => {
+          if (!prev.some(p => p.id === event.id)) return prev
+          return prev.filter(p => p.id !== event.id)
+        })
+        _sk.delete(event.id)
+        _sv.delete(event.id)
+        _st.delete(event.id)
+        return
+      }
+
+      // create / update — skip if we already have this exact version (self-echo)
+      if (event.updatedAt && _st.get(event.id) === event.updatedAt) return
+
+      try {
+        const res = await fetch(`${API_PATH}/${event.id}`, { headers: apiHeaders() })
+        if (!res.ok) return
+        const item = await res.json()
+        const { _version, _updatedAt, ...data } = item
+        _sk.add(data.id)
+        _sv.set(data.id, _version)
+        _st.set(data.id, data.updatedAt)
+        setProtocols(prev => {
+          const idx = prev.findIndex(p => p.id === data.id)
+          if (idx === -1) return [data, ...prev]
+          if (prev[idx].updatedAt === data.updatedAt) return prev
+          return prev.map((p, i) => i === idx ? data : p)
+        })
+      } catch (e) {
+        console.warn('[SSE] Protokoll-Fetch fehlgeschlagen:', e.message)
+      }
+    })
+  }, [loaded])
 
   const clearSaveError = useCallback(() => setSaveError(null), [])
 
