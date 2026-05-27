@@ -9,13 +9,13 @@
   "lang": "de",
   "icons": [
     {
-      "src": "/logo.png",
+      "src": "/Logo_Komplizen_sky1.png",
       "sizes": "any",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/logo.png",
+      "src": "/Logo_Komplizen_sky1.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"

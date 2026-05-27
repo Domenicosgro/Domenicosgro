@@ -438,16 +438,22 @@ app.post('/api/auth/users/:username/invite', requireAuth, requireAdmin, async (r
           <p style="margin:12px 0 0 0;font-size:12px;color:#ef4444;">⚠ Bitte ändere dein Passwort nach der ersten Anmeldung (Einstellungen → Passwort ändern).</p>
         </td></tr>
 
-        <!-- Shortcut -->
+        <!-- App installieren -->
         <tr><td style="padding:24px 40px 0 40px;">
-          <p style="font-weight:bold;color:#1e3a5f;font-size:11px;text-transform:uppercase;letter-spacing:1px;margin:0 0 10px 0;">Desktop-Verknüpfung anlegen</p>
-          <ol style="margin:0;padding-left:20px;color:#374151;line-height:1.8;">
-            <li>Öffne im Browser: <a href="${appUrl}" style="color:#2563eb;">${appUrl}</a></li>
-            <li>Melde dich mit deinen Zugangsdaten an.</li>
-            <li>Klicke oben rechts auf den Button <strong>„Verknüpfung"</strong>.</li>
-            <li>Die heruntergeladene Datei auf den Desktop ziehen – fertig!</li>
-          </ol>
-          <p style="margin:10px 0 0 0;font-size:12px;color:#6b7280;">Oder direkt herunterladen: <a href="${shortcutUrl}" style="color:#2563eb;">${shortcutUrl}</a></p>
+          <p style="font-weight:bold;color:#1e3a5f;font-size:11px;text-transform:uppercase;letter-spacing:1px;margin:0 0 10px 0;">Als App auf dem Desktop installieren</p>
+          <table width="100%" cellpadding="0" cellspacing="0" style="background:#f0f7ff;border:1px solid #bfdbfe;margin-bottom:12px;">
+            <tr><td style="padding:14px 18px;">
+              <p style="margin:0 0 6px 0;font-weight:bold;color:#1e40af;">Chrome oder Edge (empfohlen)</p>
+              <ol style="margin:0;padding-left:18px;color:#374151;line-height:1.9;font-size:13px;">
+                <li>Öffne <a href="${appUrl}" style="color:#2563eb;">${appUrl}</a> in Chrome oder Edge</li>
+                <li>Melde dich an</li>
+                <li>Klicke in der Adresszeile auf das <strong>Installieren-Symbol</strong> <span style="font-family:monospace;background:#e5e7eb;padding:1px 5px;">⊕</span></li>
+                <li>„Installieren" bestätigen – fertig!</li>
+              </ol>
+              <p style="margin:8px 0 0 0;font-size:12px;color:#6b7280;">Die App erscheint im Startmenü und auf dem Desktop mit dem Komplizen-Logo.</p>
+            </td></tr>
+          </table>
+          <p style="margin:0;font-size:12px;color:#9ca3af;">Alternative: <a href="${shortcutUrl}" style="color:#6b7280;">Browser-Verknüpfung herunterladen</a></p>
         </td></tr>
 
         <!-- About -->
