@@ -262,8 +262,24 @@ export default function App() {
     )
   }
 
+  const Watermark = () => (
+    <div
+      aria-hidden="true"
+      style={{
+        position: 'fixed', inset: 0, zIndex: 1,
+        backgroundImage: 'url(/logo.png)',
+        backgroundRepeat: 'no-repeat',
+        backgroundPosition: 'center center',
+        backgroundSize: '400px 400px',
+        opacity: 0.06,
+        pointerEvents: 'none',
+      }}
+    />
+  )
+
   const wrap = (children) => (
     <>
+      <Watermark />
       {children}
       {showAdmin && <AdminPanel serverUser={serverUser} onClose={() => setShowAdmin(false)} />}
     </>
