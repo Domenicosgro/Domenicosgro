@@ -53,12 +53,12 @@ docker run -d `
     -e HOST=0.0.0.0 `
     -e DB_PATH=/data `
     -e LOG_PATH=/logs `
-    $(if ($SmtpHost) { "-e SMTP_HOST=$SmtpHost" }) `
-    $(if ($SmtpHost) { "-e SMTP_PORT=$SmtpPort" }) `
-    $(if ($SmtpUser) { "-e SMTP_USER=$SmtpUser" }) `
-    $(if ($SmtpPass) { "-e SMTP_PASS=$SmtpPass" }) `
-    $(if ($SmtpFrom) { "-e SMTP_FROM=$SmtpFrom" }) `
-    $(if ($SmtpHost) { "-e SMTP_SECURE=$SmtpSecure" }) `
+    -e "SMTP_HOST=$SmtpHost" `
+    -e "SMTP_PORT=$SmtpPort" `
+    -e "SMTP_USER=$SmtpUser" `
+    -e "SMTP_PASS=$SmtpPass" `
+    -e "SMTP_FROM=$SmtpFrom" `
+    -e "SMTP_SECURE=$SmtpSecure" `
     "${ImageName}:latest"
 
 if ($LASTEXITCODE -ne 0) { Write-Error "Start fehlgeschlagen"; exit 1 }
