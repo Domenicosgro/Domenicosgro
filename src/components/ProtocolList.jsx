@@ -182,6 +182,9 @@ export default function ProtocolList({
                   {openActions > 0 && (
                     <span className="badge-yellow">{openActions} offene Maßnahmen</span>
                   )}
+                  {p.updatedBy && (
+                    <span className="text-gray-400">· bearb. von <span className="font-medium text-gray-500">{p.updatedBy}</span></span>
+                  )}
                 </div>
               </div>
               <div className="flex items-center gap-1 no-print" onClick={e => e.stopPropagation()}>
