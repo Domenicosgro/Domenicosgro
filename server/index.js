@@ -489,6 +489,69 @@ makeRoutes(projectRouter,  db.projects,  'project')
 app.use('/api/protocols', protocolRouter)
 app.use('/api/projects',  projectRouter)
 
+// ── Backup ────────────────────────────────────────────────────────────────────
+const backupDir = path.join(process.env.DB_PATH || path.join(__dirname, '../data'), 'backups')
+if (!fs.existsSync(backupDir)) fs.mkdirSync(backupDir, { recursive: true })
+
+function createBackup() {
+  const data = {
+    version:    '1.0',
+    exportedAt: new Date().toISOString(),
+    protocols:  db.protocols.list(),
+    projects:   db.projects.list(),
+  }
+  const ts       = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
+  const filename = `backup_${ts}.json`
+  fs.writeFileSync(path.join(backupDir, filename), JSON.stringify(data, null, 2), 'utf8')
+  // Nur die letzten 30 Backups behalten
+  const all = fs.readdirSync(backupDir).filter(f => f.startsWith('backup_') && f.endsWith('.json')).sort()
+  if (all.length > 30) all.slice(0, all.length - 30).forEach(f => { try { fs.unlinkSync(path.join(backupDir, f)) } catch {} })
+  return filename
+}
+
+app.post('/api/admin/backup', requireAuth, requireAdmin, (req, res) => {
+  try {
+    const filename = createBackup()
+    logEvent('BACKUP_CREATED', req, filename)
+    res.json({ ok: true, filename })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.get('/api/admin/backups', requireAuth, requireAdmin, (_req, res) => {
+  try {
+    const files = fs.readdirSync(backupDir)
+      .filter(f => f.startsWith('backup_') && f.endsWith('.json'))
+      .sort().reverse()
+      .map(f => ({ filename: f, size: fs.statSync(path.join(backupDir, f)).size }))
+    res.json(files)
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.get('/api/admin/backups/:filename', requireAuth, requireAdmin, (req, res) => {
+  try {
+    const { filename } = req.params
+    if (!/^backup_[\dT\-]+\.json$/.test(filename)) return res.status(400).json({ error: 'Ungültiger Dateiname.' })
+    const fp = path.join(backupDir, filename)
+    if (!fs.existsSync(fp)) return res.status(404).json({ error: 'Nicht gefunden.' })
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`)
+    res.setHeader('Content-Type', 'application/json; charset=utf-8')
+    res.sendFile(fp)
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.post('/api/admin/restore', requireAuth, requireAdmin, (req, res) => {
+  try {
+    const { protocols, projects } = req.body
+    if (!Array.isArray(protocols) || !Array.isArray(projects))
+      return res.status(400).json({ error: 'Ungültiges Backup-Format.' })
+    createBackup()   // Sicherheitskopie vor dem Überschreiben
+    db.protocols.replaceAll(protocols, req.user)
+    db.projects.replaceAll(projects,   req.user)
+    logEvent('BACKUP_RESTORED', req, `protocols=${protocols.length} projects=${projects.length}`)
+    res.json({ ok: true })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
 // ── Misc routes ───────────────────────────────────────────────────────────────
 app.get('/api/health',  (_req, res) => res.json({ status: 'ok', time: new Date().toISOString(), version: require('../package.json').version }))
 app.get('/api/version', (_req, res) => res.json({ version: require('../package.json').version }))
@@ -524,6 +587,10 @@ const onListen = (protocol) => () => {
   if (cleaned > 0) console.log(`  Sessions      : ${cleaned} abgelaufene bereinigt`)
 
   setInterval(() => db.sessions.deleteExpired(), 60 * 60 * 1000)
+
+  // Automatisches Backup beim Start + alle 6 Stunden
+  try { const f = createBackup(); console.log(`  Backup        : ${f}`) } catch (e) { console.warn('  Backup fehlgeschlagen:', e.message) }
+  setInterval(() => { try { createBackup() } catch {} }, 6 * 60 * 60 * 1000)
 }
 
 if (certFile && keyFile && fs.existsSync(certFile) && fs.existsSync(keyFile)) {
