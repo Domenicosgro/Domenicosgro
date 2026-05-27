@@ -251,7 +251,7 @@ app.post('/api/auth/users', requireAuth, requireAdmin, async (req, res) => {
     if (password.length < 8)      return res.status(400).json({ error: 'Passwort muss mindestens 8 Zeichen lang sein.' })
     if (db.users.get(username))   return res.status(409).json({ error: 'Benutzername bereits vergeben.' })
     const hash = await auth.hashPassword(password)
-    db.users.create(username, displayName || username, hash, role)
+    db.users.create(username, displayName || username, hash, role, password)
     logEvent('USER_CREATED', req, `newUser=${username} role=${role}`)
     res.status(201).json({ ok: true, username })
   } catch (e) { res.status(500).json({ error: e.message }) }
@@ -282,6 +282,17 @@ app.post('/api/auth/users/:username/password', requireAuth, async (req, res) => 
     }
     db.users.updatePassword(username, await auth.hashPassword(newPassword))
     logEvent('PASSWORD_CHANGED', req, `user=${username}`)
+    res.json({ ok: true })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// ── Password note API (admin only) ────────────────────────────────────────────
+app.put('/api/auth/users/:username/password-note', requireAuth, requireAdmin, (req, res) => {
+  try {
+    const { username } = req.params
+    const { note = '' } = req.body
+    if (!db.users.get(username)) return res.status(404).json({ error: 'Benutzer nicht gefunden.' })
+    db.users.updatePasswordNote(username, note)
     res.json({ ok: true })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
