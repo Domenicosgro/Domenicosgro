@@ -1,0 +1,24 @@
+{
+  "name": "Komplizen Protokolle",
+  "short_name": "Komplizen",
+  "description": "Besprechungsprotokolle für Bauprojekte",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f3f4f6",
+  "theme_color": "#1e3a5f",
+  "lang": "de",
+  "icons": [
+    {
+      "src": "/logo.png",
+      "sizes": "any",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

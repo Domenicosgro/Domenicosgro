@@ -1,7 +1,7 @@
-import React, { useState, useRef } from 'react'
+import React, { useState, useRef, useEffect } from 'react'
 import { Plus, Trash2, Search, ChevronRight, FileText, Users, FolderOpen,
          Calendar, Lock, LockOpen, X, Eye, EyeOff, Star, BarChart2,
-         User, Settings, LogOut, Monitor } from 'lucide-react'
+         User, Settings, LogOut, Monitor, Download } from 'lucide-react'
 import { formatDate } from '../utils'
 import { useUserSettings } from '../hooks/useUserSettings'
 
@@ -115,9 +115,18 @@ function PasswordModal({ mode, projectName, onConfirm, onCancel }) {
 export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, onDelete, onOpenProject,
                                        onUnlock, onSetPassword, onRemovePassword, onOpenDashboard,
                                        serverUser, onLogout, onOpenAdmin }) {
-  const [search, setSearch] = useState('')
-  const [modal,  setModal]  = useState(null)   // { mode, projectId }
+  const [search,         setSearch]         = useState('')
+  const [modal,          setModal]          = useState(null)   // { mode, projectId }
+  const [installPrompt,  setInstallPrompt]  = useState(null)
+  const [installed,      setInstalled]      = useState(false)
   const { settings, update: updateSettings } = useUserSettings(serverUser?.username)
+
+  useEffect(() => {
+    const handler = (e) => { e.preventDefault(); setInstallPrompt(e) }
+    window.addEventListener('beforeinstallprompt', handler)
+    window.addEventListener('appinstalled', () => { setInstalled(true); setInstallPrompt(null) })
+    return () => window.removeEventListener('beforeinstallprompt', handler)
+  }, [])
   const favorites = new Set(settings.favorites ?? [])
   // ID of the project whose name input should be auto-focused after creation
   const focusIdRef = useRef(null)
@@ -237,10 +246,22 @@ export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, 
               <BarChart2 size={15} /> Dashboard
             </button>
           )}
-          {window.__SERVER_MODE__ && (
+          {window.__SERVER_MODE__ && !installed && installPrompt && (
+            <button
+              className="btn btn-secondary"
+              title="App auf dem Desktop installieren"
+              onClick={() => installPrompt.prompt()}
+            >
+              <Download size={14} /> App installieren
+            </button>
+          )}
+          {window.__SERVER_MODE__ && !installPrompt && !installed && (
             <a className="btn btn-secondary" href="/shortcut" download title="Desktop-Verknüpfung herunterladen">
               <Monitor size={14} /> Verknüpfung
             </a>
+          )}
+          {installed && (
+            <span className="text-xs text-green-600 font-medium px-2">✓ App installiert</span>
           )}
           <button className="btn btn-primary" onClick={handleCreate}>
             <Plus size={16} /> Neues Projekt
