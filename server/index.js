@@ -473,7 +473,20 @@ app.post('/api/auth/users/:username/invite', requireAuth, requireAdmin, async (r
               <p style="margin:8px 0 0 0;font-size:12px;color:#6b7280;">Die App erscheint im Startmenü und auf dem Desktop mit dem Komplizen-Logo.</p>
             </td></tr>
           </table>
-          <p style="margin:0;font-size:12px;color:#9ca3af;">Alternative: <a href="${shortcutUrl}" style="color:#6b7280;">Browser-Verknüpfung herunterladen</a></p>
+
+          <p style="margin:12px 0 6px 0;font-size:12px;color:#374151;"><strong>Falls das Installieren-Symbol in Chrome nicht erscheint</strong> – einmalige Einstellung (1 Minute):</p>
+          <table width="100%" cellpadding="0" cellspacing="0" style="background:#fafafa;border:1px solid #e5e7eb;">
+            <tr><td style="padding:12px 16px;">
+              <ol style="margin:0;padding-left:18px;color:#374151;line-height:2;font-size:12px;">
+                <li>In Chrome diese Adresse öffnen: <span style="font-family:monospace;background:#e5e7eb;padding:1px 6px;font-size:11px;">chrome://flags/#unsafely-treat-insecure-origin-as-secure</span></li>
+                <li>Das Eingabefeld auf <strong>Enabled</strong> setzen</li>
+                <li>In das Textfeld eintragen: <span style="font-family:monospace;background:#e5e7eb;padding:1px 6px;font-size:11px;">${appUrl}</span></li>
+                <li>Unten auf <strong>Relaunch</strong> klicken – Chrome startet neu</li>
+                <li>Jetzt <a href="${appUrl}" style="color:#2563eb;">${appUrl}</a> öffnen → Installieren-Symbol erscheint</li>
+              </ol>
+            </td></tr>
+          </table>
+          <p style="margin:8px 0 0 0;font-size:12px;color:#9ca3af;">Alternative: <a href="${shortcutUrl}" style="color:#6b7280;">Browser-Verknüpfung herunterladen</a></p>
         </td></tr>
 
         <!-- About -->
