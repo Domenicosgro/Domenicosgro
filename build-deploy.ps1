@@ -28,11 +28,17 @@ if ($LASTEXITCODE -ne 0) { Write-Error "Export fehlgeschlagen"; exit 1 }
 $size = [math]::Round((Get-Item $TarFile).Length / 1MB, 1)
 Write-Host "    OK ($size MB)" -ForegroundColor Green
 
-# 3. Zielordner auf NAS vorbereiten
+# 3. Zielordner auf NAS pruefen
 Write-Host "[3/4] NAS-Ordner pruefen ($NasPath)..." -ForegroundColor Yellow
 if (-not (Test-Path $NasPath)) {
-    Write-Host "    Ordner wird erstellt..."
-    New-Item -ItemType Directory -Path $NasPath -Force | Out-Null
+    Write-Host ""
+    Write-Host "  FEHLER: Ordner nicht gefunden oder kein Zugriff." -ForegroundColor Red
+    Write-Host "  Bitte manuell im Windows Explorer anlegen:" -ForegroundColor Yellow
+    Write-Host "    1. Explorer oeffnen -> \\192.168.178.250\docker" -ForegroundColor Gray
+    Write-Host "    2. Ordner 'komplizen-protokolle' erstellen" -ForegroundColor Gray
+    Write-Host "    3. Darin 'data' und 'logs' erstellen" -ForegroundColor Gray
+    Write-Host "    4. Skript erneut ausfuehren" -ForegroundColor Gray
+    exit 1
 }
 foreach ($sub in @("data", "logs")) {
     $subPath = Join-Path $NasPath $sub
