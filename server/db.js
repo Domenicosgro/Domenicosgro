@@ -195,6 +195,8 @@ const _uList       = db.prepare('SELECT username, display_name, role, created_at
 const _uInsert     = db.prepare('INSERT INTO users (username, display_name, password_hash, role) VALUES (@username, @displayName, @hash, @role)')
 const _uLastLogin  = db.prepare("UPDATE users SET last_login = datetime('now') WHERE username = ?")
 const _uPassword   = db.prepare('UPDATE users SET password_hash = @hash WHERE username = @username')
+const _uDelete     = db.prepare('DELETE FROM users WHERE username = ?')
+const _sDeleteUser = db.prepare('DELETE FROM sessions WHERE username = ?')
 
 const users = {
   hasAny()                          { return !!_uHasAny.get() },
@@ -205,6 +207,7 @@ const users = {
   },
   updateLastLogin(username)         { _uLastLogin.run(username) },
   updatePassword(username, hash)    { _uPassword.run({ hash, username }) },
+  delete(username)                  { _sDeleteUser.run(username); return _uDelete.run(username).changes > 0 },
 }
 
 // ── Sessions ──────────────────────────────────────────────────────────────────

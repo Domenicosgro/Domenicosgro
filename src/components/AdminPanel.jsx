@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { X, UserPlus, Users, Key, Eye, EyeOff, Loader } from 'lucide-react'
+import { X, UserPlus, Users, Key, Eye, EyeOff, Loader, Trash2 } from 'lucide-react'
 
 function apiHeaders() {
   const h = { 'Content-Type': 'application/json' }
@@ -16,6 +16,7 @@ function UsersTab({ serverUser }) {
   const [form,           setForm]           = useState({ username: '', displayName: '', password: '', role: 'user' })
   const [creating,       setCreating]       = useState(false)
   const [createError,    setCreateError]    = useState(null)
+  const [deleting,       setDeleting]       = useState(null)
 
   useEffect(() => { load() }, [])
 
@@ -42,6 +43,15 @@ function UsersTab({ serverUser }) {
     finally { setCreating(false) }
   }
 
+  async function handleDelete(username) {
+    if (!window.confirm(`Benutzer "${username}" wirklich löschen?`)) return
+    setDeleting(username)
+    try {
+      await fetch(`/api/auth/users/${username}`, { method: 'DELETE', headers: apiHeaders() })
+      await load()
+    } finally { setDeleting(null) }
+  }
+
   const set = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }))
 
   return (
@@ -65,7 +75,19 @@ function UsersTab({ serverUser }) {
                 <div className="text-sm font-medium text-gray-900">{u.display_name || u.username}</div>
                 <div className="text-xs text-gray-500">{u.username}</div>
               </div>
-              <span className={`badge ${u.role === 'admin' ? 'badge-blue' : 'badge-gray'}`}>{u.role}</span>
+              <div className="flex items-center gap-2">
+                <span className={`badge ${u.role === 'admin' ? 'badge-blue' : 'badge-gray'}`}>{u.role}</span>
+                {u.username !== serverUser?.username && (
+                  <button
+                    className="btn-ghost p-1 text-gray-400 hover:text-red-500"
+                    title="Benutzer löschen"
+                    disabled={deleting === u.username}
+                    onClick={() => handleDelete(u.username)}
+                  >
+                    {deleting === u.username ? <Loader size={13} className="animate-spin" /> : <Trash2 size={13} />}
+                  </button>
+                )}
+              </div>
             </div>
           ))}
           {users.length === 0 && (

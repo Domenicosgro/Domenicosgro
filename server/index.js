@@ -257,6 +257,16 @@ app.post('/api/auth/users', requireAuth, requireAdmin, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
+app.delete('/api/auth/users/:username', requireAuth, requireAdmin, (req, res) => {
+  try {
+    const { username } = req.params
+    if (username === req.user) return res.status(400).json({ error: 'Eigener Account kann nicht gelöscht werden.' })
+    if (!db.users.delete(username)) return res.status(404).json({ error: 'Benutzer nicht gefunden.' })
+    logEvent('USER_DELETED', req, `deletedUser=${username}`)
+    res.json({ ok: true })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
 app.post('/api/auth/users/:username/password', requireAuth, async (req, res) => {
   try {
     const { username }                     = req.params
