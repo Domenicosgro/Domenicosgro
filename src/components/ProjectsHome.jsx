@@ -1,7 +1,7 @@
 import React, { useState, useRef } from 'react'
 import { Plus, Trash2, Search, ChevronRight, FileText, Users, FolderOpen,
          Calendar, Lock, LockOpen, X, Eye, EyeOff, Star, BarChart2,
-         User, Settings, LogOut } from 'lucide-react'
+         User, Settings, LogOut, Monitor } from 'lucide-react'
 import { formatDate } from '../utils'
 import { useUserSettings } from '../hooks/useUserSettings'
 
@@ -236,6 +236,11 @@ export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, 
             <button className="btn btn-secondary" onClick={onOpenDashboard} title="Maßnahmen-Dashboard öffnen">
               <BarChart2 size={15} /> Dashboard
             </button>
+          )}
+          {window.__SERVER_MODE__ && (
+            <a className="btn btn-secondary" href="/shortcut" download title="Desktop-Verknüpfung herunterladen">
+              <Monitor size={14} /> Verknüpfung
+            </a>
           )}
           <button className="btn btn-primary" onClick={handleCreate}>
             <Plus size={16} /> Neues Projekt

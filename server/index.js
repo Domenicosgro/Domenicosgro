@@ -286,6 +286,18 @@ app.post('/api/auth/users/:username/password', requireAuth, async (req, res) => 
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
+// ── Desktop shortcut download ─────────────────────────────────────────────────
+app.get('/shortcut', (req, res) => {
+  const proto = req.protocol
+  const host  = req.headers.host
+  const url   = `${proto}://${host}`
+  const icon  = `${url}/logo.png`
+  const content = `[InternetShortcut]\r\nURL=${url}\r\nIconFile=${icon}\r\nIconIndex=0\r\n`
+  res.setHeader('Content-Type', 'application/octet-stream')
+  res.setHeader('Content-Disposition', 'attachment; filename="Komplizen Protokolle.url"')
+  res.send(content)
+})
+
 // ── Password note API (admin only) ────────────────────────────────────────────
 app.put('/api/auth/users/:username/password-note', requireAuth, requireAdmin, (req, res) => {
   try {
