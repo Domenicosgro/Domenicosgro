@@ -395,13 +395,13 @@ app.post('/api/auth/users/:username/invite', requireAuth, requireAdmin, async (r
     const shortcutUrl = `${appUrl}/shortcut`
 
     // Logo als CID-Anhang einbetten
-    const logoPath = path.join(__dirname, '../dist/logo.png')
+    const logoPath = path.join(__dirname, '../dist/Logo_Komplizen_sky1.png')
     const logoAttachment = fs.existsSync(logoPath)
-      ? [{ filename: 'logo.png', path: logoPath, cid: 'logo@komplizen' }]
+      ? [{ filename: 'Logo_Komplizen_sky1.png', path: logoPath, cid: 'logo@komplizen' }]
       : []
     const logoTag = logoAttachment.length
-      ? '<img src="cid:logo@komplizen" alt="Komplizen Protokolle" style="height:60px;display:block;margin:0 auto 24px auto;">'
-      : '<h2 style="color:#1e3a5f;text-align:center;margin:0 0 24px 0;">Komplizen Protokolle</h2>'
+      ? '<img src="cid:logo@komplizen" alt="Komplizen Protokolle" style="height:80px;display:block;margin:0 auto;">'
+      : '<h2 style="color:#1e3a5f;text-align:center;margin:0;">KOMPLIZEN</h2>'
 
     const html = `<!DOCTYPE html>
 <html lang="de">
@@ -412,9 +412,9 @@ app.post('/api/auth/users/:username/invite', requireAuth, requireAdmin, async (r
       <table width="560" cellpadding="0" cellspacing="0" style="background:#ffffff;border:1px solid #e5e7eb;max-width:560px;width:100%;">
 
         <!-- Header -->
-        <tr><td style="background:#1e3a5f;padding:32px 40px;text-align:center;">
+        <tr><td style="background:#ffffff;padding:32px 40px 20px 40px;text-align:center;border-bottom:3px solid #7ab3d4;">
           ${logoTag}
-          <p style="color:#93c5fd;margin:0;font-size:13px;letter-spacing:1px;text-transform:uppercase;">Einladung</p>
+          <p style="color:#7ab3d4;margin:8px 0 0 0;font-size:11px;letter-spacing:2px;text-transform:uppercase;">Einladung</p>
         </td></tr>
 
         <!-- Greeting -->
