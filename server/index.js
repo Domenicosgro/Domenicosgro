@@ -27,6 +27,7 @@ const https     = require('https')
 const db          = require('./db')
 const auth        = require('./auth')
 const attachments = require('./attachments')
+const nodemailer  = require('nodemailer')
 
 const app      = express()
 const PORT     = parseInt(process.env.PORT  || '3000', 10)
@@ -246,12 +247,12 @@ app.get('/api/auth/users', requireAuth, requireAdmin, (_req, res) => {
 
 app.post('/api/auth/users', requireAuth, requireAdmin, async (req, res) => {
   try {
-    const { username, displayName, password, role = 'user' } = req.body
+    const { username, displayName, password, role = 'user', email = '' } = req.body
     if (!username || !password)   return res.status(400).json({ error: 'Benutzername und Passwort erforderlich.' })
     if (password.length < 8)      return res.status(400).json({ error: 'Passwort muss mindestens 8 Zeichen lang sein.' })
     if (db.users.get(username))   return res.status(409).json({ error: 'Benutzername bereits vergeben.' })
     const hash = await auth.hashPassword(password)
-    db.users.create(username, displayName || username, hash, role, password)
+    db.users.create(username, displayName || username, hash, role, password, email)
     logEvent('USER_CREATED', req, `newUser=${username} role=${role}`)
     res.status(201).json({ ok: true, username })
   } catch (e) { res.status(500).json({ error: e.message }) }
@@ -335,6 +336,97 @@ app.put('/api/auth/users/:username/password-note', requireAuth, requireAdmin, (r
     if (!db.users.get(username)) return res.status(404).json({ error: 'Benutzer nicht gefunden.' })
     db.users.updatePasswordNote(username, note)
     res.json({ ok: true })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// ── User email API ────────────────────────────────────────────────────────────
+app.put('/api/auth/users/:username/email', requireAuth, requireAdmin, (req, res) => {
+  try {
+    const { username } = req.params
+    const { email = '' } = req.body
+    if (!db.users.get(username)) return res.status(404).json({ error: 'Benutzer nicht gefunden.' })
+    db.users.updateEmail(username, email)
+    res.json({ ok: true })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// ── SMTP / Einladungs-E-Mail ──────────────────────────────────────────────────
+function createTransport() {
+  const host = process.env.SMTP_HOST
+  if (!host) return null
+  return nodemailer.createTransport({
+    host,
+    port:   parseInt(process.env.SMTP_PORT  || '587'),
+    secure: process.env.SMTP_SECURE === 'true',
+    auth:   process.env.SMTP_USER ? { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS || '' } : undefined,
+  })
+}
+
+app.get('/api/admin/smtp-status', requireAuth, requireAdmin, (_req, res) => {
+  res.json({ configured: !!process.env.SMTP_HOST, host: process.env.SMTP_HOST || null })
+})
+
+app.post('/api/admin/smtp-test', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const transport = createTransport()
+    if (!transport) return res.status(400).json({ error: 'SMTP nicht konfiguriert.' })
+    await transport.verify()
+    res.json({ ok: true })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.post('/api/auth/users/:username/invite', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { username } = req.params
+    const user = db.users.get(username)
+    if (!user) return res.status(404).json({ error: 'Benutzer nicht gefunden.' })
+    if (!user.email) return res.status(400).json({ error: 'Keine E-Mail-Adresse hinterlegt.' })
+
+    const transport = createTransport()
+    if (!transport) return res.status(400).json({ error: 'SMTP nicht konfiguriert. Bitte SMTP_HOST in den Server-Einstellungen setzen.' })
+
+    const proto   = req.protocol
+    const host    = req.headers.host
+    const appUrl  = `${proto}://${host}`
+    const from    = process.env.SMTP_FROM || process.env.SMTP_USER || 'noreply@komplizen'
+    const pw      = user.password_note || '(bitte beim Admin erfragen)'
+
+    await transport.sendMail({
+      from,
+      to:      user.email,
+      subject: 'Einladung – Komplizen Protokolle',
+      text: [
+        `Hallo ${user.display_name || username},`,
+        '',
+        'Sie wurden eingeladen, Komplizen Protokolle zu nutzen.',
+        '',
+        `Adresse:    ${appUrl}`,
+        `Benutzername: ${username}`,
+        `Passwort:   ${pw}`,
+        '',
+        'Bitte ändern Sie Ihr Passwort nach der ersten Anmeldung.',
+        '',
+        'Mit freundlichen Grüßen',
+      ].join('\n'),
+    })
+
+    logEvent('INVITE_SENT', req, `to=${user.email} user=${username}`)
+    res.json({ ok: true })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// ── Alle Kontakte aus Projekten (für Nutzer-Import) ───────────────────────────
+app.get('/api/admin/contacts', requireAuth, requireAdmin, (_req, res) => {
+  try {
+    const projects  = db.projects.list()
+    const contacts  = []
+    for (const p of projects) {
+      const list = Array.isArray(p.contacts) ? p.contacts : []
+      for (const c of list) {
+        if (c.name || c.email) contacts.push({ ...c, projectName: p.name })
+      }
+    }
+    res.json(contacts)
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 

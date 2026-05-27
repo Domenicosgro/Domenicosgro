@@ -196,16 +196,18 @@ function makeStore(tableName) {
 // ── Migrations ────────────────────────────────────────────────────────────────
 try { db.exec("ALTER TABLE users ADD COLUMN settings TEXT NOT NULL DEFAULT '{}'") } catch {}
 try { db.exec("ALTER TABLE users ADD COLUMN password_note TEXT NOT NULL DEFAULT ''") } catch {}
+try { db.exec("ALTER TABLE users ADD COLUMN email TEXT NOT NULL DEFAULT ''") } catch {}
 
 // ── Users ─────────────────────────────────────────────────────────────────────
 const _uHasAny      = db.prepare('SELECT 1 FROM users LIMIT 1')
-const _uGet         = db.prepare('SELECT username, display_name, password_hash, role, settings, password_note, created_at, last_login FROM users WHERE username = ?')
-const _uList        = db.prepare('SELECT username, display_name, role, password_note, created_at, last_login FROM users ORDER BY created_at ASC')
-const _uInsert      = db.prepare('INSERT INTO users (username, display_name, password_hash, role, password_note) VALUES (@username, @displayName, @hash, @role, @passwordNote)')
+const _uGet         = db.prepare('SELECT username, display_name, password_hash, role, settings, password_note, email, created_at, last_login FROM users WHERE username = ?')
+const _uList        = db.prepare('SELECT username, display_name, role, password_note, email, created_at, last_login FROM users ORDER BY created_at ASC')
+const _uInsert      = db.prepare('INSERT INTO users (username, display_name, password_hash, role, password_note, email) VALUES (@username, @displayName, @hash, @role, @passwordNote, @email)')
 const _uLastLogin   = db.prepare("UPDATE users SET last_login = datetime('now') WHERE username = ?")
 const _uPassword    = db.prepare('UPDATE users SET password_hash = @hash WHERE username = @username')
 const _uSettings    = db.prepare('UPDATE users SET settings = @settings WHERE username = @username')
 const _uPwNote      = db.prepare('UPDATE users SET password_note = @note WHERE username = @username')
+const _uEmail       = db.prepare('UPDATE users SET email = @email WHERE username = @username')
 const _uDelete      = db.prepare('DELETE FROM users WHERE username = ?')
 const _sDeleteUser  = db.prepare('DELETE FROM sessions WHERE username = ?')
 
@@ -213,13 +215,14 @@ const users = {
   hasAny()                          { return !!_uHasAny.get() },
   get(username)                     { return _uGet.get(username) || null },
   list()                            { return _uList.all() },
-  create(username, displayName, hash, role = 'user', passwordNote = '') {
-    _uInsert.run({ username, displayName, hash, role, passwordNote })
+  create(username, displayName, hash, role = 'user', passwordNote = '', email = '') {
+    _uInsert.run({ username, displayName, hash, role, passwordNote, email })
   },
   updateLastLogin(username)         { _uLastLogin.run(username) },
   updatePassword(username, hash)    { _uPassword.run({ hash, username }) },
   updateSettings(username, settings){ _uSettings.run({ settings: JSON.stringify(settings), username }) },
   updatePasswordNote(username, note){ _uPwNote.run({ note, username }) },
+  updateEmail(username, email)      { _uEmail.run({ email, username }) },
   getSettings(username) {
     const row = _uGet.get(username)
     if (!row) return {}

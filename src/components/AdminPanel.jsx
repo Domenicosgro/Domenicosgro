@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react'
-import { X, UserPlus, Users, Key, Eye, EyeOff, Loader, Trash2, Printer, Download, Pencil, Check, KeyRound, HardDrive, RotateCcw, Upload } from 'lucide-react'
+import { X, UserPlus, Users, Key, Eye, EyeOff, Loader, Trash2, Printer, Download, Pencil, Check, KeyRound, HardDrive, Upload, Mail, Send, Settings2, Search } from 'lucide-react'
 import { formatDate } from '../utils'
 
 function apiHeaders() {
@@ -82,7 +82,7 @@ function UsersTab({ serverUser }) {
   const [users,       setUsers]       = useState([])
   const [loading,     setLoading]     = useState(true)
   const [showForm,    setShowForm]    = useState(false)
-  const [form,        setForm]        = useState({ username: '', displayName: '', password: '', role: 'user' })
+  const [form,        setForm]        = useState({ username: '', displayName: '', password: '', role: 'user', email: '' })
   const [creating,    setCreating]    = useState(false)
   const [createError, setCreateError] = useState(null)
   const [deleting,    setDeleting]    = useState(null)
@@ -92,10 +92,18 @@ function UsersTab({ serverUser }) {
   const [requests,     setRequests]     = useState([])
   const [resolvingPw,  setResolvingPw]  = useState({})  // username → new pw draft
   const [resolving,    setResolving]    = useState(null)
-  const [confirmDel,   setConfirmDel]   = useState(null) // username awaiting delete confirm
-  const [deleteError,  setDeleteError]  = useState(null)
-  const [resetPw,      setResetPw]      = useState({})  // username → new login pw draft
+  const [confirmDel,     setConfirmDel]     = useState(null)
+  const [deleteError,    setDeleteError]    = useState(null)
+  const [resetPw,        setResetPw]        = useState({})
   const [resettingLogin, setResettingLogin] = useState(null)
+  const [editingEmail,   setEditingEmail]   = useState(null)
+  const [emailDraft,     setEmailDraft]     = useState('')
+  const [inviting,       setInviting]       = useState(null)
+  const [inviteMsg,      setInviteMsg]      = useState({})   // username → {ok,text}
+  const [showPicker,     setShowPicker]     = useState(false)
+  const [contacts,       setContacts]       = useState([])
+  const [contactSearch,  setContactSearch]  = useState('')
+  const [smtpOk,         setSmtpOk]         = useState(null) // null=unknown, true, false
 
   useEffect(() => { load() }, [])
 
@@ -169,6 +177,41 @@ function UsersTab({ serverUser }) {
         setUsers(prev => prev.map(u => u.username === username ? { ...u, password_note: pw } : u))
       }
     } finally { setResettingLogin(null) }
+  }
+
+  async function saveEmail(username) {
+    await fetch(`/api/auth/users/${encodeURIComponent(username)}/email`, {
+      method: 'PUT', headers: apiHeaders(), body: JSON.stringify({ email: emailDraft }),
+    })
+    setEditingEmail(null)
+    setUsers(prev => prev.map(u => u.username === username ? { ...u, email: emailDraft } : u))
+  }
+
+  async function handleInvite(username) {
+    setInviting(username); setInviteMsg(p => ({ ...p, [username]: null }))
+    try {
+      const res  = await fetch(`/api/auth/users/${encodeURIComponent(username)}/invite`, { method: 'POST', headers: apiHeaders() })
+      const data = await res.json()
+      setInviteMsg(p => ({ ...p, [username]: { ok: res.ok, text: res.ok ? 'Einladung gesendet.' : data.error } }))
+    } catch { setInviteMsg(p => ({ ...p, [username]: { ok: false, text: 'Netzwerkfehler.' } })) }
+    finally { setInviting(null) }
+  }
+
+  async function loadContacts() {
+    const res = await fetch('/api/admin/contacts', { headers: apiHeaders() })
+    if (res.ok) setContacts(await res.json())
+  }
+
+  function openPicker() { loadContacts(); setShowPicker(true); setContactSearch('') }
+
+  function pickContact(c) {
+    setForm(f => ({
+      ...f,
+      displayName: f.displayName || c.name || '',
+      email:       f.email       || c.email || '',
+      username:    f.username    || (c.name ? c.name.split(' ')[0].toLowerCase() : ''),
+    }))
+    setShowPicker(false)
   }
 
   async function savePwNote(username) {
@@ -278,19 +321,47 @@ function UsersTab({ serverUser }) {
               {/* Direct login-password reset */}
               <div className="flex items-center gap-2">
                 <span className="text-xs text-gray-400 w-20 shrink-0">Login PW:</span>
-                <input
-                  className="input text-xs flex-1 font-mono"
-                  placeholder="Neues Passwort setzen (min. 8)"
+                <input className="input text-xs flex-1 font-mono" placeholder="Neues Passwort setzen (min. 8)"
                   value={resetPw[u.username] || ''}
-                  onChange={e => setResetPw(p => ({ ...p, [u.username]: e.target.value }))}
-                />
-                <button
-                  className="btn btn-secondary text-xs py-0.5"
+                  onChange={e => setResetPw(p => ({ ...p, [u.username]: e.target.value }))} />
+                <button className="btn btn-secondary text-xs py-0.5"
                   disabled={!resetPw[u.username] || resetPw[u.username].length < 8 || resettingLogin === u.username}
                   onClick={() => handleResetLoginPw(u.username)}>
                   {resettingLogin === u.username ? <Loader size={11} className="animate-spin" /> : <Check size={13} />}
                 </button>
               </div>
+
+              {/* E-Mail + Einladung */}
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-gray-400 w-20 shrink-0">E-Mail:</span>
+                {editingEmail === u.username ? (
+                  <>
+                    <input type="email" className="input text-xs flex-1" value={emailDraft}
+                      onChange={e => setEmailDraft(e.target.value)} autoFocus
+                      onKeyDown={e => { if (e.key === 'Enter') saveEmail(u.username); if (e.key === 'Escape') setEditingEmail(null) }} />
+                    <button className="btn-ghost p-1 text-green-600" onClick={() => saveEmail(u.username)}><Check size={13} /></button>
+                    <button className="btn-ghost p-1 text-gray-400" onClick={() => setEditingEmail(null)}><X size={13} /></button>
+                  </>
+                ) : (
+                  <>
+                    <span className="text-xs text-gray-700 flex-1 truncate">{u.email || <span className="text-gray-300 italic">–</span>}</span>
+                    <button className="btn-ghost p-1 text-gray-400 hover:text-brand-600" title="E-Mail bearbeiten"
+                      onClick={() => { setEditingEmail(u.username); setEmailDraft(u.email || '') }}>
+                      <Pencil size={13} />
+                    </button>
+                    <button className="btn-ghost p-1 text-gray-400 hover:text-brand-600" title="Einladung senden"
+                      disabled={!u.email || inviting === u.username}
+                      onClick={() => handleInvite(u.username)}>
+                      {inviting === u.username ? <Loader size={13} className="animate-spin" /> : <Send size={13} />}
+                    </button>
+                  </>
+                )}
+              </div>
+              {inviteMsg[u.username] && (
+                <div className={`text-xs px-2 py-1 ${inviteMsg[u.username].ok ? 'text-green-700' : 'text-red-600'}`}>
+                  {inviteMsg[u.username].text}
+                </div>
+              )}
             </div>
           ))}
           {users.length === 0 && (
@@ -332,7 +403,12 @@ function UsersTab({ serverUser }) {
         </button>
       ) : (
         <form onSubmit={handleCreate} className="border border-gray-200 p-4 space-y-3 bg-gray-50">
-          <div className="text-sm font-medium text-gray-700">Neuer Benutzer</div>
+          <div className="flex items-center justify-between">
+            <div className="text-sm font-medium text-gray-700">Neuer Benutzer</div>
+            <button type="button" className="btn btn-secondary text-xs" onClick={openPicker}>
+              <Search size={12} /> Aus Kontakten
+            </button>
+          </div>
           {createError && (
             <div className="text-xs text-red-600 bg-red-50 border border-red-200 px-3 py-2">{createError}</div>
           )}
@@ -345,6 +421,10 @@ function UsersTab({ serverUser }) {
               <label className="block text-xs text-gray-500 mb-1">Anzeigename</label>
               <input className="input w-full text-sm" value={form.displayName} onChange={set('displayName')} />
             </div>
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">E-Mail-Adresse</label>
+            <input type="email" className="input w-full text-sm" value={form.email} onChange={set('email')} placeholder="einladung@beispiel.de" />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -371,6 +451,42 @@ function UsersTab({ serverUser }) {
             </button>
           </div>
         </form>
+      )}
+
+      {/* Contact picker modal */}
+      {showPicker && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4">
+          <div className="bg-white w-full max-w-md max-h-[70vh] flex flex-col border border-gray-200">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200">
+              <div className="text-sm font-semibold text-gray-900">Kontakt auswählen</div>
+              <button className="btn-ghost p-1" onClick={() => setShowPicker(false)}><X size={14} /></button>
+            </div>
+            <div className="px-4 py-2 border-b border-gray-100">
+              <input className="input w-full text-sm" placeholder="Suchen…" autoFocus
+                value={contactSearch} onChange={e => setContactSearch(e.target.value)} />
+            </div>
+            <div className="overflow-y-auto flex-1 divide-y divide-gray-100">
+              {contacts
+                .filter(c => {
+                  const q = contactSearch.toLowerCase()
+                  return !q || (c.name||'').toLowerCase().includes(q) || (c.email||'').toLowerCase().includes(q) || (c.company||'').toLowerCase().includes(q)
+                })
+                .map((c, i) => (
+                  <button key={i} className="w-full text-left px-4 py-2.5 hover:bg-gray-50 flex items-center justify-between gap-4"
+                    onClick={() => pickContact(c)}>
+                    <div>
+                      <div className="text-sm font-medium text-gray-900">{c.name || '–'}</div>
+                      <div className="text-xs text-gray-500">{[c.company, c.projectName].filter(Boolean).join(' · ')}</div>
+                    </div>
+                    <div className="text-xs text-gray-400 shrink-0">{c.email || ''}</div>
+                  </button>
+                ))}
+              {contacts.length === 0 && (
+                <div className="text-sm text-gray-400 text-center py-8">Keine Kontakte mit Namen oder E-Mail gefunden.</div>
+              )}
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )
@@ -449,6 +565,62 @@ function PasswordTab({ serverUser }) {
           {saving ? '…' : 'Passwort ändern'}
         </button>
       </form>
+    </div>
+  )
+}
+
+// ── SMTP tab ──────────────────────────────────────────────────────────────────
+function SmtpTab() {
+  const [status,  setStatus]  = useState(null)
+  const [testing, setTesting] = useState(false)
+
+  useEffect(() => {
+    fetch('/api/admin/smtp-status', { headers: apiHeaders() })
+      .then(r => r.json()).then(setStatus).catch(() => {})
+  }, [])
+
+  async function handleTest() {
+    setTesting(true)
+    try {
+      const res  = await fetch('/api/admin/smtp-test', { method: 'POST', headers: apiHeaders() })
+      const data = await res.json()
+      setStatus(prev => ({ ...prev, testOk: res.ok, testMsg: res.ok ? 'Verbindung erfolgreich.' : data.error }))
+    } finally { setTesting(false) }
+  }
+
+  return (
+    <div className="space-y-4 text-sm">
+      <p className="text-gray-600">
+        Für den E-Mail-Versand muss der Docker-Container mit SMTP-Umgebungsvariablen gestartet werden.
+      </p>
+      <div className="border border-gray-200 p-4 bg-gray-50 space-y-2 font-mono text-xs">
+        <div className="text-gray-500 mb-2">In start-local.ps1 ergänzen:</div>
+        <div><span className="text-brand-700">-e</span> SMTP_HOST=mail.example.com <span className="text-gray-400"># SMTP-Server</span></div>
+        <div><span className="text-brand-700">-e</span> SMTP_PORT=587             <span className="text-gray-400"># Port (587=STARTTLS, 465=SSL)</span></div>
+        <div><span className="text-brand-700">-e</span> SMTP_USER=user@example.com</div>
+        <div><span className="text-brand-700">-e</span> SMTP_PASS=passwort</div>
+        <div><span className="text-brand-700">-e</span> SMTP_FROM=noreply@example.com</div>
+        <div><span className="text-brand-700">-e</span> SMTP_SECURE=false         <span className="text-gray-400"># true nur für Port 465</span></div>
+      </div>
+
+      <div className={`flex items-center gap-2 px-3 py-2 border text-sm ${status?.configured ? 'border-green-200 bg-green-50 text-green-700' : 'border-amber-200 bg-amber-50 text-amber-700'}`}>
+        <Mail size={14} />
+        {status?.configured ? `SMTP konfiguriert: ${status.host}` : 'SMTP nicht konfiguriert – Einladungen können nicht gesendet werden.'}
+      </div>
+
+      {status?.configured && (
+        <div className="space-y-2">
+          <button className="btn btn-secondary" onClick={handleTest} disabled={testing}>
+            {testing ? <Loader size={13} className="animate-spin" /> : <Send size={13} />}
+            {testing ? 'Teste…' : 'Verbindung testen'}
+          </button>
+          {status.testMsg && (
+            <div className={`text-xs px-3 py-2 border ${status.testOk ? 'text-green-700 bg-green-50 border-green-200' : 'text-red-600 bg-red-50 border-red-200'}`}>
+              {status.testMsg}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }
@@ -571,6 +743,7 @@ export default function AdminPanel({ serverUser, onClose }) {
 
   const tabs = [
     isAdmin              && { id: 'users',    label: 'Benutzer',  icon: <Users size={14} /> },
+    isAdmin              && { id: 'smtp',     label: 'E-Mail',    icon: <Mail size={14} /> },
     isAdmin              && { id: 'backup',   label: 'Backup',    icon: <HardDrive size={14} /> },
     !serverUser?.devMode && { id: 'password', label: 'Passwort',  icon: <Key size={14} /> },
   ].filter(Boolean)
@@ -605,6 +778,7 @@ export default function AdminPanel({ serverUser, onClose }) {
         {/* Content */}
         <div className="overflow-y-auto flex-1 p-5">
           {tab === 'users'    && <UsersTab    serverUser={serverUser} />}
+          {tab === 'smtp'     && <SmtpTab />}
           {tab === 'backup'   && <BackupTab />}
           {tab === 'password' && <PasswordTab serverUser={serverUser} />}
         </div>
