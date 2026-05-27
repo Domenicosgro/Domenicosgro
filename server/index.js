@@ -394,56 +394,106 @@ app.post('/api/auth/users/:username/invite', requireAuth, requireAdmin, async (r
     const displayName = user.display_name || username
     const shortcutUrl = `${appUrl}/shortcut`
 
+    // Logo als CID-Anhang einbetten
+    const logoPath = path.join(__dirname, '../dist/logo.png')
+    const logoAttachment = fs.existsSync(logoPath)
+      ? [{ filename: 'logo.png', path: logoPath, cid: 'logo@komplizen' }]
+      : []
+    const logoTag = logoAttachment.length
+      ? '<img src="cid:logo@komplizen" alt="Komplizen Protokolle" style="height:60px;display:block;margin:0 auto 24px auto;">'
+      : '<h2 style="color:#1e3a5f;text-align:center;margin:0 0 24px 0;">Komplizen Protokolle</h2>'
+
+    const html = `<!DOCTYPE html>
+<html lang="de">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f3f4f6;font-family:Arial,sans-serif;font-size:14px;color:#1f2937;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f3f4f6;padding:32px 16px;">
+    <tr><td align="center">
+      <table width="560" cellpadding="0" cellspacing="0" style="background:#ffffff;border:1px solid #e5e7eb;max-width:560px;width:100%;">
+
+        <!-- Header -->
+        <tr><td style="background:#1e3a5f;padding:32px 40px;text-align:center;">
+          ${logoTag}
+          <p style="color:#93c5fd;margin:0;font-size:13px;letter-spacing:1px;text-transform:uppercase;">Einladung</p>
+        </td></tr>
+
+        <!-- Greeting -->
+        <tr><td style="padding:32px 40px 0 40px;">
+          <p style="font-size:22px;font-weight:bold;color:#1e3a5f;margin:0 0 8px 0;">Willkommen, Komplize ${displayName}!</p>
+          <p style="margin:0 0 24px 0;color:#6b7280;">Du wurdest eingeladen, Komplizen Protokolle zu nutzen – unser gemeinsames Tool für Besprechungsprotokolle und Projektdokumentation.</p>
+        </td></tr>
+
+        <!-- Credentials -->
+        <tr><td style="padding:0 40px;">
+          <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;border:1px solid #e2e8f0;border-left:4px solid #1e3a5f;">
+            <tr><td style="padding:20px 24px;">
+              <p style="margin:0 0 12px 0;font-weight:bold;color:#1e3a5f;font-size:11px;text-transform:uppercase;letter-spacing:1px;">Deine Zugangsdaten</p>
+              <table cellpadding="4" cellspacing="0">
+                <tr><td style="color:#6b7280;white-space:nowrap;padding-right:16px;">Adresse</td>      <td><a href="${appUrl}" style="color:#2563eb;font-weight:bold;">${appUrl}</a></td></tr>
+                <tr><td style="color:#6b7280;white-space:nowrap;padding-right:16px;">Benutzername</td> <td style="font-family:monospace;font-weight:bold;">${username}</td></tr>
+                <tr><td style="color:#6b7280;white-space:nowrap;padding-right:16px;">Passwort</td>     <td style="font-family:monospace;font-weight:bold;">${pw}</td></tr>
+              </table>
+            </td></tr>
+          </table>
+          <p style="margin:12px 0 0 0;font-size:12px;color:#ef4444;">⚠ Bitte ändere dein Passwort nach der ersten Anmeldung (Einstellungen → Passwort ändern).</p>
+        </td></tr>
+
+        <!-- Shortcut -->
+        <tr><td style="padding:24px 40px 0 40px;">
+          <p style="font-weight:bold;color:#1e3a5f;font-size:11px;text-transform:uppercase;letter-spacing:1px;margin:0 0 10px 0;">Desktop-Verknüpfung anlegen</p>
+          <ol style="margin:0;padding-left:20px;color:#374151;line-height:1.8;">
+            <li>Öffne im Browser: <a href="${appUrl}" style="color:#2563eb;">${appUrl}</a></li>
+            <li>Melde dich mit deinen Zugangsdaten an.</li>
+            <li>Klicke oben rechts auf den Button <strong>„Verknüpfung"</strong>.</li>
+            <li>Die heruntergeladene Datei auf den Desktop ziehen – fertig!</li>
+          </ol>
+          <p style="margin:10px 0 0 0;font-size:12px;color:#6b7280;">Oder direkt herunterladen: <a href="${shortcutUrl}" style="color:#2563eb;">${shortcutUrl}</a></p>
+        </td></tr>
+
+        <!-- About -->
+        <tr><td style="padding:24px 40px 0 40px;">
+          <p style="font-weight:bold;color:#1e3a5f;font-size:11px;text-transform:uppercase;letter-spacing:1px;margin:0 0 10px 0;">Was ist Komplizen Protokolle?</p>
+          <ul style="margin:0;padding-left:20px;color:#374151;line-height:1.8;">
+            <li>Besprechungsprotokolle erstellen und verwalten</li>
+            <li>Maßnahmen und Aufgaben nachverfolgen</li>
+            <li>Tagesordnungen vorbereiten und per E-Mail versenden</li>
+            <li>Protokollketten über mehrere Besprechungen führen</li>
+            <li>Projekte und Beteiligte organisieren</li>
+          </ul>
+          <p style="margin:10px 0 0 0;font-size:12px;color:#6b7280;">Alle Daten liegen sicher auf unserem eigenen Server – kein Cloud-Dienst, keine externen Abhängigkeiten.</p>
+        </td></tr>
+
+        <!-- Footer -->
+        <tr><td style="padding:32px 40px;text-align:center;border-top:1px solid #e5e7eb;margin-top:24px;">
+          <p style="margin:0;color:#9ca3af;font-size:12px;">Viel Erfolg und willkommen im Team! 🏗</p>
+        </td></tr>
+
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`
+
     await transport.sendMail({
       from,
       to:      user.email,
       subject: `Willkommen bei Komplizen Protokolle, ${displayName}!`,
+      html,
+      attachments: logoAttachment,
       text: [
         `Willkommen Komplize ${displayName}!`,
         '',
         'Du wurdest eingeladen, Komplizen Protokolle zu nutzen –',
         'unser gemeinsames Tool für Besprechungsprotokolle und Projektdokumentation.',
         '',
-        '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━',
-        ' DEINE ZUGANGSDATEN',
-        '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━',
+        `Adresse:      ${appUrl}`,
+        `Benutzername: ${username}`,
+        `Passwort:     ${pw}`,
         '',
-        `  Adresse:      ${appUrl}`,
-        `  Benutzername: ${username}`,
-        `  Passwort:     ${pw}`,
+        '⚠ Bitte ändere dein Passwort nach der ersten Anmeldung.',
+        '  (Einstellungen → Passwort ändern)',
         '',
-        '  ⚠  Bitte ändere dein Passwort nach der ersten Anmeldung.',
-        '     (Einstellungen → Passwort ändern)',
-        '',
-        '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━',
-        ' DESKTOP-VERKNÜPFUNG ANLEGEN',
-        '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━',
-        '',
-        '  1. Öffne im Browser: ' + appUrl,
-        '  2. Melde dich mit deinen Zugangsdaten an.',
-        '  3. Klicke oben rechts auf den Button "Verknüpfung".',
-        '  4. Die heruntergeladene Datei auf den Desktop ziehen –',
-        '     fertig! Beim nächsten Mal einfach doppelklicken.',
-        '',
-        '  Oder direkt herunterladen: ' + shortcutUrl,
-        '',
-        '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━',
-        ' WAS IST KOMPLIZEN PROTOKOLLE?',
-        '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━',
-        '',
-        '  Komplizen Protokolle ist unser digitales Werkzeug für',
-        '  Baubesprechungen und Projektmeetings. Du kannst damit:',
-        '',
-        '  • Besprechungsprotokolle erstellen und verwalten',
-        '  • Maßnahmen und Aufgaben nachverfolgen',
-        '  • Tagesordnungen vorbereiten und per E-Mail versenden',
-        '  • Protokollketten über mehrere Besprechungen führen',
-        '  • Projekte und Beteiligte organisieren',
-        '',
-        '  Alle Daten liegen sicher auf unserem eigenen Server –',
-        '  kein Cloud-Dienst, keine externen Abhängigkeiten.',
-        '',
-        '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━',
+        'Desktop-Verknüpfung: ' + shortcutUrl,
         '',
         'Viel Erfolg und willkommen im Team!',
       ].join('\n'),
