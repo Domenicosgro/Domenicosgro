@@ -28,9 +28,12 @@ const db          = require('./db')
 const auth        = require('./auth')
 const attachments = require('./attachments')
 
-const app  = express()
-const PORT = parseInt(process.env.PORT  || '3000', 10)
-const HOST = process.env.HOST || '0.0.0.0'
+const app      = express()
+const PORT     = parseInt(process.env.PORT  || '3000', 10)
+const HOST     = process.env.HOST || '0.0.0.0'
+const certFile = process.env.HTTPS_CERT
+const keyFile  = process.env.HTTPS_KEY
+const isHttps  = !!(certFile && keyFile && fs.existsSync(certFile) && fs.existsSync(keyFile))
 
 // ── Security headers ──────────────────────────────────────────────────────────
 app.use(helmet({
@@ -47,7 +50,7 @@ app.use(helmet({
     },
   },
   crossOriginEmbedderPolicy: false,
-  hsts: { maxAge: 31536000, includeSubDomains: true },
+  hsts: isHttps ? { maxAge: 31536000, includeSubDomains: true } : false,
 }))
 
 // ── CORS ──────────────────────────────────────────────────────────────────────
@@ -416,9 +419,6 @@ app.use((err, req, res, _next) => {
 })
 
 // ── Server starten ────────────────────────────────────────────────────────────
-const certFile = process.env.HTTPS_CERT
-const keyFile  = process.env.HTTPS_KEY
-
 const onListen = (protocol) => () => {
   console.log(`✓ Komplizen Protokolle läuft auf ${protocol}://${HOST}:${PORT}`)
   console.log(`  Datenbank     : ${process.env.DB_PATH || path.join(__dirname, '../data')}`)
