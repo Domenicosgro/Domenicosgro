@@ -286,6 +286,26 @@ app.post('/api/auth/users/:username/password', requireAuth, async (req, res) => 
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
+// ── User settings API ─────────────────────────────────────────────────────────
+app.get('/api/auth/users/:username/settings', requireAuth, (req, res) => {
+  try {
+    const { username } = req.params
+    if (req.user !== username) return res.status(403).json({ error: 'Kein Zugriff.' })
+    res.json(db.users.getSettings(username))
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.put('/api/auth/users/:username/settings', requireAuth, (req, res) => {
+  try {
+    const { username } = req.params
+    if (req.user !== username) return res.status(403).json({ error: 'Kein Zugriff.' })
+    const settings = req.body
+    if (typeof settings !== 'object' || settings === null) return res.status(400).json({ error: 'Ungültige Einstellungen.' })
+    db.users.updateSettings(username, settings)
+    res.json({ ok: true })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
 // ── Attachment API ────────────────────────────────────────────────────────────
 // ID validation helper used in all three routes.
 function validAttachmentId(id) {

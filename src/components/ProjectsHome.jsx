@@ -3,6 +3,7 @@ import { Plus, Trash2, Search, ChevronRight, FileText, Users, FolderOpen,
          Calendar, Lock, LockOpen, X, Eye, EyeOff, Star, BarChart2,
          User, Settings, LogOut } from 'lucide-react'
 import { formatDate } from '../utils'
+import { useUserSettings } from '../hooks/useUserSettings'
 
 // ── Password modal ─────────────────────────────────────────────────────────────
 function PasswordModal({ mode, projectName, onConfirm, onCancel }) {
@@ -114,25 +115,19 @@ function PasswordModal({ mode, projectName, onConfirm, onCancel }) {
 export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, onDelete, onOpenProject,
                                        onUnlock, onSetPassword, onRemovePassword, onOpenDashboard,
                                        serverUser, onLogout, onOpenAdmin }) {
-  const [search,    setSearch]    = useState('')
-  const [modal,     setModal]     = useState(null)   // { mode, projectId }
-  // User-specific favorites stored in localStorage
-  const [favorites, setFavorites] = useState(() => {
-    try { return new Set(JSON.parse(localStorage.getItem('bb_project_favorites') || '[]')) }
-    catch { return new Set() }
-  })
+  const [search, setSearch] = useState('')
+  const [modal,  setModal]  = useState(null)   // { mode, projectId }
+  const { settings, update: updateSettings } = useUserSettings(serverUser?.username)
+  const favorites = new Set(settings.favorites ?? [])
   // ID of the project whose name input should be auto-focused after creation
   const focusIdRef = useRef(null)
 
   const toggleFavorite = (projectId, e) => {
     e.stopPropagation()
-    setFavorites(prev => {
-      const next = new Set(prev)
-      if (next.has(projectId)) next.delete(projectId)
-      else next.add(projectId)
-      try { localStorage.setItem('bb_project_favorites', JSON.stringify([...next])) } catch {}
-      return next
-    })
+    const next = new Set(favorites)
+    if (next.has(projectId)) next.delete(projectId)
+    else next.add(projectId)
+    updateSettings({ favorites: [...next] })
   }
 
   const q = search.trim().toLowerCase()

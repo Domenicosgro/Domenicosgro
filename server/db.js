@@ -188,13 +188,17 @@ function makeStore(tableName) {
   }
 }
 
+// ── Migration: settings column ────────────────────────────────────────────────
+try { db.exec("ALTER TABLE users ADD COLUMN settings TEXT NOT NULL DEFAULT '{}'") } catch {}
+
 // ── Users ─────────────────────────────────────────────────────────────────────
 const _uHasAny     = db.prepare('SELECT 1 FROM users LIMIT 1')
-const _uGet        = db.prepare('SELECT username, display_name, password_hash, role, created_at, last_login FROM users WHERE username = ?')
+const _uGet        = db.prepare('SELECT username, display_name, password_hash, role, settings, created_at, last_login FROM users WHERE username = ?')
 const _uList       = db.prepare('SELECT username, display_name, role, created_at, last_login FROM users ORDER BY created_at ASC')
 const _uInsert     = db.prepare('INSERT INTO users (username, display_name, password_hash, role) VALUES (@username, @displayName, @hash, @role)')
 const _uLastLogin  = db.prepare("UPDATE users SET last_login = datetime('now') WHERE username = ?")
 const _uPassword   = db.prepare('UPDATE users SET password_hash = @hash WHERE username = @username')
+const _uSettings   = db.prepare('UPDATE users SET settings = @settings WHERE username = @username')
 const _uDelete     = db.prepare('DELETE FROM users WHERE username = ?')
 const _sDeleteUser = db.prepare('DELETE FROM sessions WHERE username = ?')
 
@@ -207,6 +211,12 @@ const users = {
   },
   updateLastLogin(username)         { _uLastLogin.run(username) },
   updatePassword(username, hash)    { _uPassword.run({ hash, username }) },
+  updateSettings(username, settings){ _uSettings.run({ settings: JSON.stringify(settings), username }) },
+  getSettings(username) {
+    const row = _uGet.get(username)
+    if (!row) return {}
+    try { return JSON.parse(row.settings || '{}') } catch { return {} }
+  },
   delete(username)                  { _sDeleteUser.run(username); return _uDelete.run(username).changes > 0 },
 }
 
