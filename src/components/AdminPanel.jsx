@@ -251,6 +251,7 @@ function UsersTab({ serverUser }) {
           <Loader size={18} className="animate-spin" />
         </div>
       ) : (
+        <>
         {deleteError && (
           <div className="text-xs text-red-600 bg-red-50 border border-red-200 px-3 py-2">{deleteError}</div>
         )}
@@ -368,6 +369,7 @@ function UsersTab({ serverUser }) {
             <div className="text-sm text-gray-400 text-center py-6">Noch keine Benutzer angelegt.</div>
           )}
         </div>
+        </>
       )}
 
       {/* Reset requests */}
