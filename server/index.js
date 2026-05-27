@@ -463,18 +463,18 @@ app.post('/api/auth/users/:username/invite', requireAuth, requireAdmin, async (r
           <p style="font-weight:bold;color:#1e3a5f;font-size:11px;text-transform:uppercase;letter-spacing:1px;margin:0 0 10px 0;">Als App auf dem Desktop installieren</p>
           <table width="100%" cellpadding="0" cellspacing="0" style="background:#f0f7ff;border:1px solid #bfdbfe;margin-bottom:12px;">
             <tr><td style="padding:14px 18px;">
-              <p style="margin:0 0 6px 0;font-weight:bold;color:#1e40af;">Chrome oder Edge (empfohlen)</p>
+              <p style="margin:0 0 6px 0;font-weight:bold;color:#1e40af;">Microsoft Edge (empfohlen – funktioniert sofort)</p>
               <ol style="margin:0;padding-left:18px;color:#374151;line-height:1.9;font-size:13px;">
-                <li>Öffne <a href="${appUrl}" style="color:#2563eb;">${appUrl}</a> in Chrome oder Edge</li>
+                <li>Öffne <a href="${appUrl}" style="color:#2563eb;">${appUrl}</a> in <strong>Microsoft Edge</strong></li>
                 <li>Melde dich an</li>
                 <li>Klicke in der Adresszeile auf das <strong>Installieren-Symbol</strong> <span style="font-family:monospace;background:#e5e7eb;padding:1px 5px;">⊕</span></li>
                 <li>„Installieren" bestätigen – fertig!</li>
               </ol>
-              <p style="margin:8px 0 0 0;font-size:12px;color:#6b7280;">Die App erscheint im Startmenü und auf dem Desktop mit dem Komplizen-Logo.</p>
+              <p style="margin:8px 0 0 0;font-size:12px;color:#6b7280;">Die App erscheint im Startmenü und auf dem Desktop mit dem Komplizen-Logo. Edge ist auf jedem Windows-PC bereits vorinstalliert.</p>
             </td></tr>
           </table>
 
-          <p style="margin:12px 0 6px 0;font-size:12px;color:#374151;"><strong>Falls das Installieren-Symbol in Chrome nicht erscheint</strong> – einmalige Einstellung (1 Minute):</p>
+          <p style="margin:12px 0 6px 0;font-size:12px;color:#374151;"><strong>Ich nutze Chrome</strong> – einmalige Einstellung (1 Minute):</p>
           <table width="100%" cellpadding="0" cellspacing="0" style="background:#fafafa;border:1px solid #e5e7eb;">
             <tr><td style="padding:12px 16px;">
               <ol style="margin:0;padding-left:18px;color:#374151;line-height:2;font-size:12px;">
@@ -482,7 +482,7 @@ app.post('/api/auth/users/:username/invite', requireAuth, requireAdmin, async (r
                 <li>Das Eingabefeld auf <strong>Enabled</strong> setzen</li>
                 <li>In das Textfeld eintragen: <span style="font-family:monospace;background:#e5e7eb;padding:1px 6px;font-size:11px;">${appUrl}</span></li>
                 <li>Unten auf <strong>Relaunch</strong> klicken – Chrome startet neu</li>
-                <li>Jetzt <a href="${appUrl}" style="color:#2563eb;">${appUrl}</a> öffnen → Installieren-Symbol erscheint</li>
+                <li><a href="${appUrl}" style="color:#2563eb;">${appUrl}</a> öffnen → Installieren-Symbol erscheint</li>
               </ol>
             </td></tr>
           </table>
