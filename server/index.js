@@ -50,6 +50,8 @@ app.use(helmet({
     },
   },
   crossOriginEmbedderPolicy: false,
+  crossOriginOpenerPolicy:   isHttps ? { policy: 'same-origin' } : false,
+  crossOriginResourcePolicy: isHttps ? { policy: 'same-origin' } : { policy: 'cross-origin' },
   hsts: isHttps ? { maxAge: 31536000, includeSubDomains: true } : false,
 }))
 
