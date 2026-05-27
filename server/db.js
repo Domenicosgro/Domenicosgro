@@ -16,7 +16,11 @@ db.pragma('foreign_keys = ON')
 
 // ── Schema ────────────────────────────────────────────────────────────────────
 db.exec(`
-  CREATE TABLE IF NOT EXISTS store (
+  CREATE TABLE IF NOT EXISTS reset_requests (
+    username   TEXT PRIMARY KEY,
+    requested_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
     key        TEXT PRIMARY KEY,
     value      TEXT NOT NULL DEFAULT '[]',
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
@@ -236,9 +240,21 @@ const sessions = {
   deleteExpired()                    { return _sExpire.run().changes },
 }
 
+// ── Password reset requests ───────────────────────────────────────────────────
+const _rrUpsert = db.prepare("INSERT INTO reset_requests (username) VALUES (?) ON CONFLICT(username) DO UPDATE SET requested_at = datetime('now')")
+const _rrList   = db.prepare('SELECT username, requested_at FROM reset_requests ORDER BY requested_at ASC')
+const _rrDelete = db.prepare('DELETE FROM reset_requests WHERE username = ?')
+
+const resetRequests = {
+  upsert(username) { _rrUpsert.run(username) },
+  list()           { return _rrList.all() },
+  delete(username) { _rrDelete.run(username) },
+}
+
 module.exports = {
   protocols: makeStore('protocols'),
   projects:  makeStore('projects'),
   users,
   sessions,
+  resetRequests,
 }

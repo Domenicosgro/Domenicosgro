@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { X, UserPlus, Users, Key, Eye, EyeOff, Loader, Trash2, Printer, Download, Pencil, Check } from 'lucide-react'
+import { X, UserPlus, Users, Key, Eye, EyeOff, Loader, Trash2, Printer, Download, Pencil, Check, KeyRound } from 'lucide-react'
 import { formatDate } from '../utils'
 
 function apiHeaders() {
@@ -86,18 +86,37 @@ function UsersTab({ serverUser }) {
   const [creating,    setCreating]    = useState(false)
   const [createError, setCreateError] = useState(null)
   const [deleting,    setDeleting]    = useState(null)
-  const [showPw,      setShowPw]      = useState({})   // username → bool
-  const [editingPw,   setEditingPw]   = useState(null) // username currently editing note
-  const [pwDraft,     setPwDraft]     = useState('')
+  const [showPw,       setShowPw]       = useState({})   // username → bool
+  const [editingPw,    setEditingPw]    = useState(null) // username currently editing note
+  const [pwDraft,      setPwDraft]      = useState('')
+  const [requests,     setRequests]     = useState([])
+  const [resolvingPw,  setResolvingPw]  = useState({})  // username → new pw draft
+  const [resolving,    setResolving]    = useState(null)
 
   useEffect(() => { load() }, [])
 
   async function load() {
     setLoading(true)
     try {
-      const res = await fetch('/api/auth/users', { headers: apiHeaders() })
-      if (res.ok) setUsers(await res.json())
+      const [uRes, rRes] = await Promise.all([
+        fetch('/api/auth/users',         { headers: apiHeaders() }),
+        fetch('/api/auth/reset-requests',{ headers: apiHeaders() }),
+      ])
+      if (uRes.ok) setUsers(await uRes.json())
+      if (rRes.ok) setRequests(await rRes.json())
     } finally { setLoading(false) }
+  }
+
+  async function handleResolve(username) {
+    const newPw = resolvingPw[username] || ''
+    if (newPw.length < 8) return
+    setResolving(username)
+    try {
+      const res = await fetch(`/api/auth/reset-requests/${username}/resolve`, {
+        method: 'POST', headers: apiHeaders(), body: JSON.stringify({ newPassword: newPw }),
+      })
+      if (res.ok) { await load(); setResolvingPw(p => { const n = { ...p }; delete n[username]; return n }) }
+    } finally { setResolving(null) }
   }
 
   async function handleCreate(e) {
@@ -222,6 +241,33 @@ function UsersTab({ serverUser }) {
           {users.length === 0 && (
             <div className="text-sm text-gray-400 text-center py-6">Noch keine Benutzer angelegt.</div>
           )}
+        </div>
+      )}
+
+      {/* Reset requests */}
+      {requests.length > 0 && (
+        <div className="border border-amber-200 bg-amber-50 p-3 space-y-2">
+          <div className="text-xs font-semibold text-amber-800 flex items-center gap-1.5">
+            <KeyRound size={13} /> Offene Passwort-Anfragen ({requests.length})
+          </div>
+          {requests.map(r => (
+            <div key={r.username} className="flex items-center gap-2 flex-wrap">
+              <span className="text-sm font-medium text-gray-800 w-28 shrink-0">{r.username}</span>
+              <input
+                className="input text-sm font-mono flex-1 min-w-32"
+                placeholder="Neues Passwort (min. 8 Zeichen)"
+                value={resolvingPw[r.username] || ''}
+                onChange={e => setResolvingPw(p => ({ ...p, [r.username]: e.target.value }))}
+              />
+              <button
+                className="btn btn-primary text-xs"
+                disabled={!resolvingPw[r.username] || resolvingPw[r.username].length < 8 || resolving === r.username}
+                onClick={() => handleResolve(r.username)}
+              >
+                {resolving === r.username ? '…' : 'Zurücksetzen'}
+              </button>
+            </div>
+          ))}
         </div>
       )}
 

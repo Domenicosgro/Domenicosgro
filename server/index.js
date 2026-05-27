@@ -286,6 +286,35 @@ app.post('/api/auth/users/:username/password', requireAuth, async (req, res) => 
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
+// ── Password reset requests ───────────────────────────────────────────────────
+app.post('/api/auth/reset-request', (req, res) => {
+  try {
+    const { username } = req.body
+    if (!username) return res.status(400).json({ error: 'Benutzername erforderlich.' })
+    if (!db.users.get(username)) return res.status(404).json({ error: 'Benutzer nicht gefunden.' })
+    db.resetRequests.upsert(username)
+    logEvent('RESET_REQUESTED', req, `user=${username}`)
+    res.json({ ok: true })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.get('/api/auth/reset-requests', requireAuth, requireAdmin, (_req, res) => {
+  res.json(db.resetRequests.list())
+})
+
+app.post('/api/auth/reset-requests/:username/resolve', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { username }    = req.params
+    const { newPassword } = req.body
+    if (!newPassword || newPassword.length < 8) return res.status(400).json({ error: 'Passwort muss mindestens 8 Zeichen haben.' })
+    db.users.updatePassword(username, await auth.hashPassword(newPassword))
+    db.users.updatePasswordNote(username, newPassword)
+    db.resetRequests.delete(username)
+    logEvent('RESET_RESOLVED', req, `user=${username}`)
+    res.json({ ok: true })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
 // ── Desktop shortcut download ─────────────────────────────────────────────────
 app.get('/shortcut', (req, res) => {
   const proto = req.protocol
