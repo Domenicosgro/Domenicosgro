@@ -8,15 +8,21 @@ $DataDir   = "C:\KomplizDaten\data"
 $LogsDir   = "C:\KomplizDaten\logs"
 $Port      = 3000
 
-# ── E-Mail / SMTP (fuer Einladungen) ─────────────────────────────────────────
-# Tragt hier eure E-Mail-Zugangsdaten ein.
-# Leer lassen ("") wenn kein E-Mail-Versand benoetigt wird.
-$SmtpHost   = ""              # z.B. "smtp.gmail.com" oder "mail.euerbuero.de"
-$SmtpPort   = "587"           # 587 = STARTTLS (Standard), 465 = SSL
-$SmtpUser   = ""              # E-Mail-Adresse / Benutzername
-$SmtpPass   = ""              # Passwort
-$SmtpFrom   = ""              # Absender-Adresse (oft = SmtpUser)
-$SmtpSecure = "false"         # "true" nur bei Port 465
+# ── E-Mail / SMTP ─────────────────────────────────────────────────────────────
+# Zugangsdaten in start-local.config.ps1 speichern (wird nie von Git ueberschrieben).
+# Vorlage: start-local.config.example.ps1
+$SmtpHost   = ""
+$SmtpPort   = "587"
+$SmtpUser   = ""
+$SmtpPass   = ""
+$SmtpFrom   = ""
+$SmtpSecure = "false"
+
+$ConfigFile = Join-Path $PSScriptRoot "start-local.config.ps1"
+if (Test-Path $ConfigFile) {
+    . $ConfigFile
+    Write-Host "  Konfiguration geladen aus: start-local.config.ps1" -ForegroundColor Gray
+}
 # ─────────────────────────────────────────────────────────────────────────────
 
 $ErrorActionPreference = "Stop"

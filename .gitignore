@@ -5,3 +5,4 @@ dist/
 data/
 logs/
 release/
+start-local.config.ps1
