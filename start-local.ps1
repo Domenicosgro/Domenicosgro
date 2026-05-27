@@ -8,6 +8,17 @@ $DataDir   = "C:\KomplizDaten\data"
 $LogsDir   = "C:\KomplizDaten\logs"
 $Port      = 3000
 
+# ── E-Mail / SMTP (fuer Einladungen) ─────────────────────────────────────────
+# Tragt hier eure E-Mail-Zugangsdaten ein.
+# Leer lassen ("") wenn kein E-Mail-Versand benoetigt wird.
+$SmtpHost   = ""              # z.B. "smtp.gmail.com" oder "mail.euerbuero.de"
+$SmtpPort   = "587"           # 587 = STARTTLS (Standard), 465 = SSL
+$SmtpUser   = ""              # E-Mail-Adresse / Benutzername
+$SmtpPass   = ""              # Passwort
+$SmtpFrom   = ""              # Absender-Adresse (oft = SmtpUser)
+$SmtpSecure = "false"         # "true" nur bei Port 465
+# ─────────────────────────────────────────────────────────────────────────────
+
 $ErrorActionPreference = "Stop"
 
 Write-Host "=== Komplizen Protokolle - Lokaler Start ===" -ForegroundColor Cyan
@@ -42,6 +53,12 @@ docker run -d `
     -e HOST=0.0.0.0 `
     -e DB_PATH=/data `
     -e LOG_PATH=/logs `
+    $(if ($SmtpHost) { "-e SMTP_HOST=$SmtpHost" }) `
+    $(if ($SmtpHost) { "-e SMTP_PORT=$SmtpPort" }) `
+    $(if ($SmtpUser) { "-e SMTP_USER=$SmtpUser" }) `
+    $(if ($SmtpPass) { "-e SMTP_PASS=$SmtpPass" }) `
+    $(if ($SmtpFrom) { "-e SMTP_FROM=$SmtpFrom" }) `
+    $(if ($SmtpHost) { "-e SMTP_SECURE=$SmtpSecure" }) `
     "${ImageName}:latest"
 
 if ($LASTEXITCODE -ne 0) { Write-Error "Start fehlgeschlagen"; exit 1 }
