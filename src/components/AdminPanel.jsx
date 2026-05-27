@@ -92,6 +92,10 @@ function UsersTab({ serverUser }) {
   const [requests,     setRequests]     = useState([])
   const [resolvingPw,  setResolvingPw]  = useState({})  // username → new pw draft
   const [resolving,    setResolving]    = useState(null)
+  const [confirmDel,   setConfirmDel]   = useState(null) // username awaiting delete confirm
+  const [deleteError,  setDeleteError]  = useState(null)
+  const [resetPw,      setResetPw]      = useState({})  // username → new login pw draft
+  const [resettingLogin, setResettingLogin] = useState(null)
 
   useEffect(() => { load() }, [])
 
@@ -135,12 +139,36 @@ function UsersTab({ serverUser }) {
   }
 
   async function handleDelete(username) {
-    if (!window.confirm(`Benutzer "${username}" wirklich löschen?`)) return
+    setDeleteError(null)
     setDeleting(username)
     try {
-      await fetch(`/api/auth/users/${username}`, { method: 'DELETE', headers: apiHeaders() })
+      const res  = await fetch(`/api/auth/users/${encodeURIComponent(username)}`, { method: 'DELETE', headers: apiHeaders() })
+      const data = await res.json()
+      if (!res.ok) { setDeleteError(data.error || 'Löschen fehlgeschlagen.'); return }
+      setConfirmDel(null)
       await load()
-    } finally { setDeleting(null) }
+    } catch { setDeleteError('Netzwerkfehler.') }
+    finally { setDeleting(null) }
+  }
+
+  async function handleResetLoginPw(username) {
+    const pw = resetPw[username] || ''
+    if (pw.length < 8) return
+    setResettingLogin(username)
+    try {
+      const res = await fetch(`/api/auth/users/${encodeURIComponent(username)}/password`, {
+        method: 'POST', headers: apiHeaders(),
+        body: JSON.stringify({ newPassword: pw }),
+      })
+      if (res.ok) {
+        // Also update the password note
+        await fetch(`/api/auth/users/${encodeURIComponent(username)}/password-note`, {
+          method: 'PUT', headers: apiHeaders(), body: JSON.stringify({ note: pw }),
+        })
+        setResetPw(p => { const n = { ...p }; delete n[username]; return n })
+        setUsers(prev => prev.map(u => u.username === username ? { ...u, password_note: pw } : u))
+      }
+    } finally { setResettingLogin(null) }
   }
 
   async function savePwNote(username) {
@@ -180,9 +208,13 @@ function UsersTab({ serverUser }) {
           <Loader size={18} className="animate-spin" />
         </div>
       ) : (
+        {deleteError && (
+          <div className="text-xs text-red-600 bg-red-50 border border-red-200 px-3 py-2">{deleteError}</div>
+        )}
         <div className="border border-gray-200 divide-y divide-gray-100">
           {users.map(u => (
-            <div key={u.username} className="px-4 py-3 space-y-1">
+            <div key={u.username} className="px-4 py-3 space-y-2">
+              {/* Name + role + delete */}
               <div className="flex items-center justify-between">
                 <div>
                   <div className="text-sm font-medium text-gray-900">{u.display_name || u.username}</div>
@@ -191,50 +223,73 @@ function UsersTab({ serverUser }) {
                 <div className="flex items-center gap-2">
                   <span className={`badge ${u.role === 'admin' ? 'badge-blue' : 'badge-gray'}`}>{u.role}</span>
                   {u.username !== serverUser?.username && (
-                    <button
-                      className="btn-ghost p-1 text-gray-400 hover:text-red-500"
-                      title="Benutzer löschen"
-                      disabled={deleting === u.username}
-                      onClick={() => handleDelete(u.username)}
-                    >
-                      {deleting === u.username ? <Loader size={13} className="animate-spin" /> : <Trash2 size={13} />}
-                    </button>
+                    confirmDel === u.username ? (
+                      <div className="flex items-center gap-1">
+                        <span className="text-xs text-red-600">Wirklich?</span>
+                        <button className="btn btn-danger text-xs py-0.5 px-2"
+                          disabled={deleting === u.username}
+                          onClick={() => handleDelete(u.username)}>
+                          {deleting === u.username ? <Loader size={11} className="animate-spin" /> : 'Ja'}
+                        </button>
+                        <button className="btn btn-secondary text-xs py-0.5 px-2"
+                          onClick={() => { setConfirmDel(null); setDeleteError(null) }}>
+                          Nein
+                        </button>
+                      </div>
+                    ) : (
+                      <button className="btn-ghost p-1 text-gray-400 hover:text-red-500"
+                        title="Benutzer löschen"
+                        onClick={() => { setConfirmDel(u.username); setDeleteError(null) }}>
+                        <Trash2 size={13} />
+                      </button>
+                    )
                   )}
                 </div>
               </div>
 
-              {/* Password note row */}
+              {/* Stored password note */}
               <div className="flex items-center gap-2">
-                <span className="text-xs text-gray-400 w-16 shrink-0">Passwort:</span>
+                <span className="text-xs text-gray-400 w-20 shrink-0">Notiz PW:</span>
                 {editingPw === u.username ? (
                   <>
-                    <input
-                      className="input text-xs flex-1 font-mono"
-                      value={pwDraft}
-                      onChange={e => setPwDraft(e.target.value)}
-                      autoFocus
-                      onKeyDown={e => { if (e.key === 'Enter') savePwNote(u.username); if (e.key === 'Escape') setEditingPw(null) }}
-                    />
+                    <input className="input text-xs flex-1 font-mono" value={pwDraft}
+                      onChange={e => setPwDraft(e.target.value)} autoFocus
+                      onKeyDown={e => { if (e.key === 'Enter') savePwNote(u.username); if (e.key === 'Escape') setEditingPw(null) }} />
                     <button className="btn-ghost p-1 text-green-600" onClick={() => savePwNote(u.username)}><Check size={13} /></button>
                     <button className="btn-ghost p-1 text-gray-400" onClick={() => setEditingPw(null)}><X size={13} /></button>
                   </>
                 ) : (
                   <>
                     <span className="text-xs font-mono text-gray-700 flex-1">
-                      {u.password_note
-                        ? (showPw[u.username] ? u.password_note : '••••••••')
-                        : <span className="text-gray-300 italic">–</span>}
+                      {u.password_note ? (showPw[u.username] ? u.password_note : '••••••••') : <span className="text-gray-300 italic">–</span>}
                     </span>
                     {u.password_note && (
                       <button className="btn-ghost p-1 text-gray-400" onClick={() => setShowPw(p => ({ ...p, [u.username]: !p[u.username] }))}>
                         {showPw[u.username] ? <EyeOff size={13} /> : <Eye size={13} />}
                       </button>
                     )}
-                    <button className="btn-ghost p-1 text-gray-400 hover:text-brand-600" title="Passwort bearbeiten" onClick={() => startEditPw(u)}>
+                    <button className="btn-ghost p-1 text-gray-400 hover:text-brand-600" title="Notiz bearbeiten" onClick={() => startEditPw(u)}>
                       <Pencil size={13} />
                     </button>
                   </>
                 )}
+              </div>
+
+              {/* Direct login-password reset */}
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-gray-400 w-20 shrink-0">Login PW:</span>
+                <input
+                  className="input text-xs flex-1 font-mono"
+                  placeholder="Neues Passwort setzen (min. 8)"
+                  value={resetPw[u.username] || ''}
+                  onChange={e => setResetPw(p => ({ ...p, [u.username]: e.target.value }))}
+                />
+                <button
+                  className="btn btn-secondary text-xs py-0.5"
+                  disabled={!resetPw[u.username] || resetPw[u.username].length < 8 || resettingLogin === u.username}
+                  onClick={() => handleResetLoginPw(u.username)}>
+                  {resettingLogin === u.username ? <Loader size={11} className="animate-spin" /> : <Check size={13} />}
+                </button>
               </div>
             </div>
           ))}
