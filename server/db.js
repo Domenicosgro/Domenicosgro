@@ -17,10 +17,11 @@ db.pragma('foreign_keys = ON')
 // ── Schema ────────────────────────────────────────────────────────────────────
 db.exec(`
   CREATE TABLE IF NOT EXISTS reset_requests (
-    username   TEXT PRIMARY KEY,
+    username     TEXT PRIMARY KEY,
     requested_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
 
+  CREATE TABLE IF NOT EXISTS store (
     key        TEXT PRIMARY KEY,
     value      TEXT NOT NULL DEFAULT '[]',
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
