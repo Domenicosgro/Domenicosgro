@@ -1,6 +1,6 @@
-# Komplizen Protokolle – Build & Deploy zur Synology
-# Ausführen: .\build-deploy.ps1
-# Voraussetzung: Docker Desktop läuft, Synology-Freigabe ist eingebunden
+# Komplizen Protokolle - Build & Deploy zur Synology
+# Ausfuehren: .\build-deploy.ps1
+# Voraussetzung: Docker Desktop laeuft, Synology-Freigabe ist eingebunden
 
 param(
     [string]$NasPath   = "\\192.168.178.250\docker\komplizen-protokolle",
@@ -9,26 +9,27 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$TarFile = "$ImageName.tar"
+$TarFile  = "$ImageName.tar"
+$FullName = "${ImageName}:${Tag}"
 
-Write-Host "=== Komplizen Protokolle – Build & Deploy ===" -ForegroundColor Cyan
+Write-Host "=== Komplizen Protokolle - Build & Deploy ===" -ForegroundColor Cyan
 Write-Host ""
 
 # 1. Docker-Image bauen
-Write-Host "[1/4] Image bauen ($ImageName`:$Tag)..." -ForegroundColor Yellow
-docker build -t "$ImageName`:$Tag" .
+Write-Host "[1/4] Image bauen ($FullName)..." -ForegroundColor Yellow
+docker build -t $FullName .
 if ($LASTEXITCODE -ne 0) { Write-Error "Build fehlgeschlagen"; exit 1 }
 Write-Host "    OK" -ForegroundColor Green
 
 # 2. Image exportieren
 Write-Host "[2/4] Image exportieren als $TarFile..." -ForegroundColor Yellow
-docker save -o $TarFile "$ImageName`:$Tag"
+docker save -o $TarFile $FullName
 if ($LASTEXITCODE -ne 0) { Write-Error "Export fehlgeschlagen"; exit 1 }
 $size = [math]::Round((Get-Item $TarFile).Length / 1MB, 1)
 Write-Host "    OK ($size MB)" -ForegroundColor Green
 
 # 3. Zielordner auf NAS vorbereiten
-Write-Host "[3/4] NAS-Ordner prüfen ($NasPath)..." -ForegroundColor Yellow
+Write-Host "[3/4] NAS-Ordner pruefen ($NasPath)..." -ForegroundColor Yellow
 if (-not (Test-Path $NasPath)) {
     Write-Host "    Ordner wird erstellt..."
     New-Item -ItemType Directory -Path $NasPath -Force | Out-Null
@@ -43,7 +44,7 @@ Write-Host "    OK" -ForegroundColor Green
 
 # 4. Dateien kopieren
 Write-Host "[4/4] Dateien auf NAS kopieren..." -ForegroundColor Yellow
-Copy-Item -Path $TarFile        -Destination $NasPath -Force
+Copy-Item -Path $TarFile           -Destination $NasPath -Force
 Copy-Item -Path "docker-compose.yml" -Destination $NasPath -Force
 Write-Host "    OK" -ForegroundColor Green
 
