@@ -9,6 +9,18 @@
   body {
     @apply bg-gray-100 text-gray-900 font-sans;
   }
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: url('/logo.png');
+    background-repeat: no-repeat;
+    background-position: center center;
+    background-size: 420px 420px;
+    opacity: 0.05;
+    pointer-events: none;
+    z-index: 0;
+  }
 
   /* macOS hiddenInset titlebar: push content below the traffic-light buttons */
   body.platform-darwin {
