@@ -14,10 +14,10 @@
     position: fixed;
     inset: 0;
     background: url('/logo.png') no-repeat center center / 580px 580px;
-    opacity: 0.10;
+    opacity: 0.12;
     pointer-events: none;
     z-index: 1;
-    filter: sepia(1) saturate(5) hue-rotate(185deg) brightness(1.6);
+    filter: sepia(1) saturate(3) hue-rotate(185deg) brightness(2.8);
   }
 
   /* macOS hiddenInset titlebar: push content below the traffic-light buttons */
