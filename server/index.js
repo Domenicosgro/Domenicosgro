@@ -24,6 +24,7 @@ const path      = require('path')
 const fs        = require('fs')
 const http      = require('http')
 const https     = require('https')
+const os        = require('os')
 const db          = require('./db')
 const auth        = require('./auth')
 const attachments = require('./attachments')
@@ -350,6 +351,27 @@ app.put('/api/auth/users/:username/email', requireAuth, requireAdmin, (req, res)
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
+// ── LAN-IP ermitteln ──────────────────────────────────────────────────────────
+function getLanIp() {
+  if (process.env.PUBLIC_URL) return null  // wird unten direkt verwendet
+  for (const iface of Object.values(os.networkInterfaces())) {
+    for (const addr of iface) {
+      if (addr.family === 'IPv4' && !addr.internal && !addr.address.startsWith('169.'))
+        return addr.address
+    }
+  }
+  return null
+}
+
+function getAppUrl(req) {
+  if (process.env.PUBLIC_URL) return process.env.PUBLIC_URL.replace(/\/$/, '')
+  const reqHost = req.headers.host || ''
+  const isLocal = reqHost.startsWith('localhost') || reqHost.startsWith('127.')
+  const lanIp   = getLanIp()
+  const host    = (isLocal && lanIp) ? `${lanIp}:${PORT}` : reqHost
+  return `${req.protocol}://${host}`
+}
+
 // ── SMTP / Einladungs-E-Mail ──────────────────────────────────────────────────
 function createTransport() {
   const host = process.env.SMTP_HOST
@@ -385,9 +407,7 @@ app.post('/api/auth/users/:username/invite', requireAuth, requireAdmin, async (r
     const transport = createTransport()
     if (!transport) return res.status(400).json({ error: 'SMTP nicht konfiguriert. Bitte SMTP_HOST in den Server-Einstellungen setzen.' })
 
-    const proto   = req.protocol
-    const host    = req.headers.host
-    const appUrl  = `${proto}://${host}`
+    const appUrl  = getAppUrl(req)
     const from    = process.env.SMTP_FROM || process.env.SMTP_USER || 'noreply@komplizen'
     const pw      = user.password_note || '(bitte beim Admin erfragen)'
 
