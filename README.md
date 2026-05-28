@@ -16,7 +16,7 @@ npm run electron:dev     # Electron-Version (Desktop)
 
 ## Server-Modus (Docker / Windows)
 
-Mehrbenutzer-Betrieb mit SQLite-Backend, JWT-Authentifizierung und Live-Updates per SSE.
+Mehrbenutzer-Betrieb mit SQLite-Backend, Session-Token-Authentifizierung (8h TTL) und Live-Updates per SSE.
 
 **Windows-Schnellstart:**
 ```powershell

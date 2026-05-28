@@ -76,7 +76,7 @@ Domenicosgro/
 ├── server/
 │   ├── index.js                   # Express-Server: REST-API, Auth, SMTP-Einladung, SSE
 │   ├── db.js                      # better-sqlite3 Setup + Migrationen
-│   ├── auth.js                    # JWT-Authentifizierung, Benutzer-CRUD
+│   ├── auth.js                    # Session-Token-Authentifizierung (opak, 8h TTL), Benutzer-CRUD
 │   ├── attachments.js             # Anhang-Endpunkte (Datei-Upload/-Download)
 │   ├── pm2.config.js              # PM2-Konfiguration für direkten Linux-Betrieb
 │   └── package.json               # Nur Server-Abhängigkeiten (kein Electron, kein Vite)
@@ -96,7 +96,7 @@ Domenicosgro/
 
 | Modus | Datenhaltung | Authentifizierung |
 |---|---|---|
-| **Web/Docker** | SQLite via REST-API | JWT-Token (LoginScreen) |
+| **Web/Docker** | SQLite via REST-API | Session-Token (LoginScreen, 8h TTL) |
 | **Electron** | JSON-Dateien via IPC | Microsoft MSAL (optional) |
 | **Local-Dev** | localStorage / IndexedDB | keine |
 

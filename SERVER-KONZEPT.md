@@ -19,7 +19,7 @@ Der Server ist ein vollständiger REST-Backend mit per-Record-CRUD:
 - `DELETE /api/protocols/:id` → Protokoll löschen
 - Gleiche Endpunkte für `/api/projects`
 
-**Authentifizierung:** JWT-Token (30 Tage gültig), bcrypt-Passwort-Hashing (12 Runden)
+**Authentifizierung:** Opake Session-Tokens (`crypto.randomBytes(32)`, 8h TTL, in SQLite), bcrypt-Passwort-Hashing (12 Runden)
 
 **Echtzeit:** Server-Sent Events (`/api/events`) – Nutzer A sieht Änderungen von Nutzer B sofort
 

@@ -26,7 +26,7 @@
 ## 1. Projektübersicht
 
 **Komplizen Protokolle** ist ein Besprechungsprotokoll-Tool speziell für Bauprojekte. Die App läuft in drei Modi:
-- **Server-Modus** (Docker/Synology): Express + SQLite, JWT-Auth, Mehrbenutzer, SSE-Live-Updates
+- **Server-Modus** (Docker/Synology): Express + SQLite, Session-Token-Auth (opak, 8h), Mehrbenutzer, SSE-Live-Updates
 - **Browser-Modus** (lokal): localStorage + IndexedDB, kein Backend
 - **Electron** (Desktop): JSON-Dateien via IPC, optionaler Microsoft-Graph-Login
 
@@ -95,7 +95,7 @@ npm run electron:build:mac   # macOS DMG
 ├── server/                        ← Express-Backend (Server-Modus)
 │   ├── index.js                   ← REST-API, Auth, SMTP, SSE
 │   ├── db.js                      ← SQLite-Setup + Migrationen
-│   ├── auth.js                    ← JWT, Benutzer-CRUD
+│   ├── auth.js                    ← Session-Token-Auth (crypto.randomBytes, 8h TTL), Benutzer-CRUD
 │   ├── attachments.js             ← Datei-Upload/-Download
 │   └── package.json               ← Nur Server-Abhängigkeiten
 ├── electron/                      ← Electron-Hauptprozess
