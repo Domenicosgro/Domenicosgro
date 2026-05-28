@@ -12,6 +12,7 @@ import { formatDate, buildProtocolNo, getChainNo, uid, emptyAgendaItem } from '.
 import { exportDocx } from '../exportDocx'
 import { attachmentStore } from '../attachmentStore'
 import GesamtprotokollModal from './GesamtprotokollModal'
+import TileSidebar from './TileSidebar'
 
 const isElectron = typeof window !== 'undefined' && !!window.electronAPI
 
@@ -51,6 +52,8 @@ function promoteAgenda(agenda, existingItems) {
 
 export default function ProtocolEditor({ protocol, protocols, projects, projectContacts, logoDataUrl, onLogoUpdate, onLogoClear, onUpdate, onBack, onRefresh }) {
   const change = (patch) => onUpdate(protocol.id, patch)
+  const linkedProject  = (projects ?? []).find(p => p.id === protocol.projectId) ?? null
+  const linkedFolders  = linkedProject?.linkedFolders ?? []
 
   const [showEmailModal,       setShowEmailModal]       = useState(false)
   const [confirmClose,         setConfirmClose]         = useState(false)
@@ -336,6 +339,12 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
   )
 
   return (
+    <>
+    <TileSidebar
+      tiles={protocol.tiles ?? []}
+      linkedFolders={linkedFolders}
+      onChange={tiles => change({ tiles })}
+    />
     <div className="max-w-5xl mx-auto px-4 sm:px-6 py-4 space-y-0">
 
       {/* ── Top bar ── */}
@@ -725,5 +734,6 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
         />
       )}
     </div>
+    </>
   )
 }
