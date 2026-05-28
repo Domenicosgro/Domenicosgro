@@ -47,6 +47,12 @@ docker build -t "${ImageName}:latest" .
 if ($LASTEXITCODE -ne 0) { Write-Error "Build fehlgeschlagen"; exit 1 }
 Write-Host "    OK" -ForegroundColor Green
 
+# IP-Adresse des Windows-Hosts ermitteln (fuer Einladungs-E-Mail)
+$ip = (Get-NetIPAddress -AddressFamily IPv4 |
+       Where-Object { $_.InterfaceAlias -notmatch "Loopback|vEthernet" -and $_.IPAddress -notmatch "^169" } |
+       Select-Object -First 1).IPAddress
+$PublicUrl = if ($ip) { "http://${ip}:${Port}" } else { "" }
+
 # Container starten
 Write-Host "[2/2] Container starten..." -ForegroundColor Yellow
 docker run -d `
@@ -59,6 +65,7 @@ docker run -d `
     -e HOST=0.0.0.0 `
     -e DB_PATH=/data `
     -e LOG_PATH=/logs `
+    -e "PUBLIC_URL=$PublicUrl" `
     -e "SMTP_HOST=$SmtpHost" `
     -e "SMTP_PORT=$SmtpPort" `
     -e "SMTP_USER=$SmtpUser" `
@@ -69,11 +76,6 @@ docker run -d `
 
 if ($LASTEXITCODE -ne 0) { Write-Error "Start fehlgeschlagen"; exit 1 }
 Write-Host "    OK" -ForegroundColor Green
-
-# IP-Adresse ermitteln
-$ip = (Get-NetIPAddress -AddressFamily IPv4 |
-       Where-Object { $_.InterfaceAlias -notmatch "Loopback|vEthernet" -and $_.IPAddress -notmatch "^169" } |
-       Select-Object -First 1).IPAddress
 
 Write-Host ""
 Write-Host "=== Fertig ===" -ForegroundColor Cyan
