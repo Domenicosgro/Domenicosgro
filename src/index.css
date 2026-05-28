@@ -2,12 +2,26 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ── Yellix-Schrift ──────────────────────────────────────────── */
+@font-face {
+  font-family: 'Yellix';
+  src: url('/fonts/Yellix-Black.otf') format('opentype');
+  font-weight: 800;
+  font-display: swap;
+}
+/*
+  Weitere Schnitte ergänzen sobald Dateien in public/fonts/ vorliegen:
+  @font-face { font-family:'Yellix'; src:url('/fonts/Yellix-Regular.otf') format('opentype'); font-weight:400; font-display:swap; }
+  @font-face { font-family:'Yellix'; src:url('/fonts/Yellix-Medium.otf')  format('opentype'); font-weight:500; font-display:swap; }
+  @font-face { font-family:'Yellix'; src:url('/fonts/Yellix-Bold.otf')    format('opentype'); font-weight:700; font-display:swap; }
+*/
+
 @layer base {
   html {
     font-size: 14px;   /* base: 16px → 14px; all rem values scale down */
   }
   body {
-    @apply bg-gray-100 text-gray-900 font-sans;
+    @apply bg-light text-night font-sans;
   }
   body::after {
     content: '';
@@ -25,26 +39,33 @@
     padding-top: env(titlebar-area-height, 40px);
     -webkit-app-region: no-drag;
   }
+
+  h1, h2, h3 {
+    font-family: 'Yellix', 'Segoe UI', Arial, sans-serif;
+    font-weight: 800;
+  }
 }
 
 @layer components {
   .btn {
-    @apply inline-flex items-center gap-1.5 px-3 py-1.5 font-medium text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-offset-1;
+    @apply inline-flex items-center gap-1.5 px-3 py-1.5 font-medium text-sm
+           transition-colors focus:outline-none focus:ring-2 focus:ring-sky focus:ring-offset-1;
   }
   .btn-primary {
-    @apply btn bg-brand-600 text-white hover:bg-brand-700 focus:ring-brand-500;
+    @apply btn bg-brand-600 text-light hover:bg-brand-700 focus:ring-sky;
   }
   .btn-secondary {
-    @apply btn bg-white text-gray-700 border border-gray-300 hover:bg-gray-50 focus:ring-gray-300;
+    @apply btn bg-white text-brand-600 border border-concrete hover:bg-concrete focus:ring-sky;
   }
   .btn-danger {
-    @apply btn bg-red-50 text-red-600 hover:bg-red-100 focus:ring-red-400;
+    @apply btn bg-red-50 text-red-700 hover:bg-red-100 focus:ring-red-400;
   }
   .btn-ghost {
-    @apply btn text-gray-500 hover:bg-gray-100 hover:text-gray-700 focus:ring-gray-300;
+    @apply btn text-brand-600 hover:bg-concrete hover:text-brand-700 focus:ring-sky;
   }
   .input {
-    @apply w-full px-2.5 py-1.5 border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent bg-white;
+    @apply w-full px-2.5 py-1.5 border border-concrete bg-white text-sm text-night
+           focus:outline-none focus:ring-2 focus:ring-sky focus:border-sky;
   }
   .select {
     @apply input appearance-none cursor-pointer;
@@ -53,43 +74,44 @@
     @apply input resize-none;
   }
   .card {
-    @apply bg-white border border-gray-200;
+    @apply bg-white border border-concrete rounded-lg shadow-sm;
   }
   .section-title {
-    @apply text-sm font-semibold text-gray-800 flex items-center gap-2;
+    @apply text-sm font-semibold text-night flex items-center gap-2;
   }
   .badge {
-    @apply inline-flex items-center px-2 py-0.5 text-xs font-medium;
+    @apply inline-flex items-center px-2 py-0.5 text-xs font-medium rounded;
   }
-  .badge-blue   { @apply badge bg-blue-100 text-blue-700; }
-  .badge-green  { @apply badge bg-green-100 text-green-700; }
-  .badge-yellow { @apply badge bg-yellow-100 text-yellow-700; }
-  .badge-red    { @apply badge bg-red-100 text-red-700; }
-  .badge-gray   { @apply badge bg-gray-100 text-gray-600; }
+  .badge-blue   { @apply badge bg-sky/30 text-brand-800; }
+  .badge-green  { @apply badge bg-green-100 text-green-800; }
+  .badge-yellow { @apply badge bg-amber-100 text-amber-800; }
+  .badge-red    { @apply badge bg-red-100 text-red-800; }
+  .badge-gray   { @apply badge bg-concrete text-gray-700; }
 }
 
 /* ── Rich-text editor (Tiptap) ───────────────────────────── */
 
-/* Content area — styled like .textarea */
 .rich-editor-content .ProseMirror {
   width: 100%;
   padding: 0.375rem 0.625rem;
-  border: 1px solid #d1d5db;      /* border-gray-300 */
+  border: 1px solid #F0F0F0;      /* concrete */
   font-size: 0.875rem;
   background: #fff;
   outline: none;
   min-height: 2.5rem;
   line-height: 1.5;
+  color: #000040;                  /* night */
+  border-radius: 4px;
 }
 .rich-editor-content .ProseMirror:focus {
-  border-color: transparent;
-  box-shadow: 0 0 0 2px var(--tw-ring-color, #3b82f6); /* ring-brand-500 */
+  border-color: #8FBEFF;           /* sky */
+  box-shadow: 0 0 0 2px rgba(143, 190, 255, 0.35);
 }
 
 /* Placeholder text */
 .rich-editor-content .ProseMirror p.is-editor-empty:first-child::before {
   content: attr(data-placeholder);
-  color: #9ca3af;    /* gray-400 */
+  color: #9ca3af;
   pointer-events: none;
   float: left;
   height: 0;
@@ -123,22 +145,22 @@
 
 /* ── Print ───────────────────────────────────────────────── */
 @media print {
-  /* Leave bottom margin for the running footer */
   @page { size: A4; margin: 12mm 12mm 20mm 12mm; }
 
   html { font-size: 10px; font-family: Arial, sans-serif; }
   body { background: white !important; font-size: 9pt; }
   body::after { display: none !important; }
 
-  /* B&W typography — Arial only, pure black */
+  /* Druck: Arial, schwarz, KEIN Radius/Schatten (sachlich/formal) */
   * {
     font-family: Arial, sans-serif !important;
     color: #000 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
   }
 
   .no-print { display: none !important; }
 
-  /* Flat cards — no border, no shadow, no rounding */
   .card {
     border: none !important;
     box-shadow: none !important;
@@ -146,7 +168,6 @@
     margin-bottom: 6px !important;
   }
 
-  /* Badges — no coloured backgrounds */
   .badge, .badge-blue, .badge-green, .badge-yellow, .badge-red, .badge-gray {
     background-color: white !important;
     border: none !important;
@@ -155,13 +176,11 @@
   h1, h2, h3 { page-break-after: avoid; }
   tr          { page-break-inside: avoid; }
 
-  /* Protocol items must not be split across pages */
   .protocol-item {
     page-break-inside: avoid;
     break-inside: avoid;
   }
 
-  /* Protocol item cards: 2px black left bar, flat (no rounding, no background) */
   .protocol-item > div {
     border-radius: 0 !important;
     background-color: white !important;
@@ -183,15 +202,15 @@
     outline: none !important;
   }
 
-  /* Rich-text editor in print: hide toolbar, strip chrome */
   .rich-editor-toolbar { display: none !important; }
   .rich-editor-content .ProseMirror {
     border: none !important;
     box-shadow: none !important;
     padding: 0 !important;
     min-height: 0 !important;
+    border-radius: 0 !important;
   }
-  /* Ensure list styles survive print reset */
+
   .rich-text ul,
   .rich-editor-content .ProseMirror ul {
     list-style: disc outside !important;
@@ -203,19 +222,16 @@
     padding-left: 1.4em !important;
   }
 
-  /* ── Page breaks ── */
   .print-page-break {
     page-break-after: always;
     break-after: page;
   }
 
-  /* Agenda & cover pages fill their sheet */
   .print-agenda-page,
   .print-cover-page {
     min-height: 220mm;
   }
 
-  /* ── Running footer – Chromium repeats position:fixed on every page ── */
   .print-footer {
     position: fixed;
     bottom: 0;

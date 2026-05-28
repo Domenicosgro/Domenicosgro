@@ -5,30 +5,40 @@ export default {
     "./src/**/*.{js,ts,jsx,tsx}",
   ],
   theme: {
+    // Dezente Rundungen (weg vom strikten 0-Flat) – Druck überschreibt mit 0
     borderRadius: {
-      'none': '0',
-      'sm':   '0',
-      DEFAULT: '0',
-      'md':   '0',
-      'lg':   '0',
-      'xl':   '0',
-      '2xl':  '0',
-      '3xl':  '0',
-      'full': '0',
+      none:    '0',
+      sm:      '2px',
+      DEFAULT: '4px',
+      md:      '6px',
+      lg:      '8px',
+      xl:      '10px',
+      '2xl':   '14px',
+      full:    '9999px',
     },
     extend: {
       colors: {
+        // brand = Night-Skala (dunkles Blau um #000040)
         brand: {
-          50:  '#f0f4ff',
-          100: '#dce6ff',
-          500: '#3b5fc0',
-          600: '#2f4da8',
-          700: '#243d90',
-          900: '#0f1f52',
-        }
+          50:  '#EAEAF5',
+          100: '#C9C9E6',
+          200: '#9A9ACC',
+          300: '#6A6AB3',
+          400: '#3A3A80',
+          500: '#1A1A60',
+          600: '#000040',   // ← Primärfarbe (Buttons, Headlines)
+          700: '#000033',
+          800: '#000026',
+          900: '#00001A',
+        },
+        sky:      '#8FBEFF',  // Akzent – Fokus, Highlights, Randstreifen
+        light:    '#FBFFE6',  // Seitenhintergrund (warmes Cremeweiß)
+        concrete: '#F0F0F0',  // neutrale Fläche, Trenner
+        night:    '#000040',  // Alias für Markup-Klarheit
       },
       fontFamily: {
-        sans: ['Inter', 'system-ui', 'sans-serif'],
+        sans:     ['Yellix', 'Segoe UI', 'Arial', 'system-ui', 'sans-serif'],
+        headline: ['Yellix', 'Segoe UI', 'Arial', 'sans-serif'],
       },
     },
   },

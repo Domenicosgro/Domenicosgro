@@ -37,9 +37,9 @@ async function openAttachment(attachment) {
 }
 
 const LEVEL_STYLES = {
-  1: { indent: '',       label: 'text-sm font-bold text-gray-900',     noStyle: 'text-sm font-bold text-brand-700',     borderL: 'border-l-4 border-brand-400' },
-  2: { indent: 'ml-6',   label: 'text-sm font-semibold text-gray-800', noStyle: 'text-sm font-semibold text-brand-600', borderL: 'border-l-4 border-brand-200' },
-  3: { indent: 'ml-12',  label: 'text-sm font-medium text-gray-700',   noStyle: 'text-sm font-medium text-gray-500',    borderL: 'border-l-4 border-gray-300'  },
+  1: { indent: '',       label: 'text-sm font-bold text-night',        noStyle: 'text-sm font-bold text-brand-600',     borderL: 'border-l-4 border-night' },
+  2: { indent: 'ml-6',   label: 'text-sm font-semibold text-night',    noStyle: 'text-sm font-semibold text-brand-500', borderL: 'border-l-4 border-sky' },
+  3: { indent: 'ml-12',  label: 'text-sm font-medium text-night/70',   noStyle: 'text-sm font-medium text-brand-400',   borderL: 'border-l-4 border-concrete' },
 }
 
 // ── Hierarchy helpers ─────────────────────────────────────────────────────────
@@ -317,7 +317,7 @@ export default function ProtocolItems({ items, onChange, allTasks = [], onTasksC
     const active = dropIdx === insertBeforeIdx
     return (
       <div
-        className={`h-1.5 rounded transition-colors ${active ? 'bg-brand-500' : 'bg-transparent'}`}
+        className={`h-1.5 rounded transition-colors ${active ? 'bg-sky' : 'bg-transparent'}`}
         onDragOver={e => handleDropZoneDragOver(e, insertBeforeIdx)}
         onDragLeave={() => setDropIdx(null)}
         onDrop={e => handleDropZoneDrop(e, insertBeforeIdx)}

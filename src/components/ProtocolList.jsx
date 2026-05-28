@@ -124,8 +124,8 @@ export default function ProtocolList({
                   onClick={() => setFilterType(filterType === type ? '' : type)}
                   className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${
                     filterType === type
-                      ? 'bg-brand-600 text-white border-brand-600'
-                      : 'bg-white text-gray-600 border-gray-300 hover:border-brand-400 hover:text-brand-600'
+                      ? 'bg-night text-light border-night'
+                      : 'bg-white text-brand-600 border-concrete hover:border-sky hover:text-brand-600'
                   }`}
                 >
                   {type}
@@ -161,10 +161,10 @@ export default function ProtocolList({
           return (
             <div
               key={p.id}
-              className="card p-4 flex items-center gap-4 hover:border-brand-500 cursor-pointer transition-colors group"
+              className="card p-4 flex items-center gap-4 hover:border-sky cursor-pointer transition-colors group"
               onClick={() => onOpen(p.id)}
             >
-              <div className="w-2 h-12 rounded-full bg-brand-500 flex-shrink-0" />
+              <div className="w-2 h-12 rounded bg-night flex-shrink-0" />
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="font-semibold text-gray-900 truncate">{formatDate(p.date)}</span>
@@ -199,7 +199,7 @@ export default function ProtocolList({
                   <Trash2 size={14} />
                 </button>
               </div>
-              <ChevronRight size={16} className="text-gray-300 group-hover:text-brand-500 transition-colors flex-shrink-0" />
+              <ChevronRight size={16} className="text-concrete group-hover:text-sky transition-colors flex-shrink-0" />
             </div>
           )
         })}
