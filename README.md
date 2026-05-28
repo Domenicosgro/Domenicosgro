@@ -2,7 +2,7 @@
 
 Besprechungsprotokoll-Tool für Bauprojekte – Baubesprechungen, Jour-Fixe, Projektbesprechungen.
 
-**Stack:** React 18 · Vite · Tailwind CSS v3 · Electron (optional)
+**Stack:** React 18 · Vite · Tailwind CSS v3 · Express/SQLite (Server-Modus) · Electron (optional)
 
 ---
 
@@ -10,11 +10,33 @@ Besprechungsprotokoll-Tool für Bauprojekte – Baubesprechungen, Jour-Fixe, Pro
 
 ```bash
 npm install
-npm run dev              # Web-Version im Browser
+npm run dev              # Web-Version im Browser (localStorage)
 npm run electron:dev     # Electron-Version (Desktop)
 ```
 
-## Build (Produktion)
+## Server-Modus (Docker / Windows)
+
+Mehrbenutzer-Betrieb mit SQLite-Backend, JWT-Authentifizierung und Live-Updates per SSE.
+
+**Windows-Schnellstart:**
+```powershell
+# SMTP-Zugangsdaten in start-local.config.ps1 eintragen (Vorlage: start-local.config.example.ps1)
+.\start-local.ps1
+```
+Das Skript baut das Docker-Image, startet den Container und setzt automatisch `PUBLIC_URL`
+auf die Windows-LAN-IP – damit enthalten Einladungs-E-Mails den richtigen Link.
+
+**Synology / Linux:**  
+Siehe `SYNOLOGY.md` für vollständige Deployment-Anleitung mit `docker-compose.yml`.
+
+**Ersten Admin-Benutzer anlegen** (nach erstem Start):
+```bash
+curl -s -X POST http://<server-ip>:3000/api/auth/users \
+  -H "Content-Type: application/json" \
+  -d '{"username":"admin","displayName":"Administrator","password":"SicheresPasswort!","role":"admin"}'
+```
+
+## Build (Produktion / Electron)
 
 ```bash
 npm run electron:build:win   # Windows NSIS + Portable
@@ -104,6 +126,16 @@ GRAPH_REDIRECT_URI=msprotokoll://auth
 ### Token-Cache
 
 Zugriffstoken werden mit **Electron safeStorage** (OS-Keychain / Credential Manager) verschlüsselt in `graph_token.enc` im App-Datenordner gespeichert. Kein Klartext auf der Festplatte.
+
+---
+
+## PWA (Progressive Web App)
+
+Die App kann als Desktop-App installiert werden (ohne Electron):
+- **Edge:** Installieren-Button erscheint direkt in der Adressleiste (funktioniert auch ohne HTTPS im LAN)
+- **Chrome:** Benötigt HTTPS oder `localhost`; Workaround über `chrome://flags/#unsafely-treat-insecure-origin-as-secure`
+
+Die Einladungs-E-Mail enthält Installationsanleitung für beide Browser.
 
 ---
 

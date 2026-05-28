@@ -1,6 +1,6 @@
 # Komplizen Protokolle – Vollständige Entwicklungsdokumentation
 
-> Stand: 2026-05-20 · Branch: `claude/protocol-tool-meetings-tIoZX`
+> Stand: 2026-05-28 · Branch: `claude/protocol-tool-meetings-tIoZX`
 
 ---
 
@@ -25,16 +25,21 @@
 
 ## 1. Projektübersicht
 
-**Komplizen Protokolle** ist ein Besprechungsprotokoll-Tool speziell für Bauprojekte. Die App läuft sowohl als Web-App im Browser (Daten in `localStorage`) als auch als Electron-Desktop-App (Daten in SQLite / Dateisystem).
+**Komplizen Protokolle** ist ein Besprechungsprotokoll-Tool speziell für Bauprojekte. Die App läuft in drei Modi:
+- **Server-Modus** (Docker/Synology): Express + SQLite, JWT-Auth, Mehrbenutzer, SSE-Live-Updates
+- **Browser-Modus** (lokal): localStorage + IndexedDB, kein Backend
+- **Electron** (Desktop): JSON-Dateien via IPC, optionaler Microsoft-Graph-Login
 
 **Kernfunktionen:**
-- Projekte mit Kontaktdatenbank verwalten
+- Projekte mit verschlüsselter Kontaktdatenbank (AES-GCM)
 - Protokolle erstellen, abschließen und in Reihen (Vorgänger-Kette) verknüpfen
 - Protokollpunkte mit Rich-Text, Anhängen und Hierarchie (3 Ebenen)
 - Maßnahmen/Aufgaben mit Status, Priorität, Deadline
-- Tagesordnungs-Entwurf und Einladungs-E-Mail
+- Tagesordnungs-Entwurf und Einladungs-E-Mail (SMTP, CID-Logo, PWA-Anleitung)
+- Projektübergreifendes Maßnahmen-Dashboard
 - Gesamtprotokoll über gesamte Sitzungsreihe drucken
 - Export als Word (.docx), PDF (Druckdialog) und CSV
+- PWA-Installation (Edge ohne HTTPS, Chrome mit HTTPS)
 
 ---
 
@@ -52,14 +57,19 @@
 | `electron` | ^33.2.0 | Desktop-App-Wrapper |
 | `electron-updater` | ^6.8.3 | Auto-Update |
 | `better-sqlite3` | ^12.8.0 | SQLite (Electron) |
-| `express` | ^5.2.1 | Backend (Electron) |
+| `express` | ^5.2.1 | HTTP-Server (Server-Modus) |
+| `better-sqlite3` | ^12.8.0 | SQLite (Server-Modus + Electron) |
+| `nodemailer` | — | SMTP-Einladungs-E-Mails (Server-Modus) |
+| `bcryptjs` | ^2.4.3 | Passwort-Hashing |
+| `@azure/msal-node` | ^5.2.2 | Microsoft-Login (Electron) |
 
 **Build-Skripte:**
 ```bash
-npm run dev                  # Vite Dev-Server (Browser)
+npm run dev                  # Vite Dev-Server (Browser/localStorage)
 npm run electron:dev         # Electron + Vite parallel
 npm run electron:build:win   # Windows Installer (.exe)
 npm run electron:build:mac   # macOS DMG
+.\start-local.ps1            # Docker-Container bauen + starten (Windows)
 ```
 
 ---
@@ -70,41 +80,67 @@ npm run electron:build:mac   # macOS DMG
 /
 ├── CLAUDE.md                      ← Kurzreferenz für Claude-Sessions
 ├── ENTWICKLUNG.md                 ← Diese Datei
+├── Dockerfile                     ← Zweistufig: Vite-Build → Express-Produktionsimage
+├── docker-compose.yml             ← Synology/Linux-Deployment
+├── start-local.ps1                ← Windows-Docker-Start (setzt PUBLIC_URL automatisch)
+├── start-local.config.example.ps1 ← SMTP-Vorlage
 ├── tailwind.config.mjs            ← Tailwind-Konfiguration (flat design, brand-Farben)
 ├── vite.config.mjs                ← Vite-Konfiguration
 ├── package.json
+├── public/
+│   ├── logo.png                   ← Dunkles (K)-Logo: Wasserzeichen + PWA-Icon
+│   ├── manifest.json              ← PWA-Manifest
+│   ├── sw.js                      ← Service Worker (network-first)
+│   └── de.aff / de.dic            ← Deutsche Wörterbücher
+├── server/                        ← Express-Backend (Server-Modus)
+│   ├── index.js                   ← REST-API, Auth, SMTP, SSE
+│   ├── db.js                      ← SQLite-Setup + Migrationen
+│   ├── auth.js                    ← JWT, Benutzer-CRUD
+│   ├── attachments.js             ← Datei-Upload/-Download
+│   └── package.json               ← Nur Server-Abhängigkeiten
 ├── electron/                      ← Electron-Hauptprozess
 │   ├── main.js
-│   └── preload.js
+│   ├── preload.js
+│   ├── msalAuth.js                ← Microsoft MSAL-Login
+│   └── graphClient.js             ← Microsoft Graph API
 └── src/
     ├── main.jsx                   ← React-Einstiegspunkt
     ├── App.jsx                    ← Routing (view-State-Machine)
-    ├── index.css                  ← Design-System, Print-CSS
+    ├── index.css                  ← Design-System, Print-CSS, Wasserzeichen
     ├── utils.js                   ← Datenmodelle, Helper-Funktionen
+    ├── crypto.js                  ← AES-GCM Verschlüsselung
+    ├── attachmentStore.js         ← IndexedDB (Web) / userData (Electron)
+    ├── serverEvents.js            ← SSE-Client für Live-Updates
     ├── exportDocx.js              ← Word-Export für Protokolle
     ├── exportParticipantsList.js  ← Word-Export Beteiligtenliste
     ├── spellcheck.worker.js       ← Web Worker für nspell
     ├── components/
-    │   ├── ProjectsHome.jsx       ← Startseite (Projektliste, Favoriten, Passwort)
+    │   ├── ProjectsHome.jsx       ← Startseite (Projektliste, Favoriten, Passwort, PWA-Install)
     │   ├── ProjectManager.jsx     ← Kontaktverwaltung
     │   ├── BeteiligtenModal.jsx   ← Projektbeteiligtenliste (Druck/Export)
-    │   ├── ProtocolList.jsx       ← Protokollliste eines Projekts
+    │   ├── ProtocolList.jsx       ← Protokollliste (+ updatedBy-Anzeige)
     │   ├── ProtocolEditor.jsx     ← Protokoll-Editor (Hauptkomponente)
     │   ├── MeetingHeader.jsx      ← Metadaten des Protokolls
     │   ├── ParticipantsList.jsx   ← Teilnehmerliste im Protokoll
     │   ├── AgendaDraft.jsx        ← Tagesordnungs-Entwurf
     │   ├── AgendaEmailModal.jsx   ← Agenda-E-Mail-Dialog
+    │   ├── AgendaItems.jsx        ← Agenda-Punkte-Liste
     │   ├── ProtocolItems.jsx      ← Protokollpunkte
     │   ├── ActionItems.jsx        ← Maßnahmen/Aufgaben
     │   ├── NotesSection.jsx       ← Allgemeine Bemerkungen
     │   ├── RichTextEditor.jsx     ← Tiptap-Editor-Komponente
+    │   ├── SpellCheckTextarea.jsx ← Textarea mit Rechtschreibprüfung
+    │   ├── MassnahmenDashboard.jsx ← Projektübergreifende Maßnahmen-Übersicht
+    │   ├── LoginScreen.jsx        ← Login-Maske (Server-Modus)
+    │   └── AdminPanel.jsx         ← Benutzerverwaltung (Server-Modus)
     │   ├── GesamtprotokollModal.jsx ← Gesamtprotokoll Druck/Vorschau
     │   └── LogoUpload.jsx         ← Logo hochladen/löschen
     └── hooks/
-        ├── useProtocols.js        ← CRUD Protokolle + syncProjectName
-        ├── useProjects.js         ← CRUD Projekte
+        ├── useProtocols.js        ← CRUD Protokolle + syncProjectName + refetchProtocols
+        ├── useProjects.js         ← CRUD Projekte + refetchProjects
         ├── useLogo.js             ← Logo-Persistenz
-        └── useSpellCheck.js       ← Rechtschreibprüfung via Worker
+        ├── useSpellCheck.js       ← Rechtschreibprüfung via Worker
+        └── useUserSettings.js     ← Benutzereinstellungen (Server-Modus)
 ```
 
 ---
@@ -158,6 +194,7 @@ Alle Modelle sind in `src/utils.js` als `empty*()` Fabrik-Funktionen definiert.
   predecessorId:   null,   // ID des Vorgänger-Protokolls
   isClosed:        false,
   closedAt:        null,
+  updatedBy:       null,   // Anzeigename des letzten Bearbeiters (Server-Modus)
   participants:    [],     // siehe 4.4
   agenda:          [],     // Tagesordnungs-Entwurf, siehe 4.5
   agendaSentAt:    null,

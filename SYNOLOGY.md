@@ -231,10 +231,17 @@ cp -r /volume1/docker/komplizen-protokolle/data /volume1/backup/komplizen-$(date
 | `HOST` | `0.0.0.0` | Bind-Adresse |
 | `DB_PATH` | `/data` | Verzeichnis für SQLite-DB und Anhänge |
 | `LOG_PATH` | `/logs` | Verzeichnis für Access-Log |
+| `PUBLIC_URL` | *(leer)* | Öffentliche App-URL für Einladungs-E-Mails, z. B. `http://192.168.1.10:3000` |
 | `API_KEY` | *(leer)* | Statischer API-Schlüssel (X-API-Key Header) |
 | `ALLOWED_ORIGINS` | *(alle)* | CORS-Whitelist, kommagetrennt |
 | `HTTPS_CERT` | *(leer)* | Pfad zum TLS-Zertifikat (PEM) |
 | `HTTPS_KEY` | *(leer)* | Pfad zum TLS-Schlüssel (PEM) |
+| `SMTP_HOST` | *(leer)* | SMTP-Server (z. B. `smtp.office365.com`) |
+| `SMTP_PORT` | `587` | SMTP-Port |
+| `SMTP_USER` | *(leer)* | SMTP-Benutzername / E-Mail-Adresse |
+| `SMTP_PASS` | *(leer)* | SMTP-Passwort (Microsoft 365: App-Passwort nach MFA) |
+| `SMTP_FROM` | *(leer)* | Absender-Adresse für Einladungs-E-Mails |
+| `SMTP_SECURE` | `false` | `true` für Port 465 (SSL), `false` für STARTTLS |
 
 ---
 

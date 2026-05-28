@@ -1,34 +1,40 @@
-# Konzept: Mehrbenutzer-Synology-Server (Punkt 4)
+# Server-Architektur: Mehrbenutzer-Modus (umgesetzt)
 
-**Status:** Konzeptphase – kein Code, noch keine Implementierung  
-**Stand:** 2026-05-21  
-**Basis:** Bestehender Express/SQLite-Server in `server/`
+**Status:** ✅ Vollständig implementiert  
+**Stand:** 2026-05-28  
+**Code:** `server/index.js`, `server/db.js`, `server/auth.js`, `server/attachments.js`
 
 ---
 
-## 1. Ausgangslage & Ziele
+## 1. Was der Server leistet
 
-### Was der aktuelle Server kann
+### Implementierte API
 
-Der bestehende Server in `server/index.js` ist ein einfacher Key-Value-Store:
-- `GET /api/protocols` → gibt alle Protokolle als ein JSON-Array zurück
-- `PUT /api/protocols` → ersetzt **das gesamte Array** auf einmal
-- Gleiche Logik für Projekte
-- Authentifizierung: optionaler globaler API-Key (`X-API-Key`)
-- Datenhaltung: SQLite-Datenbank mit einer Zeile pro Tabelle (`store`-Tabelle mit `key` + `value`)
+Der Server ist ein vollständiger REST-Backend mit per-Record-CRUD:
 
-### Problem: Kein Mehrbenutzer-Betrieb möglich
+- `GET /api/protocols` → Liste aller Protokolle
+- `GET /api/protocols/:id` → Ein Protokoll
+- `POST /api/protocols` → Neues Protokoll anlegen
+- `PATCH /api/protocols/:id` → Protokoll aktualisieren (mit Versionsprüfung → Konfliktschutz)
+- `DELETE /api/protocols/:id` → Protokoll löschen
+- Gleiche Endpunkte für `/api/projects`
 
-Wenn Nutzer A und Nutzer B gleichzeitig arbeiten und beide `PUT /api/protocols` aufrufen, überschreibt die spätere Antwort die frühere **ohne Konflikterkennung**. Datenverlust ist vorprogrammiert.
+**Authentifizierung:** JWT-Token (30 Tage gültig), bcrypt-Passwort-Hashing (12 Runden)
 
-### Ziele für Punkt 4
+**Echtzeit:** Server-Sent Events (`/api/events`) – Nutzer A sieht Änderungen von Nutzer B sofort
 
-1. **Mehrere Benutzer gleichzeitig** können Protokolle lesen und bearbeiten
-2. **Benutzerkonten** – jede Person meldet sich mit eigenem Nutzer/Passwort an
-3. **Konflikte werden erkannt** – niemals stille Überschreibungen
-4. **Echtzeit-Benachrichtigung** – Nutzer A sieht, wenn Nutzer B ein Protokoll ändert
-5. **Synology-NAS-Deployment** – läuft ohne Cloud, on-premise
-6. **Rückwärtskompatibel** – lokaler Modus (localStorage / Electron) bleibt unverändert
+**Anhänge:** `/api/attachments` – Binär-Upload/-Download, gespeichert in `data/attachments/`
+
+**Einladungs-E-Mail:** nodemailer via SMTP, CID-Inline-Logo, Link via `PUBLIC_URL`-Env-Variable
+
+### Umgesetzte Ziele
+
+1. ✅ Mehrere Benutzer gleichzeitig (Optimistic Locking via `version`-Feld)
+2. ✅ Benutzerkonten mit Rollen (`admin` | `editor` | `viewer`)
+3. ✅ Konflikterkennung – HTTP 409 bei veralteter Version, Client gewinnt (retry)
+4. ✅ Echtzeit-Benachrichtigung per SSE
+5. ✅ Synology-NAS-Deployment (Docker Compose, siehe `SYNOLOGY.md`)
+6. ✅ Rückwärtskompatibel – lokaler Modus (localStorage / Electron) unverändert
 
 ---
 
