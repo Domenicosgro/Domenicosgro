@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { Plus, Trash2, Search, ChevronRight, FileText, Users, FolderOpen,
          Calendar, Lock, LockOpen, X, Eye, EyeOff, Star, BarChart2,
-         User, Settings, LogOut, Monitor, Download } from 'lucide-react'
+         User, Settings, LogOut, Monitor, Download, RotateCcw } from 'lucide-react'
 import { formatDate } from '../utils'
 import { useUserSettings } from '../hooks/useUserSettings'
 
@@ -263,10 +263,12 @@ export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, 
           {installed && (
             <span className="text-xs text-green-600 font-medium px-2">✓ App installiert</span>
           )}
+          <button className="btn-ghost p-2 text-gray-400" title="Seite neu laden" onClick={() => window.location.reload()}>
+            <RotateCcw size={15} />
+          </button>
           <button className="btn btn-primary" onClick={handleCreate}>
             <Plus size={16} /> Neues Projekt
           </button>
-        </div>
       </div>
 
       {/* Search */}
