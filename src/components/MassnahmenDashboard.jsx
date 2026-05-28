@@ -336,9 +336,9 @@ export default function MassnahmenDashboard({ protocols, projects, onOpenProtoco
           <div>
             <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2">
               <BarChart2 size={20} className="text-brand-600" />
-              Maßnahmen-Dashboard
+              Aufgaben-Dashboard
             </h1>
-            <p className="text-xs text-gray-400">Alle Maßnahmen projekt- und protokollübergreifend</p>
+            <p className="text-xs text-gray-400">Alle Aufgaben projekt- und protokollübergreifend</p>
           </div>
         </div>
         {visible.length > 0 && (

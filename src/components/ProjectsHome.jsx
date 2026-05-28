@@ -237,8 +237,8 @@ export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, 
             </>
           )}
           {onOpenDashboard && (
-            <button className="btn btn-secondary" onClick={onOpenDashboard} title="Maßnahmen-Dashboard öffnen">
-              <BarChart2 size={15} /> Dashboard
+            <button className="btn btn-secondary" onClick={onOpenDashboard} title="Aufgaben-Dashboard öffnen">
+              <BarChart2 size={15} /> Aufgaben
             </button>
           )}
           {window.__SERVER_MODE__ && !installed && installPrompt && (
