@@ -543,6 +543,97 @@ app.post('/api/auth/users/:username/invite', requireAuth, requireAdmin, async (r
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
+// ── Maßnahmen-E-Mail (gesammelt pro Verantwortlicher) ─────────────────────────
+app.post('/api/actions/send-email', requireAuth, async (req, res) => {
+  try {
+    const { to, responsible, items } = req.body
+    if (!to || !responsible || !Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ error: 'Ungültige Anfrage.' })
+    }
+    const transport = createTransport()
+    if (!transport) return res.status(400).json({ error: 'SMTP nicht konfiguriert.' })
+
+    const from    = process.env.SMTP_FROM || process.env.SMTP_USER || 'noreply@komplizen'
+    const today   = new Date().toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })
+    const subject = `Ihre offenen Maßnahmen – Stand ${today}`
+
+    const STATUS_LABELS   = { offen: 'Offen', in_arbeit: 'In Arbeit', erledigt: 'Erledigt', verschoben: 'Verschoben' }
+    const PRIORITY_LABELS = { hoch: 'Hoch', mittel: 'Mittel', niedrig: 'Niedrig' }
+    const todayIso        = new Date().toISOString().slice(0, 10)
+
+    const rows = items.map(item => {
+      const overdue    = item.deadline && item.status !== 'erledigt' && item.deadline < todayIso
+      const done       = item.status === 'erledigt'
+      const rowBg      = overdue ? '#FEF2F2' : done ? '#F0FDF4' : '#FFFFFF'
+      const descColor  = overdue ? '#DC2626' : done ? '#6B7280' : '#000040'
+      const deadlineFmt = item.deadline
+        ? new Date(item.deadline + 'T12:00:00').toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })
+        : '–'
+      return `<tr style="background:${rowBg};border-bottom:1px solid #E5E7EB;">
+        <td style="padding:9px 12px;font-size:12px;color:#6B7280;white-space:nowrap;">${item._projectName || '–'}</td>
+        <td style="padding:9px 12px;font-weight:bold;color:${descColor};">${item.description || '–'}${item.remarks ? `<br><span style="font-weight:normal;font-size:11px;color:#9CA3AF;">${item.remarks}</span>` : ''}</td>
+        <td style="padding:9px 12px;font-size:12px;color:${overdue ? '#DC2626' : '#374151'};white-space:nowrap;">${deadlineFmt}${overdue ? ' ⚠' : ''}</td>
+        <td style="padding:9px 12px;font-size:12px;color:#374151;white-space:nowrap;">${PRIORITY_LABELS[item.priority] || '–'}</td>
+        <td style="padding:9px 12px;font-size:12px;color:#374151;white-space:nowrap;">${STATUS_LABELS[item.status] || '–'}</td>
+      </tr>`
+    }).join('')
+
+    const html = `<!DOCTYPE html>
+<html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#F0F0F0;font-family:Arial,sans-serif;font-size:14px;color:#1F2937;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#F0F0F0;padding:32px 16px;">
+    <tr><td align="center">
+      <table width="620" cellpadding="0" cellspacing="0" style="background:#FFF;border:1px solid #E5E7EB;max-width:620px;width:100%;">
+        <tr><td style="background:#000040;padding:28px 36px;">
+          <p style="margin:0;color:#8FBEFF;font-size:11px;letter-spacing:2px;text-transform:uppercase;">Komplizen Protokolle</p>
+          <p style="margin:6px 0 0 0;color:#FBFFE6;font-size:20px;font-weight:bold;">Ihre offenen Maßnahmen</p>
+          <p style="margin:4px 0 0 0;color:#8FBEFF;font-size:12px;">Stand: ${today}</p>
+        </td></tr>
+        <tr><td style="padding:28px 36px 16px 36px;">
+          <p style="margin:0;font-size:15px;color:#000040;">Guten Tag, <strong>${responsible}</strong>,</p>
+          <p style="margin:10px 0 0 0;color:#4B5563;">nachfolgend finden Sie eine Übersicht Ihrer ${items.length} Maßnahme${items.length !== 1 ? 'n' : ''} aus Komplizen Protokolle. Bitte prüfen Sie den Stand und aktualisieren Sie die Einträge entsprechend.</p>
+        </td></tr>
+        <tr><td style="padding:0 36px 28px 36px;">
+          <table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #E5E7EB;border-collapse:collapse;">
+            <thead>
+              <tr style="background:#000040;">
+                <th style="padding:9px 12px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:#8FBEFF;font-weight:600;">Projekt</th>
+                <th style="padding:9px 12px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:#8FBEFF;font-weight:600;">Maßnahme</th>
+                <th style="padding:9px 12px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:#8FBEFF;font-weight:600;">Frist</th>
+                <th style="padding:9px 12px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:#8FBEFF;font-weight:600;">Priorität</th>
+                <th style="padding:9px 12px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:#8FBEFF;font-weight:600;">Status</th>
+              </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </td></tr>
+        <tr><td style="padding:20px 36px;border-top:1px solid #E5E7EB;background:#F0F0F0;text-align:center;">
+          <p style="margin:0;color:#9CA3AF;font-size:12px;">Komplizen Protokolle · Automatische Benachrichtigung · ${today}</p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body></html>`
+
+    const text = [
+      `Ihre offenen Maßnahmen – Komplizen Protokolle`,
+      `Stand: ${today}`, '',
+      `Guten Tag, ${responsible},`,
+      `Sie haben ${items.length} Maßnahme(n) zu bearbeiten:`, '',
+      ...items.map(item => {
+        const dl = item.deadline
+          ? new Date(item.deadline + 'T12:00:00').toLocaleDateString('de-DE') : '–'
+        return `• ${item.description || '–'}\n  Projekt: ${item._projectName || '–'} | Frist: ${dl} | Status: ${STATUS_LABELS[item.status] || item.status}`
+      }),
+      '', 'Komplizen Protokolle',
+    ].join('\n')
+
+    await transport.sendMail({ from, to, subject, html, text })
+    logEvent('ACTIONS_EMAIL_SENT', req, `to=${to} responsible=${responsible} count=${items.length}`)
+    res.json({ ok: true })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
 // ── Alle Kontakte aus Projekten (für Nutzer-Import) ───────────────────────────
 app.get('/api/admin/contacts', requireAuth, requireAdmin, (_req, res) => {
   try {

@@ -1,22 +1,219 @@
 import React, { useState, useMemo } from 'react'
-import { ArrowLeft, AlertTriangle, CheckSquare, Filter, X, Lock, BarChart2 } from 'lucide-react'
+import { ArrowLeft, AlertTriangle, CheckSquare, Filter, X, Lock, BarChart2,
+         Mail, Send, Loader, ChevronDown, ChevronRight, Check } from 'lucide-react'
 import { ACTION_STATUSES, PRIORITIES, formatDate, buildProtocolNo, getChainNo,
          statusBadge, priorityBadge } from '../utils'
 
-const todayStr = () => new Date().toISOString().slice(0, 10)
+const isServer   = typeof window !== 'undefined' && !!window.__SERVER_MODE__
+const isElectron = typeof window !== 'undefined' && !!window.electronAPI
+const todayStr   = () => new Date().toISOString().slice(0, 10)
 
 function calcOverdue(item) {
   return !!(item.deadline && item.status !== 'erledigt' && item.deadline < todayStr())
 }
 
+// ── E-Mail-Plaintext aufbauen (mailto-Fallback) ────────────────────────────────
+function buildActionsText(responsible, items) {
+  const today = new Date().toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })
+  const STATUS = { offen: 'Offen', in_arbeit: 'In Arbeit', erledigt: 'Erledigt', verschoben: 'Verschoben' }
+  const lines = [
+    `Ihre offenen Maßnahmen – Komplizen Protokolle`,
+    `Stand: ${today}`, '',
+    `Guten Tag, ${responsible},`,
+    `Sie haben ${items.length} Maßnahme(n) zu bearbeiten:`, '',
+    ...items.map(item => {
+      const dl = item.deadline
+        ? new Date(item.deadline + 'T12:00:00').toLocaleDateString('de-DE') : '–'
+      return `• ${item.description || '–'}\n  Projekt: ${item._projectName || '–'} | Frist: ${dl} | Status: ${STATUS[item.status] || item.status}`
+    }),
+    '', 'Komplizen Protokolle',
+  ]
+  return lines.join('\n')
+}
+
+// ── E-Mail-Modal ──────────────────────────────────────────────────────────────
+function EmailModal({ groups, onClose }) {
+  const [emails,   setEmails]   = useState(() => Object.fromEntries(groups.map(g => [g.responsible, g.email])))
+  const [expanded, setExpanded] = useState({})
+  const [loading,  setLoading]  = useState({})
+  const [done,     setDone]     = useState({})
+  const [errors,   setErrors]   = useState({})
+
+  const today = new Date().toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })
+  const subject = `Ihre offenen Maßnahmen – Stand ${today}`
+
+  const sendOne = async (responsible) => {
+    const email = emails[responsible]?.trim()
+    if (!email) return
+    const group = groups.find(g => g.responsible === responsible)
+    if (!group) return
+
+    setLoading(p => ({ ...p, [responsible]: true }))
+    setErrors(p => ({ ...p, [responsible]: '' }))
+    try {
+      if (isServer) {
+        const token = localStorage.getItem('kp_session_token')
+        const resp  = await fetch('/api/actions/send-email', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify({ to: email, responsible, items: group.items }),
+        })
+        if (!resp.ok) {
+          const err = await resp.json()
+          throw new Error(err.error || 'Fehler beim Senden')
+        }
+      } else {
+        const body   = buildActionsText(responsible, group.items)
+        const mailto = `mailto:${encodeURIComponent(email)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`
+        if (isElectron) await window.electronAPI.openExternal(mailto)
+        else window.open(mailto, '_blank')
+      }
+      setDone(p => ({ ...p, [responsible]: true }))
+    } catch (e) {
+      setErrors(p => ({ ...p, [responsible]: e.message }))
+    } finally {
+      setLoading(p => ({ ...p, [responsible]: false }))
+    }
+  }
+
+  const sendAll = async () => {
+    for (const g of groups) {
+      if (emails[g.responsible]?.trim() && !done[g.responsible]) {
+        await sendOne(g.responsible)
+      }
+    }
+  }
+
+  const pendingCount = groups.filter(g => emails[g.responsible]?.trim() && !done[g.responsible]).length
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <div className="bg-white rounded-lg shadow-2xl w-full max-w-xl max-h-[90vh] flex flex-col">
+
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-concrete">
+          <div className="flex items-center gap-2">
+            <Mail size={18} className="text-night" />
+            <h3 className="font-semibold text-night">Maßnahmen per E-Mail versenden</h3>
+          </div>
+          <button className="btn-ghost p-1" onClick={onClose}><X size={16} /></button>
+        </div>
+
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto p-5 space-y-3">
+          <p className="text-xs text-gray-500">
+            Jeder Verantwortliche erhält eine gesammelte Übersicht seiner Maßnahmen.
+            {!isServer && ' (Kein SMTP – E-Mail-Client wird geöffnet)'}
+          </p>
+
+          {groups.map(g => {
+            const email    = emails[g.responsible] ?? ''
+            const isExpand = expanded[g.responsible]
+            const isSent   = done[g.responsible]
+            const isLoad   = loading[g.responsible]
+            const err      = errors[g.responsible]
+            const canSend  = !!email.trim() && !isSent
+
+            return (
+              <div key={g.responsible}
+                className={`border rounded-lg overflow-hidden ${isSent ? 'border-green-300 bg-green-50' : 'border-concrete'}`}>
+                {/* Card header */}
+                <div className="flex items-center gap-3 px-4 py-3 bg-concrete/30">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="font-semibold text-night text-sm truncate">{g.responsible}</span>
+                      <span className="badge-gray text-xs">{g.items.length} Maßnahme{g.items.length !== 1 ? 'n' : ''}</span>
+                      {isSent && <span className="text-green-600 text-xs flex items-center gap-0.5"><Check size={12} /> Gesendet</span>}
+                    </div>
+                    <input
+                      type="email"
+                      className="input mt-1.5 text-sm"
+                      placeholder="E-Mail-Adresse…"
+                      value={email}
+                      onClick={e => e.stopPropagation()}
+                      onChange={e => setEmails(p => ({ ...p, [g.responsible]: e.target.value }))}
+                      disabled={isSent}
+                    />
+                    {err && <p className="text-xs text-red-600 mt-1">{err}</p>}
+                  </div>
+                  <div className="flex items-center gap-1.5 flex-shrink-0">
+                    <button
+                      className="btn-ghost p-1.5 text-gray-400"
+                      title={isExpand ? 'Einklappen' : 'Maßnahmen anzeigen'}
+                      onClick={() => setExpanded(p => ({ ...p, [g.responsible]: !p[g.responsible] }))}
+                    >
+                      {isExpand ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                    </button>
+                    <button
+                      className={`btn text-xs px-3 py-1.5 flex items-center gap-1 ${isSent ? 'btn-secondary text-green-600' : canSend ? 'btn-primary' : 'btn-secondary opacity-50 cursor-not-allowed'}`}
+                      disabled={!canSend || isLoad}
+                      onClick={() => sendOne(g.responsible)}
+                    >
+                      {isLoad ? <Loader size={12} className="animate-spin" /> : isSent ? <Check size={12} /> : <Send size={12} />}
+                      {isSent ? 'Gesendet' : 'Senden'}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Expandable items */}
+                {isExpand && (
+                  <div className="divide-y divide-concrete/60">
+                    {g.items.map(item => {
+                      const ovr = calcOverdue(item)
+                      const sb  = statusBadge(item.status)
+                      return (
+                        <div key={item.id} className={`px-4 py-2 text-xs flex items-start gap-3 ${ovr ? 'bg-red-50' : ''}`}>
+                          <span className="font-mono text-gray-400 w-6 flex-shrink-0">{item.no}</span>
+                          <span className={`flex-1 ${ovr ? 'text-red-700' : 'text-gray-700'}`}>{item.description}</span>
+                          {item.deadline && (
+                            <span className={`flex-shrink-0 ${ovr ? 'text-red-600 font-semibold' : 'text-gray-400'}`}>
+                              {formatDate(item.deadline)}
+                            </span>
+                          )}
+                          <span className={`badge text-xs flex-shrink-0 ${sb.color}`}>{sb.label}</span>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+
+        {/* Footer */}
+        <div className="px-5 py-3 border-t border-concrete flex items-center justify-between gap-3">
+          <span className="text-xs text-gray-400">
+            {groups.filter(g => done[g.responsible]).length} von {groups.length} versendet
+          </span>
+          <div className="flex gap-2">
+            <button className="btn-secondary text-sm" onClick={onClose}>Schließen</button>
+            {pendingCount > 1 && (
+              <button className="btn-primary text-sm" onClick={sendAll}>
+                <Send size={14} /> Alle senden ({pendingCount})
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Hauptkomponente ───────────────────────────────────────────────────────────
 export default function MassnahmenDashboard({ protocols, projects, onOpenProtocol, onBack }) {
   const [filterProject,     setFilterProject]     = useState('')
   const [filterStatus,      setFilterStatus]      = useState('')
+  const [filterPriority,    setFilterPriority]    = useState('')
   const [filterResponsible, setFilterResponsible] = useState('')
   const [onlyOpen,          setOnlyOpen]          = useState(false)
   const [onlyOverdue,       setOnlyOverdue]       = useState(false)
+  const [showEmailModal,    setShowEmailModal]    = useState(false)
 
-  // Flat list of all action items enriched with protocol/project context
+  // Flat list: alle Maßnahmen aus allen Protokollen
   const allItems = useMemo(() => {
     const items = []
     for (const protocol of protocols) {
@@ -35,7 +232,6 @@ export default function MassnahmenDashboard({ protocols, projects, onOpenProtoco
         })
       }
     }
-    // Sort: overdue first, then deadline asc (no deadline last), then protocol date desc
     items.sort((a, b) => {
       const ao = calcOverdue(a) ? 0 : 1
       const bo = calcOverdue(b) ? 0 : 1
@@ -48,21 +244,7 @@ export default function MassnahmenDashboard({ protocols, projects, onOpenProtoco
     return items
   }, [protocols, projects])
 
-  // Apply filters
-  const visible = useMemo(() => allItems.filter(item => {
-    if (filterProject     && item._projectId !== filterProject)  return false
-    if (filterStatus      && item.status !== filterStatus)        return false
-    if (filterResponsible && !item.responsible.toLowerCase().includes(filterResponsible.toLowerCase())) return false
-    if (onlyOpen    && item.status !== 'offen' && item.status !== 'in_arbeit') return false
-    if (onlyOverdue && !calcOverdue(item))                        return false
-    return true
-  }), [allItems, filterProject, filterStatus, filterResponsible, onlyOpen, onlyOverdue])
-
-  const totalOverdue = allItems.filter(calcOverdue).length
-  const totalOpen    = allItems.filter(i => i.status === 'offen' || i.status === 'in_arbeit').length
-  const hasFilters   = filterProject || filterStatus || filterResponsible || onlyOpen || onlyOverdue
-
-  // Unique projects for dropdown
+  // Filter-Optionen: eindeutige Projekte und Verantwortliche
   const projectOptions = useMemo(() => {
     const seen = new Set()
     const opts = []
@@ -75,26 +257,83 @@ export default function MassnahmenDashboard({ protocols, projects, onOpenProtoco
     return opts.sort((a, b) => a.name.localeCompare(b.name))
   }, [allItems])
 
+  const responsibleOptions = useMemo(() => {
+    const seen = new Set()
+    for (const item of allItems) {
+      const r = (item.responsible || '').trim()
+      if (r) seen.add(r)
+    }
+    return Array.from(seen).sort((a, b) => a.localeCompare(b))
+  }, [allItems])
+
+  // Filter anwenden
+  const visible = useMemo(() => allItems.filter(item => {
+    if (filterProject     && item._projectId !== filterProject)   return false
+    if (filterStatus      && item.status !== filterStatus)         return false
+    if (filterPriority    && item.priority !== filterPriority)     return false
+    if (filterResponsible && item.responsible !== filterResponsible) return false
+    if (onlyOpen    && item.status !== 'offen' && item.status !== 'in_arbeit') return false
+    if (onlyOverdue && !calcOverdue(item))                         return false
+    return true
+  }), [allItems, filterProject, filterStatus, filterPriority, filterResponsible, onlyOpen, onlyOverdue])
+
+  // E-Mail-Gruppen: sichtbare Maßnahmen gruppiert nach Verantwortlichem
+  const emailGroups = useMemo(() => {
+    const map = new Map()
+    for (const item of visible) {
+      const key = (item.responsible || '').trim() || '(kein Verantwortlicher)'
+      if (!map.has(key)) {
+        // E-Mail aus Projektkontakten suchen
+        const needle  = key.toLowerCase()
+        let foundEmail = ''
+        for (const project of projects) {
+          if (!project.isUnlocked) continue
+          for (const c of (project.contacts ?? [])) {
+            if ((c.name || '').toLowerCase().trim() === needle && c.email) {
+              foundEmail = c.email
+              break
+            }
+          }
+          if (foundEmail) break
+        }
+        map.set(key, { responsible: key, email: foundEmail, items: [] })
+      }
+      map.get(key).items.push(item)
+    }
+    return Array.from(map.values()).sort((a, b) => a.responsible.localeCompare(b.responsible))
+  }, [visible, projects])
+
+  const totalOverdue  = allItems.filter(calcOverdue).length
+  const totalOpen     = allItems.filter(i => i.status === 'offen' || i.status === 'in_arbeit').length
+  const hasFilters    = filterProject || filterStatus || filterPriority || filterResponsible || onlyOpen || onlyOverdue
+
   const clearFilters = () => {
-    setFilterProject(''); setFilterStatus(''); setFilterResponsible('')
-    setOnlyOpen(false); setOnlyOverdue(false)
+    setFilterProject(''); setFilterStatus(''); setFilterPriority('')
+    setFilterResponsible(''); setOnlyOpen(false); setOnlyOverdue(false)
   }
 
   return (
     <div className="max-w-6xl mx-auto p-4 sm:p-6 space-y-5">
 
       {/* Header */}
-      <div className="flex items-center gap-3">
-        <button className="btn-ghost p-2" onClick={onBack} title="Zurück zur Startseite">
-          <ArrowLeft size={18} />
-        </button>
-        <div>
-          <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2">
-            <BarChart2 size={20} className="text-brand-600" />
-            Maßnahmen-Dashboard
-          </h1>
-          <p className="text-xs text-gray-400">Alle Maßnahmen projekt- und protokollübergreifend</p>
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex items-center gap-3">
+          <button className="btn-ghost p-2" onClick={onBack} title="Zurück">
+            <ArrowLeft size={18} />
+          </button>
+          <div>
+            <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+              <BarChart2 size={20} className="text-brand-600" />
+              Maßnahmen-Dashboard
+            </h1>
+            <p className="text-xs text-gray-400">Alle Maßnahmen projekt- und protokollübergreifend</p>
+          </div>
         </div>
+        {visible.length > 0 && (
+          <button className="btn-primary text-sm" onClick={() => setShowEmailModal(true)}>
+            <Mail size={15} /> E-Mail versenden
+          </button>
+        )}
       </div>
 
       {/* Stats */}
@@ -102,44 +341,47 @@ export default function MassnahmenDashboard({ protocols, projects, onOpenProtoco
         <span className="badge bg-gray-100 text-gray-700 text-xs">{allItems.length} Maßnahmen gesamt</span>
         {totalOpen    > 0 && <span className="badge-yellow text-xs">{totalOpen} offen</span>}
         {totalOverdue > 0 && <span className="badge-red text-xs">{totalOverdue} überfällig</span>}
+        {hasFilters && <span className="badge-blue text-xs">{visible.length} gefiltert</span>}
       </div>
 
-      {/* Filters */}
+      {/* Filter */}
       <div className="card p-4 space-y-3">
         <div className="flex items-center gap-2 text-sm font-medium text-gray-500">
-          <Filter size={13} />
-          Filter
+          <Filter size={13} /> Filter
         </div>
         <div className="flex flex-wrap gap-2 items-center">
-          <select
-            className="select text-sm"
-            value={filterProject}
-            onChange={e => setFilterProject(e.target.value)}
-          >
+
+          {/* Projekt */}
+          <select className="select text-sm" style={{ maxWidth: '180px' }}
+            value={filterProject} onChange={e => setFilterProject(e.target.value)}>
             <option value="">Alle Projekte</option>
-            {projectOptions.map(p => (
-              <option key={p.id} value={p.id}>{p.name}</option>
-            ))}
+            {projectOptions.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
 
-          <select
-            className="select text-sm"
-            value={filterStatus}
-            onChange={e => { setFilterStatus(e.target.value); if (e.target.value) setOnlyOpen(false) }}
-          >
-            <option value="">Alle Status</option>
-            {ACTION_STATUSES.map(s => (
-              <option key={s.value} value={s.value}>{s.label}</option>
-            ))}
-          </select>
-
-          <input
-            className="input text-sm w-40"
-            placeholder="Zuständig…"
+          {/* Verantwortlicher */}
+          <select className="select text-sm" style={{ maxWidth: '180px' }}
             value={filterResponsible}
-            onChange={e => setFilterResponsible(e.target.value)}
-          />
+            onChange={e => setFilterResponsible(e.target.value)}>
+            <option value="">Alle Zuständigen</option>
+            {responsibleOptions.map(r => <option key={r} value={r}>{r}</option>)}
+          </select>
 
+          {/* Status */}
+          <select className="select text-sm" style={{ maxWidth: '150px' }}
+            value={filterStatus}
+            onChange={e => { setFilterStatus(e.target.value); if (e.target.value) setOnlyOpen(false) }}>
+            <option value="">Alle Status</option>
+            {ACTION_STATUSES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+          </select>
+
+          {/* Priorität */}
+          <select className="select text-sm" style={{ maxWidth: '140px' }}
+            value={filterPriority} onChange={e => setFilterPriority(e.target.value)}>
+            <option value="">Alle Prioritäten</option>
+            {PRIORITIES.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
+          </select>
+
+          {/* Toggle: Nur offene */}
           <button
             className={`btn text-xs px-3 py-1.5 ${onlyOpen ? 'btn-primary' : 'btn-secondary'}`}
             onClick={() => { setOnlyOpen(v => !v); if (!onlyOpen) setFilterStatus('') }}
@@ -147,6 +389,7 @@ export default function MassnahmenDashboard({ protocols, projects, onOpenProtoco
             <CheckSquare size={12} /> Nur offene
           </button>
 
+          {/* Toggle: Nur überfällige */}
           <button
             className={`btn text-xs px-3 py-1.5 ${onlyOverdue ? 'btn-danger' : 'btn-secondary'}`}
             onClick={() => setOnlyOverdue(v => !v)}
@@ -163,7 +406,7 @@ export default function MassnahmenDashboard({ protocols, projects, onOpenProtoco
         </div>
       </div>
 
-      {/* Empty state */}
+      {/* Leer-Zustand */}
       {visible.length === 0 && (
         <div className="card p-12 text-center text-gray-400 text-sm">
           {allItems.length === 0
@@ -173,7 +416,7 @@ export default function MassnahmenDashboard({ protocols, projects, onOpenProtoco
         </div>
       )}
 
-      {/* Table */}
+      {/* Tabelle */}
       {visible.length > 0 && (
         <div className="card overflow-x-auto">
           <table className="w-full text-sm border-collapse">
@@ -197,33 +440,25 @@ export default function MassnahmenDashboard({ protocols, projects, onOpenProtoco
                 const pb    = priorityBadge(item.priority)
                 const rowBg = ovr  ? 'bg-red-50 hover:bg-red-100'
                             : done ? 'bg-green-50/60 hover:bg-green-100/60'
-                            : idx % 2 === 0 ? 'bg-white hover:bg-brand-50'
-                            : 'bg-gray-50/40 hover:bg-brand-50'
+                            : idx % 2 === 0 ? 'bg-white hover:bg-sky/5'
+                            : 'bg-gray-50/40 hover:bg-sky/5'
 
                 return (
-                  <tr
-                    key={`${item._protocolId}-${item.id}`}
+                  <tr key={`${item._protocolId}-${item.id}`}
                     className={`${rowBg} cursor-pointer border-b border-gray-100 transition-colors`}
                     onClick={() => onOpenProtocol(item._protocolId)}
                     title="Protokoll öffnen"
                   >
-                    {/* Projekt */}
                     <td className="px-4 py-2.5 text-xs max-w-[120px]">
                       {item._projectLocked
                         ? <span className="flex items-center gap-1 text-amber-600"><Lock size={10} /> Gesperrt</span>
                         : <span className="font-medium text-gray-700 truncate block">{item._projectName || '–'}</span>
                       }
                     </td>
-
-                    {/* Protokoll */}
                     <td className="px-4 py-2.5 text-xs text-gray-500 max-w-[150px]">
                       <span className="truncate block" title={item._protocolNo}>{item._protocolNo}</span>
                     </td>
-
-                    {/* Nr */}
                     <td className="px-3 py-2.5 text-center text-xs font-bold text-brand-700">{item.no}</td>
-
-                    {/* Beschreibung + Bemerkungen */}
                     <td className="px-4 py-2.5 max-w-xs">
                       <span className={`block font-medium ${done ? 'line-through text-gray-400' : ovr ? 'text-red-700' : 'text-gray-800'}`}>
                         {item.description || <span className="italic text-gray-400">–</span>}
@@ -232,28 +467,18 @@ export default function MassnahmenDashboard({ protocols, projects, onOpenProtoco
                         <span className="block text-xs text-gray-400 truncate mt-0.5">{item.remarks}</span>
                       )}
                     </td>
-
-                    {/* Zuständig */}
-                    <td className="px-4 py-2.5 text-xs text-gray-600 whitespace-nowrap">
-                      {item.responsible || '–'}
-                    </td>
-
-                    {/* Frist */}
+                    <td className="px-4 py-2.5 text-xs text-gray-600 whitespace-nowrap">{item.responsible || '–'}</td>
                     <td className="px-4 py-2.5 text-xs whitespace-nowrap">
                       {item.deadline ? (
                         <span className={ovr ? 'text-red-600 font-semibold' : 'text-gray-600'}>
                           {formatDate(item.deadline)}
-                          {ovr && <span className="ml-1 inline-flex items-center"><AlertTriangle size={11} className="text-red-500" /></span>}
+                          {ovr && <AlertTriangle size={11} className="inline ml-1 text-red-500" />}
                         </span>
                       ) : <span className="text-gray-400">–</span>}
                     </td>
-
-                    {/* Priorität */}
                     <td className="px-4 py-2.5">
                       <span className={`badge text-xs ${pb.color}`}>{pb.label}</span>
                     </td>
-
-                    {/* Status */}
                     <td className="px-4 py-2.5">
                       <span className={`badge text-xs ${sb.color}`}>{sb.label}</span>
                     </td>
@@ -263,9 +488,16 @@ export default function MassnahmenDashboard({ protocols, projects, onOpenProtoco
             </tbody>
           </table>
           <div className="px-4 py-2 text-xs text-gray-400 border-t border-gray-100 bg-gray-50/50">
-            {visible.length} von {allItems.length} Maßnahmen angezeigt · Klick auf eine Zeile öffnet das Protokoll
+            {visible.length} von {allItems.length} Maßnahmen · Klick auf eine Zeile öffnet das Protokoll
           </div>
         </div>
+      )}
+
+      {showEmailModal && (
+        <EmailModal
+          groups={emailGroups}
+          onClose={() => setShowEmailModal(false)}
+        />
       )}
     </div>
   )
