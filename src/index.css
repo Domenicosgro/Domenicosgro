@@ -21,7 +21,7 @@
     font-size: 14px;   /* base: 16px → 14px; all rem values scale down */
   }
   body {
-    @apply bg-sky text-night font-sans;
+    @apply bg-concrete text-night font-sans;
   }
   body::after {
     content: '';
