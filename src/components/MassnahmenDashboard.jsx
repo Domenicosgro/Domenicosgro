@@ -13,18 +13,22 @@ function calcOverdue(item) {
 }
 
 // ── E-Mail-Plaintext aufbauen (mailto-Fallback) ────────────────────────────────
-function buildActionsText(responsible, items) {
+function buildActionsText(responsible, projectName, items) {
   const today = new Date().toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })
   const STATUS = { offen: 'Offen', in_arbeit: 'In Arbeit', erledigt: 'Erledigt', verschoben: 'Verschoben' }
   const lines = [
-    `Ihre offenen Maßnahmen – Komplizen Protokolle`,
+    `Ihre Aufgaben – ${projectName}`,
     `Stand: ${today}`, '',
     `Guten Tag, ${responsible},`,
-    `Sie haben ${items.length} Maßnahme(n) zu bearbeiten:`, '',
+    '',
+    `nachfolgend finden Sie eine Übersicht Ihrer ${items.length} Aufgabe${items.length !== 1 ? 'n' : ''} aus dem Projekt ${projectName}.`,
+    `Wir bitten Sie, die Aufgaben fristgerecht zu erfüllen.`,
+    `Der Status wird in der folgenden Projektbesprechung entsprechend aktualisiert.`,
+    '',
     ...items.map(item => {
       const dl = item.deadline
         ? new Date(item.deadline + 'T12:00:00').toLocaleDateString('de-DE') : '–'
-      return `• ${item.description || '–'}\n  Projekt: ${item._projectName || '–'} | Frist: ${dl} | Status: ${STATUS[item.status] || item.status}`
+      return `• ${item.description || '–'}\n  Protokoll: ${item._protocolNo || '–'} | Frist: ${dl} | Status: ${STATUS[item.status] || item.status}`
     }),
     '', 'Komplizen Protokolle',
   ]
@@ -33,23 +37,23 @@ function buildActionsText(responsible, items) {
 
 // ── E-Mail-Modal ──────────────────────────────────────────────────────────────
 function EmailModal({ groups, onClose }) {
-  const [emails,   setEmails]   = useState(() => Object.fromEntries(groups.map(g => [g.responsible, g.email])))
+  const gk = (g) => `${g.responsible}||${g.projectId}`
+
+  const [emails,   setEmails]   = useState(() => Object.fromEntries(groups.map(g => [gk(g), g.email])))
   const [expanded, setExpanded] = useState({})
   const [loading,  setLoading]  = useState({})
   const [done,     setDone]     = useState({})
   const [errors,   setErrors]   = useState({})
 
   const today = new Date().toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })
-  const subject = `Ihre offenen Maßnahmen – Stand ${today}`
 
-  const sendOne = async (responsible) => {
-    const email = emails[responsible]?.trim()
+  const sendOne = async (g) => {
+    const key   = gk(g)
+    const email = emails[key]?.trim()
     if (!email) return
-    const group = groups.find(g => g.responsible === responsible)
-    if (!group) return
 
-    setLoading(p => ({ ...p, [responsible]: true }))
-    setErrors(p => ({ ...p, [responsible]: '' }))
+    setLoading(p => ({ ...p, [key]: true }))
+    setErrors(p => ({ ...p, [key]: '' }))
     try {
       if (isServer) {
         const token = localStorage.getItem('kp_session_token')
@@ -59,35 +63,35 @@ function EmailModal({ groups, onClose }) {
             'Content-Type': 'application/json',
             ...(token ? { Authorization: `Bearer ${token}` } : {}),
           },
-          body: JSON.stringify({ to: email, responsible, items: group.items }),
+          body: JSON.stringify({ to: email, responsible: g.responsible, projectName: g.projectName, items: g.items }),
         })
         if (!resp.ok) {
           const err = await resp.json()
           throw new Error(err.error || 'Fehler beim Senden')
         }
       } else {
-        const body   = buildActionsText(responsible, group.items)
-        const mailto = `mailto:${encodeURIComponent(email)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`
+        const body   = buildActionsText(g.responsible, g.projectName, g.items)
+        const subj   = `Ihre Aufgaben – ${g.projectName} – Stand ${today}`
+        const mailto = `mailto:${encodeURIComponent(email)}?subject=${encodeURIComponent(subj)}&body=${encodeURIComponent(body)}`
         if (isElectron) await window.electronAPI.openExternal(mailto)
         else window.open(mailto, '_blank')
       }
-      setDone(p => ({ ...p, [responsible]: true }))
+      setDone(p => ({ ...p, [key]: true }))
     } catch (e) {
-      setErrors(p => ({ ...p, [responsible]: e.message }))
+      setErrors(p => ({ ...p, [key]: e.message }))
     } finally {
-      setLoading(p => ({ ...p, [responsible]: false }))
+      setLoading(p => ({ ...p, [key]: false }))
     }
   }
 
   const sendAll = async () => {
     for (const g of groups) {
-      if (emails[g.responsible]?.trim() && !done[g.responsible]) {
-        await sendOne(g.responsible)
-      }
+      const key = gk(g)
+      if (emails[key]?.trim() && !done[key]) await sendOne(g)
     }
   }
 
-  const pendingCount = groups.filter(g => emails[g.responsible]?.trim() && !done[g.responsible]).length
+  const pendingCount = groups.filter(g => emails[gk(g)]?.trim() && !done[gk(g)]).length
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
@@ -97,7 +101,7 @@ function EmailModal({ groups, onClose }) {
         <div className="flex items-center justify-between px-5 py-4 border-b border-concrete">
           <div className="flex items-center gap-2">
             <Mail size={18} className="text-night" />
-            <h3 className="font-semibold text-night">Maßnahmen per E-Mail versenden</h3>
+            <h3 className="font-semibold text-night">Aufgaben per E-Mail versenden</h3>
           </div>
           <button className="btn-ghost p-1" onClick={onClose}><X size={16} /></button>
         </div>
@@ -105,27 +109,30 @@ function EmailModal({ groups, onClose }) {
         {/* Body */}
         <div className="flex-1 overflow-y-auto p-5 space-y-3">
           <p className="text-xs text-gray-500">
-            Jeder Verantwortliche erhält eine gesammelte Übersicht seiner Maßnahmen.
+            Jeder Verantwortliche erhält eine projektspezifische Übersicht seiner Aufgaben.
             {!isServer && ' (Kein SMTP – E-Mail-Client wird geöffnet)'}
           </p>
 
           {groups.map(g => {
-            const email    = emails[g.responsible] ?? ''
-            const isExpand = expanded[g.responsible]
-            const isSent   = done[g.responsible]
-            const isLoad   = loading[g.responsible]
-            const err      = errors[g.responsible]
+            const key      = gk(g)
+            const email    = emails[key] ?? ''
+            const isExpand = expanded[key]
+            const isSent   = done[key]
+            const isLoad   = loading[key]
+            const err      = errors[key]
             const canSend  = !!email.trim() && !isSent
 
             return (
-              <div key={g.responsible}
+              <div key={key}
                 className={`border rounded-lg overflow-hidden ${isSent ? 'border-green-300 bg-green-50' : 'border-concrete'}`}>
                 {/* Card header */}
                 <div className="flex items-center gap-3 px-4 py-3 bg-concrete/30">
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <span className="font-semibold text-night text-sm truncate">{g.responsible}</span>
-                      <span className="badge-gray text-xs">{g.items.length} Maßnahme{g.items.length !== 1 ? 'n' : ''}</span>
+                      <span className="text-xs text-gray-400">·</span>
+                      <span className="text-xs text-sky font-medium truncate">{g.projectName}</span>
+                      <span className="badge-gray text-xs">{g.items.length} Aufgabe{g.items.length !== 1 ? 'n' : ''}</span>
                       {isSent && <span className="text-green-600 text-xs flex items-center gap-0.5"><Check size={12} /> Gesendet</span>}
                     </div>
                     <input
@@ -134,7 +141,7 @@ function EmailModal({ groups, onClose }) {
                       placeholder="E-Mail-Adresse…"
                       value={email}
                       onClick={e => e.stopPropagation()}
-                      onChange={e => setEmails(p => ({ ...p, [g.responsible]: e.target.value }))}
+                      onChange={e => setEmails(p => ({ ...p, [key]: e.target.value }))}
                       disabled={isSent}
                     />
                     {err && <p className="text-xs text-red-600 mt-1">{err}</p>}
@@ -142,15 +149,15 @@ function EmailModal({ groups, onClose }) {
                   <div className="flex items-center gap-1.5 flex-shrink-0">
                     <button
                       className="btn-ghost p-1.5 text-gray-400"
-                      title={isExpand ? 'Einklappen' : 'Maßnahmen anzeigen'}
-                      onClick={() => setExpanded(p => ({ ...p, [g.responsible]: !p[g.responsible] }))}
+                      title={isExpand ? 'Einklappen' : 'Aufgaben anzeigen'}
+                      onClick={() => setExpanded(p => ({ ...p, [key]: !p[key] }))}
                     >
                       {isExpand ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                     </button>
                     <button
                       className={`btn text-xs px-3 py-1.5 flex items-center gap-1 ${isSent ? 'btn-secondary text-green-600' : canSend ? 'btn-primary' : 'btn-secondary opacity-50 cursor-not-allowed'}`}
                       disabled={!canSend || isLoad}
-                      onClick={() => sendOne(g.responsible)}
+                      onClick={() => sendOne(g)}
                     >
                       {isLoad ? <Loader size={12} className="animate-spin" /> : isSent ? <Check size={12} /> : <Send size={12} />}
                       {isSent ? 'Gesendet' : 'Senden'}
@@ -187,7 +194,7 @@ function EmailModal({ groups, onClose }) {
         {/* Footer */}
         <div className="px-5 py-3 border-t border-concrete flex items-center justify-between gap-3">
           <span className="text-xs text-gray-400">
-            {groups.filter(g => done[g.responsible]).length} von {groups.length} versendet
+            {groups.filter(g => done[gk(g)]).length} von {groups.length} versendet
           </span>
           <div className="flex gap-2">
             <button className="btn-secondary text-sm" onClick={onClose}>Schließen</button>
@@ -277,14 +284,16 @@ export default function MassnahmenDashboard({ protocols, projects, onOpenProtoco
     return true
   }), [allItems, filterProject, filterStatus, filterPriority, filterResponsible, onlyOpen, onlyOverdue])
 
-  // E-Mail-Gruppen: sichtbare Maßnahmen gruppiert nach Verantwortlichem
+  // E-Mail-Gruppen: sichtbare Aufgaben gruppiert nach Verantwortlichem + Projekt
   const emailGroups = useMemo(() => {
     const map = new Map()
     for (const item of visible) {
-      const key = (item.responsible || '').trim() || '(kein Verantwortlicher)'
+      const responsible = (item.responsible || '').trim() || '(kein Verantwortlicher)'
+      const projectId   = item._projectId   || ''
+      const projectName = item._projectName || 'Unbekanntes Projekt'
+      const key         = `${responsible}||${projectId}`
       if (!map.has(key)) {
-        // E-Mail aus Projektkontakten suchen
-        const needle  = key.toLowerCase()
+        const needle = responsible.toLowerCase()
         let foundEmail = ''
         for (const project of projects) {
           if (!project.isUnlocked) continue
@@ -296,11 +305,14 @@ export default function MassnahmenDashboard({ protocols, projects, onOpenProtoco
           }
           if (foundEmail) break
         }
-        map.set(key, { responsible: key, email: foundEmail, items: [] })
+        map.set(key, { responsible, projectId, projectName, email: foundEmail, items: [] })
       }
       map.get(key).items.push(item)
     }
-    return Array.from(map.values()).sort((a, b) => a.responsible.localeCompare(b.responsible))
+    return Array.from(map.values()).sort((a, b) => {
+      const pc = a.projectName.localeCompare(b.projectName)
+      return pc !== 0 ? pc : a.responsible.localeCompare(b.responsible)
+    })
   }, [visible, projects])
 
   const totalOverdue  = allItems.filter(calcOverdue).length
