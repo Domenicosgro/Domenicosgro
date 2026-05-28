@@ -115,28 +115,30 @@ npm run electron:build:mac   # macOS DMG
     ├── exportParticipantsList.js  ← Word-Export Beteiligtenliste
     ├── spellcheck.worker.js       ← Web Worker für nspell
     ├── components/
-    │   ├── ProjectsHome.jsx       ← Startseite (Projektliste, Favoriten, Passwort, PWA-Install)
-    │   ├── ProjectManager.jsx     ← Kontaktverwaltung
-    │   ├── BeteiligtenModal.jsx   ← Projektbeteiligtenliste (Druck/Export)
-    │   ├── ProtocolList.jsx       ← Protokollliste (+ updatedBy-Anzeige)
-    │   ├── ProtocolEditor.jsx     ← Protokoll-Editor (Hauptkomponente)
-    │   ├── MeetingHeader.jsx      ← Metadaten des Protokolls
-    │   ├── ParticipantsList.jsx   ← Teilnehmerliste im Protokoll
-    │   ├── AgendaDraft.jsx        ← Tagesordnungs-Entwurf
-    │   ├── AgendaEmailModal.jsx   ← Agenda-E-Mail-Dialog
-    │   ├── AgendaItems.jsx        ← Agenda-Punkte-Liste
-    │   ├── ProtocolItems.jsx      ← Protokollpunkte
-    │   ├── ActionItems.jsx        ← Maßnahmen/Aufgaben
-    │   ├── NotesSection.jsx       ← Allgemeine Bemerkungen
-    │   ├── RichTextEditor.jsx     ← Tiptap-Editor-Komponente
-    │   ├── SpellCheckTextarea.jsx ← Textarea mit Rechtschreibprüfung
+    │   ├── ProjectsHome.jsx        ← Startseite: Favoriten-Ansicht, HOAI-Karte, PWA-Install
+    │   ├── ProjectDashboard.jsx    ← Projekt-Dashboard: HOAI-Schieberegler + Synology-Links  ← NEU
+    │   ├── TileSidebar.jsx         ← Kachel-Leiste im ProtocolEditor (fixed rechts, no-print) ← NEU
+    │   ├── ProjectManager.jsx      ← Kontaktverwaltung
+    │   ├── BeteiligtenModal.jsx    ← Projektbeteiligtenliste (Druck/Export)
+    │   ├── ProtocolList.jsx        ← Protokollliste (+ updatedBy-Anzeige)
+    │   ├── ProtocolEditor.jsx      ← Protokoll-Editor (Hauptkomponente)
+    │   ├── MeetingHeader.jsx       ← Metadaten des Protokolls
+    │   ├── ParticipantsList.jsx    ← Teilnehmerliste im Protokoll
+    │   ├── AgendaDraft.jsx         ← Tagesordnungs-Entwurf
+    │   ├── AgendaEmailModal.jsx    ← Agenda-E-Mail-Dialog
+    │   ├── AgendaItems.jsx         ← Agenda-Punkte-Liste
+    │   ├── ProtocolItems.jsx       ← Protokollpunkte
+    │   ├── ActionItems.jsx         ← Maßnahmen/Aufgaben
+    │   ├── NotesSection.jsx        ← Allgemeine Bemerkungen
+    │   ├── RichTextEditor.jsx      ← Tiptap-Editor-Komponente
+    │   ├── SpellCheckTextarea.jsx  ← Textarea mit Rechtschreibprüfung
     │   ├── MassnahmenDashboard.jsx ← Projektübergreifende Maßnahmen-Übersicht
-    │   ├── LoginScreen.jsx        ← Login-Maske (Server-Modus)
-    │   └── AdminPanel.jsx         ← Benutzerverwaltung (Server-Modus)
     │   ├── GesamtprotokollModal.jsx ← Gesamtprotokoll Druck/Vorschau
-    │   └── LogoUpload.jsx         ← Logo hochladen/löschen
+    │   ├── LogoUpload.jsx          ← Logo hochladen/löschen
+    │   ├── LoginScreen.jsx         ← Login-Maske (Server-Modus)
+    │   └── AdminPanel.jsx          ← Benutzerverwaltung (Server-Modus)
     └── hooks/
-        ├── useProtocols.js        ← CRUD Protokolle + syncProjectName + refetchProtocols
+        ├── useProtocols.js         ← CRUD Protokolle + syncProjectName + refetchProtocols
         ├── useProjects.js         ← CRUD Projekte + refetchProjects
         ├── useLogo.js             ← Logo-Persistenz
         ├── useSpellCheck.js       ← Rechtschreibprüfung via Worker
@@ -153,14 +155,40 @@ Alle Modelle sind in `src/utils.js` als `empty*()` Fabrik-Funktionen definiert.
 
 ```js
 {
-  id:           uid(),               // random 7-char base36 string
-  name:         '',                  // Projektname (wird in Protokoll-Kopie synct)
-  contacts:     [],                  // Kontaktliste (siehe 4.2)
-  passwordHash: null,                // SHA-256 Hex-String oder null
-  createdAt:    ISO-String,
-  updatedAt:    ISO-String,
+  id:                uid(),      // UUID
+  name:              '',         // Projektname (wird in Protokoll-Kopie gesynct)
+  contacts:          [],         // Kontaktliste (siehe 4.2)
+  passwordHash:      null,       // Legacy SHA-256 Hex – null nach Migration auf AES-GCM
+  isEncrypted:       false,
+  encryptedContacts: null,       // base64 AES-GCM Ciphertext
+  cryptoSalt:        null,       // base64 32-Byte PBKDF2-Salt
+  cryptoIv:          null,       // base64 12-Byte AES-GCM IV
+  hoaiServices:      [],         // HOAI-Leistungsbilder (siehe 4.1.1) – default []
+  linkedFolders:     [],         // verknüpfte Synology-URLs (siehe 4.1.2) – default []
+  createdAt:         ISO-String,
+  updatedAt:         ISO-String,
 }
 ```
+
+#### 4.1.1 HOAI-Leistungsbild (hoaiServices[])
+
+```js
+{
+  id:          uid(),
+  type:        'gebaeude',    // Schlüssel aus HOAI_LEISTUNGSBILDER
+  label:       'Gebäude (§ 34)',
+  phases:      { 1:0, 2:0, 3:0, 4:0, 5:0, 6:0, 7:0, 8:0, 9:0 },  // Fortschritt 0–100
+  activePhase: 1,             // aktuell laufende LPH (für Karten-Anzeige)
+}
+```
+
+#### 4.1.2 Verknüpfter Ordner (linkedFolders[])
+
+```js
+{ id: uid(), label: 'Pläne', url: 'https://nas.../sharing/xxxx' }
+```
+
+Nur Web-URLs (https://…). Windows-Pfade (\\server\...) werden vom Browser blockiert.
 
 ### 4.2 Kontakt (innerhalb eines Projekts)
 
@@ -201,6 +229,7 @@ Alle Modelle sind in `src/utils.js` als `empty*()` Fabrik-Funktionen definiert.
   agendaGreeting:  '',
   agendaItems:     [],     // Protokollpunkte, siehe 4.6
   actionItems:     [],     // Maßnahmen, siehe 4.7
+  tiles:           [],     // Kacheln in der Sidebar (Dokument-/URL-Links), siehe 4.8
   createdAt:       ISO-String,
   updatedAt:       ISO-String,
 }
@@ -252,6 +281,20 @@ Alle Modelle sind in `src/utils.js` als `empty*()` Fabrik-Funktionen definiert.
   attachment:         null,        // { name, mimeType, data (base64), size } – max 20 MB
 }
 ```
+
+### 4.8 Kachel (tiles[] im Protokoll)
+
+```js
+{
+  id:    uid(),
+  label: '',
+  kind:  'url',   // 'folder' | 'url' | 'doc'
+  url:   '',
+  color: 'night', // 'night' | 'sky' | 'concrete'
+}
+```
+
+Kacheln werden in `TileSidebar.jsx` gerendert (fixed rechts, no-print). Klick öffnet `url` in neuem Tab. Farbe steuert Night/Sky/Concrete CI-Schema.
 
 ### 4.7 Maßnahme (actionItems[])
 
@@ -311,7 +354,19 @@ updateLogo(dataUrl)
 clearLogo()
 ```
 
-### 5.4 useSpellCheck (`src/hooks/useSpellCheck.js`)
+### 5.4 useUserSettings (`src/hooks/useUserSettings.js`)
+
+```js
+const { settings, loaded, update, isFavorite, toggleFavorite } = useUserSettings(username)
+```
+
+- **Server-Modus:** `GET/PUT /api/auth/users/:username/settings` (JSON pro Benutzer).
+- **Lokal/Electron:** `localStorage` unter `bb_user_settings`.
+- `settings.favorites: string[]` – Array von Projekt-IDs.
+- `isFavorite(id)` – boolean; `toggleFavorite(id)` – aktualisiert Favoriten-Array.
+- Debounced Save (500 ms).
+
+### 5.5 useSpellCheck (`src/hooks/useSpellCheck.js`)
 
 Web Worker (`spellcheck.worker.js`) lädt `nspell` + `dictionary-de`. Gibt `checkWord(word)` und `getSuggestions(word)` zurück.
 
@@ -322,11 +377,19 @@ Web Worker (`spellcheck.worker.js`) lädt `nspell` + `dictionary-de`. Gibt `chec
 `App.jsx` verwaltet einen `view`-State (einfache String-State-Machine, kein Router):
 
 ```
-'home'              → <ProjectsHome>
-'protocols'         → <ProtocolList>
-'editor'            → <ProtocolEditor>
-'project-contacts'  → <ProjectManager>
+'home'               → <ProjectsHome>
+'project-dashboard'  → <ProjectDashboard>   ← NEU
+'protocols'          → <ProtocolList>
+'editor'             → <ProtocolEditor>
+'project-contacts'   → <ProjectManager>
+'dashboard'          → <MassnahmenDashboard>
 ```
+
+**Navigation:**
+- Klick auf Projekt-Card → `project-dashboard`
+- „Protokolle" in ProjectDashboard → `protocols`
+- „Kontakte" in ProjectDashboard → `project-contacts` (mit `contactsOrigin='project-dashboard'` → zurück zum Dashboard)
+- „Kontakte" in ProtocolList → `project-contacts` (mit `contactsOrigin='protocols'` → zurück zur Liste)
 
 **Projekt-Name-Sync:**
 
@@ -346,12 +409,32 @@ Dieser Wrapper wird als `onUpdate` an `ProjectsHome` und `ProjectManager` überg
 
 ### 7.1 ProjectsHome
 
-**Props:** `{ projects, protocols, onCreate, onUpdate, onDelete, onOpenProject }`
+**Props:** `{ projects, protocols, onCreate, onUpdate, onDelete, onOpenProject, onOpenProjectDashboard, ... }`
 
-- Zeigt alle Projekte als Karten
-- **Favoriten (★):** werden in `localStorage` unter `bb_project_favorites` gespeichert
-- **Passwortschutz:** SHA-256 Hash via Web Crypto API (`hashPassword()` aus `utils.js`); gespeichert in `project.passwordHash`
-- Nur Protokolle aus **markierten** Projekten erscheinen im Vorgänger-Dropdown
+- **Favoriten-Ansicht:** Standardmäßig nur favorisierte Projekte (Stern = `useUserSettings.favorites[]`). Toggle „Alle anzeigen" / „Nur Favoriten".
+- Favoriten werden per `useUserSettings` server-seitig pro Nutzer gespeichert (Baustein A).
+- Karten zeigen HOAI-Stand: Leistungsbild · LPH + Sky-Fortschrittsbalken (`calcProjectProgress()`).
+- Klick auf Karte → `onOpenProjectDashboard(id)` → View `'project-dashboard'`.
+- **Passwortschutz:** AES-GCM via `crypto.js`; Legacy-SHA-256-Hash wird beim ersten Öffnen migriert.
+- Nur Protokolle aus **markierten** Projekten erscheinen im Vorgänger-Dropdown.
+
+### 7.1a ProjectDashboard ← NEU
+
+**Props:** `{ project, protocols, onBack, onOpenProtocols, onManageContacts, onUpdate }`
+
+- **HOAI-Leistungsbilder:** Mehrere Leistungsbilder pro Projekt. „Leistungsbild hinzufügen"-Dropdown aus `HOAI_LEISTUNGSBILDER`. Pro Leistungsbild 9 Schieberegler (LPH 1–9, 0–100 %, Schritt 5). Aktive Phase per Kreis-Button markierbar.
+- **Verknüpfte Ordner:** Liste der `project.linkedFolders`. Formular: Label + URL. „Öffnen" → `target="_blank" rel="noopener"`.
+- Alle Änderungen sofort via `onUpdate(project.id, { hoaiServices/linkedFolders: ... })` gespeichert.
+
+### 7.1b TileSidebar ← NEU
+
+**Props:** `{ tiles, linkedFolders, onChange }`
+
+- Vertikale, quadratische Kacheln (`w-24 h-24`) fixed rechts im ProtocolEditor. `no-print`.
+- Kacheln in Night/Sky/Concrete CI-Farbschema, Hover-Wechsel.
+- Plus-Kachel → Modal: Quelle (Ordner aus `linkedFolders` oder freie URL), Label, Farbe.
+- Klick auf Kachel → `window.open(url, '_blank', 'noopener')`.
+- Kacheln per × entfernen.
 
 ### 7.2 ProjectManager
 
@@ -612,14 +695,21 @@ priorityBadge(val)                 // → { value, label, color } aus PRIORITIES
 // Agenda-E-Mail
 buildAgendaEmailBody(protocol)     // → Plaintext für mailto:
 
+// HOAI
+HOAI_LEISTUNGSBILDER                      // 5 Einträge { type, label }
+HOAI_PHASEN                               // { 1: 'Grundlagenermittlung', … 9: 'Objektbetreuung' }
+emptyHoaiService(type?)                   // → { id, type, label, phases{1..9: 0}, activePhase: 1 }
+calcProjectProgress(hoaiServices)         // → Ø Fortschritt 0–100
+
 // Fabrik-Funktionen
-emptyProject()
+emptyProject()                            // incl. hoaiServices: [], linkedFolders: []
 emptyContact()
-emptyProtocol()
+emptyProtocol()                           // incl. tiles: []
 emptyParticipant()
 emptyAgendaDraftItem()
 emptyAgendaItem(level)
 emptyActionItem()
+emptyTile(color?)                         // → { id, label:'', kind:'url', url:'', color }
 ```
 
 **Konstanten:**
