@@ -1,8 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { Plus, Trash2, Search, ChevronRight, FileText, Users, FolderOpen,
          Calendar, Lock, LockOpen, X, Eye, EyeOff, Star, BarChart2,
-         User, Settings, LogOut, Monitor, Download, RotateCcw } from 'lucide-react'
-import { formatDate } from '../utils'
+         User, Settings, LogOut, Monitor, Download, RotateCcw, LayoutDashboard } from 'lucide-react'
+import { formatDate, calcProjectProgress } from '../utils'
 import { useUserSettings } from '../hooks/useUserSettings'
 
 // ── Password modal ─────────────────────────────────────────────────────────────
@@ -113,13 +113,14 @@ function PasswordModal({ mode, projectName, onConfirm, onCancel }) {
 
 // ── Main component ─────────────────────────────────────────────────────────────
 export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, onDelete, onOpenProject,
-                                       onUnlock, onSetPassword, onRemovePassword, onOpenDashboard,
-                                       serverUser, onLogout, onOpenAdmin }) {
-  const [search,         setSearch]         = useState('')
-  const [modal,          setModal]          = useState(null)   // { mode, projectId }
-  const [installPrompt,  setInstallPrompt]  = useState(null)
-  const [installed,      setInstalled]      = useState(false)
-  const { settings, update: updateSettings } = useUserSettings(serverUser?.username)
+                                       onOpenProjectDashboard, onUnlock, onSetPassword, onRemovePassword,
+                                       onOpenDashboard, serverUser, onLogout, onOpenAdmin }) {
+  const [search,        setSearch]        = useState('')
+  const [showAll,       setShowAll]       = useState(false)
+  const [modal,         setModal]         = useState(null)   // { mode, projectId }
+  const [installPrompt, setInstallPrompt] = useState(null)
+  const [installed,     setInstalled]     = useState(false)
+  const { settings, isFavorite, toggleFavorite } = useUserSettings(serverUser?.username)
 
   useEffect(() => {
     const handler = (e) => { e.preventDefault(); setInstallPrompt(e) }
@@ -127,49 +128,45 @@ export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, 
     window.addEventListener('appinstalled', () => { setInstalled(true); setInstallPrompt(null) })
     return () => window.removeEventListener('beforeinstallprompt', handler)
   }, [])
-  const favorites = new Set(settings.favorites ?? [])
+
   // ID of the project whose name input should be auto-focused after creation
   const focusIdRef = useRef(null)
 
-  const toggleFavorite = (projectId, e) => {
-    e.stopPropagation()
-    const next = new Set(favorites)
-    if (next.has(projectId)) next.delete(projectId)
-    else next.add(projectId)
-    updateSettings({ favorites: [...next] })
-  }
+  const hasFavorites = projects.some(p => isFavorite(p.id))
 
   const q = search.trim().toLowerCase()
-  const filtered = projects
+  const baseFiltered = projects
     .filter(p => !q || (p.name || '').toLowerCase().includes(q))
-    // Favorites first, then original order
-    .sort((a, b) => {
-      const af = favorites.has(a.id) ? 0 : 1
-      const bf = favorites.has(b.id) ? 0 : 1
-      return af - bf
-    })
-  const unassigned = protocols.filter(p => !p.projectId)
-  const protocolsFor = (id) => protocols.filter(p => p.projectId === id)
-  const lastDate = (arr) => arr.length ? arr.map(p => p.date).sort().reverse()[0] : null
 
-  // ── Create project and auto-focus its name input ────────────────────────────
+  // Favorites-only mode: only show when there are favorites AND showAll=false
+  const displayed = (hasFavorites && !showAll)
+    ? baseFiltered.filter(p => isFavorite(p.id))
+    : baseFiltered.sort((a, b) => {
+        const af = isFavorite(a.id) ? 0 : 1
+        const bf = isFavorite(b.id) ? 0 : 1
+        return af - bf
+      })
+
+  const unassigned    = protocols.filter(p => !p.projectId)
+  const protocolsFor  = (id) => protocols.filter(p => p.projectId === id)
+  const lastDate      = (arr) => arr.length ? arr.map(p => p.date).sort().reverse()[0] : null
+
   const handleCreate = () => {
     const id = onCreate()
     focusIdRef.current = id
+    // Show all when creating so newly created project is visible
+    if (hasFavorites) setShowAll(true)
   }
 
-  // ── Open project (with lock check) ──────────────────────────────────────────
   const handleCardClick = (project) => {
-    // Block navigation for unnamed projects so the user can type a name first
     if (!project.name.trim()) return
     if (!project.isUnlocked) {
       setModal({ mode: 'unlock', projectId: project.id })
     } else {
-      onOpenProject(project.id)
+      onOpenProjectDashboard(project.id)
     }
   }
 
-  // ── Lock button click ────────────────────────────────────────────────────────
   const handleLockClick = (e, project) => {
     e.stopPropagation()
     if (project.isEncrypted || project.passwordHash) {
@@ -179,20 +176,19 @@ export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, 
     }
   }
 
-  // ── Modal confirm ────────────────────────────────────────────────────────────
   const handleModalConfirm = async (pw) => {
     const { mode, projectId } = modal
     if (mode === 'unlock') {
-      await onUnlock(projectId, pw)   // throws on wrong password
+      await onUnlock(projectId, pw)
       setModal(null)
-      onOpenProject(projectId)
+      onOpenProjectDashboard(projectId)
     }
     if (mode === 'set' || mode === 'change') {
       await onSetPassword(projectId, pw)
       setModal(null)
     }
     if (mode === 'remove') {
-      await onRemovePassword(projectId, pw)   // throws on wrong password
+      await onRemovePassword(projectId, pw)
       setModal(null)
     }
   }
@@ -202,7 +198,7 @@ export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, 
   return (
     <div className="max-w-4xl mx-auto p-4 sm:p-6 space-y-6">
 
-      {/* Dev-Mode-Banner: Server ohne Benutzer */}
+      {/* Dev-Mode-Banner */}
       {serverUser?.devMode && onOpenAdmin && (
         <div className="bg-amber-50 border border-amber-200 text-amber-800 px-4 py-3 text-sm flex items-center justify-between gap-4">
           <span>
@@ -222,7 +218,6 @@ export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, 
           <p className="text-sm text-gray-500 mt-0.5">Projekte &amp; Besprechungsprotokolle</p>
         </div>
         <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
-          {/* Server-Benutzer-Info */}
           {serverUser && !serverUser.devMode && (
             <>
               <div className="flex items-center gap-1.5 text-sm text-gray-600 border-r border-gray-200 pr-2">
@@ -247,23 +242,19 @@ export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, 
             </button>
           )}
           {window.__SERVER_MODE__ && !installed && installPrompt && (
-            <button
-              className="btn btn-secondary"
-              title="App auf dem Desktop installieren"
-              onClick={() => installPrompt.prompt()}
-            >
+            <button className="btn btn-secondary" title="App installieren"
+              onClick={() => installPrompt.prompt()}>
               <Download size={14} /> App installieren
             </button>
           )}
           {window.__SERVER_MODE__ && !installPrompt && !installed && (
-            <a className="btn btn-secondary" href="/shortcut" download title="Desktop-Verknüpfung herunterladen">
+            <a className="btn btn-secondary" href="/shortcut" download title="Desktop-Verknüpfung">
               <Monitor size={14} /> Verknüpfung
             </a>
           )}
-          {installed && (
-            <span className="text-xs text-green-600 font-medium px-2">✓ App installiert</span>
-          )}
-          <button className="btn-ghost p-2 text-gray-400" title="Seite neu laden" onClick={() => window.location.reload()}>
+          {installed && <span className="text-xs text-green-600 font-medium px-2">✓ App installiert</span>}
+          <button className="btn-ghost p-2 text-gray-400" title="Seite neu laden"
+            onClick={() => window.location.reload()}>
             <RotateCcw size={15} />
           </button>
           <button className="btn btn-primary" onClick={handleCreate}>
@@ -272,12 +263,24 @@ export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, 
         </div>
       </div>
 
-      {/* Search */}
+      {/* Search + favorites toggle */}
       {projects.length > 0 && (
-        <div className="relative">
-          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-          <input className="input pl-9" placeholder="Projekte durchsuchen…"
-            value={search} onChange={e => setSearch(e.target.value)} />
+        <div className="flex gap-2">
+          <div className="relative flex-1">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input className="input pl-9" placeholder="Projekte durchsuchen…"
+              value={search} onChange={e => setSearch(e.target.value)} />
+          </div>
+          {hasFavorites && (
+            <button
+              className={`btn-secondary shrink-0 ${!showAll ? 'bg-night text-light border-night hover:bg-night/90' : ''}`}
+              onClick={() => setShowAll(v => !v)}
+              title={showAll ? 'Nur Favoriten anzeigen' : 'Alle Projekte anzeigen'}
+            >
+              <Star size={14} fill={!showAll ? 'currentColor' : 'none'} />
+              {showAll ? 'Nur Favoriten' : 'Alle anzeigen'}
+            </button>
+          )}
         </div>
       )}
 
@@ -293,30 +296,40 @@ export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, 
         </div>
       )}
 
+      {/* No favorites yet hint */}
+      {hasFavorites && !showAll && displayed.length === 0 && q && (
+        <p className="text-sm text-gray-400 text-center py-4">Kein Favorit gefunden.</p>
+      )}
+
       {/* Project cards */}
       <div className="space-y-3">
-        {filtered.map(project => {
+        {displayed.map(project => {
           const protos    = protocolsFor(project.id)
           const last      = lastDate(protos)
           const open      = protos.filter(p => !p.isClosed).length
           const closed    = protos.filter(p =>  p.isClosed).length
           const isLocked  = project.isEncrypted || !!project.passwordHash
           const isSession = project.isUnlocked
+          const isFav     = isFavorite(project.id)
+          const services  = project.hoaiServices ?? []
+          const progress  = calcProjectProgress(services)
+          const firstSvc  = services[0]
+          const extraSvcs = services.length - 1
 
           return (
             <div key={project.id}
-              className="card p-0 overflow-hidden hover:border-brand-400 transition-colors cursor-pointer group"
+              className="card p-0 overflow-hidden hover:border-sky transition-colors cursor-pointer group"
               onClick={() => handleCardClick(project)}
             >
-              <div className="flex items-center gap-3 p-4">
+              <div className="flex items-start gap-3 p-4">
                 {/* Color bar */}
-                <div className={`w-1.5 self-stretch rounded-full flex-shrink-0 ${isLocked ? 'bg-amber-400' : 'bg-brand-500'}`} />
+                <div className={`w-1.5 self-stretch rounded-full flex-shrink-0 mt-1 ${isLocked ? 'bg-amber-400' : 'bg-night'}`} />
 
                 {/* Info */}
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
                     <input
-                      className="font-semibold text-base text-gray-900 bg-transparent border-none outline-none w-full focus:bg-white focus:border focus:border-brand-300 focus:rounded px-1 -ml-1"
+                      className="font-semibold text-base text-gray-900 bg-transparent border-none outline-none w-full focus:bg-white focus:border focus:border-sky focus:rounded px-1 -ml-1"
                       value={project.name}
                       placeholder="Projektname…"
                       ref={el => {
@@ -336,6 +349,7 @@ export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, 
                       </span>
                     )}
                   </div>
+
                   <div className="flex items-center gap-3 mt-1 text-xs text-gray-500 flex-wrap">
                     <span className="flex items-center gap-1">
                       <FileText size={11} />
@@ -357,19 +371,37 @@ export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, 
                       </span>
                     )}
                   </div>
+
+                  {/* HOAI progress */}
+                  {services.length > 0 && (
+                    <div className="mt-2 space-y-1">
+                      <div className="flex items-center justify-between text-xs text-gray-500">
+                        <span className="flex items-center gap-1.5">
+                          <LayoutDashboard size={10} className="text-sky" />
+                          {firstSvc.label.split('(')[0].trim()} · LPH {firstSvc.activePhase}
+                          {extraSvcs > 0 && <span className="text-gray-400"> +{extraSvcs} weitere</span>}
+                        </span>
+                        <span className="font-semibold text-night">{progress}%</span>
+                      </div>
+                      <div className="w-full h-1.5 bg-concrete rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-sky rounded-full transition-all duration-300"
+                          style={{ width: `${progress}%` }}
+                        />
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* Actions */}
-                <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
-                  {/* Favorite star */}
+                <div className="flex items-center gap-1 flex-shrink-0" onClick={e => e.stopPropagation()}>
                   <button
-                    className={`btn-ghost p-2 transition-colors ${favorites.has(project.id) ? 'text-amber-400 hover:text-amber-500' : 'text-gray-300 hover:text-amber-400'}`}
-                    title={favorites.has(project.id) ? 'Favorit aufheben' : 'Als Favorit markieren'}
-                    onClick={e => toggleFavorite(project.id, e)}
+                    className={`btn-ghost p-2 transition-colors ${isFav ? 'text-amber-400 hover:text-amber-500' : 'text-gray-300 hover:text-amber-400'}`}
+                    title={isFav ? 'Favorit aufheben' : 'Als Favorit markieren'}
+                    onClick={() => toggleFavorite(project.id)}
                   >
-                    <Star size={14} fill={favorites.has(project.id) ? 'currentColor' : 'none'} />
+                    <Star size={14} fill={isFav ? 'currentColor' : 'none'} />
                   </button>
-                  {/* Lock / unlock button */}
                   <button
                     className={`btn-ghost p-2 ${isLocked ? 'text-amber-500 hover:text-amber-700' : 'text-gray-400 hover:text-brand-600'}`}
                     title={isLocked ? 'Passwort ändern / entfernen' : 'Passwort festlegen'}
@@ -391,13 +423,24 @@ export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, 
                     <Trash2 size={14} />
                   </button>
                 </div>
-                <ChevronRight size={16} className="text-gray-300 group-hover:text-brand-500 transition-colors flex-shrink-0" />
+                <ChevronRight size={16} className="text-concrete group-hover:text-sky transition-colors flex-shrink-0 mt-1" />
               </div>
             </div>
           )
         })}
 
-        {filtered.length === 0 && projects.length > 0 && (
+        {displayed.length === 0 && projects.length > 0 && !q && hasFavorites && !showAll && (
+          <div className="card p-10 text-center">
+            <Star size={32} className="mx-auto text-amber-300 mb-3" />
+            <p className="text-gray-500 font-medium">Noch keine Favoriten</p>
+            <p className="text-sm text-gray-400 mt-1">Klicke auf den Stern eines Projekts, um es als Favorit zu markieren.</p>
+            <button className="btn-secondary mt-4" onClick={() => setShowAll(true)}>
+              Alle Projekte anzeigen
+            </button>
+          </div>
+        )}
+
+        {displayed.length === 0 && q && (
           <p className="text-sm text-gray-400 text-center py-4">Kein Projekt gefunden.</p>
         )}
       </div>
@@ -409,7 +452,7 @@ export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, 
             Protokolle ohne Projekt ({unassigned.length})
           </h2>
           <div
-            className="card p-4 flex items-center gap-3 hover:border-brand-400 cursor-pointer transition-colors group"
+            className="card p-4 flex items-center gap-3 hover:border-sky cursor-pointer transition-colors group"
             onClick={() => onOpenProject(null)}
           >
             <div className="w-1.5 self-stretch rounded-full bg-gray-300 flex-shrink-0" />
@@ -417,7 +460,7 @@ export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, 
               <p className="font-medium text-gray-700">Nicht zugeordnete Protokolle</p>
               <p className="text-xs text-gray-400 mt-0.5">{unassigned.length} Protokoll{unassigned.length !== 1 ? 'e' : ''}</p>
             </div>
-            <ChevronRight size={16} className="text-gray-300 group-hover:text-brand-500 transition-colors" />
+            <ChevronRight size={16} className="text-gray-300 group-hover:text-sky transition-colors" />
           </div>
         </div>
       )}

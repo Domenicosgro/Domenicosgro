@@ -7,6 +7,7 @@ import ProjectManager        from './components/ProjectManager'
 import ProtocolList          from './components/ProtocolList'
 import ProtocolEditor        from './components/ProtocolEditor'
 import MassnahmenDashboard   from './components/MassnahmenDashboard'
+import ProjectDashboard      from './components/ProjectDashboard'
 import LoginScreen           from './components/LoginScreen'
 import AdminPanel            from './components/AdminPanel'
 import { hashPassword } from './utils'
@@ -41,6 +42,7 @@ export default function App() {
 
   const [view,              setView]              = useState('home')
   const [selectedProjectId, setSelectedProjectId] = useState(null)
+  const [contactsOrigin,    setContactsOrigin]    = useState('protocols')
   const [activeId,          setActiveId]          = useState(null)
   const activeIdRef = useRef(activeId)
   activeIdRef.current = activeId
@@ -220,6 +222,7 @@ export default function App() {
   }
 
   const openProject = (projectId) => { setSelectedProjectId(projectId); setView('protocols') }
+  const openProjectDashboard = (projectId) => { setSelectedProjectId(projectId); setView('project-dashboard') }
 
   const handleCreateProtocol = () => {
     const project = projectsWithContacts.find(p => p.id === selectedProjectId)
@@ -344,7 +347,7 @@ export default function App() {
           onImport={importProtocol}
           onOpenImported={(id) => { setActiveId(id); setView('editor') }}
           onBack={handleBackFromProtocols}
-          onManageContacts={() => setView('project-contacts')}
+          onManageContacts={() => { setContactsOrigin('protocols'); setView('project-contacts') }}
           onRefresh={handleRefresh}
         />
         <UpdateBanner /><SaveErrorBanner />
@@ -361,7 +364,7 @@ export default function App() {
           onCreate={createProject}
           onUpdate={handleUpdateProject}
           onDelete={deleteProject}
-          onBack={() => setView('protocols')}
+          onBack={() => setView(contactsOrigin)}
           logoDataUrl={logoDataUrl}
         />
         <UpdateBanner /><SaveErrorBanner />
@@ -383,6 +386,24 @@ export default function App() {
     )
   }
 
+  if (view === 'project-dashboard') {
+    const project = projectsWithContacts.find(p => p.id === selectedProjectId)
+    if (!project) { setView('home'); return null }
+    return wrap(
+      <>
+        <ProjectDashboard
+          project={project}
+          protocols={protocols}
+          onBack={() => setView('home')}
+          onOpenProtocols={() => openProject(selectedProjectId)}
+          onManageContacts={() => { setContactsOrigin('project-dashboard'); setView('project-contacts') }}
+          onUpdate={handleUpdateProject}
+        />
+        <UpdateBanner /><SaveErrorBanner />
+      </>
+    )
+  }
+
   return wrap(
     <>
       <ProjectsHome
@@ -392,6 +413,7 @@ export default function App() {
         onUpdate={handleUpdateProject}
         onDelete={deleteProject}
         onOpenProject={openProject}
+        onOpenProjectDashboard={openProjectDashboard}
         onUnlock={handleUnlockProject}
         onSetPassword={handleSetProjectPassword}
         onRemovePassword={handleRemoveProjectPassword}
