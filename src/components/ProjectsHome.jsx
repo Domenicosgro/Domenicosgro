@@ -269,6 +269,7 @@ export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, 
           <button className="btn btn-primary" onClick={handleCreate}>
             <Plus size={16} /> Neues Projekt
           </button>
+        </div>
       </div>
 
       {/* Search */}
