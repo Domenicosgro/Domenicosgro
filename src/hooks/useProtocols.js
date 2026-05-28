@@ -309,8 +309,24 @@ export function useProtocols() {
     )
   }, [])
 
+  const refetchProtocols = useCallback(async () => {
+    try {
+      if (isServer) {
+        const data = await serverLoad()
+        setProtocols(Array.isArray(data) ? data : [])
+      } else {
+        const raw = await localLoad()
+        const data = Array.isArray(raw) ? raw : []
+        setProtocols(data)
+      }
+    } catch (e) {
+      setSaveError(`Aktualisierung fehlgeschlagen: ${e.message}`)
+    }
+  }, [])
+
   return {
     protocols, loaded, saveError, clearSaveError,
     createProtocol, updateProtocol, deleteProtocol, duplicateProtocol, importProtocol, syncProjectName,
+    refetchProtocols,
   }
 }

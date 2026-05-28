@@ -244,5 +244,19 @@ export function useProjects() {
     setProjects(prev => prev.filter(p => p.id !== id))
   }, [])
 
-  return { projects, loaded, saveError, clearSaveError, createProject, updateProject, deleteProject }
+  const refetchProjects = useCallback(async () => {
+    try {
+      if (isServer) {
+        const data = await serverLoad()
+        setProjects(Array.isArray(data) ? data : [])
+      } else {
+        const data = await localLoad()
+        setProjects(Array.isArray(data) ? data : [])
+      }
+    } catch (e) {
+      setSaveError(`Aktualisierung fehlgeschlagen: ${e.message}`)
+    }
+  }, [])
+
+  return { projects, loaded, saveError, clearSaveError, createProject, updateProject, deleteProject, refetchProjects }
 }

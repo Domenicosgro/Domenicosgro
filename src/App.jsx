@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react'
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { useProtocols } from './hooks/useProtocols'
 import { useProjects }  from './hooks/useProjects'
 import { useLogo }      from './hooks/useLogo'
@@ -20,13 +20,19 @@ export default function App() {
     protocols, loaded,
     saveError: protocolSaveError, clearSaveError: clearProtocolError,
     createProtocol, updateProtocol, deleteProtocol, duplicateProtocol, importProtocol, syncProjectName,
+    refetchProtocols,
   } = useProtocols()
 
   const {
     projects, loaded: projectsLoaded,
     saveError: projectSaveError, clearSaveError: clearProjectError,
     createProject, updateProject, deleteProject,
+    refetchProjects,
   } = useProjects()
+
+  const handleRefresh = useCallback(async () => {
+    await Promise.all([refetchProtocols(), refetchProjects()])
+  }, [refetchProtocols, refetchProjects])
 
   const { logoDataUrl, updateLogo, clearLogo, saveError: logoSaveError, clearSaveError: clearLogoError } = useLogo()
 
@@ -315,6 +321,7 @@ export default function App() {
           onLogoClear={clearLogo}
           onUpdate={handleUpdateProtocol}
           onBack={handleBackFromEditor}
+          onRefresh={handleRefresh}
         />
         <UpdateBanner /><SaveErrorBanner />
       </>
@@ -338,6 +345,7 @@ export default function App() {
           onOpenImported={(id) => { setActiveId(id); setView('editor') }}
           onBack={handleBackFromProtocols}
           onManageContacts={() => setView('project-contacts')}
+          onRefresh={handleRefresh}
         />
         <UpdateBanner /><SaveErrorBanner />
       </>

@@ -6,7 +6,7 @@ const isElectron = typeof window !== 'undefined' && !!window.electronAPI
 
 export default function ProtocolList({
   protocols, allProtocols, project, onCreate, onOpen, onDelete, onDuplicate,
-  onImport, onOpenImported, onBack, onManageContacts,
+  onImport, onOpenImported, onBack, onManageContacts, onRefresh,
 }) {
   const pool = allProtocols ?? protocols  // fall back to current list if not provided
   const fileInputRef = useRef(null)
@@ -80,7 +80,7 @@ export default function ProtocolList({
         </div>
 
         <div className="flex gap-2 self-start sm:self-auto flex-wrap">
-          <button className="btn-ghost p-2 text-gray-400" title="Seite neu laden" onClick={() => window.location.reload()}>
+          <button className="btn-ghost p-2 text-gray-400" title="Daten aktualisieren" onClick={onRefresh}>
             <RotateCcw size={15} />
           </button>
           <input ref={fileInputRef} type="file" accept=".json" className="hidden" onChange={handleFileChange} />

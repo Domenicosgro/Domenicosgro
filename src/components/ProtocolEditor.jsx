@@ -49,7 +49,7 @@ function promoteAgenda(agenda, existingItems) {
   ]
 }
 
-export default function ProtocolEditor({ protocol, protocols, projects, projectContacts, logoDataUrl, onLogoUpdate, onLogoClear, onUpdate, onBack }) {
+export default function ProtocolEditor({ protocol, protocols, projects, projectContacts, logoDataUrl, onLogoUpdate, onLogoClear, onUpdate, onBack, onRefresh }) {
   const change = (patch) => onUpdate(protocol.id, patch)
 
   const [showEmailModal,       setShowEmailModal]       = useState(false)
@@ -342,7 +342,7 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
       <div className="flex items-center justify-between mb-4 no-print flex-wrap gap-2">
         <div className="flex items-center gap-2">
           <button className="btn-secondary" onClick={onBack}><ArrowLeft size={16} /> Zurück</button>
-          <button className="btn-ghost p-2 text-gray-400" title="Seite neu laden" onClick={() => window.location.reload()}>
+          <button className="btn-ghost p-2 text-gray-400" title="Daten aktualisieren" onClick={onRefresh}>
             <RotateCcw size={15} />
           </button>
         </div>
