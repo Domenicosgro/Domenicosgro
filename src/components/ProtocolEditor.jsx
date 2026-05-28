@@ -50,10 +50,14 @@ function promoteAgenda(agenda, existingItems) {
   ]
 }
 
-export default function ProtocolEditor({ protocol, protocols, projects, projectContacts, logoDataUrl, onLogoUpdate, onLogoClear, onUpdate, onBack, onRefresh }) {
+export default function ProtocolEditor({ protocol, protocols, projects, projectContacts, logoDataUrl, onLogoUpdate, onLogoClear, onUpdate, onUpdateProject, onBack, onRefresh }) {
   const change = (patch) => onUpdate(protocol.id, patch)
   const linkedProject  = (projects ?? []).find(p => p.id === protocol.projectId) ?? null
   const linkedFolders  = linkedProject?.linkedFolders ?? []
+  const tiles          = linkedProject?.tiles ?? []
+  const handleTilesChange = (nextTiles) => {
+    if (linkedProject && onUpdateProject) onUpdateProject(linkedProject.id, { tiles: nextTiles })
+  }
 
   const [showEmailModal,       setShowEmailModal]       = useState(false)
   const [confirmClose,         setConfirmClose]         = useState(false)
@@ -339,13 +343,8 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
   )
 
   return (
-    <>
-    <TileSidebar
-      tiles={protocol.tiles ?? []}
-      linkedFolders={linkedFolders}
-      onChange={tiles => change({ tiles })}
-    />
-    <div className="max-w-5xl mx-auto px-4 sm:px-6 py-4 space-y-0">
+    <div className="flex items-start gap-2 px-4 sm:px-6 py-4 justify-center print:block">
+    <div className="flex-1 min-w-0 max-w-5xl space-y-0">
 
       {/* ── Top bar ── */}
       <div className="flex items-center justify-between mb-4 no-print flex-wrap gap-2">
@@ -734,6 +733,15 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
         />
       )}
     </div>
-    </>
+
+    {/* Tile-Sidebar: sticky rechts neben der Protokollmaske, kein Druck */}
+    <div className="no-print hidden sm:block sticky top-4 self-start">
+      <TileSidebar
+        tiles={tiles}
+        linkedFolders={linkedFolders}
+        onChange={handleTilesChange}
+      />
+    </div>
+    </div>
   )
 }

@@ -323,6 +323,7 @@ export default function App() {
           onLogoUpdate={updateLogo}
           onLogoClear={clearLogo}
           onUpdate={handleUpdateProtocol}
+          onUpdateProject={handleUpdateProject}
           onBack={handleBackFromEditor}
           onRefresh={handleRefresh}
         />

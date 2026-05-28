@@ -144,6 +144,7 @@ export const emptyProject = () => ({
   cryptoIv: null,            // base64 12-byte AES-GCM IV (refreshed on every save)
   hoaiServices: [],          // HOAI-Leistungsbilder mit LPH-Fortschritt
   linkedFolders: [],         // verknüpfte Synology-Freigabe-Links
+  tiles: [],                 // Schnellzugriff-Kacheln (gültig für alle Protokolle des Projekts)
   createdAt: new Date().toISOString(),
   updatedAt: new Date().toISOString(),
 })

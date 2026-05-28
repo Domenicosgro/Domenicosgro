@@ -2,6 +2,9 @@ import React, { useState } from 'react'
 import { Plus, ExternalLink, Trash2, X, FolderOpen, Link } from 'lucide-react'
 import { uid } from '../utils'
 
+// 4 × 4 cm, Mindest-Fallback 80 px für kleine Screens
+const TILE_STYLE = { width: '4cm', height: '4cm', minWidth: '80px', minHeight: '80px' }
+
 const COLOR_SCHEMES = {
   night:    'bg-night text-light hover:bg-sky hover:text-night',
   sky:      'bg-sky text-night hover:bg-night hover:text-light',
@@ -9,6 +12,7 @@ const COLOR_SCHEMES = {
 }
 const COLORS = ['night', 'sky', 'concrete']
 
+// ── Kachel-Modal ──────────────────────────────────────────────────────────────
 function TileModal({ linkedFolders, onAdd, onClose }) {
   const [source,   setSource]   = useState(linkedFolders.length ? 'folder' : 'url')
   const [folderId, setFolderId] = useState(linkedFolders[0]?.id ?? '')
@@ -21,12 +25,10 @@ function TileModal({ linkedFolders, onAdd, onClose }) {
   const handleAdd = () => {
     let finalLabel = label.trim()
     let finalUrl   = url.trim()
-
     if (source === 'folder' && selectedFolder) {
       finalLabel = finalLabel || selectedFolder.label
       finalUrl   = selectedFolder.url
     }
-
     if (!finalLabel || !finalUrl) return
     onAdd({ id: uid(), label: finalLabel, kind: source === 'folder' ? 'folder' : 'url', url: finalUrl, color })
   }
@@ -39,7 +41,7 @@ function TileModal({ linkedFolders, onAdd, onClose }) {
           <button className="btn-ghost p-1" onClick={onClose}><X size={15} /></button>
         </div>
 
-        {/* Source selector */}
+        {/* Quelle */}
         <div className="flex rounded overflow-hidden border border-concrete text-xs">
           {linkedFolders.length > 0 && (
             <button
@@ -59,7 +61,6 @@ function TileModal({ linkedFolders, onAdd, onClose }) {
           </button>
         </div>
 
-        {/* Folder selector */}
         {source === 'folder' && linkedFolders.length > 0 && (
           <div>
             <label className="block text-xs text-gray-500 mb-1">Verknüpfter Ordner</label>
@@ -72,14 +73,11 @@ function TileModal({ linkedFolders, onAdd, onClose }) {
                 if (f && !label) setLabel(f.label)
               }}
             >
-              {linkedFolders.map(f => (
-                <option key={f.id} value={f.id}>{f.label}</option>
-              ))}
+              {linkedFolders.map(f => <option key={f.id} value={f.id}>{f.label}</option>)}
             </select>
           </div>
         )}
 
-        {/* Label */}
         <div>
           <label className="block text-xs text-gray-500 mb-1">Bezeichnung auf der Kachel</label>
           <input
@@ -92,30 +90,21 @@ function TileModal({ linkedFolders, onAdd, onClose }) {
           />
         </div>
 
-        {/* URL (manual) */}
         {source === 'url' && (
           <div>
             <label className="block text-xs text-gray-500 mb-1">URL / Link</label>
-            <input
-              type="url"
-              className="input"
-              placeholder="https://…"
-              value={url}
-              onChange={e => setUrl(e.target.value)}
-            />
+            <input type="url" className="input" placeholder="https://…" value={url} onChange={e => setUrl(e.target.value)} />
           </div>
         )}
 
-        {/* Color picker */}
         <div>
           <label className="block text-xs text-gray-500 mb-1">Farbe</label>
           <div className="flex gap-2">
             {COLORS.map(c => (
               <button
                 key={c}
-                className={`w-7 h-7 rounded border-2 transition-all ${
-                  COLOR_SCHEMES[c].split(' ')[0]
-                } ${color === c ? 'border-sky scale-110' : 'border-transparent'}`}
+                className={`w-7 h-7 rounded border-2 transition-all ${COLOR_SCHEMES[c].split(' ')[0]}
+                  ${color === c ? 'border-sky scale-110' : 'border-transparent'}`}
                 title={c}
                 onClick={() => setColor(c)}
               />
@@ -138,59 +127,35 @@ function TileModal({ linkedFolders, onAdd, onClose }) {
   )
 }
 
+// ── Hauptkomponente ───────────────────────────────────────────────────────────
+// Kein eigenes Positioning – das erledigt der Parent (sticky in ProtocolEditor)
 export default function TileSidebar({ tiles, linkedFolders, onChange }) {
   const [showModal, setShowModal] = useState(false)
 
   const removeTile = (id) => onChange(tiles.filter(t => t.id !== id))
-
-  const addTile = (tile) => {
-    onChange([...tiles, tile])
-    setShowModal(false)
-  }
-
-  if (tiles.length === 0 && !showModal) {
-    // Minimal: just show the plus button
-    return (
-      <div className="no-print fixed right-3 top-1/3 z-10">
-        <button
-          className="w-12 h-12 flex flex-col items-center justify-center rounded-lg border-2 border-dashed border-sky/50 text-sky/60 hover:border-sky hover:text-sky hover:bg-sky/5 transition-colors"
-          title="Kachel hinzufügen"
-          onClick={() => setShowModal(true)}
-        >
-          <Plus size={18} />
-        </button>
-        {showModal && (
-          <TileModal
-            linkedFolders={linkedFolders ?? []}
-            onAdd={addTile}
-            onClose={() => setShowModal(false)}
-          />
-        )}
-      </div>
-    )
-  }
+  const addTile    = (tile) => { onChange([...tiles, tile]); setShowModal(false) }
 
   return (
     <>
-      <div className="no-print fixed right-3 top-24 bottom-4 z-10 flex flex-col gap-2 overflow-y-auto py-1"
-        style={{ scrollbarWidth: 'none' }}>
+      <div className="flex flex-col gap-2 pt-1">
         {tiles.map(tile => {
           const scheme = COLOR_SCHEMES[tile.color] ?? COLOR_SCHEMES.night
           return (
             <div key={tile.id} className="group relative flex-shrink-0">
               <button
-                className={`w-24 h-24 flex flex-col items-center justify-center gap-1.5 rounded-lg transition-colors ${scheme}`}
+                className={`flex flex-col items-center justify-center gap-2 rounded-lg transition-colors ${scheme}`}
+                style={TILE_STYLE}
                 title={tile.url || tile.label}
                 onClick={() => tile.url && window.open(tile.url, '_blank', 'noopener')}
               >
-                <ExternalLink size={18} className="flex-shrink-0" />
-                <span className="text-[10px] font-medium text-center px-1 leading-tight line-clamp-3 break-words w-full">
+                <ExternalLink size={20} className="flex-shrink-0 opacity-70" />
+                <span className="text-[11px] font-medium text-center px-2 leading-tight line-clamp-3 break-words w-full">
                   {tile.label}
                 </span>
               </button>
               <button
-                className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-red-500 text-white
-                  opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity"
+                className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-red-500 text-white
+                  opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity z-10"
                 title="Kachel entfernen"
                 onClick={() => removeTile(tile.id)}
               >
@@ -200,15 +165,17 @@ export default function TileSidebar({ tiles, linkedFolders, onChange }) {
           )
         })}
 
-        {/* Plus tile */}
+        {/* Plus-Kachel */}
         <button
-          className="flex-shrink-0 w-24 h-24 flex flex-col items-center justify-center gap-1 rounded-lg
-            border-2 border-dashed border-sky/60 text-sky/70 hover:border-sky hover:text-sky hover:bg-sky/5 transition-colors"
+          className="flex flex-col items-center justify-center gap-1.5 rounded-lg flex-shrink-0
+            border-2 border-dashed border-sky/60 text-sky/70
+            hover:border-sky hover:text-sky hover:bg-sky/5 transition-colors"
+          style={TILE_STYLE}
           title="Kachel hinzufügen"
           onClick={() => setShowModal(true)}
         >
-          <Plus size={20} />
-          <span className="text-[10px]">Kachel</span>
+          <Plus size={24} />
+          <span className="text-xs">Kachel</span>
         </button>
       </div>
 
