@@ -81,6 +81,48 @@ export const buildProtocolNo = (projectName, date, chainNo = null, meetingType =
   return `${prefix}${abbrev}${name}_${d}`
 }
 
+// ── HOAI-Konstanten ───────────────────────────────────────────────────────────
+
+export const HOAI_LEISTUNGSBILDER = [
+  { type: 'gebaeude',    label: 'Gebäude (§ 34)' },
+  { type: 'freianlagen', label: 'Freianlagen (§ 39)' },
+  { type: 'ingbauwerke', label: 'Ingenieurbauwerke (§ 43)' },
+  { type: 'tragwerk',    label: 'Tragwerksplanung (§ 51)' },
+  { type: 'tga',         label: 'Technische Ausrüstung (§ 55)' },
+]
+
+export const HOAI_PHASEN = {
+  1: 'Grundlagenermittlung',
+  2: 'Vorplanung',
+  3: 'Entwurfsplanung',
+  4: 'Genehmigungsplanung',
+  5: 'Ausführungsplanung',
+  6: 'Vorbereitung der Vergabe',
+  7: 'Mitwirkung bei der Vergabe',
+  8: 'Objektüberwachung (Bauüberwachung)',
+  9: 'Objektbetreuung',
+}
+
+export const emptyHoaiService = (type = 'gebaeude') => ({
+  id: uid(),
+  type,
+  label: HOAI_LEISTUNGSBILDER.find(l => l.type === type)?.label ?? type,
+  phases: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0, 7: 0, 8: 0, 9: 0 },
+  activePhase: 1,
+})
+
+// Gesamtfortschritt eines Projekts (0–100)
+export const calcProjectProgress = (hoaiServices = []) => {
+  if (!hoaiServices.length) return 0
+  const totals = hoaiServices.map(svc => {
+    const vals = Object.values(svc.phases ?? {})
+    return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 0
+  })
+  return Math.round(totals.reduce((a, b) => a + b, 0) / totals.length)
+}
+
+// ── Factory functions ─────────────────────────────────────────────────────────
+
 export const emptyContact = () => ({
   id: uid(),
   name: '',
@@ -100,6 +142,8 @@ export const emptyProject = () => ({
   encryptedContacts: null,   // base64 AES-GCM ciphertext
   cryptoSalt: null,          // base64 32-byte PBKDF2 salt (stable per password)
   cryptoIv: null,            // base64 12-byte AES-GCM IV (refreshed on every save)
+  hoaiServices: [],          // HOAI-Leistungsbilder mit LPH-Fortschritt
+  linkedFolders: [],         // verknüpfte Synology-Freigabe-Links
   createdAt: new Date().toISOString(),
   updatedAt: new Date().toISOString(),
 })
@@ -134,6 +178,7 @@ export const emptyProtocol = () => ({
   agendaGreeting: '',
   agendaItems: [],       // Protokollpunkte
   actionItems: [],
+  tiles: [],             // Kacheln in der Sidebar (Dokument-/URL-Links)
   createdAt: new Date().toISOString(),
   updatedAt: new Date().toISOString(),
 })
@@ -244,4 +289,12 @@ export const emptyActionItem = () => ({
   carriedFromId: null,
   completedAt: null,
   protocolItemId: null,   // links to an agendaItem.id when added from within a protocol point
+})
+
+export const emptyTile = (color = 'night') => ({
+  id: uid(),
+  label: '',
+  kind: 'url',   // 'folder' | 'url' | 'doc'
+  url: '',
+  color,         // 'night' | 'sky' | 'concrete'
 })

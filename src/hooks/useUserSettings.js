@@ -54,5 +54,16 @@ export function useUserSettings(username) {
     })
   }, [persist])
 
-  return { settings, loaded, update }
+  const isFavorite = useCallback((id) =>
+    ((settings.favorites ?? [])).includes(id),
+  [settings.favorites])
+
+  const toggleFavorite = useCallback((id) => {
+    const cur = new Set(settings.favorites ?? [])
+    if (cur.has(id)) cur.delete(id)
+    else cur.add(id)
+    update({ favorites: [...cur] })
+  }, [settings.favorites, update])
+
+  return { settings, loaded, update, isFavorite, toggleFavorite }
 }
