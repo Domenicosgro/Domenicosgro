@@ -37,7 +37,7 @@ function TileModal({ linkedFolders, onAdd, onClose }) {
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
       <div className="bg-white rounded-lg shadow-2xl w-80 p-5 space-y-4" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between">
-          <h3 className="font-semibold text-night">Kachel hinzufügen</h3>
+          <h3 className="font-semibold text-night">LNA hinzufügen</h3>
           <button className="btn-ghost p-1" onClick={onClose}><X size={15} /></button>
         </div>
 
@@ -79,7 +79,7 @@ function TileModal({ linkedFolders, onAdd, onClose }) {
         )}
 
         <div>
-          <label className="block text-xs text-gray-500 mb-1">Bezeichnung auf der Kachel</label>
+          <label className="block text-xs text-gray-500 mb-1">Bezeichnung auf dem LNA</label>
           <input
             type="text"
             className="input"
@@ -156,7 +156,7 @@ export default function TileSidebar({ tiles, linkedFolders, onChange }) {
               <button
                 className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-red-500 text-white
                   opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity z-10"
-                title="Kachel entfernen"
+                title="LNA entfernen"
                 onClick={() => removeTile(tile.id)}
               >
                 <X size={10} />
@@ -171,11 +171,11 @@ export default function TileSidebar({ tiles, linkedFolders, onChange }) {
             border-2 border-dashed border-sky/60 text-sky/70
             hover:border-sky hover:text-sky hover:bg-sky/5 transition-colors"
           style={TILE_STYLE}
-          title="Kachel hinzufügen"
+          title="LNA hinzufügen"
           onClick={() => setShowModal(true)}
         >
           <Plus size={24} />
-          <span className="text-xs">Kachel</span>
+          <span className="text-xs">LNA</span>
         </button>
       </div>
 
