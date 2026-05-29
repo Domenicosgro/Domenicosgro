@@ -1,21 +1,24 @@
 services:
   komplizen-protokolle:
-    build: .
     image: komplizen-protokolle:latest
     container_name: komplizen-protokolle
     restart: unless-stopped
     ports:
       - "3000:3000"
     volumes:
-      - ./data:/data
-      - ./logs:/logs
+      - /volume1/docker/komplizen-protokolle/data:/data
+      - /volume1/docker/komplizen-protokolle/logs:/logs
     environment:
       PORT: "3000"
       HOST: "0.0.0.0"
-      # API_KEY: "ersetze-durch-sicheren-zufallsschluessel"
-      # ALLOWED_ORIGINS: "https://protokoll.meinefirma.de"
-      # HTTPS_CERT: "/certs/fullchain.pem"
-      # HTTPS_KEY: "/certs/privkey.pem"
+      PUBLIC_URL: "http://192.168.178.250:3000"
+      # SMTP – E-Mail-Versand (Aufgaben, Einladungen)
+      # SMTP_HOST: "smtp.office365.com"
+      # SMTP_PORT: "587"
+      # SMTP_SECURE: "false"
+      # SMTP_USER: "protokolle@ihre-firma.de"
+      # SMTP_PASS: "ihr-app-passwort"
+      # SMTP_FROM: "protokolle@ihre-firma.de"
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/health"]
       interval: 30s
