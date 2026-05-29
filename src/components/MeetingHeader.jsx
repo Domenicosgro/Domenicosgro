@@ -1,5 +1,5 @@
 import React from 'react'
-import { MEETING_TYPES, formatDate, buildProtocolNo, getChainNo } from '../utils'
+import { MEETING_TYPES, HOAI_PHASEN, formatDate, buildProtocolNo, getChainNo } from '../utils'
 import LogoUpload from './LogoUpload'
 import { FolderOpen, Star } from 'lucide-react'
 
@@ -122,6 +122,33 @@ export default function MeetingHeader({ protocol, protocols, projects, logoDataU
           <input className="input" type="date" value={protocol.nextMeeting} onChange={set('nextMeeting')} />
         </div>
       </div>
+
+      {/* HOAI Leistungsstand – auf Bildschirm und im Druck */}
+      {linkedProject?.hoaiServices?.length > 0 && (
+        <div className="pt-2 border-t border-gray-200">
+          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Leistungsstand</p>
+          <div className="space-y-2">
+            {linkedProject.hoaiServices.map(svc => {
+              const lph       = svc.activePhase ?? 1
+              const phaseName = (HOAI_PHASEN[lph] ?? `LPH ${lph}`).replace(' (Bauüberwachung)', '')
+              const progress  = svc.phases?.[lph] ?? 0
+              const svcShort  = (svc.label || '').split('(')[0].trim()
+              return (
+                <div key={svc.id} className="flex items-center gap-3 text-xs">
+                  <span className="w-36 font-medium text-gray-700 flex-shrink-0 truncate">{svcShort}</span>
+                  <span className="text-gray-500 flex-shrink-0" style={{ minWidth: '17rem' }}>LPH {lph} – {phaseName}</span>
+                  <div className="flex-1 flex items-center gap-2 min-w-0">
+                    <div className="h-2 flex-1 overflow-hidden hoai-progress-track">
+                      <div className="h-full bg-sky hoai-progress-fill" style={{ width: `${progress}%` }} />
+                    </div>
+                    <span className="w-8 text-right font-bold text-night flex-shrink-0">{progress}%</span>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Project database link */}
       {(projects ?? []).length > 0 && (
