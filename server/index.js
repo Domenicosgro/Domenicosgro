@@ -558,6 +558,12 @@ app.post('/api/actions/send-email', requireAuth, async (req, res) => {
     const projStr  = projectName || 'Unbekanntes Projekt'
     const subject  = `Ihre Aufgaben – ${projStr} – Stand ${today}`
 
+    // Absender: eingeloggter Nutzer als Reply-To + Anzeigename im From
+    const sender      = req.user !== '__apikey__' && req.user !== '__anonymous__' ? db.users.get(req.user) : null
+    const senderName  = sender?.display_name || null
+    const replyTo     = sender?.email || null
+    const fromAddress = senderName ? `"${senderName} (Komplizen Protokolle)" <${from}>` : from
+
     const STATUS_LABELS   = { offen: 'Offen', in_arbeit: 'In Arbeit', erledigt: 'Erledigt', verschoben: 'Verschoben' }
     const PRIORITY_LABELS = { hoch: 'Hoch', mittel: 'Mittel', niedrig: 'Niedrig' }
     const todayIso        = new Date().toISOString().slice(0, 10)
@@ -610,7 +616,7 @@ app.post('/api/actions/send-email', requireAuth, async (req, res) => {
           </table>
         </td></tr>
         <tr><td style="padding:20px 36px;border-top:1px solid #E5E7EB;background:#F0F0F0;text-align:center;">
-          <p style="margin:0;color:#9CA3AF;font-size:12px;">Komplizen Protokolle · Automatische Benachrichtigung · ${today}</p>
+          <p style="margin:0;color:#9CA3AF;font-size:12px;">Komplizen Protokolle · ${senderName ? `Gesendet von ${senderName}` : 'Automatische Benachrichtigung'} · ${today}</p>
         </td></tr>
       </table>
     </td></tr>
@@ -634,8 +640,15 @@ app.post('/api/actions/send-email', requireAuth, async (req, res) => {
       '', 'Komplizen Protokolle',
     ].join('\n')
 
-    await transport.sendMail({ from, to, subject, html, text })
-    logEvent('ACTIONS_EMAIL_SENT', req, `to=${to} responsible=${responsible} project=${projStr} count=${items.length}`)
+    await transport.sendMail({
+      from: fromAddress,
+      to,
+      subject,
+      html,
+      text,
+      ...(replyTo ? { replyTo } : {}),
+    })
+    logEvent('ACTIONS_EMAIL_SENT', req, `to=${to} responsible=${responsible} project=${projStr} count=${items.length} sender=${senderName || req.user}`)
     res.json({ ok: true })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
