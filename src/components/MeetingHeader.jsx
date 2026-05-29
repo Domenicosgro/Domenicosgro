@@ -124,11 +124,11 @@ export default function MeetingHeader({ protocol, protocols, projects, logoDataU
       </div>
 
       {/* HOAI Leistungsstand – auf Bildschirm und im Druck */}
-      {linkedProject?.hoaiServices?.length > 0 && (
+      {linkedProject?.hoaiServices?.some(s => s.type === 'gebaeude') && (
         <div className="pt-2 border-t border-gray-200">
           <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Leistungsstand</p>
           <div className="space-y-2">
-            {linkedProject.hoaiServices.map(svc => {
+            {linkedProject.hoaiServices.filter(s => s.type === 'gebaeude').map(svc => {
               const lph       = svc.activePhase ?? 1
               const phaseName = (HOAI_PHASEN[lph] ?? `LPH ${lph}`).replace(' (Bauüberwachung)', '')
               const progress  = svc.phases?.[lph] ?? 0
