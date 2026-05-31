@@ -323,3 +323,17 @@ git push -u origin claude/protocol-tool-meetings-tIoZX
 ```
 
 Bei Push-Fehlern: bis zu 4 Retries mit exponential backoff (2s, 4s, 8s, 16s).
+
+---
+
+## gstack
+
+[gstack](https://github.com/garrytan/gstack) ist installiert und stellt eine Reihe von Skills bereit.
+
+**Browsing-Regeln:**
+- Für **jegliches Web-Browsing** die `/browse`-Skill von gstack verwenden.
+- **Niemals** die `mcp__claude-in-chrome__*`-Tools verwenden.
+
+**Verfügbare Skills:**
+
+`/office-hours`, `/plan-ceo-review`, `/plan-eng-review`, `/plan-design-review`, `/design-consultation`, `/design-shotgun`, `/design-html`, `/review`, `/ship`, `/land-and-deploy`, `/canary`, `/benchmark`, `/browse`, `/connect-chrome`, `/qa`, `/qa-only`, `/design-review`, `/setup-browser-cookies`, `/setup-deploy`, `/setup-gbrain`, `/retro`, `/investigate`, `/document-release`, `/document-generate`, `/codex`, `/cso`, `/autoplan`, `/plan-devex-review`, `/devex-review`, `/careful`, `/freeze`, `/guard`, `/unfreeze`, `/gstack-upgrade`, `/learn`
