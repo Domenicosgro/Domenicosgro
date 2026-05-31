@@ -1,9 +1,65 @@
 import React, { useState } from 'react'
-import { ArrowLeft, FileText, Users, Plus, Trash2, ExternalLink, ChevronDown, X, FolderOpen } from 'lucide-react'
-import { HOAI_LEISTUNGSBILDER, HOAI_PHASEN, emptyHoaiService, uid, formatDate } from '../utils'
+import { ArrowLeft, FileText, Users, Plus, Trash2, ExternalLink, X, FolderOpen, BarChart2 } from 'lucide-react'
+import { HOAI_PHASEN, emptyHoaiService, uid } from '../utils'
 
+// ── Projektstatus-Modal ───────────────────────────────────────────────────────
+function ProjektstatusModal({ service, onSetPhase, onSetActivePhase, onClose }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+      <div className="bg-white shadow-2xl w-full max-w-lg" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-5 py-4 border-b border-concrete">
+          <div className="flex items-center gap-2">
+            <BarChart2 size={16} className="text-sky" />
+            <h3 className="font-semibold text-night">Projektstatus – Leistungsphasen</h3>
+          </div>
+          <button className="btn-ghost p-1" onClick={onClose}><X size={15} /></button>
+        </div>
+
+        <div className="px-5 py-2 divide-y divide-concrete/60">
+          {[1,2,3,4,5,6,7,8,9].map(lph => {
+            const val      = service.phases?.[lph] ?? 0
+            const isActive = service.activePhase === lph
+            return (
+              <div key={lph} className={`flex items-center gap-3 py-2.5 ${isActive ? 'bg-sky/5' : ''}`}>
+                <button
+                  className={`flex-shrink-0 w-5 h-5 rounded-full border-2 transition-colors ${
+                    isActive ? 'bg-sky border-sky' : 'border-gray-300 hover:border-sky'
+                  }`}
+                  title={isActive ? 'Aktive Phase' : 'Als aktive Phase markieren'}
+                  onClick={() => onSetActivePhase(lph)}
+                />
+                <span
+                  className={`text-xs flex-shrink-0 ${isActive ? 'font-semibold text-night' : 'text-gray-500'}`}
+                  style={{ minWidth: '11rem' }}
+                >
+                  LPH {lph} · {HOAI_PHASEN[lph]}
+                </span>
+                <input
+                  type="range" min={0} max={100} step={5} value={val}
+                  className="flex-1 h-1.5 accent-sky"
+                  onChange={e => onSetPhase(lph, Number(e.target.value))}
+                />
+                <span className={`text-xs w-9 text-right flex-shrink-0 tabular-nums font-semibold ${
+                  val === 100 ? 'text-green-600' : isActive ? 'text-night' : 'text-gray-400'
+                }`}>
+                  {val}%
+                </span>
+              </div>
+            )
+          })}
+        </div>
+
+        <div className="px-5 py-3 border-t border-concrete flex justify-end">
+          <button className="btn-primary text-sm" onClick={onClose}>Fertig</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Hauptkomponente ───────────────────────────────────────────────────────────
 export default function ProjectDashboard({ project, protocols, onBack, onOpenProtocols, onManageContacts, onUpdate }) {
-  const [showAddService,  setShowAddService]  = useState(false)
+  const [showStatusModal, setShowStatusModal] = useState(false)
   const [showFolderForm,  setShowFolderForm]  = useState(false)
   const [folderLabel,     setFolderLabel]     = useState('')
   const [folderUrl,       setFolderUrl]       = useState('')
@@ -13,53 +69,47 @@ export default function ProjectDashboard({ project, protocols, onBack, onOpenPro
   const protos        = protocols.filter(p => p.projectId === project.id)
   const openProtos    = protos.filter(p => !p.isClosed).length
 
-  // ── HOAI handlers ─────────────────────────────────────────────────────────────
+  // Gebäude-Service – wird beim ersten Öffnen des Modals automatisch angelegt
+  const gebaeude = services.find(s => s.type === 'gebaeude') ?? null
 
-  const addService = (type) => {
-    const already = services.some(s => s.type === type)
-    if (already) return
-    const next = [...services, emptyHoaiService(type)]
-    onUpdate(project.id, { hoaiServices: next })
-    setShowAddService(false)
+  const openStatusModal = () => {
+    if (!gebaeude) {
+      onUpdate(project.id, { hoaiServices: [...services, emptyHoaiService('gebaeude')] })
+    }
+    setShowStatusModal(true)
   }
 
-  const removeService = (id) => {
-    onUpdate(project.id, { hoaiServices: services.filter(s => s.id !== id) })
-  }
-
-  const setPhase = (serviceId, lph, value) => {
-    const next = services.map(s =>
-      s.id !== serviceId ? s : {
-        ...s,
-        phases: { ...s.phases, [lph]: Number(value) },
-      }
+  const setPhase = (lph, value) => {
+    const svc  = (project.hoaiServices ?? []).find(s => s.type === 'gebaeude')
+    if (!svc) return
+    const next = (project.hoaiServices ?? []).map(s =>
+      s.type !== 'gebaeude' ? s : { ...s, phases: { ...s.phases, [lph]: value } }
     )
     onUpdate(project.id, { hoaiServices: next })
   }
 
-  const setActivePhase = (serviceId, lph) => {
-    const next = services.map(s =>
-      s.id !== serviceId ? s : { ...s, activePhase: lph }
+  const setActivePhase = (lph) => {
+    const next = (project.hoaiServices ?? []).map(s =>
+      s.type !== 'gebaeude' ? s : { ...s, activePhase: lph }
     )
     onUpdate(project.id, { hoaiServices: next })
   }
 
-  // ── Folder handlers ───────────────────────────────────────────────────────────
-
+  // ── Folder handlers ───────────────────────────────────────────────────────
   const addFolder = () => {
     if (!folderLabel.trim() || !folderUrl.trim()) return
     const next = [...linkedFolders, { id: uid(), label: folderLabel.trim(), url: folderUrl.trim() }]
     onUpdate(project.id, { linkedFolders: next })
-    setFolderLabel('')
-    setFolderUrl('')
-    setShowFolderForm(false)
+    setFolderLabel(''); setFolderUrl(''); setShowFolderForm(false)
   }
 
   const removeFolder = (id) => {
     onUpdate(project.id, { linkedFolders: linkedFolders.filter(f => f.id !== id) })
   }
 
-  const availableToAdd = HOAI_LEISTUNGSBILDER.filter(lb => !services.some(s => s.type === lb.type))
+  // Aktive LPH-Kurzinfo für den Button
+  const activeLph      = gebaeude?.activePhase ?? null
+  const activeProgress = activeLph ? (gebaeude?.phases?.[activeLph] ?? 0) : null
 
   return (
     <div className="max-w-4xl mx-auto p-4 sm:p-6 space-y-6">
@@ -79,7 +129,16 @@ export default function ProjectDashboard({ project, protocols, onBack, onOpenPro
             </p>
           </div>
         </div>
-        <div className="flex gap-2 self-start flex-shrink-0">
+        <div className="flex gap-2 self-start flex-shrink-0 flex-wrap">
+          <button className="btn-secondary" onClick={openStatusModal}>
+            <BarChart2 size={15} />
+            Projektstatus
+            {activeLph && (
+              <span className="text-sky font-semibold text-xs">
+                LPH {activeLph} · {activeProgress}%
+              </span>
+            )}
+          </button>
           <button className="btn-secondary" onClick={onManageContacts}>
             <Users size={15} /> Kontakte
           </button>
@@ -88,95 +147,6 @@ export default function ProjectDashboard({ project, protocols, onBack, onOpenPro
           </button>
         </div>
       </div>
-
-      {/* ── HOAI Leistungsbilder ────────────────────────────────────────────── */}
-      <section className="card p-5 space-y-5">
-        <div className="flex items-center justify-between">
-          <h2 className="section-title">HOAI-Leistungsbilder</h2>
-          {availableToAdd.length > 0 && (
-            <div className="relative">
-              <button
-                className="btn-secondary text-xs"
-                onClick={() => setShowAddService(v => !v)}
-              >
-                <Plus size={13} /> Leistungsbild
-                <ChevronDown size={12} />
-              </button>
-              {showAddService && (
-                <div className="absolute right-0 top-full mt-1 z-30 bg-white border border-concrete rounded shadow-lg min-w-[220px]">
-                  {availableToAdd.map(lb => (
-                    <button
-                      key={lb.type}
-                      className="w-full text-left px-4 py-2.5 text-sm hover:bg-concrete transition-colors"
-                      onClick={() => addService(lb.type)}
-                    >
-                      {lb.label}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-
-        {services.length === 0 && (
-          <div className="text-center py-8 text-gray-400">
-            <p className="text-sm">Noch kein Leistungsbild hinterlegt.</p>
-            <p className="text-xs mt-1">Füge ein HOAI-Leistungsbild hinzu, um den Planungsfortschritt zu erfassen.</p>
-          </div>
-        )}
-
-        {services.map(svc => (
-          <div key={svc.id} className="border border-concrete rounded-lg overflow-hidden">
-            <div className="flex items-center justify-between px-4 py-2.5 bg-concrete/60">
-              <span className="font-semibold text-night text-sm">{svc.label}</span>
-              <button
-                className="btn-ghost p-1.5 text-gray-400 hover:text-red-500"
-                title="Leistungsbild entfernen"
-                onClick={() => removeService(svc.id)}
-              >
-                <Trash2 size={13} />
-              </button>
-            </div>
-
-            <div className="divide-y divide-concrete">
-              {[1,2,3,4,5,6,7,8,9].map(lph => {
-                const val        = svc.phases?.[lph] ?? 0
-                const isActive   = svc.activePhase === lph
-                return (
-                  <div
-                    key={lph}
-                    className={`flex items-center gap-3 px-4 py-2 ${isActive ? 'bg-sky/10' : ''}`}
-                  >
-                    <button
-                      className={`flex-shrink-0 w-5 h-5 rounded-full border-2 transition-colors ${
-                        isActive ? 'bg-sky border-sky' : 'border-concrete hover:border-sky'
-                      }`}
-                      title={isActive ? 'Aktive Phase' : 'Als aktive Phase markieren'}
-                      onClick={() => setActivePhase(svc.id, lph)}
-                    />
-                    <span className={`text-xs w-28 flex-shrink-0 ${isActive ? 'font-semibold text-night' : 'text-gray-500'}`}>
-                      LPH {lph} · {HOAI_PHASEN[lph]}
-                    </span>
-                    <input
-                      type="range"
-                      min={0}
-                      max={100}
-                      step={5}
-                      value={val}
-                      className="flex-1 h-1.5 accent-sky"
-                      onChange={e => setPhase(svc.id, lph, e.target.value)}
-                    />
-                    <span className={`text-xs w-9 text-right flex-shrink-0 tabular-nums ${val === 100 ? 'text-green-600 font-semibold' : 'text-gray-500'}`}>
-                      {val}%
-                    </span>
-                  </div>
-                )
-              })}
-            </div>
-          </div>
-        ))}
-      </section>
 
       {/* ── Verknüpfte Ordner ───────────────────────────────────────────────── */}
       <section className="card p-5 space-y-4">
@@ -191,7 +161,6 @@ export default function ProjectDashboard({ project, protocols, onBack, onOpenPro
 
         <p className="text-xs text-gray-400">
           Freigabe-Link aus Synology Drive / File Station kopieren (https://…). Der Link öffnet im Browser.
-          Windows-Netzwerkpfade (\\server\...) werden vom Browser blockiert.
         </p>
 
         {linkedFolders.length === 0 && !showFolderForm && (
@@ -201,7 +170,6 @@ export default function ProjectDashboard({ project, protocols, onBack, onOpenPro
           </div>
         )}
 
-        {/* Folder list */}
         <div className="space-y-2">
           {linkedFolders.map(f => (
             <div key={f.id} className="flex items-center gap-3 p-2.5 bg-concrete/40 rounded">
@@ -226,7 +194,6 @@ export default function ProjectDashboard({ project, protocols, onBack, onOpenPro
           ))}
         </div>
 
-        {/* Add folder form */}
         {showFolderForm && (
           <div className="border border-concrete rounded-lg p-4 space-y-3 bg-concrete/20">
             <div className="flex items-center justify-between">
@@ -238,8 +205,7 @@ export default function ProjectDashboard({ project, protocols, onBack, onOpenPro
             <div>
               <label className="block text-xs text-gray-500 mb-1">Bezeichnung</label>
               <input
-                type="text"
-                className="input"
+                type="text" className="input"
                 placeholder="z. B. Pläne, Ausschreibung, Fotos…"
                 value={folderLabel}
                 onChange={e => setFolderLabel(e.target.value)}
@@ -249,8 +215,7 @@ export default function ProjectDashboard({ project, protocols, onBack, onOpenPro
             <div>
               <label className="block text-xs text-gray-500 mb-1">URL / Link</label>
               <input
-                type="url"
-                className="input"
+                type="url" className="input"
                 placeholder="https://nas.../sharing/..."
                 value={folderUrl}
                 onChange={e => setFolderUrl(e.target.value)}
@@ -272,6 +237,18 @@ export default function ProjectDashboard({ project, protocols, onBack, onOpenPro
         )}
       </section>
 
+      {/* Modal */}
+      {showStatusModal && (
+        <ProjektstatusModal
+          service={
+            (project.hoaiServices ?? []).find(s => s.type === 'gebaeude') ??
+            emptyHoaiService('gebaeude')
+          }
+          onSetPhase={setPhase}
+          onSetActivePhase={setActivePhase}
+          onClose={() => setShowStatusModal(false)}
+        />
+      )}
     </div>
   )
 }
