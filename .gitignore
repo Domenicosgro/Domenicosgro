@@ -6,3 +6,4 @@ data/
 logs/
 release/
 start-local.config.ps1
+.gstack/
