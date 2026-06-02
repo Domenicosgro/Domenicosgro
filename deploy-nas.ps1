@@ -47,8 +47,9 @@ $sizeMb = [math]::Round((Get-Item $TarFile).Length / 1MB, 0)
 Write-Host "      fertig ($sizeMb MB)" -ForegroundColor Green
 
 # [3/4] Upload zur NAS
+# -O erzwingt das klassische SCP-Protokoll (Synology hat kein SFTP-Subsystem aktiv)
 Write-Host "[3/4] Upload zur NAS (SCP)..." -ForegroundColor Yellow
-scp $TarFile "${NasUser}@${NasIp}:${TempNas}"
+scp -O $TarFile "${NasUser}@${NasIp}:${TempNas}"
 if ($LASTEXITCODE -ne 0) {
     Remove-Item $TarFile -ErrorAction SilentlyContinue
     Write-Error "Upload fehlgeschlagen - SSH erreichbar?"
