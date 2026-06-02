@@ -75,6 +75,9 @@ rm -f $TempNas
 echo '[NAS] Fertig.'
 "@
 
+# Windows-Zeilenenden (CRLF) auf Unix (LF) umstellen, sonst stolpert bash
+$remoteCmd = $remoteCmd -replace "`r`n", "`n"
+
 ssh "${NasUser}@${NasIp}" "$remoteCmd"
 if ($LASTEXITCODE -ne 0) {
     Remove-Item $TarFile -ErrorAction SilentlyContinue
