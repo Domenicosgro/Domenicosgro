@@ -244,6 +244,12 @@ export function useProjects() {
     setProjects(prev => prev.filter(p => p.id !== id))
   }, [])
 
+  const importProject = useCallback((data) => {
+    const p = { ...emptyProject(), ...data }
+    setProjects(prev => [p, ...prev])
+    return p.id
+  }, [])
+
   const refetchProjects = useCallback(async () => {
     try {
       if (isServer) {
@@ -258,5 +264,5 @@ export function useProjects() {
     }
   }, [])
 
-  return { projects, loaded, saveError, clearSaveError, createProject, updateProject, deleteProject, refetchProjects }
+  return { projects, loaded, saveError, clearSaveError, createProject, updateProject, deleteProject, importProject, refetchProjects }
 }

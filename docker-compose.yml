@@ -14,12 +14,12 @@ services:
       PUBLIC_URL: "http://192.168.178.250:3000"
       DB_PATH: "/data"
       LOG_PATH: "/logs"
-      SMTP_HOST: "smtp.office365.com"
+      SMTP_HOST: "smtp.gmail.com"
       SMTP_PORT: "587"
       SMTP_SECURE: "false"
-      SMTP_USER: "Protokoll@ghbarchitekten.de"
-      SMTP_PASS: "DEIN-PASSWORT-HIER"
-      SMTP_FROM: "Protokoll@ghbarchitekten.de"
+      SMTP_USER: "DEINE-GMAIL@googlemail.com"
+      SMTP_PASS: "DEIN-APP-PASSWORT-HIER"
+      SMTP_FROM: "DEINE-GMAIL@googlemail.com"
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/health"]
       interval: 30s

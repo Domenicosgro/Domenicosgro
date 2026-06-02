@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { Plus, Trash2, Search, ChevronRight, FileText, Users, FolderOpen,
          Calendar, Lock, LockOpen, X, Eye, EyeOff, Star, BarChart2,
-         User, Settings, LogOut, Monitor, Download, RotateCcw, LayoutDashboard } from 'lucide-react'
+         User, Settings, LogOut, Monitor, Download, RotateCcw, LayoutDashboard, Upload } from 'lucide-react'
 import { formatDate, calcProjectProgress } from '../utils'
 import { useUserSettings } from '../hooks/useUserSettings'
 
@@ -114,13 +114,34 @@ function PasswordModal({ mode, projectName, onConfirm, onCancel }) {
 // ── Main component ─────────────────────────────────────────────────────────────
 export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, onDelete, onOpenProject,
                                        onOpenProjectDashboard, onUnlock, onSetPassword, onRemovePassword,
-                                       onOpenDashboard, serverUser, onLogout, onOpenAdmin }) {
+                                       onOpenDashboard, onImportProject, serverUser, onLogout, onOpenAdmin }) {
   const [search,        setSearch]        = useState('')
   const [showAll,       setShowAll]       = useState(false)
   const [modal,         setModal]         = useState(null)   // { mode, projectId }
   const [installPrompt, setInstallPrompt] = useState(null)
   const [installed,     setInstalled]     = useState(false)
+  const [importError,   setImportError]   = useState('')
+  const importProjectRef = useRef(null)
   const { settings, isFavorite, toggleFavorite } = useUserSettings(serverUser?.username)
+
+  const handleImportProjectFile = (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setImportError('')
+    const reader = new FileReader()
+    reader.onload = (ev) => {
+      try {
+        const data = JSON.parse(ev.target.result)
+        if (data.exportType === 'project' && data.project && onImportProject) {
+          onImportProject(data)
+        } else {
+          setImportError('Ungültige Projektdatei. Bitte eine mit „Export" gespeicherte Datei verwenden.')
+        }
+      } catch { setImportError('Datei konnte nicht gelesen werden.') }
+    }
+    reader.readAsText(file)
+    e.target.value = ''
+  }
 
   useEffect(() => {
     const handler = (e) => { e.preventDefault(); setInstallPrompt(e) }
@@ -257,11 +278,19 @@ export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, 
             onClick={() => window.location.reload()}>
             <RotateCcw size={15} />
           </button>
+          <input ref={importProjectRef} type="file" accept=".json" className="hidden" onChange={handleImportProjectFile} />
+          <button className="btn btn-secondary" onClick={() => importProjectRef.current?.click()} title="Projekt aus Export-Datei importieren">
+            <Upload size={16} /> Import
+          </button>
           <button className="btn btn-primary" onClick={handleCreate}>
             <Plus size={16} /> Neues Projekt
           </button>
         </div>
       </div>
+
+      {importError && (
+        <p className="text-sm text-red-600 bg-red-50 border border-red-200 px-4 py-2">{importError}</p>
+      )}
 
       {/* Search + favorites toggle */}
       {projects.length > 0 && (

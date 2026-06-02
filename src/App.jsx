@@ -10,7 +10,7 @@ import MassnahmenDashboard   from './components/MassnahmenDashboard'
 import ProjectDashboard      from './components/ProjectDashboard'
 import LoginScreen           from './components/LoginScreen'
 import AdminPanel            from './components/AdminPanel'
-import { hashPassword } from './utils'
+import { hashPassword, uid } from './utils'
 import { deriveKey, encryptJSON, decryptJSON, newSalt } from './crypto'
 
 const isElectron = typeof window !== 'undefined' && !!window.electronAPI
@@ -27,7 +27,7 @@ export default function App() {
   const {
     projects, loaded: projectsLoaded,
     saveError: projectSaveError, clearSaveError: clearProjectError,
-    createProject, updateProject, deleteProject,
+    createProject, updateProject, deleteProject, importProject,
     refetchProjects,
   } = useProjects()
 
@@ -219,6 +219,38 @@ export default function App() {
     updateProject(projectId, { isEncrypted: false, encryptedContacts: null, cryptoSalt: null, cryptoIv: null, contacts, passwordHash: null })
     setProjectCryptoKeys(prev => { const n = { ...prev }; delete n[projectId]; return n })
     setDecryptedContacts(prev => { const n = { ...prev }; delete n[projectId]; return n })
+  }
+
+  const handleImportProject = (data) => {
+    if (!data || data.exportType !== 'project' || !data.project) return
+    const newProjectId = uid()
+    const idMap = new Map()
+    const archiveProtocols = Array.isArray(data.protocols) ? data.protocols : []
+    archiveProtocols.forEach(p => idMap.set(p.id, uid()))
+    const { isUnlocked, ...rawProject } = data.project
+    importProject({
+      ...rawProject,
+      id:               newProjectId,
+      isEncrypted:      false,
+      encryptedContacts: null,
+      cryptoSalt:       null,
+      cryptoIv:         null,
+      passwordHash:     null,
+      createdAt:        new Date().toISOString(),
+      updatedAt:        new Date().toISOString(),
+    })
+    archiveProtocols.forEach(p => {
+      createProtocol({
+        ...p,
+        id:           idMap.get(p.id),
+        projectId:    newProjectId,
+        predecessorId: p.predecessorId ? (idMap.get(p.predecessorId) ?? null) : null,
+        createdAt:    new Date().toISOString(),
+        updatedAt:    new Date().toISOString(),
+      })
+    })
+    setSelectedProjectId(newProjectId)
+    setView('protocols')
   }
 
   const openProject = (projectId) => { setSelectedProjectId(projectId); setView('protocols') }
@@ -419,6 +451,7 @@ export default function App() {
         onSetPassword={handleSetProjectPassword}
         onRemovePassword={handleRemoveProjectPassword}
         onOpenDashboard={() => setView('dashboard')}
+        onImportProject={handleImportProject}
         serverUser={serverUser}
         onLogout={isServer ? handleLogout : null}
         onOpenAdmin={isServer ? () => setShowAdmin(true) : null}

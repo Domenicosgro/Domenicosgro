@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react'
-import { Plus, Trash2, Copy, FileText, Search, ChevronRight, Upload, Lock, ArrowLeft, Users, RotateCcw } from 'lucide-react'
+import { Plus, Trash2, Copy, FileText, Search, ChevronRight, Upload, Lock, ArrowLeft, Users, RotateCcw, Download } from 'lucide-react'
 import { formatDate, buildProtocolNo, getChainNo } from '../utils'
 
 const isElectron = typeof window !== 'undefined' && !!window.electronAPI
@@ -13,6 +13,34 @@ export default function ProtocolList({
   const [search,      setSearch]      = useState('')
   const [filterType,  setFilterType]  = useState('')
   const [importError, setImportError] = useState('')
+
+  const handleExportProject = () => {
+    if (!project) return
+    const { isUnlocked, ...projectData } = project
+    const exportData = {
+      exportVersion: 1,
+      exportType: 'project',
+      exportedAt: new Date().toISOString(),
+      project: {
+        ...projectData,
+        isEncrypted: false,
+        encryptedContacts: null,
+        cryptoSalt: null,
+        cryptoIv: null,
+        passwordHash: null,
+      },
+      protocols,
+    }
+    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' })
+    const url  = URL.createObjectURL(blob)
+    const a    = document.createElement('a')
+    a.href     = url
+    a.download = `${(project.name || 'projekt').replace(/[^a-zA-Z0-9_\-]/g, '_')}_export.json`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+  }
 
   // Unique meeting types present in this project's protocols
   const meetingTypes = [...new Set(protocols.map(p => p.meetingType).filter(Boolean))].sort()
@@ -87,6 +115,11 @@ export default function ProtocolList({
           {project && contacts.length >= 0 && (
             <button className="btn-secondary" onClick={onManageContacts} title="Projektkontakte verwalten">
               <Users size={16} /> Kontakte
+            </button>
+          )}
+          {project && (
+            <button className="btn-secondary" onClick={handleExportProject} title="Gesamtes Projekt exportieren (JSON)">
+              <Download size={16} /> Export
             </button>
           )}
           <button className="btn-secondary" onClick={handleImportClick} title="JSON-Protokoll importieren">

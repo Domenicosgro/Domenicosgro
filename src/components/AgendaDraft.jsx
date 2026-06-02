@@ -74,9 +74,11 @@ export default function AgendaDraft({ agenda, agendaGreeting, agendaSentAt, prot
           )}
           {totalMin > 0 && <span className="text-xs text-gray-400">Geplant: {totalMin} min</span>}
         </div>
-        <button className="btn-primary no-print" onClick={() => addToSection('__new__')}>
-          <Plus size={14} /> Neuer Hauptpunkt
-        </button>
+        {sectionItems.length === 0 && (
+          <button className="btn-primary no-print" onClick={() => addToSection('__new__')}>
+            <Plus size={14} /> Neuer Hauptpunkt
+          </button>
+        )}
       </div>
 
       {/* Greeting */}
@@ -118,9 +120,11 @@ export default function AgendaDraft({ agenda, agendaGreeting, agendaSentAt, prot
                 <span className={`text-sm font-semibold ${isNew ? 'text-gray-500 italic' : 'text-brand-700'}`}>
                   {isNew ? 'Neuer Hauptpunkt' : section.label}
                 </span>
-                <button className="btn-ghost py-0.5 px-2 text-xs no-print" onClick={() => addToSection(section.id)}>
-                  <Plus size={12} /> Punkt hinzufügen
-                </button>
+                {(!isNew || sectionItems.length === 0) && (
+                  <button className="btn-ghost py-0.5 px-2 text-xs no-print" onClick={() => addToSection(section.id)}>
+                    <Plus size={12} /> Punkt hinzufügen
+                  </button>
+                )}
               </div>
 
               {/* Items table */}
@@ -146,7 +150,8 @@ export default function AgendaDraft({ agenda, agendaGreeting, agendaSentAt, prot
                               onChange={e => update(item.id, 'no', e.target.value)} />
                           </td>
                           <td className="py-2 pr-2 align-top">
-                            <input className="input py-1 font-medium" placeholder="Thema…"
+                            <textarea className="textarea py-1 font-medium text-sm leading-snug" rows={2}
+                              placeholder="Thema…" style={{ minHeight: '2.25rem', resize: 'vertical' }}
                               value={item.topic} onChange={e => update(item.id, 'topic', e.target.value)} />
                           </td>
                           <td className="py-2 pr-2 align-top">
