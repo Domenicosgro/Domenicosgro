@@ -3,4 +3,4 @@
 # deploy-nas.config.ps1 ist bereits in .gitignore eingetragen.
 
 $NasIp   = "192.168.178.250"   # IP der Synology NAS
-$NasUser = "admin"              # Synology-Benutzername (SSH)
+$NasUser = "Deploy"             # Synology-Benutzername (SSH, Gruppe administrators)

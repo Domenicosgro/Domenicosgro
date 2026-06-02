@@ -4,14 +4,18 @@
 # Voraussetzung: SSH auf der Synology aktiviert
 #   Synology DSM → Systemsteuerung → Terminal & SNMP → SSH-Dienst aktivieren
 #
-# Empfohlen: SSH-Schluessel einrichten (einmalig), dann kein Passwort noetig:
-#   ssh-keygen -t ed25519 -C "komplizen-deploy"
-#   ssh-copy-id admin@192.168.178.250
+# Voraussetzung NAS-seitig (einmalig):
+#   - Lokaler Benutzer "Deploy" in Gruppe "administrators"
+#   - Passwortloses sudo fuer docker:
+#       /etc/sudoers.d/deploy-docker  ->  Deploy ALL=(ALL) NOPASSWD: /usr/local/bin/docker
+#
+# Empfohlen: SSH-Schluessel einrichten (einmalig), dann kein Passwort noetig.
+# Ohne Schluessel fragt das Skript 2x nach dem Deploy-Passwort (scp + ssh).
 #
 # Eigene Werte in deploy-nas.config.ps1 speichern (wird nie in Git eingecheckt).
 
 $NasIp     = "192.168.178.250"
-$NasUser   = "admin"
+$NasUser   = "Deploy"
 $NasPath   = "/volume1/docker/komplizen-protokolle"
 $ImageName = "komplizen-protokolle"
 $TarFile   = "komplizen-protokolle-deploy.tar"
@@ -60,14 +64,14 @@ Write-Host "[4/4] Container aktualisieren (SSH)..." -ForegroundColor Yellow
 $remoteCmd = @"
 set -e
 echo '[NAS] Stoppe laufenden Container...'
-docker stop komplizen-protokolle 2>/dev/null || true
-docker rm   komplizen-protokolle 2>/dev/null || true
+sudo docker stop komplizen-protokolle 2>/dev/null || true
+sudo docker rm   komplizen-protokolle 2>/dev/null || true
 echo '[NAS] Lade neues Image...'
-docker load -i $TempNas
+sudo docker load -i $TempNas
 echo '[NAS] Raeume veraltete Images auf...'
-docker image prune -f 2>/dev/null || true
+sudo docker image prune -f 2>/dev/null || true
 echo '[NAS] Starte Container...'
-cd $NasPath && docker compose up -d
+cd $NasPath && sudo docker compose up -d
 echo '[NAS] Loesche temporaere Datei...'
 rm -f $TempNas
 echo '[NAS] Fertig.'
