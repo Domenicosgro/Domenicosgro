@@ -6,3 +6,5 @@ data/
 logs/
 release/
 start-local.config.ps1
+deploy-nas.config.ps1
+komplizen-protokolle-deploy.tar
