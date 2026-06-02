@@ -1,8 +1,5 @@
 # deploy-nas.ps1
-# Deployt die App auf die Synology NAS via SSH – ein Befehl, fertig.
-#
-# Voraussetzung: SSH auf der Synology aktiviert
-#   Synology DSM → Systemsteuerung → Terminal & SNMP → SSH-Dienst aktivieren
+# Deployt die App auf die Synology NAS via SSH - ein Befehl, fertig.
 #
 # Voraussetzung NAS-seitig (einmalig):
 #   - Lokaler Benutzer "Deploy" in Gruppe "administrators"
@@ -31,7 +28,7 @@ if (Test-Path $ConfigFile) {
 $ErrorActionPreference = "Stop"
 
 Write-Host ""
-Write-Host "=== Komplizen Protokolle – Deploy auf NAS ===" -ForegroundColor Cyan
+Write-Host "=== Komplizen Protokolle - Deploy auf NAS ===" -ForegroundColor Cyan
 Write-Host "  NAS:   $NasUser@$NasIp" -ForegroundColor Gray
 Write-Host "  Pfad:  $NasPath" -ForegroundColor Gray
 Write-Host ""
@@ -54,7 +51,7 @@ Write-Host "[3/4] Upload zur NAS (SCP)..." -ForegroundColor Yellow
 scp $TarFile "${NasUser}@${NasIp}:${TempNas}"
 if ($LASTEXITCODE -ne 0) {
     Remove-Item $TarFile -ErrorAction SilentlyContinue
-    Write-Error "Upload fehlgeschlagen – SSH erreichbar?"
+    Write-Error "Upload fehlgeschlagen - SSH erreichbar?"
     exit 1
 }
 Write-Host "      fertig" -ForegroundColor Green
