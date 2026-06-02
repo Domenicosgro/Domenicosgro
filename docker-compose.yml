@@ -12,6 +12,8 @@ services:
       PORT: "3000"
       HOST: "0.0.0.0"
       PUBLIC_URL: "http://192.168.178.250:3000"
+      DB_PATH: "/data"
+      LOG_PATH: "/logs"
       # SMTP – E-Mail-Versand (Aufgaben, Einladungen)
       # SMTP_HOST: "smtp.office365.com"
       # SMTP_PORT: "587"
