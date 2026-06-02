@@ -16,7 +16,10 @@ export default function MeetingHeader({ protocol, protocols, projects, logoDataU
   })()
   const allOther = (protocols ?? []).filter(p => p.id !== protocol.id)
   const predecessorOptions = allOther
-    .filter(p => p.projectId && starredIds.has(p.projectId))
+    .filter(p =>
+      (protocol.projectId && p.projectId === protocol.projectId) ||
+      (p.projectId && starredIds.has(p.projectId))
+    )
     .sort((a, b) => b.date.localeCompare(a.date))
   const hasUnstarredOnly = predecessorOptions.length === 0 && allOther.length > 0
 
@@ -164,12 +167,12 @@ export default function MeetingHeader({ protocol, protocols, projects, logoDataU
         {hasUnstarredOnly ? (
           <p className="mt-1 text-xs text-amber-600 flex items-center gap-1">
             <Star size={11} fill="currentColor" />
-            Keine Protokolle aus markierten Projekten. Projekte in der Projektliste mit ★ markieren.
+            Kein Projekt zugeordnet und keine ★-markierten Projekte. Projekt oben zuordnen.
           </p>
         ) : (
           <p className="mt-1 text-xs text-gray-400 flex items-center gap-1">
             <Star size={11} fill="currentColor" className="text-amber-400" />
-            Nur Protokolle aus mit ★ markierten Projekten werden angezeigt.
+            Protokolle aus gleichem Projekt und ★-markierten Projekten.
           </p>
         )}
       </div>

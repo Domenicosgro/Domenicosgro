@@ -1,13 +1,39 @@
-import React from 'react'
-import { Plus, Trash2, CalendarClock, Link } from 'lucide-react'
+import React, { useMemo } from 'react'
+import { Plus, Trash2, CalendarClock } from 'lucide-react'
 import { emptyAgendaDraftItem } from '../utils'
 import SpellCheckTextarea from './SpellCheckTextarea'
 
 export default function AgendaDraft({ agenda, agendaGreeting, agendaSentAt, protocolItems, projectContacts, onChange, onChangeGreeting }) {
   const contactListId = 'agenda-contacts-list'
-  const add = () => {
+
+  // Only "real" Hauptpunkte as sections — not auto-created ones (linkedFromAgendaId set)
+  const sectionItems = useMemo(
+    () => (protocolItems ?? []).filter(it => it.topic && (it.level ?? 1) === 1 && !it.linkedFromAgendaId),
+    [protocolItems]
+  )
+
+  // Group agenda items by linkedProtocolItemId
+  const sections = useMemo(() => {
+    const linked = sectionItems.map(pi => ({
+      id: pi.id,
+      label: `${pi.no ? pi.no + ' – ' : ''}${pi.topic}`,
+      items: agenda.filter(a => a.linkedProtocolItemId === pi.id),
+    }))
+    const newItems = agenda.filter(a =>
+      !a.linkedProtocolItemId || !sectionItems.find(pi => pi.id === a.linkedProtocolItemId)
+    )
+    return [...linked, { id: '__new__', label: null, items: newItems }]
+  }, [agenda, sectionItems])
+
+  const totalMin = agenda.reduce((s, a) => s + (parseInt(a.duration) || 0), 0)
+
+  const addToSection = (parentId) => {
     const no = String(agenda.length + 1)
-    onChange([...agenda, { ...emptyAgendaDraftItem(), no }])
+    onChange([...agenda, {
+      ...emptyAgendaDraftItem(),
+      no,
+      linkedProtocolItemId: parentId === '__new__' ? null : parentId,
+    }])
   }
 
   const update = (id, field, value) =>
@@ -15,23 +41,29 @@ export default function AgendaDraft({ agenda, agendaGreeting, agendaSentAt, prot
 
   const remove = (id) => onChange(agenda.filter(it => it.id !== id))
 
-  const moveUp = (i) => {
-    if (i === 0) return
-    const next = [...agenda]; [next[i - 1], next[i]] = [next[i], next[i - 1]]; onChange(next)
-  }
-  const moveDown = (i) => {
-    if (i === agenda.length - 1) return
-    const next = [...agenda]; [next[i], next[i + 1]] = [next[i + 1], next[i]]; onChange(next)
+  const moveUp = (sectionAgenda, item) => {
+    const si = sectionAgenda.findIndex(a => a.id === item.id)
+    if (si === 0) return
+    const gi  = agenda.findIndex(a => a.id === item.id)
+    const gp  = agenda.findIndex(a => a.id === sectionAgenda[si - 1].id)
+    const next = [...agenda];
+    [next[gp], next[gi]] = [next[gi], next[gp]]
+    onChange(next)
   }
 
-  const totalMin = agenda.reduce((s, a) => s + (parseInt(a.duration) || 0), 0)
-
-  // Protocol points available for linking (open ones only)
-  // Only top-level Hauptpunkte (level 1) are valid assignment targets
-  const linkableItems = (protocolItems ?? []).filter(it => it.topic && (it.level ?? 1) === 1)
+  const moveDown = (sectionAgenda, item) => {
+    const si = sectionAgenda.findIndex(a => a.id === item.id)
+    if (si === sectionAgenda.length - 1) return
+    const gi  = agenda.findIndex(a => a.id === item.id)
+    const gn  = agenda.findIndex(a => a.id === sectionAgenda[si + 1].id)
+    const next = [...agenda];
+    [next[gi], next[gn]] = [next[gn], next[gi]]
+    onChange(next)
+  }
 
   return (
     <div className="space-y-4">
+      {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-2 pb-2 border-b border-gray-200">
         <div className="flex items-center gap-3 flex-wrap">
           <h2 className="section-title"><CalendarClock size={16} /> Agenda (Vorab)</h2>
@@ -42,7 +74,9 @@ export default function AgendaDraft({ agenda, agendaGreeting, agendaSentAt, prot
           )}
           {totalMin > 0 && <span className="text-xs text-gray-400">Geplant: {totalMin} min</span>}
         </div>
-        <button className="btn-primary no-print" onClick={add}><Plus size={14} /> Punkt hinzufügen</button>
+        <button className="btn-primary no-print" onClick={() => addToSection('__new__')}>
+          <Plus size={14} /> Neuer Hauptpunkt
+        </button>
       </div>
 
       {/* Greeting */}
@@ -64,105 +98,102 @@ export default function AgendaDraft({ agenda, agendaGreeting, agendaSentAt, prot
         </datalist>
       )}
 
-      {agenda.length === 0 && (
+      {agenda.length === 0 && sectionItems.length === 0 && (
         <p className="text-sm text-gray-400 italic">Noch keine Agendapunkte erfasst.</p>
       )}
 
-      {agenda.length > 0 && (
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm min-w-[680px]">
-            <thead>
-              <tr className="border-b border-gray-200 text-xs text-gray-500">
-                <th className="text-left pb-2 pr-2 w-10">Nr.</th>
-                <th className="text-left pb-2 pr-2">Thema</th>
-                <th className="text-left pb-2 pr-2 w-24">Dauer (min)</th>
-                <th className="text-left pb-2 pr-2 w-36">Zuständig</th>
-                <th className="text-left pb-2 pr-2 w-40">Unterlagen</th>
-                <th className="text-left pb-2 pr-2 w-44 no-print">
-                  <span className="flex items-center gap-1"><Link size={11} /> Protokollpunkt</span>
-                </th>
-                <th className="pb-2 w-16 no-print" />
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {agenda.map((item, i) => {
-                const linkedItem = linkableItems.find(p => p.id === item.linkedProtocolItemId)
-                return (
-                  <tr key={item.id}>
-                    <td className="py-2 pr-2 align-top pt-3">
-                      <input className="input py-1 w-10 text-center text-xs font-semibold"
-                        value={item.no} placeholder={String(i + 1)}
-                        onChange={e => update(item.id, 'no', e.target.value)} />
-                    </td>
-                    <td className="py-2 pr-2 align-top">
-                      <input className="input py-1 font-medium"
-                        placeholder="Thema…" value={item.topic}
-                        onChange={e => update(item.id, 'topic', e.target.value)} />
-                    </td>
-                    <td className="py-2 pr-2 align-top">
-                      <div className="flex items-center gap-1">
-                        <input className="input py-1 text-right w-16" type="number" min="0" placeholder="15"
-                          value={item.duration} onChange={e => update(item.id, 'duration', e.target.value)} />
-                        <span className="text-xs text-gray-400">min</span>
-                      </div>
-                    </td>
-                    <td className="py-2 pr-2 align-top">
-                      <input className="input py-1 text-xs" placeholder="Name/Firma"
-                        value={item.responsible}
-                        list={(projectContacts ?? []).length > 0 ? contactListId : undefined}
-                        onChange={e => update(item.id, 'responsible', e.target.value)} />
-                    </td>
-                    <td className="py-2 pr-2 align-top">
-                      <input className="input py-1 text-xs" placeholder="Pläne, Berichte…"
-                        value={item.documents} onChange={e => update(item.id, 'documents', e.target.value)} />
-                    </td>
-                    {/* Link to existing protocol point */}
-                    <td className="py-2 pr-2 align-top no-print">
-                      {linkableItems.length > 0 ? (
-                        <select
-                          className="select py-1 text-xs"
-                          value={item.linkedProtocolItemId ?? ''}
-                          onChange={e => update(item.id, 'linkedProtocolItemId', e.target.value || null)}
-                          title="Diesem Agendapunkt einen bestehenden Protokollpunkt zuordnen"
-                        >
-                          <option value="">Neuer Hauptpunkt</option>
-                          {linkableItems.map(p => (
-                            <option key={p.id} value={p.id}>
-                              {p.no ? `${p.no} – ` : ''}{p.topic.slice(0, 30)}
-                            </option>
-                          ))}
-                        </select>
-                      ) : (
-                        <span className="text-xs text-gray-400 italic">Neuer Hauptpunkt</span>
-                      )}
-                      {linkedItem && (
-                        <span className="block text-xs text-brand-600 mt-0.5">→ {linkedItem.topic.slice(0, 25)}</span>
-                      )}
-                    </td>
-                    <td className="py-2 align-top no-print">
-                      <div className="flex gap-1 pt-1">
-                        <button className="btn-ghost p-1 text-gray-400 disabled:opacity-30"
-                          onClick={() => moveUp(i)} disabled={i === 0}>↑</button>
-                        <button className="btn-ghost p-1 text-gray-400 disabled:opacity-30"
-                          onClick={() => moveDown(i)} disabled={i === agenda.length - 1}>↓</button>
-                        <button className="btn-ghost p-1.5 text-red-400 hover:text-red-600"
-                          onClick={() => remove(item.id)}><Trash2 size={13} /></button>
-                      </div>
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-            {totalMin > 0 && (
-              <tfoot>
-                <tr className="border-t border-gray-200">
-                  <td colSpan={2} className="pt-2 text-xs text-gray-500 font-medium">Gesamt</td>
-                  <td className="pt-2 text-xs font-semibold text-brand-700 pr-6 text-right">{totalMin} min</td>
-                  <td colSpan={4} />
-                </tr>
-              </tfoot>
-            )}
-          </table>
+      {/* Sections */}
+      <div className="space-y-3">
+        {sections.map(section => {
+          const isNew = section.id === '__new__'
+          // Skip the "new" section entirely if it's empty and there are existing sections
+          if (isNew && section.items.length === 0 && sectionItems.length > 0) return null
+
+          return (
+            <div key={section.id} className="border border-gray-200">
+              {/* Section header */}
+              <div className={`flex items-center justify-between px-3 py-2 ${
+                isNew ? 'bg-gray-50' : 'bg-brand-50 border-b border-brand-100'
+              }`}>
+                <span className={`text-sm font-semibold ${isNew ? 'text-gray-500 italic' : 'text-brand-700'}`}>
+                  {isNew ? 'Neuer Hauptpunkt' : section.label}
+                </span>
+                <button className="btn-ghost py-0.5 px-2 text-xs no-print" onClick={() => addToSection(section.id)}>
+                  <Plus size={12} /> Punkt hinzufügen
+                </button>
+              </div>
+
+              {/* Items table */}
+              {section.items.length > 0 ? (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm min-w-[560px]">
+                    <thead>
+                      <tr className="border-b border-gray-100 text-xs text-gray-500">
+                        <th className="text-left py-1.5 pl-3 pr-2 w-10">Nr.</th>
+                        <th className="text-left py-1.5 pr-2">Thema</th>
+                        <th className="text-left py-1.5 pr-2 w-24">Dauer (min)</th>
+                        <th className="text-left py-1.5 pr-2 w-36">Zuständig</th>
+                        <th className="text-left py-1.5 pr-2 w-40">Unterlagen</th>
+                        <th className="py-1.5 w-20 no-print" />
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-50">
+                      {section.items.map((item, i) => (
+                        <tr key={item.id}>
+                          <td className="py-2 pl-3 pr-2 align-top">
+                            <input className="input py-1 w-10 text-center text-xs font-semibold"
+                              value={item.no} placeholder={String(i + 1)}
+                              onChange={e => update(item.id, 'no', e.target.value)} />
+                          </td>
+                          <td className="py-2 pr-2 align-top">
+                            <input className="input py-1 font-medium" placeholder="Thema…"
+                              value={item.topic} onChange={e => update(item.id, 'topic', e.target.value)} />
+                          </td>
+                          <td className="py-2 pr-2 align-top">
+                            <div className="flex items-center gap-1">
+                              <input className="input py-1 text-right w-16" type="number" min="0" placeholder="15"
+                                value={item.duration} onChange={e => update(item.id, 'duration', e.target.value)} />
+                              <span className="text-xs text-gray-400">min</span>
+                            </div>
+                          </td>
+                          <td className="py-2 pr-2 align-top">
+                            <input className="input py-1 text-xs" placeholder="Name/Firma"
+                              value={item.responsible}
+                              list={(projectContacts ?? []).length > 0 ? contactListId : undefined}
+                              onChange={e => update(item.id, 'responsible', e.target.value)} />
+                          </td>
+                          <td className="py-2 pr-2 align-top">
+                            <input className="input py-1 text-xs" placeholder="Pläne, Berichte…"
+                              value={item.documents} onChange={e => update(item.id, 'documents', e.target.value)} />
+                          </td>
+                          <td className="py-2 pr-3 align-top no-print">
+                            <div className="flex gap-1 pt-1">
+                              <button className="btn-ghost p-1 text-gray-400 disabled:opacity-30"
+                                onClick={() => moveUp(section.items, item)} disabled={i === 0}>↑</button>
+                              <button className="btn-ghost p-1 text-gray-400 disabled:opacity-30"
+                                onClick={() => moveDown(section.items, item)} disabled={i === section.items.length - 1}>↓</button>
+                              <button className="btn-ghost p-1.5 text-red-400 hover:text-red-600"
+                                onClick={() => remove(item.id)}><Trash2 size={13} /></button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <p className="text-xs text-gray-400 italic px-3 py-2">
+                  Noch keine Punkte — „Punkt hinzufügen" klicken.
+                </p>
+              )}
+            </div>
+          )
+        })}
+      </div>
+
+      {totalMin > 0 && (
+        <div className="text-right text-xs text-gray-500 pt-1 border-t border-gray-100">
+          Gesamt: <span className="font-semibold text-brand-700">{totalMin} min</span>
         </div>
       )}
     </div>
