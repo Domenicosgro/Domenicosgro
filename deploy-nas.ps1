@@ -59,17 +59,18 @@ Write-Host "      fertig" -ForegroundColor Green
 
 # [4/4] Container auf der NAS tauschen via SSH
 Write-Host "[4/4] Container aktualisieren (SSH)..." -ForegroundColor Yellow
+$DK = "/usr/local/bin/docker"
 $remoteCmd = @"
 set -e
 echo '[NAS] Stoppe laufenden Container...'
-sudo docker stop komplizen-protokolle 2>/dev/null || true
-sudo docker rm   komplizen-protokolle 2>/dev/null || true
+sudo $DK stop komplizen-protokolle 2>/dev/null || true
+sudo $DK rm   komplizen-protokolle 2>/dev/null || true
 echo '[NAS] Lade neues Image...'
-sudo docker load -i $TempNas
+sudo $DK load -i $TempNas
 echo '[NAS] Raeume veraltete Images auf...'
-sudo docker image prune -f 2>/dev/null || true
+sudo $DK image prune -f 2>/dev/null || true
 echo '[NAS] Starte Container...'
-cd $NasPath && sudo docker compose up -d
+cd $NasPath && sudo $DK compose up -d
 echo '[NAS] Loesche temporaere Datei...'
 rm -f $TempNas
 echo '[NAS] Fertig.'
