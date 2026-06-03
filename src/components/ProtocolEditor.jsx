@@ -118,7 +118,10 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
     })
     if (toCarry.length === 0) return
     const carried = carryProtocolItems(toCarry)
-    change({ agendaItems: [...(protocol.agendaItems ?? []), ...carried] })
+    // itemCarriedFrom persistiert, dass für diesen Vorgänger bereits automatisch
+    // übernommen wurde → verhindert, dass gelöschte Punkte beim Wieder-Öffnen
+    // erneut eingefügt werden (carriedForRef lebt nur im Speicher).
+    change({ agendaItems: [...(protocol.agendaItems ?? []), ...carried], itemCarriedFrom: predecessor.id })
   }
 
   // Auto-carry protocol items from predecessor.
@@ -129,11 +132,18 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
   //   protocol whose items are already present skips the carry silently.
   useEffect(() => {
     if (!predecessor?.id || isClosed) return
+    if (protocol.itemCarriedFrom === predecessor.id) return  // persistent: bereits übernommen
     if (carriedForRef.current === predecessor.id) return
+    // Legacy-Schutz für Bestandsprotokolle ohne itemCarriedFrom-Marker:
+    // wurde bereits mindestens ein Punkt dieses Vorgängers übernommen, gilt der
+    // Vorgang als erledigt (sonst tauchen gelöschte Punkte einmalig wieder auf).
+    const predItemIds    = new Set((predecessor.agendaItems ?? []).map(i => i.id))
+    const alreadyCarried = (protocol.agendaItems ?? []).some(i => i.carriedFromId && predItemIds.has(i.carriedFromId))
+    if (alreadyCarried) { carriedForRef.current = predecessor.id; return }
     if (pendingItemCarryover.length === 0) return
     carriedForRef.current = predecessor.id
     handleItemCarryover()
-  }, [predecessor?.id]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [predecessor?.id, protocol.itemCarriedFrom]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Live sync: whenever agenda changes, create/move/remove protocol items immediately.
   // "Neu erstellen" (null)  → standalone new Hauptpunkt appended at the end.

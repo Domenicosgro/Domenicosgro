@@ -246,7 +246,20 @@ export default function ProtocolItems({ items, onChange, allTasks = [], onTasksC
     ))
   }
 
-  const remove = (id) => { if (!readOnly) onChange(items.filter(it => it.id !== id)) }
+  const remove = (id) => {
+    if (readOnly) return
+    const idx = items.findIndex(it => it.id === id)
+    if (idx < 0) return
+    // Den kompletten Teilbaum löschen (Punkt + alle Unterpunkte)
+    const end        = subtreeEnd(items, idx)
+    const removedIds = new Set(items.slice(idx, end).map(it => it.id))
+    const next       = [...items.slice(0, idx), ...items.slice(end)]
+    // Neu durchnummerieren, damit keine Lücke entsteht (1, 2, 4 → 1, 2, 3)
+    onChange(renumberItems(next))
+    // Verwaiste Aufgaben der gelöschten Punkte mitlöschen
+    const remaining = allTasks.filter(t => !removedIds.has(t.protocolItemId))
+    if (remaining.length !== allTasks.length) onTasksChange(remaining)
+  }
 
   const reactivate = (id) => {
     if (readOnly) return

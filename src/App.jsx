@@ -84,7 +84,12 @@ export default function App() {
       .catch(() => { setServerUser(null); setServerAuthChecked(true) })
   }, [])
 
-  const handleLogin = (user) => setServerUser(user)
+  const handleLogin = (user) => {
+    setServerUser(user)
+    // Beim App-Start (ohne Token) liefen die Daten-Hooks ins 401 und blieben leer.
+    // Jetzt liegt der Token vor → Projekte/Protokolle frisch nachladen.
+    handleRefresh()
+  }
 
   const handleLogout = async () => {
     const token = localStorage.getItem('kp_session_token')
