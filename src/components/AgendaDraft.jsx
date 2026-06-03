@@ -187,7 +187,7 @@ export default function AgendaDraft({ agenda, agendaGreeting, agendaSentAt, prot
                   </table>
                 </div>
               ) : (
-                <p className="text-xs text-gray-400 italic px-3 py-2">
+                <p className="text-xs text-gray-400 italic px-3 py-2 no-print">
                   Noch keine Punkte — „Punkt hinzufügen" klicken.
                 </p>
               )}

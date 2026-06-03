@@ -440,71 +440,104 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
       {/* ════════════════════════════════════════
           PRINT: AGENDA PAGE
           ════════════════════════════════════════ */}
-      {(protocol.agenda ?? []).length > 0 && (
-        <div className="hidden print:block">
-          <div className="print-agenda-page">
-            <PrintHeader subtitle="Einladung / Agenda" />
-            <table className="w-full text-sm mb-4 border-collapse">
-              <tbody>
-                {[
-                  ['Datum',    formatDate(protocol.date)],
-                  ['Ort',      protocol.location || '–'],
-                  ['Einladung',protocol.preparedBy || '–'],
-                ].map(([l, v]) => (
-                  <tr key={l}>
-                    <td className="py-1 pr-6 text-xs uppercase tracking-wide w-28">{l}</td>
-                    <td className="py-1">{v}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+      {(() => {
+        const agendaItems   = protocol.agenda ?? []
+        const sectionItems  = (protocol.agendaItems ?? []).filter(
+          it => it.topic && (it.level ?? 1) === 1 && !it.linkedFromAgendaId
+        )
+        if (agendaItems.length === 0 && sectionItems.length === 0) return null
+        return (
+          <div className="hidden print:block">
+            <div className="print-agenda-page">
+              <PrintHeader subtitle="Einladung / Agenda" />
+              <table className="w-full text-sm mb-4 border-collapse">
+                <tbody>
+                  {[
+                    ['Datum',    formatDate(protocol.date)],
+                    ['Ort',      protocol.location || '–'],
+                    ['Einladung',protocol.preparedBy || '–'],
+                  ].map(([l, v]) => (
+                    <tr key={l}>
+                      <td className="py-1 pr-6 text-xs uppercase tracking-wide w-28">{l}</td>
+                      <td className="py-1">{v}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
 
-            <div className="font-bold text-sm border-b border-black pb-1 mb-1 mt-4 uppercase tracking-wide">Tagesordnung</div>
-            <table className="w-full text-sm border-collapse">
-              <thead>
-                <tr className="border-b border-black text-xs uppercase">
-                  <th className="text-left py-1 pr-3 w-10">Nr.</th>
-                  <th className="text-left py-1 pr-3">Thema</th>
-                  <th className="text-right py-1 pr-3 w-20">Dauer</th>
-                  <th className="text-left py-1 w-36">Zuständig</th>
-                </tr>
-              </thead>
-              <tbody>
-                {(protocol.agenda ?? []).map((item, i) => (
-                  <tr key={item.id}>
-                    <td className="py-2 pr-3 font-semibold">{item.no || i + 1}</td>
-                    <td className="py-2 pr-3">
-                      <span className="font-medium">{item.topic || '–'}</span>
-                      {item.documents && <span className="block text-xs">Unterlagen: {item.documents}</span>}
-                    </td>
-                    <td className="py-2 pr-3 text-right">{item.duration ? `${item.duration} min` : '–'}</td>
-                    <td className="py-2">{item.responsible || '–'}</td>
+              <div className="font-bold text-sm border-b border-black pb-1 mb-1 mt-4 uppercase tracking-wide">Tagesordnung</div>
+              <table className="w-full text-sm border-collapse">
+                <thead>
+                  <tr className="border-b border-black text-xs uppercase">
+                    <th className="text-left py-1 pr-3 w-10">Nr.</th>
+                    <th className="text-left py-1 pr-3">Thema</th>
+                    <th className="text-right py-1 pr-3 w-20">Dauer</th>
+                    <th className="text-left py-1 w-36">Zuständig</th>
                   </tr>
-                ))}
-              </tbody>
-              {(protocol.agenda ?? []).reduce((s, a) => s + (parseInt(a.duration) || 0), 0) > 0 && (
-                <tfoot>
-                  <tr className="border-t border-black">
-                    <td colSpan={2} className="pt-2 text-xs">Gesamt</td>
-                    <td className="pt-2 text-right text-sm font-bold pr-3">
-                      {(protocol.agenda ?? []).reduce((s, a) => s + (parseInt(a.duration) || 0), 0)} min
-                    </td>
-                    <td />
-                  </tr>
-                </tfoot>
+                </thead>
+                <tbody>
+                  {sectionItems.length === 0
+                    ? agendaItems.map((item, i) => (
+                        <tr key={item.id}>
+                          <td className="py-2 pr-3 font-semibold">{item.no || i + 1}</td>
+                          <td className="py-2 pr-3">
+                            <span className="font-medium">{item.topic || '–'}</span>
+                            {item.documents && <span className="block text-xs">Unterlagen: {item.documents}</span>}
+                          </td>
+                          <td className="py-2 pr-3 text-right">{item.duration ? `${item.duration} min` : '–'}</td>
+                          <td className="py-2">{item.responsible || '–'}</td>
+                        </tr>
+                      ))
+                    : sectionItems.map(si => {
+                        const label   = `${si.no ? si.no + ' – ' : ''}${si.topic}`
+                        const linked  = agendaItems.filter(a => a.linkedProtocolItemId === si.id)
+                        return (
+                          <React.Fragment key={si.id}>
+                            <tr>
+                              <td colSpan={4} className="pt-3 pb-1 font-bold text-xs uppercase tracking-wide border-t border-gray-400">
+                                {label}
+                              </td>
+                            </tr>
+                            {linked.map((item, i) => (
+                              <tr key={item.id}>
+                                <td className="py-1.5 pr-3 pl-3 font-semibold">{item.no || i + 1}</td>
+                                <td className="py-1.5 pr-3">
+                                  <span className="font-medium">{item.topic || '–'}</span>
+                                  {item.documents && <span className="block text-xs">Unterlagen: {item.documents}</span>}
+                                </td>
+                                <td className="py-1.5 pr-3 text-right">{item.duration ? `${item.duration} min` : '–'}</td>
+                                <td className="py-1.5">{item.responsible || '–'}</td>
+                              </tr>
+                            ))}
+                          </React.Fragment>
+                        )
+                      })
+                  }
+                </tbody>
+                {agendaItems.reduce((s, a) => s + (parseInt(a.duration) || 0), 0) > 0 && (
+                  <tfoot>
+                    <tr className="border-t border-black">
+                      <td colSpan={2} className="pt-2 text-xs">Gesamt</td>
+                      <td className="pt-2 text-right text-sm font-bold pr-3">
+                        {agendaItems.reduce((s, a) => s + (parseInt(a.duration) || 0), 0)} min
+                      </td>
+                      <td />
+                    </tr>
+                  </tfoot>
+                )}
+              </table>
+
+              {present.length > 0 && (
+                <div className="mt-5">
+                  <div className="text-xs mb-1 uppercase tracking-wide">Eingeladene Teilnehmer</div>
+                  <p className="text-sm">{present.map(p => p.name).filter(Boolean).join(' · ')}</p>
+                </div>
               )}
-            </table>
-
-            {present.length > 0 && (
-              <div className="mt-5">
-                <div className="text-xs mb-1 uppercase tracking-wide">Eingeladene Teilnehmer</div>
-                <p className="text-sm">{present.map(p => p.name).filter(Boolean).join(' · ')}</p>
-              </div>
-            )}
+            </div>
+            <div className="print-page-break" />
           </div>
-          <div className="print-page-break" />
-        </div>
-      )}
+        )
+      })()}
 
       {/* ════════════════════════════════════════
           PRINT: COVER PAGE (Deckblatt)
