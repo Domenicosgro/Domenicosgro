@@ -14,7 +14,9 @@
 ```
 Domenicosgro/
 ├── Dockerfile                     # Zweistufig: Vite-Build → Express-Produktionsimage
-├── docker-compose.yml             # Synology/Linux-Deployment (./data, ./logs als Volumes)
+├── docker-compose.yml             # Synology/Linux-Deployment (/data, /logs als Volumes + SMTP-ENV)
+├── deploy-nas.ps1                 # Ein-Befehl-Deploy auf Synology NAS via SSH (build→save→scp→swap)
+├── deploy-nas.config.example.ps1  # Vorlage für NAS-Zugangsdaten (nie committen: .config.ps1)
 ├── start-local.ps1                # Windows-Start-Skript: baut Image, startet Container, setzt PUBLIC_URL
 ├── start-local.config.example.ps1 # Vorlage für SMTP-Zugangsdaten (nie committen: .config.ps1)
 ├── build-deploy.ps1               # Optionaler Deploy-Build
@@ -33,7 +35,7 @@ Domenicosgro/
 │   ├── de.aff / de.dic            # Deutsche Wörterbücher für nspell
 │
 ├── src/
-│   ├── App.jsx                    # Routing (view-State): home|protocols|editor|project-contacts|dashboard
+│   ├── App.jsx                    # Routing (view-State): home|protocols|editor|project-contacts|dashboard|project-dashboard
 │   ├── main.jsx                   # React-Einstiegspunkt
 │   ├── index.css                  # Design-System (Tailwind-Components + Print-CSS + Wasserzeichen)
 │   ├── utils.js                   # Datenmodelle, Helper-Funktionen
@@ -45,14 +47,16 @@ Domenicosgro/
 │   ├── spellcheck.worker.js       # nspell Deutsch (Web Worker)
 │   │
 │   ├── components/
-│   │   ├── ProjectsHome.jsx       # Startseite: Projektliste, Favoriten, Passwortschutz, PWA-Install
+│   │   ├── ProjectsHome.jsx       # Startseite: Projektliste, Favoriten, Passwortschutz, PWA-Install, Projekt-Import
 │   │   ├── ProjectManager.jsx     # Kontaktverwaltung (Gewerk-Spalte, Sort, Drag & Drop, CSV)
+│   │   ├── ProjectDashboard.jsx   # Projekt-Übersicht (Kacheln, Kennzahlen)
+│   │   ├── TileSidebar.jsx        # Schnellzugriff-Kacheln (Dokument-/URL-Links) im Editor
 │   │   ├── BeteiligtenModal.jsx   # Projektbeteiligtenliste (Druck, Excel, Word)
-│   │   ├── ProtocolList.jsx       # Protokollliste eines Projekts (+ updatedBy-Anzeige)
+│   │   ├── ProtocolList.jsx       # Protokollliste eines Projekts (+ updatedBy-Anzeige, Projekt-Export)
 │   │   ├── ProtocolEditor.jsx     # Protokoll-Editor (Hauptkomponente)
 │   │   ├── MeetingHeader.jsx      # Metadaten (Datum, Ort, Vorgänger, Projektlink)
 │   │   ├── ParticipantsList.jsx   # Teilnehmerliste im Protokoll
-│   │   ├── AgendaDraft.jsx        # Tagesordnungs-Entwurf (vor Besprechung)
+│   │   ├── AgendaDraft.jsx        # Tagesordnungs-Entwurf (hierarchisch unter Vorgänger-Hauptpunkten)
 │   │   ├── AgendaEmailModal.jsx   # Agenda per E-Mail versenden
 │   │   ├── AgendaItems.jsx        # Agenda-Punkte-Liste
 │   │   ├── ProtocolItems.jsx      # Protokollpunkte (rich text, Drag & Drop, Anhänge)
@@ -64,18 +68,18 @@ Domenicosgro/
 │   │   ├── MassnahmenDashboard.jsx  # Projektübergreifende Maßnahmen-Übersicht
 │   │   ├── LogoUpload.jsx         # Logo hochladen/löschen
 │   │   ├── LoginScreen.jsx        # Login-Maske (Server-Modus)
-│   │   └── AdminPanel.jsx         # Benutzerverwaltung (Server-Modus)
+│   │   └── AdminPanel.jsx         # Benutzerverwaltung + SMTP-Test (Server-Modus)
 │   │
 │   └── hooks/
 │       ├── useProtocols.js        # CRUD + syncProjectName + refetchProtocols
-│       ├── useProjects.js         # CRUD Projekte + refetchProjects
+│       ├── useProjects.js         # CRUD Projekte + importProject + refetchProjects
 │       ├── useLogo.js             # Logo (localStorage / Electron)
 │       ├── useSpellCheck.js       # Rechtschreibprüfung (Web Worker)
 │       └── useUserSettings.js     # Benutzereinstellungen (Server-Modus)
 │
 ├── server/
 │   ├── index.js                   # Express-Server: REST-API, Auth, SMTP-Einladung, SSE
-│   ├── db.js                      # better-sqlite3 Setup + Migrationen
+│   ├── db.js                      # better-sqlite3 Setup + Migrationen (DB_PATH-aware)
 │   ├── auth.js                    # Session-Token-Authentifizierung (opak, 8h TTL), Benutzer-CRUD
 │   ├── attachments.js             # Anhang-Endpunkte (Datei-Upload/-Download)
 │   ├── pm2.config.js              # PM2-Konfiguration für direkten Linux-Betrieb
@@ -106,7 +110,31 @@ Erkennung: `window.__SERVER_MODE__` (injiziert von Express), `window.electronAPI
 
 ## Deployment (Windows / Docker)
 
-### start-local.ps1
+### deploy-nas.ps1 – Ein-Befehl-Deploy auf die Synology NAS (Produktiv)
+```powershell
+.\deploy-nas.ps1
+```
+Ablauf: `docker build` → `docker save` → `scp -O` auf die NAS → SSH-Befehl tauscht
+Container (`stop`/`rm`/`load`/`compose up -d`). Komplett passwortlos via SSH-Key.
+
+**NAS-Voraussetzungen (einmalig):**
+- Lokaler Benutzer `Deploy` in Gruppe `administrators` (SSH aktiviert)
+- SSH-Key hinterlegt (`ssh-copy-id` bzw. `authorized_keys`)
+- Passwortloses sudo nur für docker:
+  `/etc/sudoers.d/deploy-docker` → `Deploy ALL=(ALL) NOPASSWD: /usr/local/bin/docker`
+- Eigene NAS-Werte (IP/User) in `deploy-nas.config.ps1` (nicht in Git)
+
+**Stolpersteine (bereits gelöst, siehe Kommentare im Skript):**
+- `scp -O` erzwingt klassisches SCP-Protokoll (Synology hat **kein** SFTP-Subsystem)
+- Here-String wird per `-replace "`r`n","`n"` von CRLF auf LF gestellt (sonst stolpert bash)
+- Remote-Befehle nutzen **vollen Pfad** `/usr/local/bin/docker` (non-interaktives SSH
+  hat `/usr/local/bin` nicht im PATH → sonst greift NOPASSWD-Regel nicht)
+- Skript ist **reines ASCII** (PowerShell 5.1 ANSI-Encoding verträgt keine Umlaute/Sonderzeichen)
+
+**Datenmigration PC → NAS:** DB liegt im Volume `/volume1/docker/komplizen-protokolle/data/`
+(`komplizen.db` + `-shm`/`-wal` + `attachments/`). Beim Umzug Container stoppen, Dateien kopieren.
+
+### start-local.ps1 (lokaler Test auf dem PC)
 ```powershell
 # Ermittelt Windows-LAN-IP automatisch via Get-NetIPAddress
 # Übergibt sie als PUBLIC_URL an den Docker-Container
@@ -120,6 +148,13 @@ SMTP-Zugangsdaten in `start-local.config.ps1` (Datei nicht in Git – nur `*.con
 `os.networkInterfaces()` im Container sieht **nicht** die Windows-LAN-IP.  
 → Fix: `start-local.ps1` setzt `PUBLIC_URL=http://<windows-ip>:3000` als Umgebungsvariable.  
 → `getAppUrl(req)` in `server/index.js` nutzt `PUBLIC_URL` vorrangig.
+→ Auf der NAS wird `PUBLIC_URL` direkt in `docker-compose.yml` gesetzt.
+
+### docker-compose.yml (NAS) – Umgebungsvariablen
+`PORT`, `HOST`, `PUBLIC_URL`, `DB_PATH=/data`, `LOG_PATH=/logs` sowie der SMTP-Block
+(`SMTP_HOST/PORT/SECURE/USER/PASS/FROM`). **`SMTP_PASS` wird nur lokal auf der NAS
+eingetragen, niemals in Git committen** (im Repo steht der Platzhalter `DEIN-PASSWORT-HIER`).
+Nach Änderung an ENV-Variablen: Container **löschen und neu erstellen** (nicht nur „Starten").
 
 ---
 
@@ -134,12 +169,29 @@ SMTP-Zugangsdaten in `start-local.config.ps1` (Datei nicht in Git – nur `*.con
 
 ---
 
-## Einladungs-E-Mail (server/index.js)
+## E-Mail / SMTP (server/index.js)
 
-- nodemailer mit SMTP (Microsoft 365: App-Passwort nach MFA-Aktivierung)
+- nodemailer mit SMTP, konfiguriert über `SMTP_*`-Umgebungsvariablen
+- Zentrale Absenderadresse: `Protokoll@ghbarchitekten.de` über Microsoft 365
+  (`smtp.office365.com:587`, `SMTP_SECURE=false`)
 - App-Link via `getAppUrl(req)` → nutzt `PUBLIC_URL` oder Request-Host
 - `Logo_Komplizen_sky1.png` als CID-Inline-Anhang (nur in E-Mail, nicht als Wasserzeichen)
-- Enthält Zugangsdaten-Box + PWA-Installationsanleitung (Edge primär, Chrome-Flag als Fallback)
+- Einladungs-E-Mail: Zugangsdaten-Box + PWA-Installationsanleitung (Edge primär, Chrome-Flag als Fallback)
+
+**Endpunkte:**
+- `GET  /api/admin/smtp-status` – ob SMTP konfiguriert ist (Admin)
+- `POST /api/admin/smtp-test`   – Testmail an eigene Adresse (Admin, im AdminPanel)
+- `POST /api/actions/send-email` – Maßnahmen-Mail; **From** = zentrale Adresse,
+  **Reply-To** = E-Mail des eingeloggten Nutzers (`db.users.get(req.user).email`),
+  Anzeigename im From-Header
+
+**Microsoft-365-Einrichtung (zentrale Adresse):**
+1. admin.microsoft.com → Benutzer → `Protokoll@…` → E-Mail → **E-Mail-Apps verwalten**
+   → Häkchen **Authentifiziertes SMTP** setzen
+2. Falls Häkchen fehlt: Exchange Admin Center → Nachrichtenfluss →
+   sicherstellen, dass **„SMTP-AUTH deaktivieren"** **aus** ist
+3. `SMTP_PASS` in der `docker-compose.yml` auf der NAS eintragen, Container neu erstellen
+4. Test über AdminPanel → SMTP-Test
 
 ---
 
@@ -153,6 +205,9 @@ SMTP-Zugangsdaten in `start-local.config.ps1` (Datei nicht in Git – nur `*.con
   isEncrypted,                    // true wenn AES-GCM aktiv
   encryptedContacts,              // Base64-verschlüsselte Kontakte
   cryptoSalt, cryptoIv,          // PBKDF2-Salt + AES-IV
+  hoaiServices: [...],            // HOAI-Leistungsbilder (optional)
+  linkedFolders: [...],           // verknüpfte Synology-Freigabe-Links
+  tiles: [...],                   // Schnellzugriff-Kacheln (für alle Protokolle des Projekts)
   createdAt, updatedAt
 }
 ```
@@ -271,6 +326,22 @@ Die Hooks reagieren auf `protocol`/`project`-Events und aktualisieren den State 
 - `buildProtocolNo(projectName, date, chainNo, meetingType)` → z.B. `2 - BB-MeinProjekt_29.04.2026`
 - Carryover: `useEffect` in ProtocolEditor, Guard via `carriedForRef` (verhindert Doppelübernahme in React Strict Mode)
 
+### Vorgänger-Dropdown (MeetingHeader.jsx)
+- Zeigt Protokolle aus **demselben Projekt** (`projectId` gleich) **und** aus
+  ★-markierten Projekten (`bb_project_favorites` in localStorage)
+- Sortiert nach Datum absteigend
+- Hinweistext warnt, wenn kein Projekt zugeordnet **und** keine Favoriten gesetzt sind
+
+### Agenda-Entwurf (AgendaDraft.jsx) – hierarchisch
+- Die **Hauptpunkte des Vorgängerprotokolls** (Protokollpunkte mit `level===1` und
+  **ohne** `linkedFromAgendaId`) erscheinen als unveränderbare Abschnitts-Überschriften (`sectionItems`)
+- Neue Agendapunkte werden über **„Punkt hinzufügen"** unter einem bestehenden Hauptpunkt
+  eingefügt → bekommen `linkedProtocolItemId = <Hauptpunkt-ID>`
+- Der globale Button **„Neuer Hauptpunkt"** ist **nur sichtbar, wenn noch keine
+  Hauptpunkte existieren** (Fallback für standalone-Protokolle)
+- Thema-Feld ist eine **mehrzeilige Textarea** (vertikal vergrößerbar)
+- `moveUp`/`moveDown` wirken nur innerhalb desselben Abschnitts
+
 ### Protokoll abschließen
 - `promoteAgenda()` übernimmt nur Agenda-Punkte ohne `linkedFromAgendaId` in `agendaItems`
 - Nach Abschluss: `isClosed=true`, Editor read-only
@@ -299,18 +370,32 @@ Die Hooks reagieren auf `protocol`/`project`-Events und aktualisieren den State 
 - **CSV:** Semikolon + UTF-8 BOM
 - **Print/PDF:** `window.print()`, `@page A4`
 
+### Projekt-Export / -Import (ganzes Projekt)
+- **Export:** Button in `ProtocolList.jsx` (`handleExportProject`) – lädt JSON mit
+  `{ exportVersion, exportType: 'project', exportedAt, project, protocols }`.
+  Kontakte werden **entschlüsselt** exportiert; Passwortschutz-/Crypto-Felder werden
+  im Export geleert (kein `passwordHash`, `encryptedContacts`, `cryptoSalt`, `cryptoIv`).
+  **Anhänge sind nicht enthalten** (liegen nur lokal in IndexedDB/userData).
+- **Import:** Button in `ProjectsHome.jsx` → `App.handleImportProject`.
+  Vergibt **neue IDs** für Projekt und alle Protokolle, remappt `predecessorId`
+  über eine `idMap`, hängt alle Protokolle an die neue `projectId`.
+- Hook: `useProjects.importProject(data)` (analog zu `importProtocol`).
+
 ---
 
 ## Bekannte Fallstricke
 
 1. **React Strict Mode** führt Effects doppelt aus → `carriedForRef` Guard in ProtocolEditor
 2. **Tiptap controlled input:** `lastEmittedRef` unterscheidet eigene Änderungen von externen
-3. **Vorgänger-Dropdown:** zeigt nur Protokolle aus Projekten mit `★`
+3. **Vorgänger-Dropdown:** zeigt Protokolle aus **gleichem Projekt** + aus `★`-markierten Projekten
 4. **ParticipantsList** (Teilnehmer im Protokoll) ≠ **BeteiligtenModal** (Projektbeteiligtenliste)
 5. **`promoteAgenda()`** prüft `existingLinkedIds` vor Erstellung – sonst Duplikate
-6. **Docker-interne IP:** `os.networkInterfaces()` im Container gibt `172.17.0.2` zurück. Fix: `PUBLIC_URL` via `start-local.ps1` übergeben
+6. **Docker-interne IP:** `os.networkInterfaces()` im Container gibt `172.17.0.2` zurück. Fix: `PUBLIC_URL` setzen (`start-local.ps1` lokal / `docker-compose.yml` auf NAS)
 7. **`window.location.reload()`** in SPA = Navigation zurück zur Startseite. Stattdessen `onRefresh` / `refetchProtocols` nutzen
-8. **SMTP Microsoft 365:** erfordert App-Passwort (per-user MFA muss aktiviert sein, nicht nur Diensteinstellungen)
+8. **SMTP Microsoft 365:** „Authentifiziertes SMTP" muss pro Benutzer aktiviert sein; org-weites „SMTP-AUTH deaktivieren" darf **nicht** gesetzt sein
+9. **NAS-Deploy:** `scp -O` (kein SFTP), CRLF→LF im SSH-Befehl, voller docker-Pfad für NOPASSWD-sudo, Skript reines ASCII
+10. **ENV-Änderung an docker-compose.yml:** Container muss **gelöscht und neu erstellt** werden – „Starten" allein übernimmt neue Variablen nicht
+11. **Projekt-Export** enthält **keine Anhänge** (nur Metadaten); Import vergibt neue IDs und remappt `predecessorId`
 
 ---
 
