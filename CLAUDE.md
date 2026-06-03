@@ -68,7 +68,7 @@ Domenicosgro/
 │   │   ├── MassnahmenDashboard.jsx  # Projektübergreifende Maßnahmen-Übersicht
 │   │   ├── LogoUpload.jsx         # Logo hochladen/löschen
 │   │   ├── LoginScreen.jsx        # Login-Maske (Server-Modus)
-│   │   └── AdminPanel.jsx         # Benutzerverwaltung + SMTP-Test (Server-Modus)
+│   │   └── AdminPanel.jsx         # Benutzerverwaltung + E-Mail-Status/Test (Server-Modus)
 │   │
 │   └── hooks/
 │       ├── useProtocols.js        # CRUD + syncProjectName + refetchProtocols
@@ -78,7 +78,8 @@ Domenicosgro/
 │       └── useUserSettings.js     # Benutzereinstellungen (Server-Modus)
 │
 ├── server/
-│   ├── index.js                   # Express-Server: REST-API, Auth, SMTP-Einladung, SSE
+│   ├── index.js                   # Express-Server: REST-API, Auth, E-Mail-Endpunkte, SSE
+│   ├── mailer.js                  # E-Mail-Abstraktion: Microsoft Graph (OAuth2) + SMTP-Fallback
 │   ├── db.js                      # better-sqlite3 Setup + Migrationen (DB_PATH-aware)
 │   ├── auth.js                    # Session-Token-Authentifizierung (opak, 8h TTL), Benutzer-CRUD
 │   ├── attachments.js             # Anhang-Endpunkte (Datei-Upload/-Download)
@@ -338,6 +339,19 @@ body::after {
 `useProtocols` und `useProjects` exportieren `refetchProtocols` / `refetchProjects`.  
 `App.jsx` kombiniert sie in `handleRefresh` und gibt ihn als `onRefresh`-Prop an `ProtocolList` und `ProtocolEditor` weiter.  
 → **Niemals `window.location.reload()`** in diesen Komponenten verwenden – das setzt den view-State zurück.
+
+### Server-Modus: Daten-Race beim Start (gelöst)
+Beim App-Start feuern die Hooks ihren ersten Fetch, **bevor** der Auth-Check
+(`/api/auth/me`) fertig ist → die Requests liefen ins 401 und der State blieb leer
+(„keine Projekte, erst nach Refresh da"). Fix: Sowohl `handleLogin` (nach LoginScreen)
+als auch der **erfolgreiche `/api/auth/me`-Pfad** (gespeicherter Token gültig) rufen
+`handleRefresh()` auf → Daten werden mit gültigem Token frisch nachgeladen.
+
+### Projekt öffnen → direkt zur Protokollliste
+`ProjectsHome` öffnet ein Projekt per `onOpenProject` (view `protocols`), **nicht**
+über `project-dashboard`. Der `project-dashboard`-View (`ProjectDashboard.jsx`, früher
+HOAI-Übersicht) wird derzeit nicht mehr angesteuert; auch die HOAI-Fortschrittsanzeige
+in den Projektkarten ist entfernt (`calcProjectProgress` bleibt nur in `utils.js`).
 
 ### Server-Modus: Live-Updates via SSE
 `src/serverEvents.js` abonniert `/api/events` (Server-Sent Events).  
