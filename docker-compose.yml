@@ -14,12 +14,23 @@ services:
       PUBLIC_URL: "http://192.168.178.250:3000"
       DB_PATH: "/data"
       LOG_PATH: "/logs"
-      SMTP_HOST: "smtp.office365.com"
-      SMTP_PORT: "587"
-      SMTP_SECURE: "false"
-      SMTP_USER: "Protokoll@ghbarchitekten.de"
-      SMTP_PASS: "DEIN-PASSWORT-HIER"
-      SMTP_FROM: "Protokoll@ghbarchitekten.de"
+      # ── E-Mail-Versand via Microsoft Graph (OAuth2) ──────────────────────────
+      # Bevorzugter Weg: kein Passwort, keine MFA, kein Konflikt mit den
+      # Microsoft-365-Sicherheitsstandards. Werte aus der in Entra registrierten
+      # App (Anwendungsberechtigung "Mail.Send" mit Admin-Zustimmung).
+      # GRAPH_CLIENT_SECRET niemals in Git committen – nur lokal auf der NAS!
+      GRAPH_TENANT_ID:     "DEINE-TENANT-ID-HIER"
+      GRAPH_CLIENT_ID:     "DEINE-CLIENT-ID-HIER"
+      GRAPH_CLIENT_SECRET: "DEIN-CLIENT-SECRET-HIER"
+      GRAPH_SENDER:        "Protokoll@ghbarchitekten.de"
+      SMTP_FROM:           "Protokoll@ghbarchitekten.de"
+      # ── SMTP-Fallback (nur genutzt, wenn keine GRAPH_*-Variablen gesetzt sind) ─
+      # Funktioniert mit den Sicherheitsstandards NICHT (Basic-Auth gesperrt).
+      # SMTP_HOST:   "smtp.office365.com"
+      # SMTP_PORT:   "587"
+      # SMTP_SECURE: "false"
+      # SMTP_USER:   "Protokoll@ghbarchitekten.de"
+      # SMTP_PASS:   "DEIN-PASSWORT-HIER"
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/health"]
       interval: 30s

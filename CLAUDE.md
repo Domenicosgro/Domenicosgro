@@ -178,29 +178,58 @@ Nach Änderung an ENV-Variablen: Container **löschen und neu erstellen** (nicht
 
 ---
 
-## E-Mail / SMTP (server/index.js)
+## E-Mail-Versand (server/mailer.js + server/index.js)
 
-- nodemailer mit SMTP, konfiguriert über `SMTP_*`-Umgebungsvariablen
-- Zentrale Absenderadresse: `Protokoll@ghbarchitekten.de` über Microsoft 365
-  (`smtp.office365.com:587`, `SMTP_SECURE=false`)
+**Zwei Versandwege, gekapselt in `server/mailer.js`** (`mailerStatus`, `verifyMailer`, `sendMail`):
+
+1. **Microsoft Graph (OAuth2, bevorzugt)** – aktiv, sobald `GRAPH_TENANT_ID`,
+   `GRAPH_CLIENT_ID`, `GRAPH_CLIENT_SECRET` und `GRAPH_SENDER` gesetzt sind.
+   Client-Credentials-Flow (`grant_type=client_credentials`,
+   `scope=…/.default`) → Token gecacht → `POST /v1.0/users/{sender}/sendMail`.
+   **Kein Passwort, keine MFA** → funktioniert trotz Microsoft-365-Sicherheitsstandards.
+2. **SMTP (nodemailer, Fallback)** – nur wenn keine `GRAPH_*`-Variablen gesetzt,
+   aber `SMTP_HOST` vorhanden. ⚠ Mit aktiven Sicherheitsstandards **gesperrt**
+   (Basic-Auth deaktiviert, App-Kennwörter nicht verfügbar).
+
+**Warum Graph?** Auf `Protokoll@ghbarchitekten.de` ist MFA erzwungen (Authenticator).
+SMTP/Basic-Auth scheitert dann immer; App-Kennwörter sind durch die Sicherheitsstandards
+gesperrt (im „Anmeldemethode hinzufügen"-Dialog fehlt der Eintrag). Graph App-only
+umgeht das komplett.
+
 - App-Link via `getAppUrl(req)` → nutzt `PUBLIC_URL` oder Request-Host
-- `Logo_Komplizen_sky1.png` als CID-Inline-Anhang (nur in E-Mail, nicht als Wasserzeichen)
+- `Logo_Komplizen_sky1.png` als CID-Inline-Anhang (Graph: `isInline:true` + `contentId`)
 - Einladungs-E-Mail: Zugangsdaten-Box + PWA-Installationsanleitung (Edge primär, Chrome-Flag als Fallback)
+- `from`-Header wird zu `{ emailAddress: { address: GRAPH_SENDER, name } }` geparst
+  (Adresse bleibt das authentifizierte Postfach, nur Anzeigename überschreibbar)
 
 **Endpunkte:**
-- `GET  /api/admin/smtp-status` – ob SMTP konfiguriert ist (Admin)
-- `POST /api/admin/smtp-test`   – Testmail an eigene Adresse (Admin, im AdminPanel)
+- `GET  /api/admin/smtp-status` – `{ configured, mode: 'graph'|'smtp', host }` (Admin)
+- `POST /api/admin/smtp-test`   – `verifyMailer()` (Graph: Token holen / SMTP: verify)
 - `POST /api/actions/send-email` – Maßnahmen-Mail; **From** = zentrale Adresse,
   **Reply-To** = E-Mail des eingeloggten Nutzers (`db.users.get(req.user).email`),
   Anzeigename im From-Header
 
-**Microsoft-365-Einrichtung (zentrale Adresse):**
+**Einrichtung Microsoft Graph (einmalig, durch Admin):**
+1. **entra.microsoft.com** → *Identität → Anwendungen → App-Registrierungen* → **Neue Registrierung**
+   (z.B. `Komplizen-Protokoll-Mailer`, nur eigener Mandant)
+2. **Anwendungs-(Client-)ID** und **Verzeichnis-(Mandanten-)ID** notieren
+3. *Zertifikate & Geheimnisse* → **Neuer geheimer Clientschlüssel** → **Wert** kopieren
+   (nur einmal sichtbar! Nicht die „Geheimnis-ID")
+4. *API-Berechtigungen* → **Berechtigung hinzufügen** → *Microsoft Graph* →
+   **Anwendungsberechtigungen** → `Mail.Send` → **Administratorzustimmung erteilen** (grüner Haken)
+5. Werte in `docker-compose.yml` auf der NAS eintragen (`GRAPH_*`), Container **neu erstellen**
+6. Test über AdminPanel → „Verbindung testen"
+
+> **Hinweis Sicherheit:** `Mail.Send` als App-Berechtigung erlaubt theoretisch Versand
+> als *jedes* Postfach. Optional über eine **Application Access Policy** (Exchange Online
+> PowerShell) auf `GRAPH_SENDER` einschränken.
+
+**SMTP-Fallback-Einrichtung (nur falls Graph nicht genutzt wird):**
 1. admin.microsoft.com → Benutzer → `Protokoll@…` → E-Mail → **E-Mail-Apps verwalten**
    → Häkchen **Authentifiziertes SMTP** setzen
-2. Falls Häkchen fehlt: Exchange Admin Center → Nachrichtenfluss →
-   sicherstellen, dass **„SMTP-AUTH deaktivieren"** **aus** ist
-3. `SMTP_PASS` in der `docker-compose.yml` auf der NAS eintragen, Container neu erstellen
-4. Test über AdminPanel → SMTP-Test
+2. Exchange Admin Center → sicherstellen, dass org-weites **„SMTP-AUTH deaktivieren"** **aus** ist
+3. Sicherheitsstandards müssen **deaktiviert** sein (sonst Basic-Auth gesperrt)
+4. `SMTP_PASS` in `docker-compose.yml` eintragen, Container neu erstellen
 
 ---
 

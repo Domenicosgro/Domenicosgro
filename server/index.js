@@ -28,7 +28,7 @@ const os        = require('os')
 const db          = require('./db')
 const auth        = require('./auth')
 const attachments = require('./attachments')
-const nodemailer  = require('nodemailer')
+const mailer      = require('./mailer')
 
 const app      = express()
 const PORT     = parseInt(process.env.PORT  || '3000', 10)
@@ -372,27 +372,19 @@ function getAppUrl(req) {
   return `${req.protocol}://${host}`
 }
 
-// ── SMTP / Einladungs-E-Mail ──────────────────────────────────────────────────
-function createTransport() {
-  const host = process.env.SMTP_HOST
-  if (!host) return null
-  return nodemailer.createTransport({
-    host,
-    port:   parseInt(process.env.SMTP_PORT  || '587'),
-    secure: process.env.SMTP_SECURE === 'true',
-    auth:   process.env.SMTP_USER ? { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS || '' } : undefined,
-  })
-}
+// ── E-Mail-Versand (Microsoft Graph bevorzugt, SMTP-Fallback) ─────────────────
+// Implementierung in ./mailer.js. Statusabfrage liefert auch den aktiven Modus,
+// damit das AdminPanel "Graph" vs. "SMTP" anzeigen kann.
 
 app.get('/api/admin/smtp-status', requireAuth, requireAdmin, (_req, res) => {
-  res.json({ configured: !!process.env.SMTP_HOST, host: process.env.SMTP_HOST || null })
+  const status = mailer.mailerStatus()
+  res.json({ configured: status.configured, mode: status.mode, host: status.sender })
 })
 
 app.post('/api/admin/smtp-test', requireAuth, requireAdmin, async (req, res) => {
   try {
-    const transport = createTransport()
-    if (!transport) return res.status(400).json({ error: 'SMTP nicht konfiguriert.' })
-    await transport.verify()
+    if (!mailer.mailerStatus().configured) return res.status(400).json({ error: 'E-Mail-Versand nicht konfiguriert.' })
+    await mailer.verifyMailer()
     res.json({ ok: true })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
@@ -404,11 +396,10 @@ app.post('/api/auth/users/:username/invite', requireAuth, requireAdmin, async (r
     if (!user) return res.status(404).json({ error: 'Benutzer nicht gefunden.' })
     if (!user.email) return res.status(400).json({ error: 'Keine E-Mail-Adresse hinterlegt.' })
 
-    const transport = createTransport()
-    if (!transport) return res.status(400).json({ error: 'SMTP nicht konfiguriert. Bitte SMTP_HOST in den Server-Einstellungen setzen.' })
+    if (!mailer.mailerStatus().configured) return res.status(400).json({ error: 'E-Mail-Versand nicht konfiguriert. Bitte Graph- oder SMTP-Zugangsdaten in den Server-Einstellungen setzen.' })
 
     const appUrl  = getAppUrl(req)
-    const from    = process.env.SMTP_FROM || process.env.SMTP_USER || 'noreply@komplizen'
+    const from    = process.env.SMTP_FROM || process.env.GRAPH_SENDER || process.env.SMTP_USER || 'noreply@komplizen'
     const pw      = user.password_note || '(bitte beim Admin erfragen)'
 
     const displayName = user.display_name || username
@@ -513,7 +504,7 @@ app.post('/api/auth/users/:username/invite', requireAuth, requireAdmin, async (r
 </body>
 </html>`
 
-    await transport.sendMail({
+    await mailer.sendMail({
       from,
       to:      user.email,
       subject: `Willkommen bei Komplizen Protokolle, ${displayName}!`,
@@ -550,10 +541,9 @@ app.post('/api/actions/send-email', requireAuth, async (req, res) => {
     if (!to || !responsible || !Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ error: 'Ungültige Anfrage.' })
     }
-    const transport = createTransport()
-    if (!transport) return res.status(400).json({ error: 'SMTP nicht konfiguriert.' })
+    if (!mailer.mailerStatus().configured) return res.status(400).json({ error: 'E-Mail-Versand nicht konfiguriert.' })
 
-    const from     = process.env.SMTP_FROM || process.env.SMTP_USER || 'noreply@komplizen'
+    const from     = process.env.SMTP_FROM || process.env.GRAPH_SENDER || process.env.SMTP_USER || 'noreply@komplizen'
     const today    = new Date().toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })
     const projStr  = projectName || 'Unbekanntes Projekt'
     const subject  = `Ihre Aufgaben – ${projStr} – Stand ${today}`
@@ -640,7 +630,7 @@ app.post('/api/actions/send-email', requireAuth, async (req, res) => {
       '', 'Komplizen Protokolle',
     ].join('\n')
 
-    await transport.sendMail({
+    await mailer.sendMail({
       from: fromAddress,
       to,
       subject,

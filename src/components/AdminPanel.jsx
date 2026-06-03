@@ -593,21 +593,24 @@ function SmtpTab() {
   return (
     <div className="space-y-4 text-sm">
       <p className="text-gray-600">
-        Für den E-Mail-Versand muss der Docker-Container mit SMTP-Umgebungsvariablen gestartet werden.
+        Empfohlener Versandweg ist <strong>Microsoft Graph (OAuth2)</strong> – ohne Passwort und ohne
+        Konflikt mit den Microsoft-365-Sicherheitsstandards. Die Werte stammen aus einer in Entra
+        registrierten App mit Anwendungsberechtigung <span className="font-mono">Mail.Send</span>.
       </p>
       <div className="border border-gray-200 p-4 bg-gray-50 space-y-2 font-mono text-xs">
-        <div className="text-gray-500 mb-2">In start-local.ps1 ergänzen:</div>
-        <div><span className="text-brand-700">-e</span> SMTP_HOST=mail.example.com <span className="text-gray-400"># SMTP-Server</span></div>
-        <div><span className="text-brand-700">-e</span> SMTP_PORT=587             <span className="text-gray-400"># Port (587=STARTTLS, 465=SSL)</span></div>
-        <div><span className="text-brand-700">-e</span> SMTP_USER=user@example.com</div>
-        <div><span className="text-brand-700">-e</span> SMTP_PASS=passwort</div>
-        <div><span className="text-brand-700">-e</span> SMTP_FROM=noreply@example.com</div>
-        <div><span className="text-brand-700">-e</span> SMTP_SECURE=false         <span className="text-gray-400"># true nur für Port 465</span></div>
+        <div className="text-gray-500 mb-2">In docker-compose.yml (NAS) setzen:</div>
+        <div><span className="text-brand-700">GRAPH_TENANT_ID</span>=… <span className="text-gray-400"># Verzeichnis-(Mandanten-)ID</span></div>
+        <div><span className="text-brand-700">GRAPH_CLIENT_ID</span>=… <span className="text-gray-400"># Anwendungs-(Client-)ID</span></div>
+        <div><span className="text-brand-700">GRAPH_CLIENT_SECRET</span>=… <span className="text-gray-400"># geheimer Clientschlüssel (Wert)</span></div>
+        <div><span className="text-brand-700">GRAPH_SENDER</span>=Protokoll@…   <span className="text-gray-400"># Absender-Postfach</span></div>
+        <div className="text-gray-400 pt-2">Fallback (nur ohne GRAPH_*): SMTP_HOST/PORT/USER/PASS/FROM</div>
       </div>
 
       <div className={`flex items-center gap-2 px-3 py-2 border text-sm ${status?.configured ? 'border-green-200 bg-green-50 text-green-700' : 'border-amber-200 bg-amber-50 text-amber-700'}`}>
         <Mail size={14} />
-        {status?.configured ? `SMTP konfiguriert: ${status.host}` : 'SMTP nicht konfiguriert – Einladungen können nicht gesendet werden.'}
+        {status?.configured
+          ? `E-Mail konfiguriert (${status.mode === 'graph' ? 'Microsoft Graph' : 'SMTP'}): ${status.host}`
+          : 'E-Mail-Versand nicht konfiguriert – Einladungen können nicht gesendet werden.'}
       </div>
 
       {status?.configured && (
