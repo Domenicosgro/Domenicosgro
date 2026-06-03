@@ -1,8 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { Plus, Trash2, Search, ChevronRight, FileText, Users, FolderOpen,
          Calendar, Lock, LockOpen, X, Eye, EyeOff, Star, BarChart2,
-         User, Settings, LogOut, Monitor, Download, RotateCcw, LayoutDashboard, Upload } from 'lucide-react'
-import { formatDate, calcProjectProgress } from '../utils'
+         User, Settings, LogOut, Monitor, Download, RotateCcw, Upload } from 'lucide-react'
+import { formatDate } from '../utils'
 import { useUserSettings } from '../hooks/useUserSettings'
 
 // ── Password modal ─────────────────────────────────────────────────────────────
@@ -184,7 +184,7 @@ export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, 
     if (!project.isUnlocked) {
       setModal({ mode: 'unlock', projectId: project.id })
     } else {
-      onOpenProjectDashboard(project.id)
+      onOpenProject(project.id)
     }
   }
 
@@ -202,7 +202,7 @@ export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, 
     if (mode === 'unlock') {
       await onUnlock(projectId, pw)
       setModal(null)
-      onOpenProjectDashboard(projectId)
+      onOpenProject(projectId)
     }
     if (mode === 'set' || mode === 'change') {
       await onSetPassword(projectId, pw)
@@ -340,10 +340,6 @@ export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, 
           const isLocked  = project.isEncrypted || !!project.passwordHash
           const isSession = project.isUnlocked
           const isFav     = isFavorite(project.id)
-          const services  = project.hoaiServices ?? []
-          const progress  = calcProjectProgress(services)
-          const firstSvc  = services[0]
-          const extraSvcs = services.length - 1
 
           return (
             <div key={project.id}
@@ -401,25 +397,6 @@ export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, 
                     )}
                   </div>
 
-                  {/* HOAI progress */}
-                  {services.length > 0 && (
-                    <div className="mt-2 space-y-1">
-                      <div className="flex items-center justify-between text-xs text-gray-500">
-                        <span className="flex items-center gap-1.5">
-                          <LayoutDashboard size={10} className="text-sky" />
-                          {firstSvc.label.split('(')[0].trim()} · LPH {firstSvc.activePhase}
-                          {extraSvcs > 0 && <span className="text-gray-400"> +{extraSvcs} weitere</span>}
-                        </span>
-                        <span className="font-semibold text-night">{progress}%</span>
-                      </div>
-                      <div className="w-full h-1.5 bg-concrete rounded-full overflow-hidden">
-                        <div
-                          className="h-full bg-sky rounded-full transition-all duration-300"
-                          style={{ width: `${progress}%` }}
-                        />
-                      </div>
-                    </div>
-                  )}
                 </div>
 
                 {/* Actions */}

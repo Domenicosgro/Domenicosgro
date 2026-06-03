@@ -80,7 +80,7 @@ export default function App() {
         }
         return r.json()
       })
-      .then(user => { if (user) { setServerUser(user); setServerAuthChecked(true) } })
+      .then(user => { if (user) { setServerUser(user); setServerAuthChecked(true); handleRefresh() } })
       .catch(() => { setServerUser(null); setServerAuthChecked(true) })
   }, [])
 
