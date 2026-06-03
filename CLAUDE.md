@@ -167,6 +167,15 @@ Nach Änderung an ENV-Variablen: Container **löschen und neu erstellen** (nicht
 - **Edge:** PWA-Installation funktioniert auch ohne HTTPS (LAN-Betrieb)
 - **Chrome:** benötigt HTTPS oder `localhost`; Workaround über Flag `chrome://flags/#unsafely-treat-insecure-origin-as-secure`
 
+### Auto-Update-Hinweis (Server-Modus)
+- `vite.config.mjs` erzeugt pro Build eine `BUILD_ID` (Timestamp), backt sie als
+  `__BUILD_ID__` ins Bundle **und** liefert sie als `dist/version.json` aus.
+- `App.jsx` pollt `version.json` (alle 60 s + bei Tab-Fokus). Weicht die ID von
+  `__BUILD_ID__` ab → `WebUpdateBanner` „Neue Version verfügbar" mit „Jetzt neu laden".
+- Nutzer müssen das Programm **nicht beenden**; DB liegt im `/data`-Volume (kein
+  Verlust beim Container-Tausch), Sessions überleben den Neustart. Nach Deploy
+  reicht ein Neuladen (Banner-Button oder Strg+Umschalt+R).
+
 ---
 
 ## E-Mail / SMTP (server/index.js)

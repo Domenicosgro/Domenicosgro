@@ -96,6 +96,32 @@ export default function App() {
     setShowAdmin(false)
   }
 
+  // ── Web update check (Server-Modus): version.json pollen ──────────────────
+  // __BUILD_ID__ wird beim Build ins Bundle eingebacken. version.json trägt
+  // dieselbe ID. Weicht die per fetch geladene ID ab, läuft eine neuere Version
+  // auf dem Server → Banner einblenden.
+  const [webUpdateReady, setWebUpdateReady] = useState(false)
+
+  useEffect(() => {
+    if (!isServer) return
+    const currentBuild = typeof __BUILD_ID__ !== 'undefined' ? __BUILD_ID__ : null
+    if (!currentBuild) return
+    let stopped = false
+    const check = async () => {
+      try {
+        const res = await fetch(`/version.json?t=${Date.now()}`, { cache: 'no-store' })
+        if (!res.ok) return
+        const { buildId } = await res.json()
+        if (buildId && buildId !== currentBuild && !stopped) setWebUpdateReady(true)
+      } catch {}
+    }
+    check()
+    const iv = setInterval(check, 60000)
+    const onVisible = () => { if (document.visibilityState === 'visible') check() }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => { stopped = true; clearInterval(iv); document.removeEventListener('visibilitychange', onVisible) }
+  }, [])
+
   // ── Auto-updater notifications ────────────────────────────────────────────
   const [updateAvailable,  setUpdateAvailable]  = useState(null)
   const [updateDownloaded, setUpdateDownloaded] = useState(null)
@@ -303,6 +329,20 @@ export default function App() {
     )
   }
 
+  const WebUpdateBanner = () => {
+    if (!webUpdateReady) return null
+    return (
+      <div className="fixed bottom-0 inset-x-0 z-50 flex items-center justify-between gap-4 bg-brand-700 text-white px-5 py-3 text-sm no-print">
+        <span><strong>Neue Version verfügbar.</strong> Bitte Seite neu laden, um die Aktualisierung zu übernehmen.</span>
+        <div className="flex items-center gap-2 shrink-0">
+          <button className="px-4 py-1.5 bg-white text-brand-800 font-semibold hover:bg-brand-50"
+            onClick={() => window.location.reload()}>Jetzt neu laden</button>
+          <button className="text-white/70 hover:text-white text-lg" onClick={() => setWebUpdateReady(false)}>×</button>
+        </div>
+      </div>
+    )
+  }
+
   const handleUpdateProtocol = (id, patch) => {
     updateProtocol(id, serverUser
       ? { ...patch, updatedBy: serverUser.displayName || serverUser.username }
@@ -314,6 +354,7 @@ export default function App() {
     <>
       {children}
       {showAdmin && <AdminPanel serverUser={serverUser} onClose={() => setShowAdmin(false)} />}
+      <WebUpdateBanner />
     </>
   )
 
