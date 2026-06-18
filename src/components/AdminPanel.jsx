@@ -30,6 +30,34 @@ function exportCsv(users) {
   document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url)
 }
 
+// Exportiert Benutzer im Kontakt-Format (Name;Firma;Gewerk;Funktion;E-Mail;Telefon)
+// → kann direkt in der Projektkontaktverwaltung importiert werden
+function exportUsersAsContacts(users) {
+  const BOM = '﻿'
+  const SEP = ';'
+  const wrap = (v) => {
+    const s = String(v ?? '')
+    return (s.includes(SEP) || s.includes('"') || s.includes('\n'))
+      ? `"${s.replace(/"/g, '""')}"` : s
+  }
+  const lines = [
+    ['Name', 'Firma', 'Gewerk', 'Funktion', 'E-Mail', 'Telefon'].map(wrap).join(SEP),
+    ...users.map(u => [
+      u.display_name || u.username,
+      '',
+      '',
+      u.role === 'admin' ? 'Administrator' : 'Benutzer',
+      u.email || '',
+      '',
+    ].map(wrap).join(SEP)),
+  ]
+  const csv  = BOM + lines.join('\r\n')
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' })
+  const url  = URL.createObjectURL(blob)
+  const a    = Object.assign(document.createElement('a'), { href: url, download: 'Benutzer_als_Kontakte.csv' })
+  document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url)
+}
+
 // ── PDF print ─────────────────────────────────────────────────────────────────
 function printUsers(users) {
   const rows = users.map((u, i) => `
@@ -236,12 +264,16 @@ function UsersTab({ serverUser }) {
 
       {/* Export buttons */}
       {!loading && users.length > 0 && (
-        <div className="flex gap-2 justify-end">
+        <div className="flex gap-2 justify-end flex-wrap">
           <button className="btn btn-secondary text-xs" onClick={() => printUsers(users)}>
             <Printer size={13} /> PDF drucken
           </button>
           <button className="btn btn-secondary text-xs" onClick={() => exportCsv(users)}>
             <Download size={13} /> CSV exportieren
+          </button>
+          <button className="btn btn-secondary text-xs" onClick={() => exportUsersAsContacts(users)}
+            title="Benutzer als Kontakt-CSV exportieren (importierbar in Projektkontakte)">
+            <Download size={13} /> Als Kontakte exportieren
           </button>
         </div>
       )}
