@@ -59,6 +59,20 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
     if (linkedProject && onUpdateProject) onUpdateProject(linkedProject.id, { tiles: nextTiles })
   }
 
+  // Zentrale Kontaktdatenbank: alle Kontakte aller Projekte (dedupliziert per E-Mail)
+  const allContacts = React.useMemo(() => {
+    const seen = new Set()
+    return (projects ?? []).flatMap(p =>
+      (p.contacts ?? []).map(c => ({ ...c, _projectName: p.name }))
+    ).filter(c => {
+      if (!c.name && !c.email) return false
+      const key = c.email ? c.email.toLowerCase() : `${c.name}|${c.company}`
+      if (seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
+  }, [projects])
+
   const [showEmailModal,       setShowEmailModal]       = useState(false)
   const [confirmClose,         setConfirmClose]         = useState(false)
   const [showGesamtprotokoll,  setShowGesamtprotokoll]  = useState(false)
@@ -647,6 +661,7 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
             onChange={participants => change({ participants })}
             readOnly={isClosed}
             projectContacts={projectContacts ?? []}
+            allContacts={allContacts}
           />
         </div>
 

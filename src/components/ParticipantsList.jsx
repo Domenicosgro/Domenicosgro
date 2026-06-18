@@ -1,8 +1,92 @@
-import React from 'react'
-import { Plus, Trash2, Users, FolderOpen, RefreshCw, AlertCircle } from 'lucide-react'
+import React, { useState, useRef, useEffect } from 'react'
+import { Plus, Trash2, Users, FolderOpen, RefreshCw, AlertCircle, Search, X, Database } from 'lucide-react'
 import { emptyParticipant, uid } from '../utils'
 
-export default function ParticipantsList({ participants, onChange, readOnly, projectContacts }) {
+// ── Globale Kontaktsuche ──────────────────────────────────────────────────────
+function ContactSearchPanel({ allContacts, participants, onAdd, onClose }) {
+  const [q, setQ] = useState('')
+  const inputRef  = useRef(null)
+
+  useEffect(() => { inputRef.current?.focus() }, [])
+
+  const existingEmails = new Set(participants.map(p => p.email).filter(Boolean))
+
+  const results = q.trim().length === 0
+    ? allContacts.slice(0, 40)
+    : allContacts.filter(c => {
+        const term = q.toLowerCase()
+        return (
+          (c.name    ?? '').toLowerCase().includes(term) ||
+          (c.company ?? '').toLowerCase().includes(term) ||
+          (c.email   ?? '').toLowerCase().includes(term) ||
+          (c.gewerk  ?? '').toLowerCase().includes(term)
+        )
+      }).slice(0, 40)
+
+  return (
+    <div className="border border-brand-200 bg-white shadow-sm mt-2">
+      {/* Suchfeld */}
+      <div className="flex items-center gap-2 p-2 border-b border-gray-100">
+        <Search size={14} className="text-gray-400 flex-shrink-0" />
+        <input
+          ref={inputRef}
+          className="flex-1 text-sm outline-none bg-transparent placeholder-gray-400"
+          placeholder="Name, Firma oder E-Mail suchen…"
+          value={q}
+          onChange={e => setQ(e.target.value)}
+        />
+        <button className="text-gray-400 hover:text-gray-600 flex-shrink-0" onClick={onClose} title="Schließen">
+          <X size={14} />
+        </button>
+      </div>
+
+      {/* Ergebnisliste */}
+      <div className="max-h-64 overflow-y-auto divide-y divide-gray-50">
+        {results.length === 0 && (
+          <p className="text-xs text-gray-400 text-center py-4">Keine Kontakte gefunden.</p>
+        )}
+        {results.map(c => {
+          const alreadyAdded = existingEmails.has(c.email) && !!c.email
+          return (
+            <button
+              key={`${c.id}-${c._projectName}`}
+              className={`w-full text-left px-3 py-2 flex items-start gap-3 hover:bg-brand-50 transition-colors
+                ${alreadyAdded ? 'opacity-40 cursor-not-allowed' : ''}`}
+              onClick={() => { if (!alreadyAdded) { onAdd(c); setQ('') } }}
+              disabled={alreadyAdded}
+              title={alreadyAdded ? 'Bereits in der Teilnehmerliste' : ''}
+            >
+              <div className="w-7 h-7 flex-shrink-0 rounded-full bg-brand-100 text-brand-700 flex items-center justify-center text-xs font-bold mt-0.5">
+                {(c.name || '?')[0].toUpperCase()}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-medium text-gray-900 truncate">{c.name || '–'}</div>
+                <div className="text-xs text-gray-500 truncate">
+                  {[c.company, c.role || c.gewerk].filter(Boolean).join(' · ')}
+                  {c.email && <span className="ml-1 text-gray-400">{c.email}</span>}
+                </div>
+                {c._projectName && (
+                  <div className="text-xs text-brand-400 truncate">aus: {c._projectName}</div>
+                )}
+              </div>
+              {alreadyAdded && <span className="text-xs text-gray-400 flex-shrink-0 self-center">✓</span>}
+            </button>
+          )
+        })}
+      </div>
+
+      <div className="px-3 py-1.5 text-xs text-gray-400 border-t border-gray-100">
+        {allContacts.length} Kontakt{allContacts.length !== 1 ? 'e' : ''} in der Datenbank
+        {q.trim() && results.length < allContacts.length && ` · ${results.length} Treffer`}
+      </div>
+    </div>
+  )
+}
+
+// ── Hauptkomponente ───────────────────────────────────────────────────────────
+export default function ParticipantsList({ participants, onChange, readOnly, projectContacts, allContacts = [] }) {
+  const [showSearch, setShowSearch] = useState(false)
+
   const importFromProject = () => {
     const existing = new Set(participants.map(p => p.email).filter(Boolean))
     const toAdd = (projectContacts ?? [])
@@ -14,10 +98,21 @@ export default function ParticipantsList({ participants, onChange, readOnly, pro
         company:   c.company   ?? '',
         role:      c.role      ?? '',
         email:     c.email     ?? '',
-        contactId: c.id,       // track source for later sync detection
+        contactId: c.id,
       }))
     if (toAdd.length === 0) return
     onChange([...participants, ...toAdd])
+  }
+
+  const addFromDb = (c) => {
+    onChange([...participants, {
+      ...emptyParticipant(),
+      id:      uid(),
+      name:    c.name    ?? '',
+      company: c.company ?? '',
+      role:    c.role    ?? c.gewerk ?? '',
+      email:   c.email   ?? '',
+    }])
   }
 
   const add = () => onChange([...participants, emptyParticipant()])
@@ -27,8 +122,6 @@ export default function ParticipantsList({ participants, onChange, readOnly, pro
 
   const remove = (id) => onChange(participants.filter(p => p.id !== id))
 
-  // Detect participants whose Stammdaten (name/company/role/email) differ from the source contact.
-  // Only applies to participants imported via "Aus Projekt" (contactId is set).
   const stale = !readOnly ? participants.filter(p => {
     if (!p.contactId) return false
     const c = (projectContacts ?? []).find(c => c.id === p.contactId)
@@ -41,7 +134,6 @@ export default function ParticipantsList({ participants, onChange, readOnly, pro
     )
   }) : []
 
-  // Update only Stammdaten; preserve attendance status and any manual edits to other fields.
   const syncStale = () => {
     onChange(participants.map(p => {
       if (!p.contactId) return p
@@ -72,12 +164,31 @@ export default function ParticipantsList({ participants, onChange, readOnly, pro
                 <FolderOpen size={14} /> Aus Projekt
               </button>
             )}
+            {allContacts.length > 0 && (
+              <button
+                className={`btn-secondary ${showSearch ? 'bg-brand-50 border-brand-300 text-brand-700' : ''}`}
+                onClick={() => setShowSearch(v => !v)}
+                title="Aus zentraler Kontaktdatenbank hinzufügen"
+              >
+                <Database size={14} /> Datenbank
+              </button>
+            )}
             <button className="btn-primary" onClick={add}><Plus size={14} /> Hinzufügen</button>
           </div>
         )}
       </div>
 
-      {/* Stale-data hint — only when linked contacts have changed */}
+      {/* Globale Kontaktsuche */}
+      {showSearch && !readOnly && (
+        <ContactSearchPanel
+          allContacts={allContacts}
+          participants={participants}
+          onAdd={(c) => { addFromDb(c) }}
+          onClose={() => setShowSearch(false)}
+        />
+      )}
+
+      {/* Stale-data hint */}
       {stale.length > 0 && (
         <div className="no-print flex items-center gap-3 bg-amber-50 border border-amber-200 p-3 text-sm text-amber-800">
           <AlertCircle size={16} className="flex-shrink-0 text-amber-500" />
