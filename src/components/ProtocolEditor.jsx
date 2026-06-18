@@ -22,12 +22,15 @@ function carryProtocolItems(predecessorItems) {
     .filter(it => !(it.status === 'erledigt' && it.carriedGray === true))
     .map(it => ({
       ...it,
-      id:            uid(),
-      carriedFromId: it.id,
-      carriedGray:   it.status === 'erledigt',
-      createdAt:     it.createdAt ?? new Date().toISOString(),
-      // Anlage entfernen sobald Punkt freigemeldet wurde (grau = war erledigt im Vorgänger)
-      attachment:    it.status === 'erledigt' ? null : it.attachment,
+      id:                 uid(),
+      carriedFromId:      it.id,
+      carriedGray:        it.status === 'erledigt',
+      createdAt:          it.createdAt ?? new Date().toISOString(),
+      attachment:         it.status === 'erledigt' ? null : it.attachment,
+      // Link zum Agenda-Entwurf des Vorgängers löschen — im neuen Protokoll
+      // sollen Hauptpunkte (level 1) als Agenda-Abschnitte sichtbar sein, was
+      // nur funktioniert wenn linkedFromAgendaId nicht gesetzt ist.
+      linkedFromAgendaId: null,
     }))
 }
 
