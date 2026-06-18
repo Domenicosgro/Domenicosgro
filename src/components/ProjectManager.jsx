@@ -81,6 +81,24 @@ function exportContactsCSV(project) {
   setTimeout(() => URL.revokeObjectURL(url), 5000)
 }
 
+function downloadCSVTemplate() {
+  const SEP  = ';'
+  // Kopfzeile + zwei leere Beispielzeilen damit Excel die Spaltenbreiten zeigt
+  const lines = [
+    ['Name', 'Firma', 'Gewerk', 'Funktion', 'E-Mail', 'Telefon'].join(SEP),
+    ['Max Mustermann', 'Musterbau GmbH', 'Rohbau', 'Bauleiter', 'max@musterbau.de', '+49 123 456789'].join(SEP),
+    ['', '', '', '', '', ''].join(SEP),
+  ]
+  const csv  = '﻿' + lines.join('\r\n')   // UTF-8 BOM for Excel
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+  const url  = URL.createObjectURL(blob)
+  const a    = Object.assign(document.createElement('a'), {
+    href: url, download: 'Kontakte_Vorlage.csv',
+  })
+  a.click()
+  setTimeout(() => URL.revokeObjectURL(url), 5000)
+}
+
 // ── Sort helpers ──────────────────────────────────────────────────────────────
 
 function sortContacts(contacts, sort) {
@@ -291,6 +309,13 @@ export default function ProjectManager({ projects, onCreate, onUpdate, onDelete,
                     }}
                   >
                     <Upload size={14} /> Importieren
+                  </button>
+                  <button
+                    className="btn-secondary"
+                    title="Leere CSV-Vorlage herunterladen (zum Ausfüllen und Importieren)"
+                    onClick={downloadCSVTemplate}
+                  >
+                    <Download size={14} /> CSV-Vorlage
                   </button>
                   {contacts.length > 0 && (
                     <button
