@@ -333,15 +333,7 @@ export default function ProjectManager({ projects, onCreate, onUpdate, onDelete,
                   >
                     <List size={14} /> Beteiligtenliste
                   </button>
-                  <button
-                    className="btn-ghost p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50"
-                    title="Projekt löschen"
-                    onClick={() => {
-                      if (confirm(`Projekt "${project.name || 'Unbenannt'}" und alle Kontakte löschen?`)) onDelete(project.id)
-                    }}
-                  >
-                    <Trash2 size={14} />
-                  </button>
+
                 </div>
                 {expanded ? <ChevronDown size={16} className="text-gray-400" /> : <ChevronRight size={16} className="text-gray-300" />}
               </div>
