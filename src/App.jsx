@@ -355,6 +355,11 @@ export default function App() {
     )
   }
 
+  const handleCreateProject = useCallback(() => {
+    const patch = isServer && serverUser ? { projectAdminUser: serverUser.username } : {}
+    return createProject(patch)
+  }, [createProject, serverUser])
+
   const handleRequestDeleteProject = useCallback(async (projectId) => {
     const token = localStorage.getItem('kp_session_token')
     const headers = { 'Content-Type': 'application/json' }
@@ -500,7 +505,7 @@ export default function App() {
       <ProjectsHome
         projects={projectsWithContacts}
         protocols={protocols}
-        onCreate={createProject}
+        onCreate={handleCreateProject}
         onUpdate={handleUpdateProject}
         onDelete={deleteProject}
         onOpenProject={openProject}
@@ -514,6 +519,7 @@ export default function App() {
         onLogout={isServer ? handleLogout : null}
         onOpenAdmin={isServer ? () => setShowAdmin(true) : null}
         onRequestDeleteProject={isServer ? handleRequestDeleteProject : null}
+        onRefresh={isServer ? handleRefresh : null}
       />
       <UpdateBanner /><SaveErrorBanner />
     </>

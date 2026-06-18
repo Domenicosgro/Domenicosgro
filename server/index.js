@@ -717,6 +717,36 @@ app.delete('/api/attachments/:id', requireAuth, writeLimiter, async (req, res) =
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
+// ── Projektzugang – Hilfsfunktionen ──────────────────────────────────────────
+function canAccessProject(project, username) {
+  if (!project.isAccessControlled) return true
+  if (!username) return false
+  if (username === '__apikey__') return true
+  if (username === '__anonymous__') return false
+  const user = db.users.get(username)
+  if (user?.role === 'admin') return true
+  if (project.projectAdminUser === username) return true
+  return Array.isArray(project.allowedUsers) && project.allowedUsers.includes(username)
+}
+
+function isProjectManager(project, username) {
+  if (!username || username === '__anonymous__') return false
+  if (username === '__apikey__') return true
+  const user = db.users.get(username)
+  return !!(user?.role === 'admin' || project.projectAdminUser === username)
+}
+
+// GET /api/users – minimale Benutzerliste für Zugangsverwaltung (alle angemeldeten Benutzer)
+app.get('/api/users', requireAuth, (req, res) => {
+  try {
+    res.json(db.users.list().map(u => ({
+      username:     u.username,
+      display_name: u.display_name || u.username,
+      role:         u.role,
+    })))
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
 // ── Projekt-Löschfreigabe ─────────────────────────────────────────────────────
 function serverUid() {
   return Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8)
@@ -1068,6 +1098,137 @@ const protocolRouter = express.Router()
 const projectRouter  = express.Router()
 makeRoutes(protocolRouter, db.protocols, 'protocol')
 makeRoutes(projectRouter,  db.projects,  'project')
+
+// ── Projektzugang: Route-Overrides vor den generischen Routern ───────────────
+// Diese app.*-Routen werden vor den sub-Routern abgeglichen (FIFO in Express).
+
+app.get('/api/protocols', requireAuth, (req, res) => {
+  try {
+    const all = db.protocols.list()
+    res.json(all.filter(p => {
+      if (!p.projectId) return true
+      const proj = db.projects.get(p.projectId)
+      return !proj || canAccessProject(proj, req.user)
+    }))
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.get('/api/protocols/:id', requireAuth, (req, res) => {
+  try {
+    const p = db.protocols.get(req.params.id)
+    if (!p) return res.status(404).json({ error: 'Nicht gefunden.' })
+    if (p.projectId) {
+      const proj = db.projects.get(p.projectId)
+      if (proj && !canAccessProject(proj, req.user))
+        return res.status(403).json({ error: 'Kein Zugriff auf dieses Protokoll.' })
+    }
+    res.json(p)
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.get('/api/projects', requireAuth, (req, res) => {
+  try {
+    res.json(db.projects.list().filter(p => canAccessProject(p, req.user)))
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.get('/api/projects/:id/access', requireAuth, (req, res) => {
+  try {
+    const p = db.projects.get(req.params.id)
+    if (!p) return res.status(404).json({ error: 'Nicht gefunden.' })
+    if (!isProjectManager(p, req.user)) return res.status(403).json({ error: 'Keine Berechtigung.' })
+    res.json({
+      isAccessControlled: p.isAccessControlled ?? false,
+      projectAdminUser:   p.projectAdminUser   ?? null,
+      allowedUsers:       p.allowedUsers       ?? [],
+    })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.patch('/api/projects/:id/access', requireAuth, writeLimiter, (req, res) => {
+  try {
+    const { isAccessControlled, allowedUsers } = req.body
+    const p = db.projects.get(req.params.id)
+    if (!p) return res.status(404).json({ error: 'Nicht gefunden.' })
+    if (!isProjectManager(p, req.user)) return res.status(403).json({ error: 'Nur der Projektadministrator kann Zugriffsrechte ändern.' })
+    const { _version, _updatedAt, ...pData } = p
+    const updated = {
+      ...pData,
+      isAccessControlled: !!isAccessControlled,
+      allowedUsers: Array.isArray(allowedUsers) ? allowedUsers : [],
+      updatedAt: new Date().toISOString(),
+    }
+    let result = db.projects.update(req.params.id, updated, _version, req.user)
+    if (result.conflict) {
+      const fresh = db.projects.get(req.params.id)
+      const { _version: v2, _updatedAt: _2, ...freshData } = fresh
+      result = db.projects.update(req.params.id, {
+        ...freshData, isAccessControlled: !!isAccessControlled,
+        allowedUsers: Array.isArray(allowedUsers) ? allowedUsers : [],
+        updatedAt: new Date().toISOString(),
+      }, v2, req.user)
+    }
+    if (result.notFound) return res.status(404).json({ error: 'Nicht gefunden.' })
+    if (result.conflict) return res.status(409).json({ error: 'Konflikt – bitte erneut versuchen.' })
+    broadcast('project', 'update', req.params.id, updated.updatedAt)
+    logEvent('PROJECT_ACCESS_CHANGED', req, `project=${req.params.id}`)
+    res.json({ ok: true })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.get('/api/projects/:id', requireAuth, (req, res) => {
+  try {
+    const p = db.projects.get(req.params.id)
+    if (!p) return res.status(404).json({ error: 'Nicht gefunden.' })
+    if (!canAccessProject(p, req.user)) return res.status(403).json({ error: 'Kein Zugriff auf dieses Projekt.' })
+    res.json(p)
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.post('/api/projects', requireAuth, writeLimiter, (req, res) => {
+  try {
+    const data = req.body
+    if (!data?.id) return res.status(400).json({ error: 'Objekt mit "id"-Feld erwartet.' })
+    if (db.projects.get(data.id)) return res.status(409).json({ error: 'ID existiert bereits.' })
+    const enriched = { ...data }
+    if (!enriched.projectAdminUser && req.user !== '__anonymous__' && req.user !== '__apikey__') {
+      enriched.projectAdminUser = req.user
+    }
+    const result = db.projects.create(enriched, req.user)
+    broadcast('project', 'create', enriched.id, enriched.updatedAt)
+    res.status(201).json(result)
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.patch('/api/projects/:id', requireAuth, writeLimiter, (req, res) => {
+  try {
+    const { data, version } = req.body
+    if (!data || typeof version !== 'number') return res.status(400).json({ error: '"data" und "version" erwartet.' })
+    const existing = db.projects.get(req.params.id)
+    if (!existing) return res.status(404).json({ error: 'Nicht gefunden.' })
+    if (!canAccessProject(existing, req.user)) return res.status(403).json({ error: 'Kein Zugriff auf dieses Projekt.' })
+    const result = db.projects.update(req.params.id, data, version, req.user)
+    if (result.notFound) return res.status(404).json({ error: 'Nicht gefunden.' })
+    if (result.conflict) return res.status(409).json({
+      error: 'Konflikt – Eintrag wurde zwischenzeitlich geändert.',
+      serverVersion: result.serverVersion,
+      serverData:    result.serverData,
+    })
+    broadcast('project', 'update', req.params.id, data.updatedAt)
+    res.json(result)
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.delete('/api/projects/:id', requireAuth, writeLimiter, (req, res) => {
+  try {
+    const user = db.users.get(req.user)
+    const isSysAdmin = user?.role === 'admin' || req.user === '__apikey__' || req.user === '__anonymous__'
+    if (!isSysAdmin) return res.status(403).json({ error: 'Keine Berechtigung. Bitte eine Löschanfrage stellen.' })
+    if (!db.projects.delete(req.params.id)) return res.status(404).json({ error: 'Nicht gefunden.' })
+    broadcast('project', 'delete', req.params.id, new Date().toISOString())
+    res.json({ ok: true })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
 
 app.use('/api/protocols', protocolRouter)
 app.use('/api/projects',  projectRouter)

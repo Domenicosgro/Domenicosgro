@@ -205,6 +205,11 @@ export function useProjects() {
 
       try {
         const res = await fetch(`${API_PATH}/${event.id}`, { headers: apiHeaders() })
+        if (res.status === 403) {
+          setProjects(prev => prev.filter(p => p.id !== event.id))
+          _sk.delete(event.id); _sv.delete(event.id); _st.delete(event.id)
+          return
+        }
         if (!res.ok) return
         const item = await res.json()
         const { _version, _updatedAt, ...data } = item
@@ -225,8 +230,8 @@ export function useProjects() {
 
   const clearSaveError = useCallback(() => setSaveError(null), [])
 
-  const createProject = useCallback(() => {
-    const p = emptyProject()
+  const createProject = useCallback((initialPatch = {}) => {
+    const p = { ...emptyProject(), ...initialPatch }
     setProjects(prev => [p, ...prev])
     return p.id
   }, [])

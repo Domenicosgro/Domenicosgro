@@ -1,7 +1,126 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { Plus, Trash2, Search, ChevronRight, FileText, Users, FolderOpen,
          Calendar, Lock, LockOpen, X, Eye, EyeOff, Star, BarChart2,
-         User, Settings, LogOut, Monitor, Download, RotateCcw, Upload, AlertTriangle } from 'lucide-react'
+         User, Settings, LogOut, Monitor, Download, RotateCcw, Upload, AlertTriangle,
+         ShieldCheck, Loader } from 'lucide-react'
+
+function apiHeaders() {
+  const h = { 'Content-Type': 'application/json' }
+  const token = localStorage.getItem('kp_session_token')
+  if (token) h['Authorization'] = `Bearer ${token}`
+  return h
+}
+
+// ── Zugangsverwaltungs-Modal ───────────────────────────────────────────────────
+function AccessModal({ project, serverUser, onClose, onSaved }) {
+  const [users,              setUsers]              = useState([])
+  const [loadingUsers,       setLoadingUsers]       = useState(true)
+  const [saving,             setSaving]             = useState(false)
+  const [isAccessControlled, setIsAccessControlled] = useState(project.isAccessControlled ?? false)
+  const [allowedUsers,       setAllowedUsers]       = useState(project.allowedUsers ?? [])
+  const [error,              setError]              = useState('')
+
+  useEffect(() => {
+    fetch('/api/users', { headers: apiHeaders() })
+      .then(r => r.ok ? r.json() : [])
+      .then(data => { setUsers(data); setLoadingUsers(false) })
+      .catch(() => setLoadingUsers(false))
+  }, [])
+
+  const toggleUser = (username) =>
+    setAllowedUsers(prev => prev.includes(username) ? prev.filter(u => u !== username) : [...prev, username])
+
+  const handleSave = async () => {
+    setSaving(true); setError('')
+    try {
+      const res = await fetch(`/api/projects/${project.id}/access`, {
+        method: 'PATCH', headers: apiHeaders(),
+        body: JSON.stringify({ isAccessControlled, allowedUsers }),
+      })
+      if (!res.ok) { const d = await res.json(); setError(d.error || 'Fehler.'); return }
+      onSaved?.()
+      onClose()
+    } catch { setError('Netzwerkfehler.') }
+    finally { setSaving(false) }
+  }
+
+  const eligibleUsers = users.filter(u => u.username !== project.projectAdminUser && u.role !== 'admin')
+  const adminInfo     = users.find(u => u.username === project.projectAdminUser)
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="bg-white w-full max-w-md border border-gray-200 flex flex-col max-h-[85vh]">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200">
+          <h3 className="font-semibold text-gray-900 flex items-center gap-2">
+            <ShieldCheck size={16} className="text-brand-600" /> Projektzugang
+          </h3>
+          <button className="btn-ghost p-1" onClick={onClose}><X size={16} /></button>
+        </div>
+
+        <div className="overflow-y-auto flex-1 p-5 space-y-4">
+          <p className="text-sm font-medium text-gray-800 truncate">{project.name || 'Unbenanntes Projekt'}</p>
+
+          <label className="flex items-start gap-3 p-3 border border-gray-200 hover:bg-gray-50 cursor-pointer">
+            <input
+              type="checkbox"
+              className="w-4 h-4 accent-brand-600 mt-0.5 flex-shrink-0"
+              checked={isAccessControlled}
+              onChange={e => setIsAccessControlled(e.target.checked)}
+            />
+            <div>
+              <p className="text-sm font-medium text-gray-900">Projektzugang einschränken</p>
+              <p className="text-xs text-gray-500 mt-0.5">Nur freigegebene Benutzer können dieses Projekt sehen und öffnen.</p>
+            </div>
+          </label>
+
+          {isAccessControlled && (
+            <>
+              <div className="bg-brand-50 border border-brand-200 px-3 py-2 text-xs text-brand-800 space-y-0.5">
+                {project.projectAdminUser && (
+                  <p><strong>Projektadmin:</strong> {adminInfo?.display_name || project.projectAdminUser} – hat immer Zugang</p>
+                )}
+                <p>Systemadministratoren haben ebenfalls immer uneingeschränkten Zugang.</p>
+              </div>
+
+              <div>
+                <p className="text-xs font-medium text-gray-700 mb-2">Zugang freigeben für:</p>
+                {loadingUsers ? (
+                  <div className="flex justify-center py-4"><Loader size={16} className="animate-spin text-gray-400" /></div>
+                ) : eligibleUsers.length === 0 ? (
+                  <p className="text-sm text-gray-400 text-center py-3 border border-gray-100">Keine weiteren Benutzer vorhanden.</p>
+                ) : (
+                  <div className="border border-gray-200 divide-y divide-gray-100 max-h-52 overflow-y-auto">
+                    {eligibleUsers.map(u => (
+                      <label key={u.username} className="flex items-center gap-3 px-3 py-2.5 hover:bg-gray-50 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          className="w-4 h-4 accent-brand-600 flex-shrink-0"
+                          checked={allowedUsers.includes(u.username)}
+                          onChange={() => toggleUser(u.username)}
+                        />
+                        <div className="flex-1 min-w-0">
+                          <span className="text-sm text-gray-900">{u.display_name || u.username}</span>
+                          <span className="text-xs text-gray-400 ml-1.5">@{u.username}</span>
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+
+          {error && <p className="text-xs text-red-600 bg-red-50 border border-red-200 px-3 py-2">{error}</p>}
+        </div>
+
+        <div className="flex gap-2 justify-end px-5 py-4 border-t border-gray-200">
+          <button className="btn-secondary" onClick={onClose}>Abbrechen</button>
+          <button className="btn-primary" onClick={handleSave} disabled={saving}>{saving ? '…' : 'Speichern'}</button>
+        </div>
+      </div>
+    </div>
+  )
+}
 import { formatDate } from '../utils'
 import { useUserSettings } from '../hooks/useUserSettings'
 
@@ -181,7 +300,7 @@ function PasswordModal({ mode, projectName, onConfirm, onCancel }) {
 export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, onDelete, onOpenProject,
                                        onOpenProjectDashboard, onUnlock, onSetPassword, onRemovePassword,
                                        onOpenDashboard, onImportProject, serverUser, onLogout, onOpenAdmin,
-                                       onRequestDeleteProject }) {
+                                       onRequestDeleteProject, onRefresh }) {
   const [search,        setSearch]        = useState('')
   const [showAll,       setShowAll]       = useState(false)
   const [modal,         setModal]         = useState(null)   // { mode, projectId }
@@ -189,6 +308,7 @@ export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, 
   const [installed,     setInstalled]     = useState(false)
   const [importError,   setImportError]   = useState('')
   const [deleteRequest, setDeleteRequest] = useState(null)   // { project, protocolCount }
+  const [accessProject, setAccessProject] = useState(null)   // project for access modal
   const importProjectRef = useRef(null)
   const { settings, isFavorite, toggleFavorite } = useUserSettings(serverUser?.username)
 
@@ -463,6 +583,11 @@ export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, 
                         Zuletzt: {formatDate(last)}
                       </span>
                     )}
+                    {project.isAccessControlled && (
+                      <span className="flex items-center gap-1 text-brand-600">
+                        <ShieldCheck size={11} /> Zugangsbeschränkt
+                      </span>
+                    )}
                   </div>
 
                 </div>
@@ -483,6 +608,15 @@ export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, 
                   >
                     {isLocked ? <Lock size={14} /> : <LockOpen size={14} />}
                   </button>
+                  {isServer && (project.projectAdminUser === serverUser?.username || serverUser?.role === 'admin') && (
+                    <button
+                      className={`btn-ghost p-2 ${project.isAccessControlled ? 'text-brand-600' : 'text-gray-400 hover:text-brand-600'}`}
+                      title="Zugriffsrechte verwalten"
+                      onClick={() => setAccessProject(project)}
+                    >
+                      <ShieldCheck size={14} />
+                    </button>
+                  )}
                   <button
                     className="btn-ghost p-2 text-red-400 hover:text-red-600 hover:bg-red-50"
                     title="Projekt löschen"
@@ -541,6 +675,16 @@ export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, 
             <ChevronRight size={16} className="text-gray-300 group-hover:text-sky transition-colors" />
           </div>
         </div>
+      )}
+
+      {/* Zugangsverwaltungs-Modal */}
+      {accessProject && (
+        <AccessModal
+          project={accessProject}
+          serverUser={serverUser}
+          onClose={() => setAccessProject(null)}
+          onSaved={onRefresh}
+        />
       )}
 
       {/* Löschanfrage-Modal */}
