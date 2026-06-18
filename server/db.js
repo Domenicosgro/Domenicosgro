@@ -21,6 +21,20 @@ db.exec(`
     requested_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
 
+  CREATE TABLE IF NOT EXISTS deletion_requests (
+    id               TEXT PRIMARY KEY,
+    target_id        TEXT NOT NULL,
+    target_name      TEXT NOT NULL,
+    protocol_count   INTEGER NOT NULL DEFAULT 0,
+    requested_by     TEXT NOT NULL,
+    requested_by_name TEXT NOT NULL DEFAULT '',
+    requested_at     TEXT NOT NULL DEFAULT (datetime('now')),
+    token            TEXT NOT NULL UNIQUE,
+    status           TEXT NOT NULL DEFAULT 'pending',
+    resolved_at      TEXT,
+    resolved_by      TEXT
+  );
+
   CREATE TABLE IF NOT EXISTS store (
     key        TEXT PRIMARY KEY,
     value      TEXT NOT NULL DEFAULT '[]',
@@ -255,10 +269,28 @@ const resetRequests = {
   delete(username) { _rrDelete.run(username) },
 }
 
+// ── Deletion requests ─────────────────────────────────────────────────────────
+const _drInsert   = db.prepare(`INSERT INTO deletion_requests (id, target_id, target_name, protocol_count, requested_by, requested_by_name, token) VALUES (@id, @targetId, @targetName, @protocolCount, @requestedBy, @requestedByName, @token)`)
+const _drByToken  = db.prepare('SELECT * FROM deletion_requests WHERE token = ?')
+const _drByTarget = db.prepare("SELECT * FROM deletion_requests WHERE target_id = ? AND status = 'pending' ORDER BY requested_at DESC LIMIT 1")
+const _drList     = db.prepare("SELECT * FROM deletion_requests WHERE status = 'pending' ORDER BY requested_at ASC")
+const _drResolve  = db.prepare("UPDATE deletion_requests SET status = @status, resolved_at = datetime('now'), resolved_by = @resolvedBy WHERE id = @id")
+const _drDel      = db.prepare('DELETE FROM deletion_requests WHERE id = ?')
+
+const deletionRequests = {
+  create(data)                    { _drInsert.run(data) },
+  getByToken(token)               { return _drByToken.get(token) || null },
+  getByTarget(targetId)           { return _drByTarget.get(targetId) || null },
+  list()                          { return _drList.all() },
+  resolve(id, status, resolvedBy) { _drResolve.run({ id, status, resolvedBy }) },
+  delete(id)                      { return _drDel.run(id).changes > 0 },
+}
+
 module.exports = {
   protocols: makeStore('protocols'),
   projects:  makeStore('projects'),
   users,
   sessions,
   resetRequests,
+  deletionRequests,
 }

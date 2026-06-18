@@ -355,6 +355,18 @@ export default function App() {
     )
   }
 
+  const handleRequestDeleteProject = useCallback(async (projectId) => {
+    const token = localStorage.getItem('kp_session_token')
+    const headers = { 'Content-Type': 'application/json' }
+    if (token) headers['Authorization'] = `Bearer ${token}`
+    const res = await fetch(`/api/projects/${projectId}/request-delete`, { method: 'POST', headers })
+    if (!res.ok) {
+      const data = await res.json()
+      throw new Error(data.error || 'Fehler beim Senden der Anfrage.')
+    }
+    return res.json()
+  }, [])
+
   const wrap = (children) => (
     <>
       {children}
@@ -501,6 +513,7 @@ export default function App() {
         serverUser={serverUser}
         onLogout={isServer ? handleLogout : null}
         onOpenAdmin={isServer ? () => setShowAdmin(true) : null}
+        onRequestDeleteProject={isServer ? handleRequestDeleteProject : null}
       />
       <UpdateBanner /><SaveErrorBanner />
     </>

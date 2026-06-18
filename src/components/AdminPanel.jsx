@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react'
-import { X, UserPlus, Users, Key, Eye, EyeOff, Loader, Trash2, Printer, Download, Pencil, Check, KeyRound, HardDrive, Upload, Mail, Send, Settings2, Search } from 'lucide-react'
+import { X, UserPlus, Users, Key, Eye, EyeOff, Loader, Trash2, Printer, Download, Pencil, Check, KeyRound, HardDrive, Upload, Mail, Send, Settings2, Search, AlertTriangle } from 'lucide-react'
 import { formatDate } from '../utils'
 
 function apiHeaders() {
@@ -774,16 +774,114 @@ function BackupTab() {
   )
 }
 
+// ── Löschanfragen-Tab ─────────────────────────────────────────────────────────
+function DeletionRequestsTab() {
+  const [requests,     setRequests]     = useState([])
+  const [loading,      setLoading]      = useState(true)
+  const [actionLoading, setActionLoading] = useState(null)
+  const [msg,          setMsg]          = useState(null)
+
+  useEffect(() => { load() }, [])
+
+  async function load() {
+    setLoading(true)
+    try {
+      const res = await fetch('/api/admin/deletion-requests', { headers: apiHeaders() })
+      if (res.ok) setRequests(await res.json())
+    } finally { setLoading(false) }
+  }
+
+  async function handleAction(id, action) {
+    setActionLoading(id + action)
+    setMsg(null)
+    try {
+      const res  = await fetch(`/api/admin/deletion-requests/${id}/${action}`, { method: 'POST', headers: apiHeaders() })
+      const data = await res.json()
+      if (!res.ok) { setMsg({ type: 'err', text: data.error }); return }
+      setMsg({ type: 'ok', text: action === 'approve' ? 'Projekt gelöscht.' : 'Anfrage abgelehnt.' })
+      await load()
+    } catch { setMsg({ type: 'err', text: 'Netzwerkfehler.' }) }
+    finally { setActionLoading(null) }
+  }
+
+  if (loading) return (
+    <div className="flex justify-center py-8 text-gray-400">
+      <Loader size={16} className="animate-spin" />
+    </div>
+  )
+
+  return (
+    <div className="space-y-4">
+      <p className="text-sm text-gray-600">
+        Benutzer ohne Admin-Rechte können Projekte nicht direkt löschen. Hier erscheinen ihre Löschanfragen zur Genehmigung.
+      </p>
+
+      {msg && (
+        <div className={`text-sm px-3 py-2 border ${msg.type === 'ok' ? 'text-green-700 bg-green-50 border-green-200' : 'text-red-700 bg-red-50 border-red-200'}`}>
+          {msg.text}
+        </div>
+      )}
+
+      {requests.length === 0 ? (
+        <div className="text-sm text-gray-400 text-center py-8 border border-gray-100">
+          Keine ausstehenden Löschanfragen.
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {requests.map(r => (
+            <div key={r.id} className="border border-amber-200 bg-amber-50 p-4">
+              <div className="flex items-start gap-3">
+                <AlertTriangle size={16} className="text-amber-500 flex-shrink-0 mt-0.5" />
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold text-gray-900 truncate">{r.target_name}</p>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    Angefragt von <strong>{r.requested_by_name}</strong> ·{' '}
+                    {new Date(r.requested_at).toLocaleString('de-DE')}
+                  </p>
+                  {r.protocol_count > 0 && (
+                    <p className="text-xs text-amber-700 mt-1">
+                      {r.protocol_count} Protokoll{r.protocol_count !== 1 ? 'e werden' : ' wird'} vom Projekt getrennt, aber nicht gelöscht.
+                    </p>
+                  )}
+                  <div className="flex gap-2 mt-3">
+                    <button
+                      className="btn-danger text-xs"
+                      onClick={() => handleAction(r.id, 'approve')}
+                      disabled={!!actionLoading}
+                    >
+                      {actionLoading === r.id + 'approve' ? <Loader size={12} className="animate-spin" /> : <Trash2 size={12} />}
+                      Löschen genehmigen
+                    </button>
+                    <button
+                      className="btn-secondary text-xs"
+                      onClick={() => handleAction(r.id, 'reject')}
+                      disabled={!!actionLoading}
+                    >
+                      {actionLoading === r.id + 'reject' ? <Loader size={12} className="animate-spin" /> : null}
+                      Ablehnen
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 export default function AdminPanel({ serverUser, onClose }) {
   const isAdmin = serverUser?.role === 'admin' || serverUser?.devMode
   const [tab, setTab] = useState(isAdmin ? 'users' : 'password')
 
   const tabs = [
-    isAdmin              && { id: 'users',    label: 'Benutzer',  icon: <Users size={14} /> },
-    isAdmin              && { id: 'smtp',     label: 'E-Mail',    icon: <Mail size={14} /> },
-    isAdmin              && { id: 'backup',   label: 'Backup',    icon: <HardDrive size={14} /> },
-    !serverUser?.devMode && { id: 'password', label: 'Passwort',  icon: <Key size={14} /> },
+    isAdmin              && { id: 'users',    label: 'Benutzer',    icon: <Users size={14} /> },
+    isAdmin              && { id: 'deletions', label: 'Löschanfragen', icon: <AlertTriangle size={14} /> },
+    isAdmin              && { id: 'smtp',     label: 'E-Mail',      icon: <Mail size={14} /> },
+    isAdmin              && { id: 'backup',   label: 'Backup',      icon: <HardDrive size={14} /> },
+    !serverUser?.devMode && { id: 'password', label: 'Passwort',    icon: <Key size={14} /> },
   ].filter(Boolean)
 
   return (
@@ -815,10 +913,11 @@ export default function AdminPanel({ serverUser, onClose }) {
 
         {/* Content */}
         <div className="overflow-y-auto flex-1 p-5">
-          {tab === 'users'    && <UsersTab    serverUser={serverUser} />}
-          {tab === 'smtp'     && <SmtpTab />}
-          {tab === 'backup'   && <BackupTab />}
-          {tab === 'password' && <PasswordTab serverUser={serverUser} />}
+          {tab === 'users'     && <UsersTab    serverUser={serverUser} />}
+          {tab === 'deletions' && <DeletionRequestsTab />}
+          {tab === 'smtp'      && <SmtpTab />}
+          {tab === 'backup'    && <BackupTab />}
+          {tab === 'password'  && <PasswordTab serverUser={serverUser} />}
         </div>
       </div>
     </div>

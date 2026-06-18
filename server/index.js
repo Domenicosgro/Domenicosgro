@@ -717,6 +717,269 @@ app.delete('/api/attachments/:id', requireAuth, writeLimiter, async (req, res) =
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
+// ── Projekt-Löschfreigabe ─────────────────────────────────────────────────────
+function serverUid() {
+  return Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8)
+}
+
+function renderSimplePage(title, bodyHtml) {
+  return `<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>${title} – Komplizen Protokolle</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:Arial,sans-serif;font-size:14px;color:#1f2937;background:#f3f4f6;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}
+    .card{background:white;border:1px solid #e5e7eb;max-width:500px;width:100%}
+    .hdr{background:#000040;color:#fbffe6;padding:20px 28px}
+    .hdr small{font-size:10px;text-transform:uppercase;letter-spacing:2px;color:#8fbeff;display:block;margin-bottom:4px}
+    .hdr h1{font-size:17px;font-weight:bold}
+    .body{padding:24px 28px}
+    .info{background:#f8fafc;border:1px solid #e2e8f0;border-left:4px solid #000040;padding:14px 16px;margin-bottom:16px}
+    .info p{font-size:12px;color:#6b7280;margin-top:3px}
+    .warn{background:#fef2f2;border:1px solid #fecaca;border-left:4px solid #dc2626;padding:12px 16px;margin-bottom:16px;font-size:13px;color:#991b1b}
+    .ok{background:#f0fdf4;border:1px solid #bbf7d0;border-left:4px solid #16a34a;padding:12px 16px;font-size:13px;color:#14532d}
+    .info-neutral{background:#fffbeb;border:1px solid #fde68a;border-left:4px solid #d97706;padding:12px 16px;font-size:13px;color:#92400e}
+    .actions{display:flex;gap:10px;margin-top:18px;flex-wrap:wrap}
+    .btn-del{background:#dc2626;color:white;border:none;padding:9px 18px;cursor:pointer;font-size:13px;font-weight:bold}
+    .btn-del:hover{background:#b91c1c}
+    .btn-sec{background:white;color:#374151;border:1px solid #d1d5db;padding:9px 18px;cursor:pointer;font-size:13px;text-decoration:none;display:inline-block}
+    .btn-sec:hover{background:#f9fafb}
+    .ftr{margin-top:20px;font-size:11px;color:#9ca3af;text-align:center}
+  </style>
+</head>
+<body><div class="card">
+  <div class="hdr"><small>Komplizen Protokolle</small><h1>${title}</h1></div>
+  <div class="body">${bodyHtml}<div class="ftr">Komplizen Protokolle – Projektverwaltung</div></div>
+</div></body></html>`
+}
+
+// POST /api/projects/:id/request-delete
+app.post('/api/projects/:id/request-delete', requireAuth, async (req, res) => {
+  try {
+    const { id } = req.params
+    const project = db.projects.get(id)
+    if (!project) return res.status(404).json({ error: 'Projekt nicht gefunden.' })
+
+    const requesterUser  = db.users.get(req.user)
+    const requesterName  = requesterUser?.display_name || req.user
+    const protocolCount  = db.protocols.list().filter(p => p.projectId === id).length
+
+    // Idempotent: if a pending request already exists, just return ok
+    const existing = db.deletionRequests.getByTarget(id)
+    if (existing) return res.json({ ok: true, alreadyPending: true })
+
+    const token   = auth.generateToken()
+    const reqId   = serverUid()
+    const projName = project.name || 'Unbenanntes Projekt'
+
+    db.deletionRequests.create({
+      id:              reqId,
+      targetId:        id,
+      targetName:      projName,
+      protocolCount,
+      requestedBy:     req.user,
+      requestedByName: requesterName,
+      token,
+    })
+    logEvent('DELETE_REQUESTED', req, `project=${id} name="${projName}" by=${req.user}`)
+
+    // Send email to all admins
+    if (mailer.mailerStatus().configured) {
+      const admins  = db.users.list().filter(u => u.role === 'admin' && u.email)
+      const appUrl  = getAppUrl(req)
+      const approveUrl = `${appUrl}/api/delete-approve/${token}`
+      const rejectUrl  = `${appUrl}/api/delete-reject/${token}`
+      const from    = process.env.SMTP_FROM || process.env.GRAPH_SENDER || process.env.SMTP_USER || 'noreply@komplizen'
+      const today   = new Date().toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })
+      const protoLine = protocolCount > 0
+        ? `<tr><td style="color:#6b7280;padding-right:16px;white-space:nowrap;">Protokolle</td><td>${protocolCount} (werden nicht gelöscht, aber vom Projekt getrennt)</td></tr>`
+        : ''
+
+      const html = `<!DOCTYPE html>
+<html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f3f4f6;font-family:Arial,sans-serif;font-size:14px;color:#1f2937;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f3f4f6;padding:32px 16px;">
+<tr><td align="center">
+<table width="520" cellpadding="0" cellspacing="0" style="background:#fff;border:1px solid #e5e7eb;max-width:520px;width:100%;">
+  <tr><td style="background:#000040;padding:24px 36px;">
+    <p style="margin:0 0 4px 0;font-size:10px;text-transform:uppercase;letter-spacing:2px;color:#8fbeff;">Komplizen Protokolle</p>
+    <p style="margin:0;font-size:18px;font-weight:bold;color:#fbffe6;">Löschanfrage für ein Projekt</p>
+  </td></tr>
+  <tr><td style="padding:28px 36px 0 36px;">
+    <p style="margin:0 0 18px 0;color:#374151;">Ein Benutzer möchte ein Projekt löschen und benötigt Ihre Freigabe als Administrator.</p>
+    <table cellpadding="4" cellspacing="0" style="background:#f8fafc;border:1px solid #e2e8f0;border-left:4px solid #000040;width:100%;padding:16px;">
+      <tr><td style="padding:14px 16px;" colspan="2">
+        <p style="margin:0 0 10px 0;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#6b7280;">Details der Anfrage</p>
+        <table cellpadding="3" cellspacing="0">
+          <tr><td style="color:#6b7280;padding-right:16px;white-space:nowrap;">Projekt</td><td style="font-weight:bold;color:#000040;">${projName}</td></tr>
+          <tr><td style="color:#6b7280;padding-right:16px;white-space:nowrap;">Angefragt von</td><td>${requesterName}</td></tr>
+          <tr><td style="color:#6b7280;padding-right:16px;white-space:nowrap;">Datum</td><td>${today}</td></tr>
+          ${protoLine}
+        </table>
+      </td></tr>
+    </table>
+  </td></tr>
+  <tr><td style="padding:24px 36px;">
+    <p style="margin:0 0 14px 0;font-size:13px;color:#374151;font-weight:bold;">Was möchten Sie tun?</p>
+    <table cellpadding="0" cellspacing="0"><tr>
+      <td style="padding-right:10px;">
+        <a href="${approveUrl}" style="display:inline-block;background:#dc2626;color:white;padding:11px 22px;font-size:13px;font-weight:bold;text-decoration:none;">Löschen genehmigen</a>
+      </td>
+      <td>
+        <a href="${rejectUrl}" style="display:inline-block;background:white;color:#374151;border:1px solid #d1d5db;padding:11px 22px;font-size:13px;text-decoration:none;">Ablehnen</a>
+      </td>
+    </tr></table>
+    <p style="margin:12px 0 0 0;font-size:11px;color:#9ca3af;">Sie können die Anfrage auch im AdminPanel unter dem Tab „Löschanfragen" bearbeiten.</p>
+  </td></tr>
+  <tr><td style="padding:16px 36px;border-top:1px solid #e5e7eb;text-align:center;">
+    <p style="margin:0;font-size:11px;color:#9ca3af;">Komplizen Protokolle · ${today}</p>
+  </td></tr>
+</table></td></tr></table>
+</body></html>`
+
+      const text = [
+        `Löschanfrage für Projekt „${projName}"`,
+        '',
+        `Ein Benutzer (${requesterName}) möchte dieses Projekt löschen.`,
+        protocolCount > 0 ? `${protocolCount} Protokolle würden vom Projekt getrennt (nicht gelöscht).` : '',
+        '',
+        `Löschen genehmigen: ${approveUrl}`,
+        `Ablehnen:           ${rejectUrl}`,
+      ].filter(l => l !== undefined).join('\n')
+
+      for (const admin of admins) {
+        try {
+          await mailer.sendMail({ from, to: admin.email, subject: `Löschanfrage: Projekt „${projName}"`, html, text })
+        } catch (e) { console.warn('[delete-request] E-Mail fehlgeschlagen:', e.message) }
+      }
+    }
+
+    res.json({ ok: true })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// GET /api/delete-approve/:token – HTML confirmation page
+app.get('/api/delete-approve/:token', (req, res) => {
+  const dr = db.deletionRequests.getByToken(req.params.token)
+  if (!dr) return res.send(renderSimplePage('Ungültige Anfrage',
+    '<p style="color:#6b7280;">Dieser Link ist ungültig oder wurde bereits verwendet.</p>'))
+
+  if (dr.status !== 'pending') {
+    const label = dr.status === 'approved' ? 'bereits genehmigt und gelöscht' : 'bereits abgelehnt'
+    return res.send(renderSimplePage('Anfrage bereits bearbeitet',
+      `<div class="info-neutral">Diese Löschanfrage wurde ${label}.</div>`))
+  }
+
+  const dateStr = new Date(dr.requested_at).toLocaleString('de-DE')
+  const body = `
+    <div class="warn">Diese Aktion löscht das Projekt endgültig und kann nicht rückgängig gemacht werden.</div>
+    <div class="info">
+      <strong>${dr.target_name}</strong>
+      <p>Angefragt von: ${dr.requested_by_name} · ${dateStr}</p>
+      ${dr.protocol_count > 0 ? `<p>${dr.protocol_count} Protokoll${dr.protocol_count !== 1 ? 'e werden' : ' wird'} vom Projekt getrennt (nicht gelöscht).</p>` : ''}
+    </div>
+    <form method="POST">
+      <div class="actions">
+        <button type="submit" class="btn-del">Jetzt endgültig löschen</button>
+        <a href="/api/delete-reject/${dr.token}" class="btn-sec">Ablehnen</a>
+      </div>
+    </form>`
+  res.send(renderSimplePage('Löschanfrage genehmigen', body))
+})
+
+// POST /api/delete-approve/:token – execute deletion
+app.post('/api/delete-approve/:token', (req, res) => {
+  const dr = db.deletionRequests.getByToken(req.params.token)
+  if (!dr || dr.status !== 'pending')
+    return res.send(renderSimplePage('Ungültige Anfrage',
+      '<p style="color:#6b7280;">Dieser Link ist ungültig oder wurde bereits verwendet.</p>'))
+
+  db.projects.delete(dr.target_id)
+  db.deletionRequests.resolve(dr.id, 'approved', 'email-link')
+  broadcast('project', 'delete', dr.target_id, new Date().toISOString())
+  logEvent('DELETE_APPROVED', req, `project=${dr.target_id} by=email-token`)
+
+  res.send(renderSimplePage('Projekt gelöscht',
+    `<div class="ok">✓ Projekt „${dr.target_name}" wurde erfolgreich gelöscht.</div>
+     <p style="margin-top:12px;font-size:13px;color:#6b7280;">Zugehörige Protokolle bleiben erhalten, sind aber keinem Projekt mehr zugeordnet.</p>`))
+})
+
+// GET /api/delete-reject/:token – HTML rejection page
+app.get('/api/delete-reject/:token', (req, res) => {
+  const dr = db.deletionRequests.getByToken(req.params.token)
+  if (!dr) return res.send(renderSimplePage('Ungültige Anfrage',
+    '<p style="color:#6b7280;">Dieser Link ist ungültig oder wurde bereits verwendet.</p>'))
+
+  if (dr.status !== 'pending') {
+    const label = dr.status === 'approved' ? 'bereits genehmigt und gelöscht' : 'bereits abgelehnt'
+    return res.send(renderSimplePage('Anfrage bereits bearbeitet',
+      `<div class="info-neutral">Diese Löschanfrage wurde ${label}.</div>`))
+  }
+
+  const body = `
+    <div class="info">
+      <strong>${dr.target_name}</strong>
+      <p>Angefragt von: ${dr.requested_by_name}</p>
+    </div>
+    <p style="font-size:13px;color:#374151;margin-bottom:16px;">Die Löschanfrage wird abgelehnt. Das Projekt bleibt unverändert erhalten.</p>
+    <form method="POST">
+      <div class="actions">
+        <button type="submit" class="btn-del" style="background:#6b7280;">Ablehnen bestätigen</button>
+        <a href="/api/delete-approve/${dr.token}" class="btn-sec">Zurück (Genehmigen)</a>
+      </div>
+    </form>`
+  res.send(renderSimplePage('Löschanfrage ablehnen', body))
+})
+
+// POST /api/delete-reject/:token – mark rejected
+app.post('/api/delete-reject/:token', (req, res) => {
+  const dr = db.deletionRequests.getByToken(req.params.token)
+  if (!dr || dr.status !== 'pending')
+    return res.send(renderSimplePage('Ungültige Anfrage',
+      '<p style="color:#6b7280;">Dieser Link ist ungültig oder wurde bereits verwendet.</p>'))
+
+  db.deletionRequests.resolve(dr.id, 'rejected', 'email-link')
+  logEvent('DELETE_REJECTED', req, `project=${dr.target_id} by=email-token`)
+
+  res.send(renderSimplePage('Anfrage abgelehnt',
+    `<div class="ok" style="background:#f0f7ff;border-color:#bfdbfe;border-left-color:#2563eb;color:#1e40af;">✓ Löschanfrage für „${dr.target_name}" wurde abgelehnt. Das Projekt bleibt erhalten.</div>`))
+})
+
+// GET /api/admin/deletion-requests – list pending (AdminPanel)
+app.get('/api/admin/deletion-requests', requireAuth, requireAdmin, (_req, res) => {
+  try { res.json(db.deletionRequests.list()) }
+  catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// POST /api/admin/deletion-requests/:id/approve – direct admin approve
+app.post('/api/admin/deletion-requests/:id/approve', requireAuth, requireAdmin, (req, res) => {
+  try {
+    const dr = db.deletionRequests.list().find(r => r.id === req.params.id)
+    if (!dr) return res.status(404).json({ error: 'Anfrage nicht gefunden.' })
+    if (dr.status !== 'pending') return res.status(400).json({ error: 'Anfrage bereits bearbeitet.' })
+    db.projects.delete(dr.target_id)
+    db.deletionRequests.resolve(dr.id, 'approved', req.user)
+    broadcast('project', 'delete', dr.target_id, new Date().toISOString())
+    logEvent('DELETE_APPROVED', req, `project=${dr.target_id} by=${req.user}`)
+    res.json({ ok: true })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// POST /api/admin/deletion-requests/:id/reject – direct admin reject
+app.post('/api/admin/deletion-requests/:id/reject', requireAuth, requireAdmin, (req, res) => {
+  try {
+    const dr = db.deletionRequests.list().find(r => r.id === req.params.id)
+    if (!dr) return res.status(404).json({ error: 'Anfrage nicht gefunden.' })
+    if (dr.status !== 'pending') return res.status(400).json({ error: 'Anfrage bereits bearbeitet.' })
+    db.deletionRequests.resolve(dr.id, 'rejected', req.user)
+    logEvent('DELETE_REJECTED', req, `project=${dr.target_id} by=${req.user}`)
+    res.json({ ok: true })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
 // ── Static frontend ───────────────────────────────────────────────────────────
 const distDir = path.join(__dirname, '../dist')
 

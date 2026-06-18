@@ -1,9 +1,75 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { Plus, Trash2, Search, ChevronRight, FileText, Users, FolderOpen,
          Calendar, Lock, LockOpen, X, Eye, EyeOff, Star, BarChart2,
-         User, Settings, LogOut, Monitor, Download, RotateCcw, Upload } from 'lucide-react'
+         User, Settings, LogOut, Monitor, Download, RotateCcw, Upload, AlertTriangle } from 'lucide-react'
 import { formatDate } from '../utils'
 import { useUserSettings } from '../hooks/useUserSettings'
+
+const isServer = typeof window !== 'undefined' && !!window.__SERVER_MODE__
+
+// ── Löschanfrage-Modal ─────────────────────────────────────────────────────────
+function DeleteRequestModal({ project, protocolCount, onConfirm, onClose }) {
+  const [sending, setSending] = useState(false)
+  const [sent,    setSent]    = useState(false)
+  const [error,   setError]   = useState('')
+
+  const handleConfirm = async () => {
+    setSending(true)
+    setError('')
+    try {
+      await onConfirm()
+      setSent(true)
+    } catch (e) {
+      setError(e.message || 'Fehler beim Senden der Anfrage.')
+    } finally {
+      setSending(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="bg-white w-full max-w-sm border border-gray-200">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200">
+          <h3 className="font-semibold text-gray-900 flex items-center gap-2">
+            <AlertTriangle size={16} className="text-red-500" /> Projekt löschen
+          </h3>
+          <button className="btn-ghost p-1" onClick={onClose}><X size={16} /></button>
+        </div>
+        <div className="p-5 space-y-4">
+          {!sent ? (
+            <>
+              <div className="bg-amber-50 border border-amber-200 px-3 py-2 text-sm text-amber-800">
+                <strong>Freigabe erforderlich.</strong> Das Löschen eines Projekts muss vom Administrator genehmigt werden. Er erhält eine E-Mail mit einem Freigabe-Link.
+              </div>
+              <div className="text-sm text-gray-700 space-y-1">
+                <p>Projekt: <strong>{project.name || 'Unbenanntes Projekt'}</strong></p>
+                {protocolCount > 0 && (
+                  <p className="text-gray-500">{protocolCount} Protokoll{protocolCount !== 1 ? 'e' : ''} bleibt erhalten, wird aber vom Projekt getrennt.</p>
+                )}
+              </div>
+              {error && <p className="text-xs text-red-600 bg-red-50 border border-red-200 px-3 py-2">{error}</p>}
+              <div className="flex gap-2 justify-end">
+                <button className="btn-secondary" onClick={onClose}>Abbrechen</button>
+                <button className="btn-danger" onClick={handleConfirm} disabled={sending}>
+                  {sending ? '…' : 'Löschanfrage stellen'}
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="bg-green-50 border border-green-200 px-3 py-2 text-sm text-green-800">
+                ✓ Anfrage gesendet. Der Administrator erhält eine E-Mail zur Freigabe.
+              </div>
+              <div className="flex justify-end">
+                <button className="btn-secondary" onClick={onClose}>Schließen</button>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
 
 // ── Password modal ─────────────────────────────────────────────────────────────
 function PasswordModal({ mode, projectName, onConfirm, onCancel }) {
@@ -114,13 +180,15 @@ function PasswordModal({ mode, projectName, onConfirm, onCancel }) {
 // ── Main component ─────────────────────────────────────────────────────────────
 export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, onDelete, onOpenProject,
                                        onOpenProjectDashboard, onUnlock, onSetPassword, onRemovePassword,
-                                       onOpenDashboard, onImportProject, serverUser, onLogout, onOpenAdmin }) {
+                                       onOpenDashboard, onImportProject, serverUser, onLogout, onOpenAdmin,
+                                       onRequestDeleteProject }) {
   const [search,        setSearch]        = useState('')
   const [showAll,       setShowAll]       = useState(false)
   const [modal,         setModal]         = useState(null)   // { mode, projectId }
   const [installPrompt, setInstallPrompt] = useState(null)
   const [installed,     setInstalled]     = useState(false)
   const [importError,   setImportError]   = useState('')
+  const [deleteRequest, setDeleteRequest] = useState(null)   // { project, protocolCount }
   const importProjectRef = useRef(null)
   const { settings, isFavorite, toggleFavorite } = useUserSettings(serverUser?.username)
 
@@ -419,11 +487,15 @@ export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, 
                     className="btn-ghost p-2 text-red-400 hover:text-red-600 hover:bg-red-50"
                     title="Projekt löschen"
                     onClick={() => {
-                      const n = protos.length
-                      const msg = n > 0
-                        ? `Projekt „${project.name || 'Unbenannt'}" löschen?\n${n} Protokoll${n !== 1 ? 'e werden' : ' wird'} nicht gelöscht, aber vom Projekt getrennt.`
-                        : `Projekt „${project.name || 'Unbenannt'}" löschen?`
-                      if (confirm(msg)) onDelete(project.id)
+                      if (isServer && serverUser?.role !== 'admin') {
+                        setDeleteRequest({ project, protocolCount: protos.length })
+                      } else {
+                        const n = protos.length
+                        const msg = n > 0
+                          ? `Projekt „${project.name || 'Unbenannt'}" löschen?\n${n} Protokoll${n !== 1 ? 'e werden' : ' wird'} nicht gelöscht, aber vom Projekt getrennt.`
+                          : `Projekt „${project.name || 'Unbenannt'}" löschen?`
+                        if (confirm(msg)) onDelete(project.id)
+                      }
                     }}
                   >
                     <Trash2 size={14} />
@@ -469,6 +541,16 @@ export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, 
             <ChevronRight size={16} className="text-gray-300 group-hover:text-sky transition-colors" />
           </div>
         </div>
+      )}
+
+      {/* Löschanfrage-Modal */}
+      {deleteRequest && (
+        <DeleteRequestModal
+          project={deleteRequest.project}
+          protocolCount={deleteRequest.protocolCount}
+          onConfirm={() => onRequestDeleteProject(deleteRequest.project.id)}
+          onClose={() => setDeleteRequest(null)}
+        />
       )}
 
       {/* Password modal */}
