@@ -13,11 +13,12 @@ function apiHeaders() {
 function exportCsv(users) {
   const BOM = '﻿'
   const rows = [
-    ['Benutzername', 'Anzeigename', 'Rolle', 'Passwort', 'Angelegt am', 'Letzter Login'],
+    ['Benutzername', 'Anzeigename', 'Rolle', 'E-Mail', 'Passwort', 'Angelegt am', 'Letzter Login'],
     ...users.map(u => [
       u.username,
       u.display_name || '',
       u.role,
+      u.email || '',
       u.password_note || '',
       u.created_at ? formatDate(u.created_at.slice(0, 10)) : '',
       u.last_login  ? formatDate(u.last_login.slice(0, 10))  : '-',
