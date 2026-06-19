@@ -498,31 +498,6 @@ export default function ProjectManager({ projects, allProjects, onCreate, onUpda
                         </span>
                       )}
                     </h3>
-                    <div className="flex gap-2">
-                      <button className="btn-secondary btn-sm"
-                        onClick={() => {
-                          fileInputRef.current.dataset.projectId = project.id
-                          fileInputRef.current.click()
-                        }}
-                      >
-                        <Upload size={13} /> CSV importieren
-                      </button>
-                      {contacts.length > 0 && (
-                        <button className="btn-secondary btn-sm" onClick={() => exportContactsCSV(project)}
-                          title="Kontakte als CSV exportieren">
-                          <Download size={13} /> CSV exportieren
-                        </button>
-                      )}
-                      <button className="btn-primary btn-sm" onClick={() => addContact(project)}>
-                        <Plus size={13} /> Kontakt hinzufügen
-                      </button>
-                      {(allProjects?.length ?? 0) > 1 && (
-                        <button className="btn-secondary btn-sm" onClick={() => setPickerFor(project.id)}
-                          title="Kontakt aus zentraler Datenbank übernehmen">
-                          <Database size={13} /> Aus Datenbank
-                        </button>
-                      )}
-                    </div>
                   </div>
 
                   {contacts.length === 0 && (
