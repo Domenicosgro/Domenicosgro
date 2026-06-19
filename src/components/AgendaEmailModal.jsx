@@ -6,34 +6,47 @@ const isElectron = typeof window !== 'undefined' && !!window.electronAPI
 const hasGraph   = isElectron && !!window.electronAPI?.graphGetStatus
 
 export default function AgendaEmailModal({ protocol, onClose, onSent }) {
-  const [copied,      setCopied]      = useState(false)
-  const [graphStatus, setGraphStatus] = useState(null)    // { configured, account }
-  const [graphOp,     setGraphOp]     = useState(null)    // 'agenda' | 'event' | null
-  const [graphLoading, setGraphLoading] = useState(false)
-  const [graphError,  setGraphError]  = useState(null)
-  const [graphSuccess, setGraphSuccess] = useState(null)
+  const [copied,        setCopied]        = useState(false)
+  const [graphStatus,   setGraphStatus]   = useState(null)    // { configured, account }
+  const [graphOp,       setGraphOp]       = useState(null)    // 'agenda' | 'event' | null
+  const [graphLoading,  setGraphLoading]  = useState(false)
+  const [graphError,    setGraphError]    = useState(null)
+  const [graphSuccess,  setGraphSuccess]  = useState(null)
+
+  // ── Besprechungstermin (immer vor Versand bestätigen / eingeben) ──────────
+  const [meetingDate,     setMeetingDate]     = useState(protocol.date     ?? '')
+  const [meetingTime,     setMeetingTime]     = useState(protocol.time     ?? '')
+  const [meetingLocation, setMeetingLocation] = useState(protocol.location ?? '')
+
+  // Alle E-Mail-Inhalte basieren auf den eingegebenen Terminwerten
+  const effectiveProtocol = useMemo(() => ({
+    ...protocol,
+    date:     meetingDate,
+    time:     meetingTime,
+    location: meetingLocation,
+  }), [protocol, meetingDate, meetingTime, meetingLocation])
 
   const recipients = useMemo(
     () => protocol.participants.filter(p => p.email).map(p => p.email),
     [protocol.participants]
   )
 
-  const subject = useMemo(
-    () => `Agenda: ${protocol.meetingType}${protocol.projectName ? ' – ' + protocol.projectName : ''} – ${
-      protocol.date
-        ? new Date(protocol.date + 'T12:00:00').toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })
-        : ''
-    }`,
-    [protocol]
-  )
+  const subject = useMemo(() => {
+    const dateLabel = meetingDate
+      ? new Date(meetingDate + 'T12:00:00').toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })
+      : ''
+    return `Agenda: ${protocol.meetingType}${protocol.projectName ? ' – ' + protocol.projectName : ''}${dateLabel ? ' – ' + dateLabel : ''}`
+  }, [protocol.meetingType, protocol.projectName, meetingDate])
 
-  const body = useMemo(() => buildAgendaEmailBody(protocol), [protocol])
+  const body = useMemo(() => buildAgendaEmailBody(effectiveProtocol), [effectiveProtocol])
 
   // Load Graph status on mount
   useEffect(() => {
     if (!hasGraph) return
     window.electronAPI.graphGetStatus().then(setGraphStatus).catch(() => {})
   }, [])
+
+  const noDate = !meetingDate
 
   const handleSend = async () => {
     const mailto =
@@ -156,6 +169,43 @@ export default function AgendaEmailModal({ protocol, onClose, onSent }) {
         {/* Body */}
         <div className="overflow-y-auto flex-1 px-6 py-4 space-y-4">
 
+          {/* Besprechungstermin — immer vor Versand ausfüllen */}
+          <div className="bg-brand-50 border border-brand-200 px-4 py-3 space-y-3">
+            <p className="text-xs font-semibold text-brand-700 flex items-center gap-1.5">
+              <Calendar size={13} /> Besprechungstermin (wird in E-Mail übernommen)
+            </p>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">Datum <span className="text-red-400">*</span></label>
+                <input
+                  type="date"
+                  className="input"
+                  value={meetingDate}
+                  onChange={e => setMeetingDate(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">Uhrzeit</label>
+                <input
+                  type="time"
+                  className="input"
+                  value={meetingTime}
+                  onChange={e => setMeetingTime(e.target.value)}
+                />
+              </div>
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">Ort</label>
+              <input
+                type="text"
+                className="input"
+                placeholder="Ort der Besprechung …"
+                value={meetingLocation}
+                onChange={e => setMeetingLocation(e.target.value)}
+              />
+            </div>
+          </div>
+
           {/* Warnings */}
           {noItems && (
             <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-sm text-amber-700">
@@ -234,7 +284,7 @@ export default function AgendaEmailModal({ protocol, onClose, onSent }) {
                       <span className="text-xs text-gray-600">
                         Senden an: {recipients.length > 0 ? recipients.join(', ') : '(keine Empfänger)'}
                       </span>
-                      <button className="btn-primary text-xs" onClick={handleGraphSendAgenda} disabled={graphLoading || noRecipients}>
+                      <button className="btn-primary text-xs" onClick={handleGraphSendAgenda} disabled={graphLoading || noRecipients || noDate}>
                         {graphLoading ? <Loader size={12} className="animate-spin" /> : <Send size={12} />}
                         Jetzt senden
                       </button>
@@ -242,7 +292,7 @@ export default function AgendaEmailModal({ protocol, onClose, onSent }) {
                     </div>
                   ) : (
                     <button className="btn-secondary text-xs flex items-center gap-1" onClick={handleGraphSendAgenda}
-                      disabled={graphLoading || noRecipients}>
+                      disabled={graphLoading || noRecipients || noDate}>
                       <Send size={12} /> Via Outlook senden
                     </button>
                   )}
@@ -293,13 +343,16 @@ export default function AgendaEmailModal({ protocol, onClose, onSent }) {
 
         {/* Footer */}
         <div className="flex items-center justify-between gap-3 px-6 py-4 border-t border-gray-200">
-          <button className="btn-secondary text-xs" onClick={handleCopy}>
+          <button className="btn-secondary text-xs" onClick={handleCopy} disabled={noDate}>
             {copied ? <Check size={14} className="text-green-600" /> : <Copy size={14} />}
             {copied ? 'Kopiert!' : 'Text kopieren'}
           </button>
-          <div className="flex gap-2">
+          <div className="flex items-center gap-3">
+            {noDate && (
+              <span className="text-xs text-red-500">Bitte Datum eintragen</span>
+            )}
             <button className="btn-secondary" onClick={onClose}>Schließen</button>
-            <button className="btn-primary" onClick={handleSend}>
+            <button className="btn-primary" onClick={handleSend} disabled={noDate}>
               <Mail size={14} /> E-Mail-Programm öffnen
             </button>
           </div>

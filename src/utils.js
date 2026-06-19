@@ -208,8 +208,9 @@ export const emptyAgendaDraftItem = () => ({
 
 // Builds the plain-text agenda body for the email
 export const buildAgendaEmailBody = (protocol) => {
-  const { projectName, meetingType, date, location, preparedBy, agenda, agendaGreeting, participants } = protocol
+  const { projectName, meetingType, date, time, location, preparedBy, agenda, agendaGreeting, participants } = protocol
   const dateStr = date ? formatDate(date) : '–'
+  const timeStr = time ? `${time} Uhr` : ''
 
   const lines = []
 
@@ -217,7 +218,7 @@ export const buildAgendaEmailBody = (protocol) => {
   lines.push('='.repeat(50))
   lines.push('')
   lines.push(`Projekt:   ${projectName || '–'}`)
-  lines.push(`Datum:     ${dateStr}`)
+  lines.push(`Datum:     ${dateStr}${timeStr ? '   ' + timeStr : ''}`)
   lines.push(`Ort:       ${location || '–'}`)
   if (preparedBy) lines.push(`Einladung: ${preparedBy}`)
   lines.push('')
