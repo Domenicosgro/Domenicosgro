@@ -1,6 +1,6 @@
-import React, { useState, useRef } from 'react'
+import React, { useState, useRef, useMemo } from 'react'
 import { Plus, Trash2, ArrowLeft, Users, FolderOpen, ChevronRight, ChevronDown,
-         Mail, Phone, Upload, Download, X, CheckCircle2, List, GripVertical, ArrowUpDown } from 'lucide-react'
+         Mail, Phone, Upload, Download, X, CheckCircle2, List, GripVertical, ArrowUpDown, Database } from 'lucide-react'
 import { emptyContact, uid } from '../utils'
 import BeteiligtenModal from './BeteiligtenModal'
 
@@ -133,13 +133,149 @@ function SortTh({ label, field, sort, onSort, children, className = '' }) {
   )
 }
 
+// ── Contact picker modal (from central database) ──────────────────────────────
+
+function ContactPickerModal({ project, allProjects, onAdd, onClose }) {
+  const [search,   setSearch]   = useState('')
+  const [selected, setSelected] = useState(new Set())
+
+  const existingEmails = useMemo(
+    () => new Set((project.contacts ?? []).map(c => c.email?.toLowerCase()).filter(Boolean)),
+    [project.contacts]
+  )
+
+  const dbContacts = useMemo(() => {
+    const seen = new Set()
+    const result = []
+    for (const p of allProjects) {
+      if (p.id === project.id) continue
+      for (const c of p.contacts ?? []) {
+        if (!c.name && !c.company) continue
+        const emailKey = c.email?.toLowerCase() || null
+        const dedupeKey = emailKey ?? `${c.name}|${c.company}`
+        if (seen.has(dedupeKey)) continue
+        seen.add(dedupeKey)
+        result.push({ ...c, _projectName: p.name, _alreadyIn: !!emailKey && existingEmails.has(emailKey) })
+      }
+    }
+    return result
+  }, [allProjects, project.id, existingEmails])
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    if (!q) return dbContacts
+    return dbContacts.filter(c =>
+      (c.name    ?? '').toLowerCase().includes(q) ||
+      (c.company ?? '').toLowerCase().includes(q) ||
+      (c.gewerk  ?? '').toLowerCase().includes(q) ||
+      (c.email   ?? '').toLowerCase().includes(q)
+    )
+  }, [dbContacts, search])
+
+  const toggle = (id) => setSelected(prev => {
+    const next = new Set(prev)
+    next.has(id) ? next.delete(id) : next.add(id)
+    return next
+  })
+
+  const handleAdd = () => {
+    const toAdd = filtered
+      .filter(c => selected.has(c.id))
+      // eslint-disable-next-line no-unused-vars
+      .map(({ _projectName, _alreadyIn, ...rest }) => ({ ...rest, id: uid() }))
+    onAdd(toAdd)
+    onClose()
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+      <div className="bg-white shadow-xl max-w-2xl w-full max-h-[80vh] flex flex-col">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
+          <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+            <Database size={18} className="text-brand-600" /> Kontakt aus Datenbank wählen
+          </h2>
+          <button className="btn-ghost p-2" onClick={onClose}><X size={18} /></button>
+        </div>
+
+        <div className="px-6 py-3 border-b border-gray-100">
+          <input
+            autoFocus
+            className="input"
+            placeholder="Suche nach Name, Firma, Gewerk, E-Mail …"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+          />
+        </div>
+
+        <div className="overflow-auto flex-1 px-6 py-3">
+          {filtered.length === 0 ? (
+            <p className="text-sm text-gray-400 italic text-center py-8">
+              {dbContacts.length === 0
+                ? 'Noch keine Kontakte in anderen Projekten vorhanden.'
+                : 'Kein Kontakt gefunden.'}
+            </p>
+          ) : (
+            <table className="w-full text-sm min-w-[480px]">
+              <thead>
+                <tr className="border-b border-gray-200 text-xs text-gray-500">
+                  <th className="pb-2 w-8" />
+                  <th className="text-left pb-2 pr-3">Name</th>
+                  <th className="text-left pb-2 pr-3">Firma</th>
+                  <th className="text-left pb-2 pr-3">Gewerk</th>
+                  <th className="text-left pb-2">Projekt</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {filtered.map(c => (
+                  <tr
+                    key={c.id}
+                    className={`${c._alreadyIn ? 'opacity-40 cursor-default' : 'cursor-pointer hover:bg-brand-50'}`}
+                    onClick={() => { if (!c._alreadyIn) toggle(c.id) }}
+                  >
+                    <td className="py-2 pr-2">
+                      {c._alreadyIn
+                        ? <CheckCircle2 size={15} className="text-green-500" />
+                        : <input type="checkbox" readOnly checked={selected.has(c.id)}
+                            className="cursor-pointer accent-brand-600" />
+                      }
+                    </td>
+                    <td className="py-2 pr-3 font-medium">{c.name || '–'}</td>
+                    <td className="py-2 pr-3 text-gray-600">{c.company || '–'}</td>
+                    <td className="py-2 pr-3 text-gray-500 text-xs">{c.gewerk || '–'}</td>
+                    <td className="py-2">
+                      <span className="badge-blue text-xs px-1.5 py-0.5">{c._projectName}</span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+
+        <div className="flex items-center justify-between px-6 py-4 border-t border-gray-200">
+          <span className="text-sm text-gray-500">
+            {selected.size > 0 ? `${selected.size} Kontakt${selected.size !== 1 ? 'e' : ''} ausgewählt` : 'Kontakte auswählen'}
+          </span>
+          <div className="flex gap-2">
+            <button className="btn-secondary" onClick={onClose}>Abbrechen</button>
+            <button className="btn-primary" onClick={handleAdd} disabled={selected.size === 0}>
+              <Plus size={14} /> Übernehmen
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Component ─────────────────────────────────────────────────────────────────
 
-export default function ProjectManager({ projects, onCreate, onUpdate, onDelete, onBack, logoDataUrl }) {
+export default function ProjectManager({ projects, allProjects, onCreate, onUpdate, onDelete, onBack, logoDataUrl }) {
   const [expandedId,       setExpandedId]       = useState(() => projects.length === 1 ? projects[0]?.id : null)
   const [importState,      setImportState]      = useState(null)
   const [importError,      setImportError]      = useState('')
   const [participantsFor,  setParticipantsFor]  = useState(null)
+  const [pickerFor,        setPickerFor]        = useState(null) // projectId
   const [sortBy,           setSortBy]           = useState({}) // { [projectId]: { field, dir } }
   const [dropTarget,       setDropTarget]       = useState(null) // { projectId, idx }
   const dragRef = useRef(null) // { projectId, contactId, fromIdx }
@@ -149,6 +285,9 @@ export default function ProjectManager({ projects, onCreate, onUpdate, onDelete,
 
   const addContact = (project) =>
     updateContacts(project.id, [...(project.contacts ?? []), emptyContact()])
+
+  const addContactsFromDB = (project, contacts) =>
+    updateContacts(project.id, [...(project.contacts ?? []), ...contacts])
 
   const updateContact = (project, contactId, field, value) =>
     updateContacts(project.id, (project.contacts ?? []).map(c =>
@@ -300,6 +439,15 @@ export default function ProjectManager({ projects, onCreate, onUpdate, onDelete,
                   >
                     <Plus size={14} /> Kontakt hinzufügen
                   </button>
+                  {(allProjects?.length ?? 0) > 1 && (
+                    <button
+                      className="btn-secondary"
+                      title="Kontakt aus zentraler Datenbank übernehmen"
+                      onClick={() => { setExpandedId(project.id); setPickerFor(project.id) }}
+                    >
+                      <Database size={14} /> Aus Datenbank
+                    </button>
+                  )}
                   <button
                     className="btn-secondary"
                     title="Kontakte aus CSV importieren"
@@ -368,6 +516,12 @@ export default function ProjectManager({ projects, onCreate, onUpdate, onDelete,
                       <button className="btn-primary btn-sm" onClick={() => addContact(project)}>
                         <Plus size={13} /> Kontakt hinzufügen
                       </button>
+                      {(allProjects?.length ?? 0) > 1 && (
+                        <button className="btn-secondary btn-sm" onClick={() => setPickerFor(project.id)}
+                          title="Kontakt aus zentraler Datenbank übernehmen">
+                          <Database size={13} /> Aus Datenbank
+                        </button>
+                      )}
                     </div>
                   </div>
 
@@ -473,6 +627,19 @@ export default function ProjectManager({ projects, onCreate, onUpdate, onDelete,
             project={proj}
             logoDataUrl={logoDataUrl}
             onClose={() => setParticipantsFor(null)}
+          />
+        ) : null
+      })()}
+
+      {/* Contact picker modal */}
+      {pickerFor && (() => {
+        const proj = projects.find(p => p.id === pickerFor)
+        return proj ? (
+          <ContactPickerModal
+            project={proj}
+            allProjects={allProjects ?? projects}
+            onAdd={contacts => addContactsFromDB(proj, contacts)}
+            onClose={() => setPickerFor(null)}
           />
         ) : null
       })()}

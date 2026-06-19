@@ -457,6 +457,7 @@ export default function App() {
       <>
         <ProjectManager
           projects={project ? [project] : []}
+          allProjects={projectsWithContacts}
           onCreate={createProject}
           onUpdate={handleUpdateProject}
           onDelete={deleteProject}
