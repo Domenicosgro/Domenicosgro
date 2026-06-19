@@ -8,11 +8,22 @@ function b64ToBytes(s) {
   return Uint8Array.from(atob(s), c => c.charCodeAt(0))
 }
 
+function requireSubtle() {
+  if (!crypto?.subtle) {
+    throw new Error(
+      'Verschlüsselung benötigt HTTPS oder localhost. ' +
+      'Diese Verbindung ist nicht sicher genug (HTTP über LAN). ' +
+      'Bitte rufen Sie die App über https:// oder localhost auf.'
+    )
+  }
+}
+
 export function newSalt() {
   return bytesToB64(crypto.getRandomValues(new Uint8Array(32)))
 }
 
 export async function deriveKey(password, saltB64) {
+  requireSubtle()
   const salt    = b64ToBytes(saltB64)
   const baseKey = await crypto.subtle.importKey(
     'raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveKey']
@@ -26,6 +37,7 @@ export async function deriveKey(password, saltB64) {
 }
 
 export async function encryptJSON(key, data) {
+  requireSubtle()
   const iv  = crypto.getRandomValues(new Uint8Array(12))
   const buf = await crypto.subtle.encrypt(
     { name: 'AES-GCM', iv }, key,
@@ -35,6 +47,7 @@ export async function encryptJSON(key, data) {
 }
 
 export async function decryptJSON(key, ivB64, ciphertextB64) {
+  requireSubtle()
   const buf = await crypto.subtle.decrypt(
     { name: 'AES-GCM', iv: b64ToBytes(ivB64) }, key, b64ToBytes(ciphertextB64)
   )
