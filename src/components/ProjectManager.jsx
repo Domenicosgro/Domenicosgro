@@ -376,7 +376,7 @@ export default function ProjectManager({ projects, allProjects, onCreate, onUpda
       />
 
       {/* Header */}
-      <div className="flex items-center gap-3">
+      <div className="flex items-stretch gap-3">
         <button className="btn-secondary" onClick={onBack}><ArrowLeft size={16} /> Zurück</button>
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Kontakte verwalten</h1>

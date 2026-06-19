@@ -93,7 +93,7 @@ export default function ProtocolList({
     <div className="max-w-4xl mx-auto p-4 sm:p-6 space-y-6">
 
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-stretch justify-between gap-4">
         <div className="flex items-end gap-3">
           <button className="btn-secondary" onClick={onBack}>
             <ArrowLeft size={16} /> Projekte
@@ -107,7 +107,7 @@ export default function ProtocolList({
           </div>
         </div>
 
-        <div className="flex gap-2 flex-wrap items-end">
+        <div className="flex gap-2 flex-wrap items-stretch">
           <button className="btn-ghost p-2 text-gray-400" title="Daten aktualisieren" onClick={onRefresh}>
             <RotateCcw size={15} />
           </button>

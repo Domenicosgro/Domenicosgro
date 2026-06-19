@@ -421,12 +421,12 @@ export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, 
       )}
 
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-stretch justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Komplizen Protokolle</h1>
           <p className="text-sm text-gray-500 mt-0.5">Projekte &amp; Besprechungsprotokolle</p>
         </div>
-        <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+        <div className="flex flex-wrap items-stretch gap-2 self-start sm:self-auto">
           {serverUser && !serverUser.devMode && (
             <>
               <div className="flex items-center gap-1.5 text-sm text-gray-600 border-r border-gray-200 pr-2">
