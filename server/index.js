@@ -1207,14 +1207,23 @@ app.patch('/api/projects/:id', requireAuth, writeLimiter, (req, res) => {
     const existing = db.projects.get(req.params.id)
     if (!existing) return res.status(404).json({ error: 'Nicht gefunden.' })
     if (!canAccessProject(existing, req.user)) return res.status(403).json({ error: 'Kein Zugriff auf dieses Projekt.' })
-    const result = db.projects.update(req.params.id, data, version, req.user)
+    // Access-control fields may only be changed via PATCH /api/projects/:id/access.
+    // Always restore them from the authoritative server copy so a stale client
+    // (e.g. during the 409-retry path) cannot silently clear them.
+    const safeData = {
+      ...data,
+      isAccessControlled: existing.isAccessControlled,
+      allowedUsers:       existing.allowedUsers,
+      projectAdminUser:   existing.projectAdminUser,
+    }
+    const result = db.projects.update(req.params.id, safeData, version, req.user)
     if (result.notFound) return res.status(404).json({ error: 'Nicht gefunden.' })
     if (result.conflict) return res.status(409).json({
       error: 'Konflikt – Eintrag wurde zwischenzeitlich geändert.',
       serverVersion: result.serverVersion,
       serverData:    result.serverData,
     })
-    broadcast('project', 'update', req.params.id, data.updatedAt)
+    broadcast('project', 'update', req.params.id, safeData.updatedAt)
     res.json(result)
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
