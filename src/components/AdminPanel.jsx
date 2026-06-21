@@ -1132,13 +1132,14 @@ function RolloutTab() {
           Wird nur für diesen Abruf verwendet – nicht gespeichert.
         </div>
         <div className="flex gap-2">
-          <input className="input text-sm flex-1" placeholder="Synology-Benutzername"
+          <input className="input text-sm flex-1 disabled:opacity-40 disabled:cursor-not-allowed" placeholder="Synology-Benutzername"
             value={creds.username} onChange={e => setCreds(p => ({ ...p, username: e.target.value }))} required
             disabled={synoConfig?.configured === false} />
-          <input type="password" className="input text-sm flex-1" placeholder="Passwort"
+          <input type="password" className="input text-sm flex-1 disabled:opacity-40 disabled:cursor-not-allowed" placeholder="Passwort"
             value={creds.password} onChange={e => setCreds(p => ({ ...p, password: e.target.value }))} required
             disabled={synoConfig?.configured === false} />
-          <button type="submit" className="btn btn-primary text-sm shrink-0"
+          <button type="submit"
+            className={`btn text-sm shrink-0 ${synoConfig?.configured === false ? 'btn-secondary opacity-40 cursor-not-allowed' : 'btn-primary'}`}
             disabled={loading || synoConfig?.configured === false}>
             {loading ? <Loader size={13} className="animate-spin" /> : <RefreshCw size={13} />}
             {loading ? 'Laden…' : 'Laden'}
