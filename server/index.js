@@ -868,6 +868,12 @@ app.delete('/api/attachments/:id', requireAuth, writeLimiter, async (req, res) =
 })
 
 // ── Projektzugang – Hilfsfunktionen ──────────────────────────────────────────
+function isProjectAdmin(project, username) {
+  if (!project || !username) return false
+  if (project.projectAdminUser === username) return true   // Ersteller/Eigentümer
+  return Array.isArray(project.projectAdmins) && project.projectAdmins.includes(username)
+}
+
 function canAccessProject(project, username) {
   if (!project.isAccessControlled) return true
   if (!username) return false
@@ -875,7 +881,7 @@ function canAccessProject(project, username) {
   if (username === '__anonymous__') return false
   const user = db.users.get(username)
   if (user?.role === 'admin') return true
-  if (project.projectAdminUser === username) return true
+  if (isProjectAdmin(project, username)) return true
   return Array.isArray(project.allowedUsers) && project.allowedUsers.includes(username)
 }
 
@@ -883,7 +889,7 @@ function isProjectManager(project, username) {
   if (!username || username === '__anonymous__') return false
   if (username === '__apikey__') return true
   const user = db.users.get(username)
-  return !!(user?.role === 'admin' || project.projectAdminUser === username)
+  return !!(user?.role === 'admin' || isProjectAdmin(project, username))
 }
 
 // GET /api/users – minimale Benutzerliste für Zugangsverwaltung (alle angemeldeten Benutzer)
@@ -1244,12 +1250,12 @@ function releaseUid() {
   return Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 10)
 }
 
-// Berechtigung: Systemadmin oder Projektadministrator des Projekts.
+// Berechtigung: Systemadmin oder Projektadministrator (Ersteller/Co-Admin).
 function canManageRelease(project, username) {
   if (username === '__apikey__' || username === '__anonymous__') return true
   const user = db.users.get(username)
   if (user?.role === 'admin') return true
-  return !!(project && project.projectAdminUser === username)
+  return isProjectAdmin(project, username)
 }
 
 // ── POST /api/actions/release-link – Token für Verantwortlichen holen/erzeugen ──
@@ -1269,6 +1275,35 @@ app.post('/api/actions/release-link', requireAuth, (req, res) => {
       db.releaseTokens.updateEmail(row.token, email)
     }
     res.json({ token: row.token, url: `${getAppUrl(req)}/freimeldung/${row.token}` })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// ── GET /api/projects/:id/release-tokens – aktive Freimelde-Links (Manager) ────
+app.get('/api/projects/:id/release-tokens', requireAuth, (req, res) => {
+  try {
+    const project = db.projects.get(req.params.id)
+    if (!project) return res.status(404).json({ error: 'Projekt nicht gefunden.' })
+    if (!isProjectManager(project, req.user)) return res.status(403).json({ error: 'Keine Berechtigung.' })
+    const appUrl = getAppUrl(req)
+    res.json(db.releaseTokens.listByProject(req.params.id).map(t => ({
+      token: t.token, responsible: t.responsible, email: t.email,
+      createdAt: t.created_at, lastUsedAt: t.last_used_at,
+      url: `${appUrl}/freimeldung/${t.token}`,
+    })))
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// ── POST /api/projects/:id/release-tokens/:token/revoke – Link widerrufen ──────
+app.post('/api/projects/:id/release-tokens/:token/revoke', requireAuth, writeLimiter, (req, res) => {
+  try {
+    const project = db.projects.get(req.params.id)
+    if (!project) return res.status(404).json({ error: 'Projekt nicht gefunden.' })
+    if (!isProjectManager(project, req.user)) return res.status(403).json({ error: 'Keine Berechtigung.' })
+    const row = db.releaseTokens.getByToken(req.params.token)
+    if (!row || row.project_id !== req.params.id) return res.status(404).json({ error: 'Link nicht gefunden.' })
+    db.releaseTokens.revoke(req.params.token)
+    logEvent('RELEASE_TOKEN_REVOKED', req, `project=${req.params.id} responsible=${row.responsible} by=${req.user}`)
+    res.json({ ok: true })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
@@ -2010,38 +2045,50 @@ app.get('/api/projects/:id/access', requireAuth, (req, res) => {
     res.json({
       isAccessControlled: p.isAccessControlled ?? false,
       projectAdminUser:   p.projectAdminUser   ?? null,
-      allowedUsers:       p.allowedUsers       ?? [],
+      projectAdmins:      Array.isArray(p.projectAdmins) ? p.projectAdmins : [],
+      allowedUsers:       Array.isArray(p.allowedUsers)  ? p.allowedUsers  : [],
     })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
+// Verwaltet Projektzugang, Co-Administratoren und Autoren. Jede der drei
+// Eigenschaften ist optional – nur übergebene Felder werden geändert.
 app.patch('/api/projects/:id/access', requireAuth, writeLimiter, (req, res) => {
   try {
-    const { isAccessControlled, allowedUsers } = req.body
+    const { isAccessControlled, allowedUsers, projectAdmins } = req.body
     const p = db.projects.get(req.params.id)
     if (!p) return res.status(404).json({ error: 'Nicht gefunden.' })
-    if (!isProjectManager(p, req.user)) return res.status(403).json({ error: 'Nur der Projektadministrator kann Zugriffsrechte ändern.' })
-    const { _version, _updatedAt, ...pData } = p
-    const updated = {
-      ...pData,
-      isAccessControlled: !!isAccessControlled,
-      allowedUsers: Array.isArray(allowedUsers) ? allowedUsers : [],
-      updatedAt: new Date().toISOString(),
+    if (!isProjectManager(p, req.user)) return res.status(403).json({ error: 'Nur Projektadministratoren können Zugriffsrechte ändern.' })
+
+    // Gültige Benutzernamen für Validierung
+    const validUsernames = new Set(db.users.list().map(u => u.username))
+
+    const buildPatch = (base) => {
+      const next = { ...base, updatedAt: new Date().toISOString() }
+      if (typeof isAccessControlled === 'boolean') next.isAccessControlled = isAccessControlled
+      if (Array.isArray(allowedUsers)) {
+        next.allowedUsers = allowedUsers.filter(u => validUsernames.has(u) && u !== base.projectAdminUser)
+      }
+      if (Array.isArray(projectAdmins)) {
+        // Co-Admins: gültige Nutzer, nicht der Ersteller, dedupliziert
+        next.projectAdmins = [...new Set(projectAdmins.filter(u => validUsernames.has(u) && u !== base.projectAdminUser))]
+      }
+      return next
     }
-    let result = db.projects.update(req.params.id, updated, _version, req.user)
+
+    const { _version, _updatedAt, ...pData } = p
+    let updated = buildPatch(pData)
+    let result  = db.projects.update(req.params.id, updated, _version, req.user)
     if (result.conflict) {
       const fresh = db.projects.get(req.params.id)
       const { _version: v2, _updatedAt: _2, ...freshData } = fresh
-      result = db.projects.update(req.params.id, {
-        ...freshData, isAccessControlled: !!isAccessControlled,
-        allowedUsers: Array.isArray(allowedUsers) ? allowedUsers : [],
-        updatedAt: new Date().toISOString(),
-      }, v2, req.user)
+      updated = buildPatch(freshData)
+      result  = db.projects.update(req.params.id, updated, v2, req.user)
     }
     if (result.notFound) return res.status(404).json({ error: 'Nicht gefunden.' })
     if (result.conflict) return res.status(409).json({ error: 'Konflikt – bitte erneut versuchen.' })
     broadcast('project', 'update', req.params.id, updated.updatedAt)
-    logEvent('PROJECT_ACCESS_CHANGED', req, `project=${req.params.id}`)
+    logEvent('PROJECT_ACCESS_CHANGED', req, `project=${req.params.id} by=${req.user}`)
     res.json({ ok: true })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
@@ -2085,6 +2132,7 @@ app.patch('/api/projects/:id', requireAuth, writeLimiter, (req, res) => {
       isAccessControlled: existing.isAccessControlled,
       allowedUsers:       existing.allowedUsers,
       projectAdminUser:   existing.projectAdminUser,
+      projectAdmins:      existing.projectAdmins,
     }
     const result = db.projects.update(req.params.id, safeData, version, req.user)
     if (result.notFound) return res.status(404).json({ error: 'Nicht gefunden.' })

@@ -221,7 +221,8 @@ export default function MassnahmenDashboard({ protocols, projects, projectId, pr
     if (!serverUser) return false
     if (serverUser.role === 'admin') return true
     const proj = projects.find(p => p.id === item._projectId)
-    return !!(proj && proj.projectAdminUser === serverUser.username)
+    return !!(proj && (proj.projectAdminUser === serverUser.username
+      || proj.projectAdmins?.includes(serverUser.username)))
   }
 
   const [filterProject,     setFilterProject]     = useState('')
