@@ -313,6 +313,10 @@ export default function MassnahmenDashboard({ protocols, projects, projectId, pr
       const key         = `${responsible}||${itemProjectId}`
       if (!map.has(key)) {
         const needle = responsible.toLowerCase()
+        // Strip "(Firma)"-Suffix: Zuständige werden als "Name (Firma)" gespeichert,
+        // der Kontakt hat aber nur den Namen im name-Feld → ohne Suffix suchen.
+        const needleBase = needle.replace(/\s*\([^)]*\)\s*$/, '').trim()
+
         let foundEmail = ''
         // When scoped, look up email in project contacts only
         const contactSources = isScoped && projectContacts?.length > 0
@@ -321,7 +325,11 @@ export default function MassnahmenDashboard({ protocols, projects, projectId, pr
         for (const project of contactSources) {
           if (!project.isUnlocked) continue
           for (const c of (project.contacts ?? [])) {
-            if ((c.name || '').toLowerCase().trim() === needle && c.email) {
+            const cName = (c.name || '').toLowerCase().trim()
+            const cFull = c.company
+              ? `${cName} (${(c.company || '').toLowerCase().trim()})`
+              : cName
+            if ((cName === needle || cName === needleBase || cFull === needle) && c.email) {
               foundEmail = c.email
               break
             }
@@ -332,7 +340,8 @@ export default function MassnahmenDashboard({ protocols, projects, projectId, pr
         if (!foundEmail) {
           outer: for (const proto of scopedProtocols) {
             for (const p of (proto.participants ?? [])) {
-              if ((p.name || '').toLowerCase().trim() === needle && p.email) {
+              const pName = (p.name || '').toLowerCase().trim()
+              if ((pName === needle || pName === needleBase) && p.email) {
                 foundEmail = p.email
                 break outer
               }
@@ -347,7 +356,7 @@ export default function MassnahmenDashboard({ protocols, projects, projectId, pr
       const pc = a.projectName.localeCompare(b.projectName)
       return pc !== 0 ? pc : a.responsible.localeCompare(b.responsible)
     })
-  }, [visible, projects, isScoped, projectContacts])
+  }, [visible, projects, isScoped, projectContacts, scopedProtocols])
 
   const totalOverdue  = allItems.filter(calcOverdue).length
   const totalOpen     = allItems.filter(i => i.status === 'offen' || i.status === 'in_arbeit').length
