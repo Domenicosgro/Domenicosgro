@@ -443,6 +443,11 @@ app.post('/api/admin/smtp-test', requireAuth, requireAdmin, async (req, res) => 
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
+app.get('/api/admin/synology-status', requireAuth, requireAdmin, (_req, res) => {
+  const url = process.env.SYNOLOGY_URL || ''
+  res.json({ configured: !!url, url: url || null })
+})
+
 // ── Einladungs-E-Mail bauen ───────────────────────────────────────────────────
 function buildInviteMail({ username, displayName, email, appUrl, isSynology, passwordNote }) {
   const from        = process.env.SMTP_FROM || process.env.GRAPH_SENDER || process.env.SMTP_USER || 'noreply@komplizen'

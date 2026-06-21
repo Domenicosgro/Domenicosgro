@@ -1027,10 +1027,13 @@ function RolloutTab() {
   const [importing,  setImporting]  = useState(false)
   const [results,    setResults]    = useState(null)
   const [smtpOk,     setSmtpOk]    = useState(null)
+  const [synoConfig, setSynoConfig] = useState(null)   // { configured, url }
 
   useEffect(() => {
-    fetch('/api/admin/smtp-status', { headers: apiHeaders() })
+    fetch('/api/admin/smtp-status',    { headers: apiHeaders() })
       .then(r => r.json()).then(d => setSmtpOk(d.configured)).catch(() => setSmtpOk(false))
+    fetch('/api/admin/synology-status', { headers: apiHeaders() })
+      .then(r => r.json()).then(setSynoConfig).catch(() => setSynoConfig({ configured: false }))
   }, [])
 
   async function handleLoad(e) {
@@ -1098,6 +1101,23 @@ function RolloutTab() {
         an Benutzer gesendet, für die eine E-Mail-Adresse hinterlegt ist.
       </p>
 
+      {synoConfig && !synoConfig.configured && (
+        <div className="border border-red-200 bg-red-50 px-4 py-3 space-y-1">
+          <div className="flex items-center gap-2 text-sm font-medium text-red-700">
+            <AlertTriangle size={14} className="shrink-0" /> SYNOLOGY_URL nicht konfiguriert
+          </div>
+          <p className="text-xs text-red-600">
+            Damit Synology-Nutzer geladen werden können, muss <code className="font-mono bg-red-100 px-1">SYNOLOGY_URL</code> in der <code className="font-mono bg-red-100 px-1">docker-compose.yml</code> gesetzt sein und der Container neu erstellt werden.
+          </p>
+          <p className="text-xs text-gray-500 font-mono bg-red-50 border border-red-200 px-2 py-1 mt-1">
+            SYNOLOGY_URL: "http://192.168.178.xxx:5000"
+          </p>
+          <p className="text-xs text-gray-500">
+            Auf der Synology NAS ist dies bereits in <code className="font-mono">docker-compose.yml</code> eingetragen. Bitte nach der nächsten Neubereitstellung erneut versuchen.
+          </p>
+        </div>
+      )}
+
       {smtpOk === false && (
         <div className="flex items-start gap-2 text-xs bg-amber-50 border border-amber-200 text-amber-800 px-3 py-2">
           <AlertTriangle size={13} className="shrink-0 mt-0.5" />
@@ -1113,10 +1133,13 @@ function RolloutTab() {
         </div>
         <div className="flex gap-2">
           <input className="input text-sm flex-1" placeholder="Synology-Benutzername"
-            value={creds.username} onChange={e => setCreds(p => ({ ...p, username: e.target.value }))} required />
+            value={creds.username} onChange={e => setCreds(p => ({ ...p, username: e.target.value }))} required
+            disabled={synoConfig?.configured === false} />
           <input type="password" className="input text-sm flex-1" placeholder="Passwort"
-            value={creds.password} onChange={e => setCreds(p => ({ ...p, password: e.target.value }))} required />
-          <button type="submit" className="btn btn-primary text-sm shrink-0" disabled={loading}>
+            value={creds.password} onChange={e => setCreds(p => ({ ...p, password: e.target.value }))} required
+            disabled={synoConfig?.configured === false} />
+          <button type="submit" className="btn btn-primary text-sm shrink-0"
+            disabled={loading || synoConfig?.configured === false}>
             {loading ? <Loader size={13} className="animate-spin" /> : <RefreshCw size={13} />}
             {loading ? 'Laden…' : 'Laden'}
           </button>
