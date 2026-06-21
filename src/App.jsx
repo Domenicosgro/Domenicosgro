@@ -525,11 +525,13 @@ export default function App() {
           project={project}
           protocols={protocols}
           notes={notes}
+          serverUser={serverUser}
           onBack={() => setView('home')}
           onOpenProtocols={(phase) => openProjectProtocols(selectedProjectId, phase)}
           onOpenNotes={() => setView('notes')}
           onManageContacts={() => { setContactsOrigin('project-dashboard'); setView('project-contacts') }}
           onOpenMassnahmen={() => setView('project-massnahmen')}
+          onSaved={isServer ? handleRefresh : undefined}
         />
         <UpdateBanner /><SaveErrorBanner />
       </>

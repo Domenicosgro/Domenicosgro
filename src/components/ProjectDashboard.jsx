@@ -1,5 +1,8 @@
-import React from 'react'
-import { ArrowLeft, FileText, Users, HardHat, Pencil, NotebookPen, ChevronRight, Clock, CheckCircle2, BarChart2 } from 'lucide-react'
+import React, { useState } from 'react'
+import { ArrowLeft, FileText, Users, HardHat, Pencil, NotebookPen, ChevronRight, Clock, CheckCircle2, BarChart2, UserCog } from 'lucide-react'
+import ProjectAdminPanel from './ProjectAdminPanel'
+
+const isServer = typeof window !== 'undefined' && !!window.__SERVER_MODE__
 
 function DashboardTile({ icon, title, subtitle, accent, onClick, stat1, stat2 }) {
   return (
@@ -33,9 +36,18 @@ function DashboardTile({ icon, title, subtitle, accent, onClick, stat1, stat2 })
 }
 
 export default function ProjectDashboard({
-  project, protocols, notes,
-  onBack, onOpenProtocols, onOpenNotes, onManageContacts, onOpenMassnahmen,
+  project, protocols, notes, serverUser,
+  onBack, onOpenProtocols, onOpenNotes, onManageContacts, onOpenMassnahmen, onSaved,
 }) {
+  const [showAdminPanel, setShowAdminPanel] = useState(false)
+
+  // Darf der aktuelle Nutzer dieses Projekt administrieren? (Systemadmin oder Projektadmin)
+  const canAdmin = isServer && serverUser && (
+    serverUser.role === 'admin' ||
+    project.projectAdminUser === serverUser.username ||
+    project.projectAdmins?.includes(serverUser.username)
+  )
+
   const protos        = protocols.filter(p => p.projectId === project.id)
   const planungProtos = protos.filter(p => p.phase === 'planung')
   const bauProtos     = protos.filter(p => p.phase === 'bau')
@@ -123,6 +135,17 @@ export default function ProjectDashboard({
           stat1={{ value: allActions.length, label: 'Maßnahmen' }}
           stat2={{ value: openActions,       label: 'offen' }}
         />
+
+        {/* Administration – nur für Projektadmins und Systemadmins */}
+        {canAdmin && (
+          <DashboardTile
+            icon={<UserCog size={20} />}
+            title="Administration"
+            subtitle="Projektzugang, Administratoren und Freimelde-Links verwalten"
+            accent="border-brand-600"
+            onClick={() => setShowAdminPanel(true)}
+          />
+        )}
       </div>
 
       {/* Alle Protokolle (phasenübergreifend) */}
@@ -143,6 +166,16 @@ export default function ProjectDashboard({
             </button>
           </div>
         </div>
+      )}
+
+      {/* Projekt-Admin-Panel */}
+      {showAdminPanel && (
+        <ProjectAdminPanel
+          project={project}
+          serverUser={serverUser}
+          onClose={() => setShowAdminPanel(false)}
+          onSaved={onSaved}
+        />
       )}
 
     </div>
