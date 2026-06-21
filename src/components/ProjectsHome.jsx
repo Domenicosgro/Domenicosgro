@@ -477,19 +477,36 @@ export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, 
       )}
 
       {/* Dashboard-Kacheln */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <button
-          className="card px-5 py-4 text-left hover:border-brand-300 hover:shadow-sm transition-all group flex items-center gap-4 border-l-4 border-brand-500"
-          onClick={onOpenContactDatabase}
-        >
-          <Users size={22} className="text-brand-600 flex-shrink-0" />
-          <div className="flex-1 min-w-0">
-            <p className="font-semibold text-gray-900 group-hover:text-brand-700 transition-colors">Kontaktdatenbank</p>
-            <p className="text-xs text-gray-400 truncate">Alle Projektkontakte auf einen Blick</p>
+      {(() => {
+        const totalContacts = projects.reduce((s, p) => s + (p.contacts ?? []).length, 0)
+        const contactProjectCount = projects.filter(p => (p.contacts ?? []).length > 0).length
+        return (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+            <button
+              onClick={onOpenContactDatabase}
+              className="card w-full text-left flex flex-col aspect-video p-4 hover:border-brand-300 hover:bg-gray-50 transition-colors group border-l-4 border-brand-500"
+            >
+              <div className="flex items-center gap-2 mb-1.5">
+                <span className="text-brand-600 group-hover:text-brand-700 transition-colors flex-shrink-0"><Users size={20} /></span>
+                <h3 className="font-semibold text-sm text-gray-900 group-hover:text-brand-700 transition-colors truncate">Kontaktdatenbank</h3>
+              </div>
+              <p className="text-xs text-gray-500 line-clamp-3">Alle Projektkontakte auf einen Blick</p>
+              <div className="flex gap-4 mt-auto pt-2">
+                <div>
+                  <div className="text-lg font-bold text-night leading-none">{totalContacts}</div>
+                  <div className="text-xs text-gray-400 mt-0.5">Kontakte</div>
+                </div>
+                {contactProjectCount > 0 && (
+                  <div>
+                    <div className="text-lg font-bold text-night leading-none">{contactProjectCount}</div>
+                    <div className="text-xs text-gray-400 mt-0.5">Projekte</div>
+                  </div>
+                )}
+              </div>
+            </button>
           </div>
-          <ChevronRight size={16} className="text-gray-300 group-hover:text-brand-400 flex-shrink-0" />
-        </button>
-      </div>
+        )
+      })()}
 
       {/* Search + favorites toggle */}
       {projects.length > 0 && (

@@ -8,13 +8,24 @@ export default function ContactDatabase({ projects, onBack }) {
   const [filterProject, setFilterProject] = useState('')
   const [filterCompany, setFilterCompany] = useState('')
 
-  // Flatten all contacts from all projects
+  // Flatten all contacts from all projects, deduplicating by email (or name+company)
   const allContacts = useMemo(() => {
     const list = []
+    const seen = new Map() // dedupKey → index in list
     for (const project of projects) {
       for (const contact of (project.contacts ?? [])) {
         if (!contact.name && !contact.company && !contact.email) continue
-        list.push({ ...contact, _projectId: project.id, _projectName: project.name || 'Unbenanntes Projekt' })
+        const emailKey = (contact.email || '').trim().toLowerCase()
+        const nameKey  = `${(contact.name || '').trim().toLowerCase()}|||${(contact.company || '').trim().toLowerCase()}`
+        const dedupKey = emailKey || nameKey
+        const proj = { id: project.id, name: project.name || 'Unbenanntes Projekt' }
+        if (dedupKey && seen.has(dedupKey)) {
+          list[seen.get(dedupKey)]._projects.push(proj)
+        } else {
+          const entry = { ...contact, _projectId: project.id, _projectName: project.name || 'Unbenanntes Projekt', _projects: [proj] }
+          if (dedupKey) seen.set(dedupKey, list.length)
+          list.push(entry)
+        }
       }
     }
     return list
@@ -23,7 +34,7 @@ export default function ContactDatabase({ projects, onBack }) {
   // Filter-Optionen für Projekt und Firma
   const projectOptions = useMemo(() => {
     const m = new Map()
-    for (const c of allContacts) if (c._projectId) m.set(c._projectId, c._projectName)
+    for (const c of allContacts) for (const p of c._projects) if (p.id) m.set(p.id, p.name)
     return [...m.entries()].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name, 'de'))
   }, [allContacts])
 
@@ -36,7 +47,7 @@ export default function ContactDatabase({ projects, onBack }) {
   const q = search.trim().toLowerCase()
   const filtered = useMemo(() => {
     let base = allContacts
-    if (filterProject) base = base.filter(c => c._projectId === filterProject)
+    if (filterProject) base = base.filter(c => c._projects.some(p => p.id === filterProject))
     if (filterCompany) base = base.filter(c => (c.company || '').trim() === filterCompany)
     if (q) base = base.filter(c =>
       (c.name    || '').toLowerCase().includes(q) ||
@@ -73,7 +84,7 @@ export default function ContactDatabase({ projects, onBack }) {
   )
 
   // Unique project count
-  const projectCount = new Set(allContacts.map(c => c._projectId)).size
+  const projectCount = new Set(allContacts.flatMap(c => c._projects.map(p => p.id))).size
 
   return (
     <div className="app-page">
@@ -169,9 +180,13 @@ export default function ContactDatabase({ projects, onBack }) {
                     </div>
                   </td>
                   <td className="px-4 py-2.5">
-                    <span className="inline-block text-xs px-2 py-0.5 bg-gray-100 text-gray-600 border border-gray-200">
-                      {c._projectName}
-                    </span>
+                    <div className="flex flex-wrap gap-1">
+                      {c._projects.map(p => (
+                        <span key={p.id} className="inline-block text-xs px-2 py-0.5 bg-gray-100 text-gray-600 border border-gray-200">
+                          {p.name}
+                        </span>
+                      ))}
+                    </div>
                   </td>
                 </tr>
               ))}
