@@ -495,14 +495,18 @@ export default function App() {
     )
   }
 
-  if (view === 'dashboard') {
+  if (view === 'project-massnahmen') {
+    const project = projectsWithContacts.find(p => p.id === selectedProjectId) ?? null
+    const projectProtos = protocols.filter(p => p.projectId === selectedProjectId)
     return wrap(
       <>
         <MassnahmenDashboard
-          protocols={protocols}
+          protocols={projectProtos}
           projects={projectsWithContacts}
+          projectId={selectedProjectId}
+          projectContacts={project?.contacts ?? []}
           onOpenProtocol={openProtocolFromDashboard}
-          onBack={() => setView('home')}
+          onBack={() => setView('project-dashboard')}
         />
         <UpdateBanner /><SaveErrorBanner />
       </>
@@ -522,6 +526,7 @@ export default function App() {
           onOpenProtocols={(phase) => openProjectProtocols(selectedProjectId, phase)}
           onOpenNotes={() => setView('notes')}
           onManageContacts={() => { setContactsOrigin('project-dashboard'); setView('project-contacts') }}
+          onOpenMassnahmen={() => setView('project-massnahmen')}
         />
         <UpdateBanner /><SaveErrorBanner />
       </>
@@ -572,7 +577,6 @@ export default function App() {
         onUnlock={handleUnlockProject}
         onSetPassword={handleSetProjectPassword}
         onRemovePassword={handleRemoveProjectPassword}
-        onOpenDashboard={() => setView('dashboard')}
         onOpenContactDatabase={() => setView('contact-database')}
         onImportProject={handleImportProject}
         serverUser={serverUser}

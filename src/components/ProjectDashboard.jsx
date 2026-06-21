@@ -1,5 +1,5 @@
 import React from 'react'
-import { ArrowLeft, FileText, Users, HardHat, Pencil, NotebookPen, ChevronRight, Clock, CheckCircle2 } from 'lucide-react'
+import { ArrowLeft, FileText, Users, HardHat, Pencil, NotebookPen, ChevronRight, Clock, CheckCircle2, BarChart2 } from 'lucide-react'
 
 function DashboardTile({ icon, title, subtitle, accent, onClick, stat1, stat2 }) {
   return (
@@ -39,9 +39,9 @@ function DashboardTile({ icon, title, subtitle, accent, onClick, stat1, stat2 })
 
 export default function ProjectDashboard({
   project, protocols, notes,
-  onBack, onOpenProtocols, onOpenNotes, onManageContacts,
+  onBack, onOpenProtocols, onOpenNotes, onManageContacts, onOpenMassnahmen,
 }) {
-  const protos      = protocols.filter(p => p.projectId === project.id)
+  const protos        = protocols.filter(p => p.projectId === project.id)
   const planungProtos = protos.filter(p => p.phase === 'planung')
   const bauProtos     = protos.filter(p => p.phase === 'bau')
   const unassigned    = protos.filter(p => !p.phase)
@@ -49,6 +49,9 @@ export default function ProjectDashboard({
   const openBau       = bauProtos.filter(p => !p.isClosed).length
   const projectNotes  = (notes ?? []).filter(n => n.projectId === project.id)
   const contacts      = project.contacts ?? []
+
+  const allActions  = protos.flatMap(p => p.actionItems ?? [])
+  const openActions = allActions.filter(a => a.status === 'offen' || a.status === 'in_arbeit').length
 
   return (
     <div className="app-page">
@@ -70,8 +73,8 @@ export default function ProjectDashboard({
         </div>
       </div>
 
-      {/* 4 Kacheln (2 Spalten auf sm, 4 Spalten auf xl) */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+      {/* 5 Kacheln (2 Spalten auf sm, 5 Spalten auf xl) */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-4">
 
         {/* Planungsphase */}
         <DashboardTile
@@ -113,6 +116,17 @@ export default function ProjectDashboard({
           accent="border-purple-400"
           onClick={onOpenNotes}
           stat1={{ value: projectNotes.length, label: 'Notizen' }}
+        />
+
+        {/* Maßnahmen */}
+        <DashboardTile
+          icon={<BarChart2 size={20} />}
+          title="Maßnahmen"
+          subtitle="Aufgaben und Maßnahmen aus den Projektprotokollen"
+          accent="border-amber-400"
+          onClick={onOpenMassnahmen}
+          stat1={{ value: allActions.length, label: 'Maßnahmen' }}
+          stat2={{ value: openActions,       label: 'offen' }}
         />
       </div>
 

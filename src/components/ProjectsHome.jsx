@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { Plus, Trash2, Search, ChevronRight, FileText, Users, FolderOpen,
-         Calendar, Lock, LockOpen, X, Eye, EyeOff, Star, BarChart2,
+         Calendar, Lock, LockOpen, X, Eye, EyeOff, Star,
          User, Settings, LogOut, Monitor, Download, RotateCcw, Upload, AlertTriangle,
          ShieldCheck, Loader } from 'lucide-react'
 
@@ -299,7 +299,7 @@ function PasswordModal({ mode, projectName, onConfirm, onCancel }) {
 // ── Main component ─────────────────────────────────────────────────────────────
 export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, onDelete, onOpenProject,
                                        onOpenProjectDashboard, onUnlock, onSetPassword, onRemovePassword,
-                                       onOpenDashboard, onOpenContactDatabase, onImportProject,
+                                       onOpenContactDatabase, onImportProject,
                                        serverUser, onLogout, onOpenAdmin,
                                        onRequestDeleteProject, onRefresh }) {
   const [search,        setSearch]        = useState('')
@@ -446,11 +446,6 @@ export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, 
               )}
             </>
           )}
-          {onOpenDashboard && (
-            <button className="btn btn-secondary" onClick={onOpenDashboard} title="Aufgaben-Dashboard öffnen">
-              <BarChart2 size={15} /> Aufgaben
-            </button>
-          )}
           {window.__SERVER_MODE__ && !installed && installPrompt && (
             <button className="btn btn-secondary" title="App installieren"
               onClick={() => installPrompt.prompt()}>
@@ -494,19 +489,6 @@ export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, 
           </div>
           <ChevronRight size={16} className="text-gray-300 group-hover:text-brand-400 flex-shrink-0" />
         </button>
-        {onOpenDashboard && (
-          <button
-            className="card px-5 py-4 text-left hover:border-brand-300 hover:shadow-sm transition-all group flex items-center gap-4 border-l-4 border-amber-400"
-            onClick={onOpenDashboard}
-          >
-            <BarChart2 size={22} className="text-amber-500 flex-shrink-0" />
-            <div className="flex-1 min-w-0">
-              <p className="font-semibold text-gray-900 group-hover:text-brand-700 transition-colors">Maßnahmen-Dashboard</p>
-              <p className="text-xs text-gray-400 truncate">Projektübergreifende Aufgaben &amp; Maßnahmen</p>
-            </div>
-            <ChevronRight size={16} className="text-gray-300 group-hover:text-brand-400 flex-shrink-0" />
-          </button>
-        )}
       </div>
 
       {/* Search + favorites toggle */}

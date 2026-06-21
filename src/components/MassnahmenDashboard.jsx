@@ -211,7 +211,9 @@ function EmailModal({ groups, onClose }) {
 }
 
 // ── Hauptkomponente ───────────────────────────────────────────────────────────
-export default function MassnahmenDashboard({ protocols, projects, onOpenProtocol, onBack }) {
+export default function MassnahmenDashboard({ protocols, projects, projectId, projectContacts, onOpenProtocol, onBack }) {
+  const isScoped = !!projectId
+
   const [filterProject,     setFilterProject]     = useState('')
   const [filterStatus,      setFilterStatus]      = useState('')
   const [filterPriority,    setFilterPriority]    = useState('')
@@ -220,10 +222,16 @@ export default function MassnahmenDashboard({ protocols, projects, onOpenProtoco
   const [onlyOverdue,       setOnlyOverdue]       = useState(false)
   const [showEmailModal,    setShowEmailModal]    = useState(false)
 
-  // Flat list: alle Maßnahmen aus allen Protokollen
+  // When scoped to a project, only include its protocols
+  const scopedProtocols = useMemo(() =>
+    isScoped ? protocols.filter(p => p.projectId === projectId) : protocols,
+    [protocols, projectId, isScoped]
+  )
+
+  // Flat list: alle Maßnahmen aus (scoped) Protokollen
   const allItems = useMemo(() => {
     const items = []
-    for (const protocol of protocols) {
+    for (const protocol of scopedProtocols) {
       const project    = projects.find(p => p.id === protocol.projectId) ?? null
       const chainNo    = getChainNo(protocol, protocols)
       const protocolNo = buildProtocolNo(protocol.projectName, protocol.date, chainNo, protocol.meetingType)
@@ -249,7 +257,7 @@ export default function MassnahmenDashboard({ protocols, projects, onOpenProtoco
       return (b._protocolDate ?? '').localeCompare(a._protocolDate ?? '')
     })
     return items
-  }, [protocols, projects])
+  }, [scopedProtocols, projects, protocols])
 
   // Filter-Optionen: eindeutige Projekte und Verantwortliche
   const projectOptions = useMemo(() => {
@@ -289,13 +297,17 @@ export default function MassnahmenDashboard({ protocols, projects, onOpenProtoco
     const map = new Map()
     for (const item of visible) {
       const responsible = (item.responsible || '').trim() || '(kein Verantwortlicher)'
-      const projectId   = item._projectId   || ''
+      const itemProjectId   = item._projectId   || ''
       const projectName = item._projectName || 'Unbekanntes Projekt'
-      const key         = `${responsible}||${projectId}`
+      const key         = `${responsible}||${itemProjectId}`
       if (!map.has(key)) {
         const needle = responsible.toLowerCase()
         let foundEmail = ''
-        for (const project of projects) {
+        // When scoped, look up email in project contacts only
+        const contactSources = isScoped && projectContacts?.length > 0
+          ? [{ contacts: projectContacts, isUnlocked: true }]
+          : projects
+        for (const project of contactSources) {
           if (!project.isUnlocked) continue
           for (const c of (project.contacts ?? [])) {
             if ((c.name || '').toLowerCase().trim() === needle && c.email) {
@@ -305,7 +317,7 @@ export default function MassnahmenDashboard({ protocols, projects, onOpenProtoco
           }
           if (foundEmail) break
         }
-        map.set(key, { responsible, projectId, projectName, email: foundEmail, items: [] })
+        map.set(key, { responsible, projectId: itemProjectId, projectName, email: foundEmail, items: [] })
       }
       map.get(key).items.push(item)
     }
@@ -313,7 +325,7 @@ export default function MassnahmenDashboard({ protocols, projects, onOpenProtoco
       const pc = a.projectName.localeCompare(b.projectName)
       return pc !== 0 ? pc : a.responsible.localeCompare(b.responsible)
     })
-  }, [visible, projects])
+  }, [visible, projects, isScoped, projectContacts])
 
   const totalOverdue  = allItems.filter(calcOverdue).length
   const totalOpen     = allItems.filter(i => i.status === 'offen' || i.status === 'in_arbeit').length
@@ -336,9 +348,11 @@ export default function MassnahmenDashboard({ protocols, projects, onOpenProtoco
           <div>
             <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2">
               <BarChart2 size={20} className="text-brand-600" />
-              Aufgaben-Dashboard
+              Maßnahmen
             </h1>
-            <p className="text-xs text-gray-400">Alle Aufgaben projekt- und protokollübergreifend</p>
+            <p className="text-xs text-gray-400">
+              {isScoped ? 'Aufgaben und Maßnahmen aus diesem Projekt' : 'Alle Aufgaben projekt- und protokollübergreifend'}
+            </p>
           </div>
         </div>
         {visible.length > 0 && (
@@ -363,12 +377,14 @@ export default function MassnahmenDashboard({ protocols, projects, onOpenProtoco
         </div>
         <div className="flex flex-wrap gap-2 items-center">
 
-          {/* Projekt */}
-          <select className="select text-sm" style={{ maxWidth: '180px' }}
-            value={filterProject} onChange={e => setFilterProject(e.target.value)}>
-            <option value="">Alle Projekte</option>
-            {projectOptions.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-          </select>
+          {/* Projekt – nur wenn nicht auf ein Projekt eingeschränkt */}
+          {!isScoped && (
+            <select className="select text-sm" style={{ maxWidth: '180px' }}
+              value={filterProject} onChange={e => setFilterProject(e.target.value)}>
+              <option value="">Alle Projekte</option>
+              {projectOptions.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+          )}
 
           {/* Verantwortlicher */}
           <select className="select text-sm" style={{ maxWidth: '180px' }}
@@ -434,7 +450,7 @@ export default function MassnahmenDashboard({ protocols, projects, onOpenProtoco
           <table className="w-full text-sm border-collapse">
             <thead>
               <tr className="border-b border-gray-200 bg-gray-50/80">
-                <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Projekt</th>
+                {!isScoped && <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Projekt</th>}
                 <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Protokoll</th>
                 <th className="text-center px-3 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Nr</th>
                 <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Beschreibung</th>
@@ -461,12 +477,14 @@ export default function MassnahmenDashboard({ protocols, projects, onOpenProtoco
                     onClick={() => onOpenProtocol(item._protocolId)}
                     title="Protokoll öffnen"
                   >
-                    <td className="px-4 py-2.5 text-xs max-w-[120px]">
-                      {item._projectLocked
-                        ? <span className="flex items-center gap-1 text-amber-600"><Lock size={10} /> Gesperrt</span>
-                        : <span className="font-medium text-gray-700 truncate block">{item._projectName || '–'}</span>
-                      }
-                    </td>
+                    {!isScoped && (
+                      <td className="px-4 py-2.5 text-xs max-w-[120px]">
+                        {item._projectLocked
+                          ? <span className="flex items-center gap-1 text-amber-600"><Lock size={10} /> Gesperrt</span>
+                          : <span className="font-medium text-gray-700 truncate block">{item._projectName || '–'}</span>
+                        }
+                      </td>
+                    )}
                     <td className="px-4 py-2.5 text-xs text-gray-500 max-w-[150px]">
                       <span className="truncate block" title={item._protocolNo}>{item._protocolNo}</span>
                     </td>
