@@ -31,7 +31,7 @@ function buildActionsText(responsible, projectName, items) {
         ? new Date(item.deadline + 'T12:00:00').toLocaleDateString('de-DE') : '–'
       return `• ${item.description || '–'}\n  Protokoll: ${item._protocolNo || '–'} | Frist: ${dl} | Status: ${STATUS[item.status] || item.status}`
     }),
-    '', 'Komplizen Protokolle',
+    '', 'GHBA',
   ]
   return lines.join('\n')
 }

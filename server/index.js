@@ -450,7 +450,7 @@ app.get('/api/admin/synology-status', requireAuth, requireAdmin, (_req, res) => 
 
 // ── Einladungs-E-Mail bauen ───────────────────────────────────────────────────
 function buildInviteMail({ username, displayName, email, appUrl, isSynology, passwordNote }) {
-  const from        = process.env.SMTP_FROM || process.env.GRAPH_SENDER || process.env.SMTP_USER || 'noreply@komplizen'
+  const from        = process.env.SMTP_FROM || process.env.GRAPH_SENDER || process.env.SMTP_USER || 'noreply@ghba'
   const shortcutUrl = `${appUrl}/shortcut`
 
   const logoPath = path.join(__dirname, '../dist/Logo_Komplizen_sky1.png')
@@ -458,8 +458,8 @@ function buildInviteMail({ username, displayName, email, appUrl, isSynology, pas
     ? [{ filename: 'Logo_Komplizen_sky1.png', path: logoPath, cid: 'logo@komplizen' }]
     : []
   const logoTag = logoAttachment.length
-    ? '<img src="cid:logo@komplizen" alt="Komplizen Protokolle" style="height:80px;display:block;margin:0 auto;">'
-    : '<h2 style="color:#1e3a5f;text-align:center;margin:0;">KOMPLIZEN</h2>'
+    ? '<img src="cid:logo@komplizen" alt="GHBA" style="height:80px;display:block;margin:0 auto;">'
+    : '<h2 style="color:#1e3a5f;text-align:center;margin:0;font-family:Arial,sans-serif;">GHBA</h2>'
 
   const pwRow = isSynology
     ? `<tr><td style="color:#6b7280;white-space:nowrap;padding-right:16px;">Passwort</td><td style="color:#374151;">Ihr <strong>Synology-NAS-Passwort</strong></td></tr>`
@@ -485,8 +485,8 @@ function buildInviteMail({ username, displayName, email, appUrl, isSynology, pas
           <p style="color:#7ab3d4;margin:8px 0 0 0;font-size:11px;letter-spacing:2px;text-transform:uppercase;">Einladung</p>
         </td></tr>
         <tr><td style="padding:32px 40px 0 40px;">
-          <p style="font-size:22px;font-weight:bold;color:#1e3a5f;margin:0 0 8px 0;">Willkommen, Komplize ${displayName}!</p>
-          <p style="margin:0 0 24px 0;color:#6b7280;">Du wurdest eingeladen, Komplizen Protokolle zu nutzen – unser gemeinsames Tool für Besprechungsprotokolle und Projektdokumentation.</p>
+          <p style="font-size:22px;font-weight:bold;color:#1e3a5f;margin:0 0 8px 0;">Willkommen, ${displayName}!</p>
+          <p style="margin:0 0 24px 0;color:#6b7280;">Du wurdest eingeladen, GHBA zu nutzen – unser gemeinsames Tool für Besprechungsprotokolle und Projektdokumentation.</p>
         </td></tr>
         <tr><td style="padding:0 40px;">
           <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;border:1px solid #e2e8f0;border-left:4px solid #1e3a5f;">
@@ -512,7 +512,7 @@ function buildInviteMail({ username, displayName, email, appUrl, isSynology, pas
                 <li>Klicke in der Adresszeile auf das <strong>Installieren-Symbol</strong> <span style="font-family:monospace;background:#e5e7eb;padding:1px 5px;">⊕</span></li>
                 <li>„Installieren" bestätigen – fertig!</li>
               </ol>
-              <p style="margin:8px 0 0 0;font-size:12px;color:#6b7280;">Die App erscheint im Startmenü und auf dem Desktop mit dem Komplizen-Logo. Edge ist auf jedem Windows-PC bereits vorinstalliert.</p>
+              <p style="margin:8px 0 0 0;font-size:12px;color:#6b7280;">Die App erscheint im Startmenü und auf dem Desktop mit dem GHBA-Logo. Edge ist auf jedem Windows-PC bereits vorinstalliert.</p>
             </td></tr>
           </table>
           <p style="margin:12px 0 6px 0;font-size:12px;color:#374151;"><strong>Ich nutze Chrome</strong> – einmalige Einstellung (1 Minute):</p>
@@ -530,7 +530,7 @@ function buildInviteMail({ username, displayName, email, appUrl, isSynology, pas
           <p style="margin:8px 0 0 0;font-size:12px;color:#9ca3af;">Alternative: <a href="${shortcutUrl}" style="color:#6b7280;">Browser-Verknüpfung herunterladen</a></p>
         </td></tr>
         <tr><td style="padding:24px 40px 0 40px;">
-          <p style="font-weight:bold;color:#1e3a5f;font-size:11px;text-transform:uppercase;letter-spacing:1px;margin:0 0 10px 0;">Was ist Komplizen Protokolle?</p>
+          <p style="font-weight:bold;color:#1e3a5f;font-size:11px;text-transform:uppercase;letter-spacing:1px;margin:0 0 10px 0;">Was ist GHBA?</p>
           <ul style="margin:0;padding-left:20px;color:#374151;line-height:1.8;">
             <li>Besprechungsprotokolle erstellen und verwalten</li>
             <li>Maßnahmen und Aufgaben nachverfolgen</li>
@@ -550,9 +550,9 @@ function buildInviteMail({ username, displayName, email, appUrl, isSynology, pas
 </html>`
 
   const text = [
-    `Willkommen Komplize ${displayName}!`,
+    `Willkommen ${displayName}!`,
     '',
-    'Du wurdest eingeladen, Komplizen Protokolle zu nutzen.',
+    'Du wurdest eingeladen, GHBA zu nutzen.',
     '',
     `Adresse:      ${appUrl}`,
     `Benutzername: ${username}`,
@@ -586,7 +586,7 @@ app.post('/api/auth/users/:username/invite', requireAuth, requireAdmin, async (r
 
     await mailer.sendMail({
       from, to: user.email,
-      subject: `Willkommen bei Komplizen Protokolle, ${user.display_name || username}!`,
+      subject: `Willkommen bei GHBA, ${user.display_name || username}!`,
       html, text, attachments,
     })
 
@@ -644,7 +644,7 @@ app.post('/api/admin/synology-bulk-invite', requireAuth, requireAdmin, async (re
           })
           await mailer.sendMail({
             from, to: email,
-            subject: `Willkommen bei Komplizen Protokolle, ${displayName || username}!`,
+            subject: `Willkommen bei GHBA, ${displayName || username}!`,
             html, text, attachments,
           })
           invited = true
@@ -686,7 +686,7 @@ app.post('/api/actions/send-email', requireAuth, async (req, res) => {
       releaseUrl = `${getAppUrl(req)}/freimeldung/${tk.token}`
     }
 
-    const from     = process.env.SMTP_FROM || process.env.GRAPH_SENDER || process.env.SMTP_USER || 'noreply@komplizen'
+    const from     = process.env.SMTP_FROM || process.env.GRAPH_SENDER || process.env.SMTP_USER || 'noreply@ghba'
     const today    = new Date().toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })
     const projStr  = projectName || 'Unbekanntes Projekt'
     const subject  = `Ihre Aufgaben – ${projStr} – Stand ${today}`
@@ -695,7 +695,7 @@ app.post('/api/actions/send-email', requireAuth, async (req, res) => {
     const sender      = req.user !== '__apikey__' && req.user !== '__anonymous__' ? db.users.get(req.user) : null
     const senderName  = sender?.display_name || null
     const replyTo     = sender?.email || null
-    const fromAddress = senderName ? `"${senderName} (Komplizen Protokolle)" <${from}>` : from
+    const fromAddress = senderName ? `"${senderName} (GHBA)" <${from}>` : from
 
     const STATUS_LABELS   = { offen: 'Offen', in_arbeit: 'In Arbeit', erledigt: 'Erledigt', verschoben: 'Verschoben' }
     const PRIORITY_LABELS = { hoch: 'Hoch', mittel: 'Mittel', niedrig: 'Niedrig' }
@@ -725,7 +725,7 @@ app.post('/api/actions/send-email', requireAuth, async (req, res) => {
     <tr><td align="center">
       <table width="620" cellpadding="0" cellspacing="0" style="background:#FFF;border:1px solid #E5E7EB;max-width:620px;width:100%;">
         <tr><td style="background:#000040;padding:28px 36px;">
-          <p style="margin:0;color:#8FBEFF;font-size:11px;letter-spacing:2px;text-transform:uppercase;">Komplizen Protokolle</p>
+          <p style="margin:0;color:#8FBEFF;font-size:11px;letter-spacing:2px;text-transform:uppercase;">GHBA</p>
           <p style="margin:6px 0 0 0;color:#FBFFE6;font-size:20px;font-weight:bold;">Ihre Aufgaben</p>
           <p style="margin:4px 0 0 0;color:#8FBEFF;font-size:14px;font-weight:600;">${projStr}</p>
           <p style="margin:6px 0 0 0;color:#8FBEFF;font-size:12px;">Stand: ${today}</p>
@@ -755,7 +755,7 @@ app.post('/api/actions/send-email', requireAuth, async (req, res) => {
           </table>
         </td></tr>
         <tr><td style="padding:20px 36px;border-top:1px solid #E5E7EB;background:#F0F0F0;text-align:center;">
-          <p style="margin:0;color:#9CA3AF;font-size:12px;">Komplizen Protokolle · ${senderName ? `Gesendet von ${senderName}` : 'Automatische Benachrichtigung'} · ${today}</p>
+          <p style="margin:0;color:#9CA3AF;font-size:12px;">GHBA · ${senderName ? `Gesendet von ${senderName}` : 'Automatische Benachrichtigung'} · ${today}</p>
         </td></tr>
       </table>
     </td></tr>
@@ -777,7 +777,7 @@ app.post('/api/actions/send-email', requireAuth, async (req, res) => {
         return `• ${item.description || '–'}\n  Protokoll: ${item._protocolNo || '–'} | Frist: ${dl} | Status: ${STATUS_LABELS[item.status] || item.status}`
       }),
       ...(releaseUrl ? ['', 'Aufgaben online freimelden: ' + releaseUrl] : []),
-      '', 'Komplizen Protokolle',
+      '', 'GHBA',
     ].join('\n')
 
     await mailer.sendMail({
@@ -908,7 +908,7 @@ function renderSimplePage(title, bodyHtml) {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>${title} – Komplizen Protokolle</title>
+  <title>${title} – GHBA</title>
   <style>
     *{box-sizing:border-box;margin:0;padding:0}
     body{font-family:Arial,sans-serif;font-size:14px;color:#1f2937;background:#f3f4f6;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}
@@ -931,8 +931,8 @@ function renderSimplePage(title, bodyHtml) {
   </style>
 </head>
 <body><div class="card">
-  <div class="hdr"><small>Komplizen Protokolle</small><h1>${title}</h1></div>
-  <div class="body">${bodyHtml}<div class="ftr">Komplizen Protokolle – Projektverwaltung</div></div>
+  <div class="hdr"><small>GHBA</small><h1>${title}</h1></div>
+  <div class="body">${bodyHtml}<div class="ftr">GHBA – Projektverwaltung</div></div>
 </div></body></html>`
 }
 
@@ -972,7 +972,7 @@ app.post('/api/projects/:id/request-delete', requireAuth, async (req, res) => {
       const appUrl  = getAppUrl(req)
       const approveUrl = `${appUrl}/api/delete-approve/${token}`
       const rejectUrl  = `${appUrl}/api/delete-reject/${token}`
-      const from    = process.env.SMTP_FROM || process.env.GRAPH_SENDER || process.env.SMTP_USER || 'noreply@komplizen'
+      const from    = process.env.SMTP_FROM || process.env.GRAPH_SENDER || process.env.SMTP_USER || 'noreply@ghba'
       const today   = new Date().toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })
       const protoLine = protocolCount > 0
         ? `<tr><td style="color:#6b7280;padding-right:16px;white-space:nowrap;">Protokolle</td><td>${protocolCount} (werden nicht gelöscht, aber vom Projekt getrennt)</td></tr>`
@@ -985,7 +985,7 @@ app.post('/api/projects/:id/request-delete', requireAuth, async (req, res) => {
 <tr><td align="center">
 <table width="520" cellpadding="0" cellspacing="0" style="background:#fff;border:1px solid #e5e7eb;max-width:520px;width:100%;">
   <tr><td style="background:#000040;padding:24px 36px;">
-    <p style="margin:0 0 4px 0;font-size:10px;text-transform:uppercase;letter-spacing:2px;color:#8fbeff;">Komplizen Protokolle</p>
+    <p style="margin:0 0 4px 0;font-size:10px;text-transform:uppercase;letter-spacing:2px;color:#8fbeff;">GHBA</p>
     <p style="margin:0;font-size:18px;font-weight:bold;color:#fbffe6;">Löschanfrage für ein Projekt</p>
   </td></tr>
   <tr><td style="padding:28px 36px 0 36px;">
@@ -1015,7 +1015,7 @@ app.post('/api/projects/:id/request-delete', requireAuth, async (req, res) => {
     <p style="margin:12px 0 0 0;font-size:11px;color:#9ca3af;">Sie können die Anfrage auch im AdminPanel unter dem Tab „Löschanfragen" bearbeiten.</p>
   </td></tr>
   <tr><td style="padding:16px 36px;border-top:1px solid #e5e7eb;text-align:center;">
-    <p style="margin:0;font-size:11px;color:#9ca3af;">Komplizen Protokolle · ${today}</p>
+    <p style="margin:0;font-size:11px;color:#9ca3af;">GHBA · ${today}</p>
   </td></tr>
 </table></td></tr></table>
 </body></html>`
@@ -1912,11 +1912,11 @@ app.post('/api/protocols/:id/send-email', requireAuth, async (req, res) => {
     if (!to) return res.status(400).json({ error: '"to" erwartet.' })
     if (!mailer.mailerStatus().configured) return res.status(400).json({ error: 'E-Mail-Versand nicht konfiguriert.' })
 
-    const from        = process.env.SMTP_FROM || process.env.GRAPH_SENDER || process.env.SMTP_USER || 'noreply@komplizen'
+    const from        = process.env.SMTP_FROM || process.env.GRAPH_SENDER || process.env.SMTP_USER || 'noreply@ghba'
     const sender      = req.user !== '__apikey__' && req.user !== '__anonymous__' ? db.users.get(req.user) : null
     const senderName  = sender?.display_name || null
     const replyTo     = sender?.email || null
-    const fromAddress = senderName ? `"${senderName} (Komplizen Protokolle)" <${from}>` : from
+    const fromAddress = senderName ? `"${senderName} (GHBA)" <${from}>` : from
 
     const projStr     = protocol.projectName || 'Unbekanntes Projekt'
     const meetingType = protocol.meetingType || 'Besprechung'
@@ -1945,7 +1945,7 @@ app.post('/api/protocols/:id/send-email', requireAuth, async (req, res) => {
     <tr><td align="center">
       <table width="620" cellpadding="0" cellspacing="0" style="background:#FFF;border:1px solid #E5E7EB;max-width:620px;width:100%;">
         <tr><td style="background:#000040;padding:28px 36px;">
-          <p style="margin:0;color:#8FBEFF;font-size:11px;letter-spacing:2px;text-transform:uppercase;">Komplizen Protokolle</p>
+          <p style="margin:0;color:#8FBEFF;font-size:11px;letter-spacing:2px;text-transform:uppercase;">GHBA</p>
           <p style="margin:6px 0 0 0;color:#FBFFE6;font-size:20px;font-weight:bold;">${meetingType}</p>
           <p style="margin:4px 0 0 0;color:#8FBEFF;font-size:14px;font-weight:600;">${projStr}</p>
           ${protoDate ? `<p style="margin:6px 0 0 0;color:#8FBEFF;font-size:12px;">Datum der Besprechung: ${protoDate}</p>` : ''}
@@ -1960,7 +1960,7 @@ app.post('/api/protocols/:id/send-email', requireAuth, async (req, res) => {
           Für Rückfragen stehen wir gerne zur Verfügung.
         </td></tr>
         <tr><td style="padding:20px 36px;border-top:1px solid #E5E7EB;background:#F0F0F0;text-align:center;">
-          <p style="margin:0;color:#9CA3AF;font-size:12px;">Komplizen Protokolle · ${senderName ? `Gesendet von ${senderName}` : 'Automatische Benachrichtigung'} · ${today}</p>
+          <p style="margin:0;color:#9CA3AF;font-size:12px;">GHBA · ${senderName ? `Gesendet von ${senderName}` : 'Automatische Benachrichtigung'} · ${today}</p>
         </td></tr>
       </table>
     </td></tr>
@@ -1978,7 +1978,7 @@ app.post('/api/protocols/:id/send-email', requireAuth, async (req, res) => {
       '',
       nextStr ? `Nächste Besprechung: ${nextStr}` : 'Ein Termin für die nächste Besprechung wird gesondert bekannt gegeben.',
       ...(hasActions ? ['', 'Die aus dem Protokoll resultierenden Aufgaben werden separat versendet.'] : []),
-      '', 'Komplizen Protokolle',
+      '', 'GHBA',
     ].filter(l => l !== undefined).join('\n')
 
     const attachments = []
@@ -2181,10 +2181,10 @@ app.post('/api/notes/:id/send-email', requireAuth, async (req, res) => {
     if (!to) return res.status(400).json({ error: '"to" erwartet.' })
     if (!mailer.mailerStatus().configured) return res.status(400).json({ error: 'E-Mail-Versand nicht konfiguriert.' })
 
-    const from    = process.env.SMTP_FROM || process.env.GRAPH_SENDER || process.env.SMTP_USER || 'noreply@komplizen'
+    const from    = process.env.SMTP_FROM || process.env.GRAPH_SENDER || process.env.SMTP_USER || 'noreply@ghba'
     const sender  = req.user !== '__apikey__' && req.user !== '__anonymous__' ? db.users.get(req.user) : null
     const replyTo = sender?.email || null
-    const fromAddress = sender?.display_name ? `"${sender.display_name} (Komplizen Protokolle)" <${from}>` : from
+    const fromAddress = sender?.display_name ? `"${sender.display_name} (GHBA)" <${from}>` : from
 
     const NOTE_TYPE_LABELS = { aktennotiz: 'Aktennotiz', telefonnotiz: 'Telefonnotiz', besprochen: 'Besprechungsnotiz' }
     const typeLabel = NOTE_TYPE_LABELS[note.type] || 'Notiz'
@@ -2198,7 +2198,7 @@ app.post('/api/notes/:id/send-email', requireAuth, async (req, res) => {
     <tr><td align="center">
       <table width="620" cellpadding="0" cellspacing="0" style="background:#FFF;border:1px solid #E5E7EB;max-width:620px;width:100%;">
         <tr><td style="background:#000040;padding:28px 36px;">
-          <p style="margin:0;color:#8FBEFF;font-size:11px;letter-spacing:2px;text-transform:uppercase;">Komplizen Protokolle</p>
+          <p style="margin:0;color:#8FBEFF;font-size:11px;letter-spacing:2px;text-transform:uppercase;">GHBA</p>
           <p style="margin:6px 0 0 0;color:#FBFFE6;font-size:20px;font-weight:bold;">${typeLabel}</p>
           ${note.subject ? `<p style="margin:4px 0 0 0;color:#8FBEFF;font-size:14px;">${note.subject}</p>` : ''}
           ${dateStr ? `<p style="margin:6px 0 0 0;color:#8FBEFF;font-size:12px;">Datum: ${dateStr}${note.time ? ', ' + note.time + ' Uhr' : ''}</p>` : ''}
@@ -2207,7 +2207,7 @@ app.post('/api/notes/:id/send-email', requireAuth, async (req, res) => {
           ${note.content || '<p style="color:#9CA3AF;">Kein Inhalt.</p>'}
         </td></tr>
         <tr><td style="padding:0 36px 28px 36px;color:#9CA3AF;font-size:11px;">
-          Gesendet über Komplizen Protokolle
+          Gesendet über GHBA
         </td></tr>
       </table>
     </td></tr>
