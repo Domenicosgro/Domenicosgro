@@ -325,7 +325,7 @@ export default function MassnahmenDashboard({ protocols, projects, onOpenProtoco
   }
 
   return (
-    <div className="max-w-6xl mx-auto p-4 sm:p-6 space-y-5">
+    <div className="app-page !space-y-5">
 
       {/* Header */}
       <div className="flex items-stretch justify-between gap-3 flex-wrap">

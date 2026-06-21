@@ -83,7 +83,7 @@ export default function MeetingHeader({ protocol, protocols, projects, logoDataU
       </div>
 
       {/* Protocol number */}
-      <div className="flex items-center gap-3 bg-brand-50 border border-brand-200 rounded-lg px-4 py-2">
+      <div className="flex items-center gap-3 bg-brand-50 border border-brand-200 px-4 py-2">
         <span className="text-xs font-medium text-brand-600 flex-shrink-0">Protokoll-Nr.</span>
         <span className="font-mono font-semibold text-brand-800 text-sm tracking-wide">{protocolNo}</span>
         <span className="text-xs text-brand-400 ml-auto hidden sm:inline">automatisch aus Projektname + Datum</span>

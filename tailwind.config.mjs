@@ -5,15 +5,15 @@ export default {
     "./src/**/*.{js,ts,jsx,tsx}",
   ],
   theme: {
-    // Dezente Rundungen (weg vom strikten 0-Flat) – Druck überschreibt mit 0
+    // Flat Design – keine Rundungen außer full (für kreisförmige Elemente)
     borderRadius: {
       none:    '0',
-      sm:      '2px',
-      DEFAULT: '4px',
-      md:      '6px',
-      lg:      '8px',
-      xl:      '10px',
-      '2xl':   '14px',
+      sm:      '0',
+      DEFAULT: '0',
+      md:      '0',
+      lg:      '0',
+      xl:      '0',
+      '2xl':   '0',
       full:    '9999px',
     },
     extend: {

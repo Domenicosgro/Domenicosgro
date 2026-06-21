@@ -370,8 +370,8 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
   )
 
   return (
-    <div className="flex items-start gap-2 px-4 sm:px-6 py-4 justify-center print:block">
-    <div className="flex-1 min-w-0 max-w-5xl space-y-0">
+    <div className="flex items-start gap-2 px-4 sm:px-6 lg:px-10 py-4 justify-center print:block">
+    <div className="flex-1 min-w-0 max-w-[1400px] space-y-0">
 
       {/* ── Top bar ── */}
       <div className="flex items-center justify-between mb-4 no-print flex-wrap gap-2">

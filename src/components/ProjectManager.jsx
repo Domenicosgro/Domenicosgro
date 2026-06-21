@@ -361,7 +361,7 @@ export default function ProjectManager({ projects, allProjects, onCreate, onUpda
   }
 
   return (
-    <div className="max-w-5xl mx-auto p-4 sm:p-6 space-y-6">
+    <div className="app-page">
       {/* Hidden file input */}
       <input
         ref={fileInputRef}

@@ -73,14 +73,18 @@
   .textarea {
     @apply input resize-none;
   }
+  /* .app-page – einheitlicher Seiten-Container für 16:9 Screens */
+  .app-page {
+    @apply w-full max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-10 py-4 sm:py-6 space-y-6;
+  }
   .card {
-    @apply bg-white border border-concrete rounded-lg shadow-sm;
+    @apply bg-white border border-concrete;
   }
   .section-title {
     @apply text-sm font-semibold text-night flex items-center gap-2;
   }
   .badge {
-    @apply inline-flex items-center px-2 py-0.5 text-xs font-medium rounded;
+    @apply inline-flex items-center px-2 py-0.5 text-xs font-medium;
   }
   .badge-blue   { @apply badge bg-sky/30 text-brand-800; }
   .badge-green  { @apply badge bg-green-100 text-green-800; }
@@ -101,7 +105,6 @@
   min-height: 2.5rem;
   line-height: 1.5;
   color: #000040;                  /* night */
-  border-radius: 4px;
 }
 .rich-editor-content .ProseMirror:focus {
   border-color: #8FBEFF;           /* sky */

@@ -406,7 +406,7 @@ export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, 
   const modalProject = modal ? projects.find(p => p.id === modal.projectId) : null
 
   return (
-    <div className="max-w-4xl mx-auto p-4 sm:p-6 space-y-6">
+    <div className="app-page">
 
       {/* Dev-Mode-Banner */}
       {serverUser?.devMode && onOpenAdmin && (
