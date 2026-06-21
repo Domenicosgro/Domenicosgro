@@ -69,6 +69,13 @@ echo '[NAS] Lade neues Image...'
 sudo $DK load -i $TempNas
 echo '[NAS] Raeume veraltete Images auf...'
 sudo $DK image prune -f 2>/dev/null || true
+echo '[NAS] Pruefe docker-compose.yml auf fehlende Werte...'
+DC="$NasPath/docker-compose.yml"
+if ! grep -q 'SYNOLOGY_URL' "`$DC" 2>/dev/null; then
+  awk '/PUBLIC_URL:/{print "      SYNOLOGY_URL:        \"http://192.168.178.250:5000\""}1' "`$DC" > /tmp/_dc_new.yml
+  mv /tmp/_dc_new.yml "`$DC"
+  echo '[NAS] SYNOLOGY_URL in docker-compose.yml hinzugefuegt.'
+fi
 echo '[NAS] Starte Container...'
 cd $NasPath && sudo $DK compose up -d
 echo '[NAS] Loesche temporaere Datei...'
