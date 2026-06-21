@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react'
 import { Plus, Trash2, Search, ChevronRight, FileText, Users, FolderOpen,
          Calendar, Lock, LockOpen, X, Eye, EyeOff, Star,
          User, Settings, LogOut, Monitor, Download, RotateCcw, Upload, AlertTriangle,
-         ShieldCheck, Loader } from 'lucide-react'
+         ShieldCheck, Loader, CalendarClock } from 'lucide-react'
 
 function apiHeaders() {
   const h = { 'Content-Type': 'application/json' }
@@ -299,7 +299,7 @@ function PasswordModal({ mode, projectName, onConfirm, onCancel }) {
 // ── Main component ─────────────────────────────────────────────────────────────
 export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, onDelete, onOpenProject,
                                        onOpenProjectDashboard, onUnlock, onSetPassword, onRemovePassword,
-                                       onOpenContactDatabase, onImportProject,
+                                       onOpenContactDatabase, onImportProject, onOpenPersonalplanung,
                                        serverUser, onLogout, onOpenAdmin,
                                        onRequestDeleteProject, onRefresh }) {
   const [search,        setSearch]        = useState('')
@@ -502,6 +502,21 @@ export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, 
                     <div className="text-xs text-gray-400 mt-0.5">Projekte</div>
                   </div>
                 )}
+              </div>
+            </button>
+
+            {/* Personalplanung / Projekttermine – Inhalt folgt */}
+            <button
+              onClick={onOpenPersonalplanung}
+              className="card w-full text-left flex flex-col aspect-video p-4 hover:border-brand-300 hover:bg-gray-50 transition-colors group border-l-4 border-purple-400"
+            >
+              <div className="flex items-center gap-2 mb-1.5">
+                <span className="text-brand-600 group-hover:text-brand-700 transition-colors flex-shrink-0"><CalendarClock size={20} /></span>
+                <h3 className="font-semibold text-sm text-gray-900 group-hover:text-brand-700 transition-colors truncate">Personalplanung / Projekttermine</h3>
+              </div>
+              <p className="text-xs text-gray-500 line-clamp-3">Personaleinsatz und Termine über alle Projekte</p>
+              <div className="flex gap-4 mt-auto pt-2">
+                <span className="text-xs text-gray-400 italic">In Vorbereitung</span>
               </div>
             </button>
           </div>
