@@ -506,6 +506,7 @@ export default function App() {
           projectId={selectedProjectId}
           projectContacts={project?.contacts ?? []}
           onOpenProtocol={openProtocolFromDashboard}
+          onUpdateProtocol={handleUpdateProtocol}
           onBack={() => setView('project-dashboard')}
         />
         <UpdateBanner /><SaveErrorBanner />

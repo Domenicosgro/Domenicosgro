@@ -211,7 +211,7 @@ function EmailModal({ groups, onClose }) {
 }
 
 // ── Hauptkomponente ───────────────────────────────────────────────────────────
-export default function MassnahmenDashboard({ protocols, projects, projectId, projectContacts, onOpenProtocol, onBack }) {
+export default function MassnahmenDashboard({ protocols, projects, projectId, projectContacts, onOpenProtocol, onUpdateProtocol, onBack }) {
   const isScoped = !!projectId
   const scopedName = isScoped ? (projects.find(p => p.id === projectId)?.name || '') : ''
 
@@ -335,6 +335,18 @@ export default function MassnahmenDashboard({ protocols, projects, projectId, pr
   const clearFilters = () => {
     setFilterProject(''); setFilterStatus(''); setFilterPriority('')
     setFilterResponsible(''); setOnlyOpen(false); setOnlyOverdue(false)
+  }
+
+  const handleStatusChange = (item, newStatus) => {
+    if (!onUpdateProtocol) return
+    const protocol = protocols.find(p => p.id === item._protocolId)
+    if (!protocol) return
+    const updatedActionItems = (protocol.actionItems ?? []).map(a =>
+      a.id === item.id
+        ? { ...a, status: newStatus, ...(newStatus === 'erledigt' ? { completedAt: todayStr() } : { completedAt: undefined }) }
+        : a
+    )
+    onUpdateProtocol(item._protocolId, { actionItems: updatedActionItems })
   }
 
   return (
@@ -510,8 +522,20 @@ export default function MassnahmenDashboard({ protocols, projects, projectId, pr
                     <td className="px-4 py-2.5">
                       <span className={`badge text-xs ${pb.color}`}>{pb.label}</span>
                     </td>
-                    <td className="px-4 py-2.5">
-                      <span className={`badge text-xs ${sb.color}`}>{sb.label}</span>
+                    <td className="px-3 py-2" onClick={e => e.stopPropagation()}>
+                      {onUpdateProtocol ? (
+                        <select
+                          className={`select text-xs py-0.5 px-1.5 font-medium border ${sb.color} bg-transparent`}
+                          value={item.status}
+                          onChange={e => handleStatusChange(item, e.target.value)}
+                        >
+                          {ACTION_STATUSES.map(s => (
+                            <option key={s.value} value={s.value}>{s.label}</option>
+                          ))}
+                        </select>
+                      ) : (
+                        <span className={`badge text-xs ${sb.color}`}>{sb.label}</span>
+                      )}
                     </td>
                   </tr>
                 )
