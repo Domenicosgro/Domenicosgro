@@ -666,11 +666,25 @@ app.post('/api/admin/synology-bulk-invite', requireAuth, requireAdmin, async (re
 // ── Aufgaben-E-Mail (projektspezifisch, pro Verantwortlicher) ─────────────────
 app.post('/api/actions/send-email', requireAuth, async (req, res) => {
   try {
-    const { to, responsible, projectName, items } = req.body
+    const { to, responsible, projectName, projectId, items } = req.body
     if (!to || !responsible || !Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ error: 'Ungültige Anfrage.' })
     }
     if (!mailer.mailerStatus().configured) return res.status(400).json({ error: 'E-Mail-Versand nicht konfiguriert.' })
+
+    // Freimelde-Link (login-frei) – ein Token je Verantwortlicher + Projekt
+    let releaseUrl = null
+    if (projectId && db.projects.get(projectId)) {
+      let tk = db.releaseTokens.find(projectId, responsible)
+      if (!tk) {
+        const token = auth.generateToken()
+        db.releaseTokens.create({ token, projectId, responsible: String(responsible).trim(), email: to })
+        tk = db.releaseTokens.getByToken(token)
+      } else if (to && to !== tk.email) {
+        db.releaseTokens.updateEmail(tk.token, to)
+      }
+      releaseUrl = `${getAppUrl(req)}/freimeldung/${tk.token}`
+    }
 
     const from     = process.env.SMTP_FROM || process.env.GRAPH_SENDER || process.env.SMTP_USER || 'noreply@komplizen'
     const today    = new Date().toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })
@@ -720,6 +734,12 @@ app.post('/api/actions/send-email', requireAuth, async (req, res) => {
           <p style="margin:0;font-size:15px;color:#000040;">Guten Tag, <strong>${responsible}</strong>,</p>
           <p style="margin:10px 0 0 0;color:#4B5563;">nachfolgend finden Sie eine Übersicht Ihrer ${items.length} Aufgabe${items.length !== 1 ? 'n' : ''} aus dem Projekt <strong>${projStr}</strong>. Wir bitten Sie, die Aufgaben fristgerecht zu erfüllen. Der Status wird in der folgenden Projektbesprechung entsprechend aktualisiert.</p>
         </td></tr>
+        ${releaseUrl ? `<tr><td style="padding:0 36px 8px 36px;">
+          <table cellpadding="0" cellspacing="0"><tr><td style="background:#000040;">
+            <a href="${releaseUrl}" style="display:inline-block;padding:11px 22px;color:#FBFFE6;font-size:14px;font-weight:bold;text-decoration:none;font-family:Arial,sans-serif;">Aufgaben online freimelden</a>
+          </td></tr></table>
+          <p style="margin:8px 0 0 0;font-size:12px;color:#6B7280;">Erledigte Aufgaben können Sie über diesen Link mit kurzer Begründung (und optional Nachweisen) freimelden. Die Freigabe erfolgt in der nächsten Besprechung.</p>
+        </td></tr>` : ''}
         <tr><td style="padding:0 36px 28px 36px;">
           <table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #E5E7EB;border-collapse:collapse;">
             <thead>
@@ -756,6 +776,7 @@ app.post('/api/actions/send-email', requireAuth, async (req, res) => {
           ? new Date(item.deadline + 'T12:00:00').toLocaleDateString('de-DE') : '–'
         return `• ${item.description || '–'}\n  Protokoll: ${item._protocolNo || '–'} | Frist: ${dl} | Status: ${STATUS_LABELS[item.status] || item.status}`
       }),
+      ...(releaseUrl ? ['', 'Aufgaben online freimelden: ' + releaseUrl] : []),
       '', 'Komplizen Protokolle',
     ].join('\n')
 
@@ -1136,6 +1157,624 @@ app.post('/api/admin/deletion-requests/:id/reject', requireAuth, requireAdmin, (
     db.deletionRequests.resolve(dr.id, 'rejected', req.user)
     logEvent('DELETE_REJECTED', req, `project=${dr.target_id} by=${req.user}`)
     res.json({ ok: true })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// ══════════════════════════════════════════════════════════════════════════════
+// Freimeldung von Aufgaben (Magic-Link, Genehmigung, wöchentliches Reporting)
+//
+// Externe Verantwortliche melden Aufgaben über einen login-freien Link frei
+// (Begründung + optionale Anlagen). Im Protokoll erscheint ein Hinweis
+// „Freimeldung angefordert"; Projekt-/Systemadmins genehmigen oder lehnen ab.
+// Alles wird direkt am actionItem gespeichert (releaseRequest + releaseHistory),
+// nur das Token-Mapping liegt in einer eigenen Tabelle.
+//
+// Systemmails/-seiten dieses Bereichs sind mit „GHBA" gebrandet (neue CI noch
+// nicht offiziell) und nutzen durchgehend die Schriftart Arial.
+// ══════════════════════════════════════════════════════════════════════════════
+
+// Absender für GHBA-Systemmails
+function systemFrom() {
+  const addr = process.env.SMTP_FROM || process.env.GRAPH_SENDER || process.env.SMTP_USER || 'noreply@ghba'
+  return { addr, from: `"GHBA" <${addr}>` }
+}
+
+function fmtDateDe(iso) {
+  if (!iso) return '–'
+  const s = String(iso).slice(0, 10)
+  const [y, m, d] = s.split('-')
+  if (!y || !m || !d) return s
+  return `${d}.${m}.${y}`
+}
+
+const RELEASE_STATUS_LABELS = { offen: 'Offen', in_arbeit: 'In Arbeit', erledigt: 'Erledigt', verschoben: 'Verschoben' }
+
+function matchResponsible(itemResponsible, target) {
+  return (itemResponsible || '').trim().toLowerCase() === (target || '').trim().toLowerCase()
+}
+
+// Offene Aufgaben eines Verantwortlichen in einem Projekt (für die Freimelde-Seite)
+function openTasksFor(projectId, responsible) {
+  const protocols = db.protocols.list().filter(p => p.projectId === projectId)
+  const tasks = []
+  for (const proto of protocols) {
+    const label = `${proto.meetingType ? proto.meetingType + ' · ' : ''}${proto.projectName || ''} ${fmtDateDe(proto.date)}`.trim()
+    for (const a of (proto.actionItems ?? [])) {
+      if (!matchResponsible(a.responsible, responsible)) continue
+      if (a.status === 'erledigt') continue
+      tasks.push({
+        protocolId:  proto.id,
+        protocolNo:  label,
+        actionId:    a.id,
+        no:          a.no || '',
+        description: a.description || '',
+        deadline:    a.deadline || '',
+        status:      a.status || 'offen',
+        statusLabel: RELEASE_STATUS_LABELS[a.status] || a.status || 'Offen',
+        pending:     !!a.releaseRequest,
+      })
+    }
+  }
+  return tasks
+}
+
+// Aktualisiert ein actionItem server-autoritativ (umgeht Versionskonflikt mit Retry).
+function mutateActionItem(protocolId, actionId, transform, by) {
+  function attempt() {
+    const proto = db.protocols.get(protocolId)
+    if (!proto) return { notFound: true }
+    const { _version, _updatedAt, ...data } = proto
+    const items = Array.isArray(data.actionItems) ? data.actionItems : []
+    let found = false
+    const nextItems = items.map(a => {
+      if (a.id !== actionId) return a
+      found = true
+      return transform(a)
+    })
+    if (!found) return { notFound: true }
+    const next = { ...data, actionItems: nextItems, updatedAt: new Date().toISOString() }
+    return db.protocols.update(protocolId, next, _version, by)
+  }
+  let result = attempt()
+  if (result.conflict) result = attempt()   // einmal erneut versuchen
+  return result
+}
+
+function releaseUid() {
+  return Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 10)
+}
+
+// Berechtigung: Systemadmin oder Projektadministrator des Projekts.
+function canManageRelease(project, username) {
+  if (username === '__apikey__' || username === '__anonymous__') return true
+  const user = db.users.get(username)
+  if (user?.role === 'admin') return true
+  return !!(project && project.projectAdminUser === username)
+}
+
+// ── POST /api/actions/release-link – Token für Verantwortlichen holen/erzeugen ──
+app.post('/api/actions/release-link', requireAuth, (req, res) => {
+  try {
+    const { projectId, responsible, email = '' } = req.body || {}
+    if (!projectId || !responsible) return res.status(400).json({ error: '"projectId" und "responsible" erforderlich.' })
+    const project = db.projects.get(projectId)
+    if (!project) return res.status(404).json({ error: 'Projekt nicht gefunden.' })
+
+    let row = db.releaseTokens.find(projectId, responsible)
+    if (!row) {
+      const token = auth.generateToken()
+      db.releaseTokens.create({ token, projectId, responsible: responsible.trim(), email })
+      row = db.releaseTokens.getByToken(token)
+    } else if (email && email !== row.email) {
+      db.releaseTokens.updateEmail(row.token, email)
+    }
+    res.json({ token: row.token, url: `${getAppUrl(req)}/freimeldung/${row.token}` })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// ── GET /api/freimeldung/:token – offene Aufgaben (JSON, login-frei) ───────────
+app.get('/api/freimeldung/:token', (req, res) => {
+  try {
+    const row = db.releaseTokens.getByToken(req.params.token)
+    if (!row) return res.status(404).json({ error: 'Ungültiger oder widerrufener Link.' })
+    const project = db.projects.get(row.project_id)
+    res.json({
+      responsible: row.responsible,
+      projectName: project?.name || '',
+      tasks:       openTasksFor(row.project_id, row.responsible),
+    })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// ── POST /api/freimeldung/:token – Freimeldung(en) beantragen (login-frei) ─────
+app.post('/api/freimeldung/:token', async (req, res) => {
+  try {
+    const row = db.releaseTokens.getByToken(req.params.token)
+    if (!row) return res.status(404).json({ error: 'Ungültiger oder widerrufener Link.' })
+
+    const { requests } = req.body || {}
+    if (!Array.isArray(requests) || requests.length === 0) {
+      return res.status(400).json({ error: 'Keine Freimeldung übergeben.' })
+    }
+
+    const actor      = `${row.responsible}${row.email ? ` <${row.email}>` : ''}`
+    const nowIso     = new Date().toISOString()
+    const touched    = new Set()
+    let   accepted   = 0
+    const errors     = []
+
+    for (const r of requests) {
+      const { protocolId, actionId, basis } = r || {}
+      if (!protocolId || !actionId || !basis || !String(basis).trim()) {
+        errors.push('Begründung fehlt für eine Aufgabe.')
+        continue
+      }
+      // Anlagen speichern (max. 10 MB pro Datei)
+      const attMeta = []
+      for (const att of (Array.isArray(r.attachments) ? r.attachments : [])) {
+        if (!att?.dataBase64 || !att?.name) continue
+        const approxBytes = Math.floor((att.dataBase64.length * 3) / 4)
+        if (approxBytes > 10 * 1024 * 1024) { errors.push(`Anlage „${att.name}" überschreitet 10 MB.`); continue }
+        const id = releaseUid()
+        try {
+          await attachments.save(id, att.dataBase64)
+          attMeta.push({ id, name: att.name, mimeType: att.mimeType || 'application/octet-stream', size: att.size || approxBytes })
+        } catch (e) { errors.push(`Anlage „${att.name}" konnte nicht gespeichert werden.`) }
+      }
+
+      const result = mutateActionItem(protocolId, actionId, (a) => {
+        const history = Array.isArray(a.releaseHistory) ? a.releaseHistory : []
+        return {
+          ...a,
+          releaseRequest: {
+            id:           releaseUid(),
+            requestedAt:  nowIso,
+            requestedBy:  actor,
+            requestedVia: 'extern',
+            basis:        String(basis).trim(),
+            attachments:  attMeta,
+          },
+          releaseHistory: [
+            ...history,
+            { id: releaseUid(), at: nowIso, actor, actorKind: 'extern', event: 'freimeldung_beantragt',
+              note: String(basis).trim(), attachments: attMeta },
+          ],
+        }
+      }, '__freimeldung__')
+
+      if (result.notFound) { errors.push('Eine Aufgabe wurde nicht gefunden.'); continue }
+      if (result.conflict) { errors.push('Eine Aufgabe wurde zwischenzeitlich geändert – bitte erneut versuchen.'); continue }
+      accepted++
+      touched.add(protocolId)
+    }
+
+    db.releaseTokens.touch(row.token)
+    touched.forEach(pid => broadcast('protocol', 'update', pid, nowIso))
+
+    // Projektverantwortliche benachrichtigen (GHBA-Systemmail)
+    if (accepted > 0 && mailer.mailerStatus().configured) {
+      notifyManagersOfRelease(row, accepted, getAppUrl(req)).catch(e =>
+        console.warn('[freimeldung] Benachrichtigung fehlgeschlagen:', e.message))
+    }
+
+    logEvent('RELEASE_REQUESTED', req, `token=${row.token} responsible=${row.responsible} accepted=${accepted}`)
+    res.json({ ok: accepted > 0, accepted, errors })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// Benachrichtigt Projekt-/Systemadmins über eine neue Freimeldung.
+async function notifyManagersOfRelease(tokenRow, count, appUrl) {
+  const project = db.projects.get(tokenRow.project_id)
+  const projName = project?.name || 'Projekt'
+  const emails = new Set()
+  for (const u of db.users.list()) {
+    if (u.role === 'admin' && u.email) emails.add(u.email)
+  }
+  if (project?.projectAdminUser) {
+    const pa = db.users.get(project.projectAdminUser)
+    if (pa?.email) emails.add(pa.email)
+  }
+  if (emails.size === 0) return
+
+  const { from } = systemFrom()
+  const today = new Date().toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })
+  const html = `<!DOCTYPE html>
+<html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f3f4f6;font-family:Arial,sans-serif;font-size:14px;color:#1f2937;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f3f4f6;padding:32px 16px;"><tr><td align="center">
+<table width="520" cellpadding="0" cellspacing="0" style="background:#fff;border:1px solid #e5e7eb;max-width:520px;width:100%;">
+  <tr><td style="background:#000040;padding:24px 36px;">
+    <p style="margin:0 0 4px 0;font-size:10px;text-transform:uppercase;letter-spacing:2px;color:#8fbeff;font-family:Arial,sans-serif;">GHBA</p>
+    <p style="margin:0;font-size:18px;font-weight:bold;color:#fbffe6;font-family:Arial,sans-serif;">Neue Freimeldung</p>
+  </td></tr>
+  <tr><td style="padding:28px 36px;font-family:Arial,sans-serif;">
+    <p style="margin:0 0 14px 0;color:#374151;"><strong>${tokenRow.responsible}</strong> hat ${count} Aufgabe${count !== 1 ? 'n' : ''} im Projekt <strong>${projName}</strong> freigemeldet.</p>
+    <p style="margin:0 0 14px 0;color:#374151;">Die Freimeldung erscheint im Protokoll an der jeweiligen Aufgabe als Hinweis „Freimeldung angefordert" und kann dort geprüft und genehmigt werden.</p>
+    <p style="margin:0;"><a href="${appUrl}" style="color:#2563eb;font-weight:bold;">Zur Anwendung</a></p>
+  </td></tr>
+  <tr><td style="padding:16px 36px;border-top:1px solid #e5e7eb;text-align:center;font-family:Arial,sans-serif;">
+    <p style="margin:0;font-size:11px;color:#9ca3af;">GHBA · Aufgabenverwaltung · ${today}</p>
+  </td></tr>
+</table></td></tr></table></body></html>`
+  const text = `${tokenRow.responsible} hat ${count} Aufgabe(n) im Projekt ${projName} freigemeldet.\n\nZur Anwendung: ${appUrl}\n\nGHBA`
+  for (const to of emails) {
+    try { await mailer.sendMail({ from, to, subject: `Neue Freimeldung – ${projName}`, html, text }) }
+    catch (e) { console.warn('[freimeldung] Mail an', to, 'fehlgeschlagen:', e.message) }
+  }
+}
+
+// ── POST /api/actions/:protocolId/:actionId/approve – Freimeldung genehmigen ───
+app.post('/api/actions/:protocolId/:actionId/approve', requireAuth, writeLimiter, (req, res) => {
+  try {
+    const { protocolId, actionId } = req.params
+    const proto = db.protocols.get(protocolId)
+    if (!proto) return res.status(404).json({ error: 'Protokoll nicht gefunden.' })
+    const project = proto.projectId ? db.projects.get(proto.projectId) : null
+    if (!canManageRelease(project, req.user)) return res.status(403).json({ error: 'Nur Projekt- oder Systemadministratoren können Freimeldungen genehmigen.' })
+
+    const actor   = db.users.get(req.user)?.display_name || req.user
+    const nowIso  = new Date().toISOString()
+    const note    = (req.body?.note || '').trim()
+
+    const result = mutateActionItem(protocolId, actionId, (a) => {
+      const history = Array.isArray(a.releaseHistory) ? a.releaseHistory : []
+      const { releaseRequest, ...rest } = a
+      return {
+        ...rest,
+        status:      'erledigt',
+        completedAt: nowIso,
+        releaseRequest: null,
+        releaseHistory: [
+          ...history,
+          { id: releaseUid(), at: nowIso, actor, actorKind: 'intern', event: 'genehmigt',
+            fromStatus: a.status, toStatus: 'erledigt',
+            note: note || (releaseRequest?.basis || ''), attachments: releaseRequest?.attachments || [] },
+        ],
+      }
+    }, req.user)
+
+    if (result.notFound) return res.status(404).json({ error: 'Aufgabe nicht gefunden.' })
+    if (result.conflict) return res.status(409).json({ error: 'Konflikt – bitte erneut versuchen.' })
+    broadcast('protocol', 'update', protocolId, nowIso)
+    logEvent('RELEASE_APPROVED', req, `protocol=${protocolId} action=${actionId} by=${req.user}`)
+    res.json({ ok: true })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// ── POST /api/actions/:protocolId/:actionId/reject – Freimeldung ablehnen ──────
+app.post('/api/actions/:protocolId/:actionId/reject', requireAuth, writeLimiter, (req, res) => {
+  try {
+    const { protocolId, actionId } = req.params
+    const proto = db.protocols.get(protocolId)
+    if (!proto) return res.status(404).json({ error: 'Protokoll nicht gefunden.' })
+    const project = proto.projectId ? db.projects.get(proto.projectId) : null
+    if (!canManageRelease(project, req.user)) return res.status(403).json({ error: 'Nur Projekt- oder Systemadministratoren können Freimeldungen ablehnen.' })
+
+    const actor  = db.users.get(req.user)?.display_name || req.user
+    const nowIso = new Date().toISOString()
+    const note   = (req.body?.note || '').trim()
+
+    const result = mutateActionItem(protocolId, actionId, (a) => {
+      const history = Array.isArray(a.releaseHistory) ? a.releaseHistory : []
+      const { releaseRequest, ...rest } = a
+      return {
+        ...rest,
+        releaseRequest: null,
+        releaseHistory: [
+          ...history,
+          { id: releaseUid(), at: nowIso, actor, actorKind: 'intern', event: 'abgelehnt',
+            note, attachments: [] },
+        ],
+      }
+    }, req.user)
+
+    if (result.notFound) return res.status(404).json({ error: 'Aufgabe nicht gefunden.' })
+    if (result.conflict) return res.status(409).json({ error: 'Konflikt – bitte erneut versuchen.' })
+    broadcast('protocol', 'update', protocolId, nowIso)
+    logEvent('RELEASE_REJECTED', req, `protocol=${protocolId} action=${actionId} by=${req.user}`)
+    res.json({ ok: true })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// ── GET /freimeldung/:token – login-freie HTML-Seite ──────────────────────────
+function renderReleasePage(tokenRow) {
+  const project = db.projects.get(tokenRow.project_id)
+  const projName = project?.name || ''
+  return `<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Freimeldung – GHBA</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0;font-family:Arial,sans-serif}
+    body{font-size:14px;color:#1f2937;background:#f3f4f6;min-height:100vh;padding:24px}
+    .wrap{max-width:720px;margin:0 auto;background:#fff;border:1px solid #e5e7eb}
+    .hdr{background:#000040;color:#fbffe6;padding:22px 28px}
+    .hdr small{font-size:10px;text-transform:uppercase;letter-spacing:2px;color:#8fbeff;display:block;margin-bottom:4px}
+    .hdr h1{font-size:18px;font-weight:bold}
+    .hdr p{font-size:13px;color:#8fbeff;margin-top:4px}
+    .body{padding:24px 28px}
+    .intro{color:#4b5563;margin-bottom:18px;line-height:1.6}
+    .task{border:1px solid #e5e7eb;border-left:4px solid #cbd5e1;margin-bottom:14px}
+    .task.sel{border-left-color:#000040;background:#f8fafc}
+    .task-head{display:flex;gap:10px;align-items:flex-start;padding:12px 14px;cursor:pointer}
+    .task-head input{margin-top:3px;width:16px;height:16px;flex-shrink:0}
+    .task-desc{font-weight:bold;color:#000040}
+    .task-meta{font-size:12px;color:#6b7280;margin-top:3px}
+    .task-body{padding:0 14px 14px 40px;display:none}
+    .task.sel .task-body{display:block}
+    label.fld{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:#6b7280;margin:8px 0 4px}
+    textarea{width:100%;border:1px solid #d1d5db;padding:8px 10px;font-size:14px;min-height:64px;resize:vertical}
+    input[type=file]{font-size:13px}
+    .pending{font-size:12px;color:#92400e;background:#fffbeb;border:1px solid #fde68a;padding:3px 8px;display:inline-block;margin-top:4px}
+    .actions{margin-top:18px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+    .btn{background:#000040;color:#fff;border:none;padding:11px 22px;font-size:14px;font-weight:bold;cursor:pointer}
+    .btn:disabled{opacity:.5;cursor:not-allowed}
+    .msg{padding:12px 16px;margin-bottom:16px;font-size:13px}
+    .msg.ok{background:#f0fdf4;border:1px solid #bbf7d0;border-left:4px solid #16a34a;color:#14532d}
+    .msg.err{background:#fef2f2;border:1px solid #fecaca;border-left:4px solid #dc2626;color:#991b1b}
+    .empty{color:#6b7280;text-align:center;padding:32px 0}
+    .ftr{margin-top:22px;padding-top:14px;border-top:1px solid #e5e7eb;font-size:11px;color:#9ca3af;text-align:center}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="hdr">
+      <small>GHBA</small>
+      <h1>Freimeldung von Aufgaben</h1>
+      <p id="sub">${projName ? projName + ' · ' : ''}${tokenRow.responsible}</p>
+    </div>
+    <div class="body">
+      <div id="msg"></div>
+      <p class="intro">Bitte wählen Sie die Aufgaben aus, die Sie freimelden möchten, geben Sie jeweils eine kurze Begründung an und laden Sie bei Bedarf Nachweise hoch. Ihre Freimeldung wird im Protokoll vermerkt und in der nächsten Besprechung geprüft.</p>
+      <div id="tasks"><p class="empty">Aufgaben werden geladen…</p></div>
+      <div class="actions" id="actionbar" style="display:none">
+        <button class="btn" id="submitBtn">Freimeldung beantragen</button>
+        <span id="selcount" style="font-size:12px;color:#6b7280"></span>
+      </div>
+      <div class="ftr">GHBA · Aufgabenverwaltung</div>
+    </div>
+  </div>
+<script>
+(function(){
+  var TOKEN = ${JSON.stringify(tokenRow.token)};
+  var tasksEl = document.getElementById('tasks');
+  var msgEl = document.getElementById('msg');
+  var bar = document.getElementById('actionbar');
+  var btn = document.getElementById('submitBtn');
+  var selcount = document.getElementById('selcount');
+  var data = [];
+
+  function showMsg(kind, text){ msgEl.innerHTML = '<div class="msg '+kind+'">'+text+'</div>'; }
+  function esc(s){ return (s||'').replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+
+  function fmtDate(iso){ if(!iso) return ''; var p=iso.slice(0,10).split('-'); return p.length===3 ? p[2]+'.'+p[1]+'.'+p[0] : iso; }
+
+  function render(){
+    if(!data.length){ tasksEl.innerHTML = '<p class="empty">Aktuell sind für Sie keine offenen Aufgaben hinterlegt.</p>'; bar.style.display='none'; return; }
+    tasksEl.innerHTML = data.map(function(t,i){
+      var pend = t.pending ? '<span class="pending">Freimeldung bereits angefordert</span>' : '';
+      var meta = [t.protocolNo, t.deadline ? 'Frist: '+fmtDate(t.deadline) : '', 'Status: '+t.statusLabel].filter(Boolean).join(' · ');
+      return '<div class="task" data-i="'+i+'">'
+        + '<div class="task-head">'
+        +   '<input type="checkbox" data-i="'+i+'"'+(t.pending?' disabled':'')+'>'
+        +   '<div><div class="task-desc">'+(t.no?esc(t.no)+'. ':'')+esc(t.description||'(ohne Beschreibung)')+'</div>'
+        +   '<div class="task-meta">'+esc(meta)+'</div>'+pend+'</div>'
+        + '</div>'
+        + '<div class="task-body">'
+        +   '<label class="fld">Begründung *</label>'
+        +   '<textarea data-basis="'+i+'" placeholder="Warum kann diese Aufgabe als erledigt gelten?"></textarea>'
+        +   '<label class="fld">Nachweise / Anlagen (optional, max. 10 MB pro Datei)</label>'
+        +   '<input type="file" multiple data-files="'+i+'">'
+        + '</div>';
+    }).join('');
+    bar.style.display = 'flex';
+    tasksEl.querySelectorAll('input[type=checkbox]').forEach(function(cb){
+      cb.addEventListener('change', function(){
+        var card = tasksEl.querySelector('.task[data-i="'+cb.dataset.i+'"]');
+        if(cb.checked) card.classList.add('sel'); else card.classList.remove('sel');
+        updateCount();
+      });
+    });
+  }
+  function updateCount(){
+    var n = tasksEl.querySelectorAll('input[type=checkbox]:checked').length;
+    selcount.textContent = n ? (n+' Aufgabe'+(n!==1?'n':'')+' ausgewählt') : '';
+  }
+
+  function readFile(file){
+    return new Promise(function(res){
+      var r = new FileReader();
+      r.onload = function(){ var b64 = String(r.result).split(',')[1] || ''; res({ name:file.name, mimeType:file.type, size:file.size, dataBase64:b64 }); };
+      r.onerror = function(){ res(null); };
+      r.readAsDataURL(file);
+    });
+  }
+
+  btn.addEventListener('click', async function(){
+    var checks = Array.prototype.slice.call(tasksEl.querySelectorAll('input[type=checkbox]:checked'));
+    if(!checks.length){ showMsg('err','Bitte wählen Sie mindestens eine Aufgabe aus.'); return; }
+    var requests = [];
+    for(var k=0;k<checks.length;k++){
+      var i = checks[k].dataset.i;
+      var t = data[i];
+      var basis = (tasksEl.querySelector('textarea[data-basis="'+i+'"]').value||'').trim();
+      if(!basis){ showMsg('err','Bitte geben Sie für jede ausgewählte Aufgabe eine Begründung an.'); return; }
+      var fileInput = tasksEl.querySelector('input[data-files="'+i+'"]');
+      var atts = [];
+      for(var f=0; f<fileInput.files.length; f++){ var meta = await readFile(fileInput.files[f]); if(meta) atts.push(meta); }
+      requests.push({ protocolId:t.protocolId, actionId:t.actionId, basis:basis, attachments:atts });
+    }
+    btn.disabled = true; btn.textContent = 'Wird gesendet…';
+    try{
+      var resp = await fetch('/api/freimeldung/'+TOKEN, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ requests:requests }) });
+      var out = await resp.json();
+      if(resp.ok && out.accepted){
+        showMsg('ok','Vielen Dank. '+out.accepted+' Freimeldung'+(out.accepted!==1?'en wurden':' wurde')+' übermittelt und wird in der nächsten Besprechung geprüft.'+(out.errors&&out.errors.length?' Hinweise: '+out.errors.join(' '):''));
+        load();
+      } else {
+        showMsg('err', (out.errors&&out.errors.length? out.errors.join(' ') : (out.error||'Die Freimeldung konnte nicht übermittelt werden.')));
+        btn.disabled=false; btn.textContent='Freimeldung beantragen';
+      }
+    }catch(e){ showMsg('err','Netzwerkfehler – bitte erneut versuchen.'); btn.disabled=false; btn.textContent='Freimeldung beantragen'; }
+    window.scrollTo(0,0);
+  });
+
+  function load(){
+    btn.disabled=false; btn.textContent='Freimeldung beantragen'; selcount.textContent='';
+    fetch('/api/freimeldung/'+TOKEN).then(function(r){ return r.json(); }).then(function(d){
+      if(d.error){ tasksEl.innerHTML='<p class="empty">'+esc(d.error)+'</p>'; bar.style.display='none'; return; }
+      data = d.tasks||[]; render(); updateCount();
+    }).catch(function(){ tasksEl.innerHTML='<p class="empty">Aufgaben konnten nicht geladen werden.</p>'; });
+  }
+  load();
+})();
+</script>
+</body></html>`
+}
+
+app.get('/freimeldung/:token', (req, res) => {
+  const row = db.releaseTokens.getByToken(req.params.token)
+  if (!row) {
+    return res.status(404).send(renderSimplePage('Ungültiger Link',
+      '<p style="color:#6b7280;">Dieser Freimelde-Link ist ungültig oder wurde widerrufen.</p>'))
+  }
+  res.setHeader('Content-Type', 'text/html; charset=utf-8')
+  res.send(renderReleasePage(row))
+})
+
+// ── Wöchentliches Freimeldungs-Reporting (Freitags 15:00) ─────────────────────
+// Sendet je Projekt eine Übersicht der in den letzten 7 Tagen genehmigten
+// Freimeldungen an alle Besprechungsteilnehmer (dedupliziert per E-Mail).
+// Erweiterbar zu einem allgemeinen Aufgaben-/Fragen-Reporting.
+async function sendWeeklyReleaseReports({ appUrl } = {}) {
+  if (!mailer.mailerStatus().configured) return { skipped: 'mailer-not-configured' }
+  const sinceMs = Date.now() - 7 * 24 * 60 * 60 * 1000
+  const protocols = db.protocols.list()
+
+  // genehmigte Freimeldungen der letzten 7 Tage je Projekt sammeln
+  const byProject = new Map()
+  for (const proto of protocols) {
+    if (!proto.projectId) continue
+    for (const a of (proto.actionItems ?? [])) {
+      for (const h of (a.releaseHistory ?? [])) {
+        if (h.event !== 'genehmigt') continue
+        if (!h.at || new Date(h.at).getTime() < sinceMs) continue
+        if (!byProject.has(proto.projectId)) byProject.set(proto.projectId, [])
+        byProject.get(proto.projectId).push({
+          no: a.no || '', description: a.description || '', responsible: a.responsible || '',
+          approvedAt: h.at,
+        })
+      }
+    }
+  }
+
+  const { from } = systemFrom()
+  let sentProjects = 0
+  for (const [projectId, releases] of byProject) {
+    if (!releases.length) continue
+    const project = db.projects.get(projectId)
+    const projName = project?.name || 'Projekt'
+
+    // Empfänger: alle Teilnehmer aus Protokollen dieses Projekts (dedupliziert)
+    const recipients = new Map()
+    for (const proto of protocols) {
+      if (proto.projectId !== projectId) continue
+      for (const part of (proto.participants ?? [])) {
+        const email = (part.email || '').trim().toLowerCase()
+        if (email) recipients.set(email, part.email.trim())
+      }
+    }
+    if (recipients.size === 0) continue
+
+    const html = buildWeeklyReportHtml(projName, releases)
+    const text = buildWeeklyReportText(projName, releases)
+    const to = Array.from(recipients.values()).join(', ')
+    try {
+      await mailer.sendMail({ from, to, subject: `Freigemeldete Aufgaben – ${projName}`, html, text })
+      sentProjects++
+    } catch (e) { console.warn('[reporting] Versand für', projName, 'fehlgeschlagen:', e.message) }
+  }
+  return { sentProjects }
+}
+
+function buildWeeklyReportHtml(projName, releases) {
+  const today = new Date().toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })
+  const rows = releases.map(r => `<tr style="border-bottom:1px solid #e5e7eb;">
+    <td style="padding:9px 12px;font-size:12px;color:#6b7280;white-space:nowrap;font-family:Arial,sans-serif;">${r.no || '–'}</td>
+    <td style="padding:9px 12px;font-weight:bold;color:#000040;font-family:Arial,sans-serif;">${r.description || '–'}</td>
+    <td style="padding:9px 12px;font-size:12px;color:#374151;white-space:nowrap;font-family:Arial,sans-serif;">${r.responsible || '–'}</td>
+    <td style="padding:9px 12px;font-size:12px;color:#374151;white-space:nowrap;font-family:Arial,sans-serif;">${fmtDateDe(r.approvedAt)}</td>
+  </tr>`).join('')
+  return `<!DOCTYPE html>
+<html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#F0F0F0;font-family:Arial,sans-serif;font-size:14px;color:#1F2937;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#F0F0F0;padding:32px 16px;"><tr><td align="center">
+    <table width="640" cellpadding="0" cellspacing="0" style="background:#FFF;border:1px solid #E5E7EB;max-width:640px;width:100%;">
+      <tr><td style="background:#000040;padding:28px 36px;">
+        <p style="margin:0;color:#8FBEFF;font-size:11px;letter-spacing:2px;text-transform:uppercase;font-family:Arial,sans-serif;">GHBA</p>
+        <p style="margin:6px 0 0 0;color:#FBFFE6;font-size:20px;font-weight:bold;font-family:Arial,sans-serif;">Freigemeldete Aufgaben</p>
+        <p style="margin:4px 0 0 0;color:#8FBEFF;font-size:14px;font-weight:600;font-family:Arial,sans-serif;">${projName}</p>
+        <p style="margin:6px 0 0 0;color:#8FBEFF;font-size:12px;font-family:Arial,sans-serif;">Wochenübersicht · Stand ${today}</p>
+      </td></tr>
+      <tr><td style="padding:24px 36px 8px 36px;font-family:Arial,sans-serif;">
+        <p style="margin:0;color:#4B5563;">in der vergangenen Woche wurden folgende Aufgaben freigemeldet und genehmigt:</p>
+      </td></tr>
+      <tr><td style="padding:8px 36px 28px 36px;">
+        <table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #E5E7EB;border-collapse:collapse;">
+          <thead><tr style="background:#000040;">
+            <th style="padding:9px 12px;text-align:left;font-size:11px;text-transform:uppercase;color:#8FBEFF;font-family:Arial,sans-serif;">Nr.</th>
+            <th style="padding:9px 12px;text-align:left;font-size:11px;text-transform:uppercase;color:#8FBEFF;font-family:Arial,sans-serif;">Aufgabe</th>
+            <th style="padding:9px 12px;text-align:left;font-size:11px;text-transform:uppercase;color:#8FBEFF;font-family:Arial,sans-serif;">Verantwortlich</th>
+            <th style="padding:9px 12px;text-align:left;font-size:11px;text-transform:uppercase;color:#8FBEFF;font-family:Arial,sans-serif;">Freigegeben</th>
+          </tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </td></tr>
+      <tr><td style="padding:20px 36px;border-top:1px solid #E5E7EB;background:#F0F0F0;text-align:center;font-family:Arial,sans-serif;">
+        <p style="margin:0;color:#9CA3AF;font-size:12px;">GHBA · Automatische Wochenübersicht · ${today}</p>
+      </td></tr>
+    </table>
+  </td></tr></table>
+</body></html>`
+}
+
+function buildWeeklyReportText(projName, releases) {
+  const today = new Date().toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })
+  return [
+    `Freigemeldete Aufgaben – ${projName}`,
+    `Wochenübersicht · Stand ${today}`, '',
+    'In der vergangenen Woche wurden folgende Aufgaben freigemeldet und genehmigt:', '',
+    ...releases.map(r => `• ${r.no ? r.no + '. ' : ''}${r.description} (${r.responsible || '–'}) – freigegeben ${fmtDateDe(r.approvedAt)}`),
+    '', 'GHBA',
+  ].join('\n')
+}
+
+// Scheduler: prüft minütlich, ob Freitag 15:00 erreicht ist (einmal pro Tag).
+function startWeeklyReportScheduler() {
+  const KEY = 'weekly_report_last_run'   // YYYY-MM-DD des letzten Versands
+  setInterval(() => {
+    try {
+      const now = new Date()
+      if (now.getDay() !== 5) return                 // 5 = Freitag
+      if (now.getHours() < 15) return                // ab 15:00
+      const todayKey = now.toISOString().slice(0, 10)
+      if (db.appState.get(KEY) === todayKey) return   // heute schon gelaufen
+      db.appState.set(KEY, todayKey)                  // Marker zuerst (verhindert Doppelversand)
+      sendWeeklyReleaseReports()
+        .then(r => console.log('[reporting] Wochenbericht versendet:', JSON.stringify(r)))
+        .catch(e => console.warn('[reporting] Wochenbericht fehlgeschlagen:', e.message))
+    } catch (e) { console.warn('[reporting] Scheduler-Fehler:', e.message) }
+  }, 60 * 1000)
+}
+
+// Admin-Trigger zum manuellen Testen des Wochenberichts.
+app.post('/api/admin/release-report-test', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const result = await sendWeeklyReleaseReports({ appUrl: getAppUrl(req) })
+    logEvent('RELEASE_REPORT_TEST', req, JSON.stringify(result))
+    res.json({ ok: true, ...result })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
@@ -1692,6 +2331,10 @@ const onListen = (protocol) => () => {
   // Automatisches Backup beim Start + alle 6 Stunden
   try { const f = createBackup(); console.log(`  Backup        : ${f}`) } catch (e) { console.warn('  Backup fehlgeschlagen:', e.message) }
   setInterval(() => { try { createBackup() } catch {} }, 6 * 60 * 60 * 1000)
+
+  // Wöchentliches Freimeldungs-Reporting (Freitags 15:00)
+  startWeeklyReportScheduler()
+  console.log('  Reporting     : Wochenbericht Freitags 15:00')
 }
 
 if (certFile && keyFile && fs.existsSync(certFile) && fs.existsSync(keyFile)) {

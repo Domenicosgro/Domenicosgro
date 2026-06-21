@@ -55,9 +55,12 @@ function promoteAgenda(agenda, existingItems) {
   ]
 }
 
-export default function ProtocolEditor({ protocol, protocols, projects, projectContacts, logoDataUrl, onLogoUpdate, onLogoClear, onUpdate, onUpdateProject, onBack, onRefresh }) {
+export default function ProtocolEditor({ protocol, protocols, projects, projectContacts, serverUser, logoDataUrl, onLogoUpdate, onLogoClear, onUpdate, onUpdateProject, onBack, onRefresh }) {
   const change = (patch) => onUpdate(protocol.id, patch)
   const linkedProject  = (projects ?? []).find(p => p.id === protocol.projectId) ?? null
+  // Freimeldung genehmigen: Systemadmin oder Projektadmin des verknüpften Projekts
+  const canManageRelease = !!serverUser && (serverUser.role === 'admin'
+    || (linkedProject && linkedProject.projectAdminUser === serverUser.username))
   const linkedFolders  = linkedProject?.linkedFolders ?? []
   const tiles          = linkedProject?.tiles ?? []
   const handleTilesChange = (nextTiles) => {
@@ -718,6 +721,8 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
             onChange={actionItems => change({ actionItems })}
             agendaItems={protocol.agendaItems ?? []}
             projectContacts={projectContacts ?? []}
+            protocolId={protocol.id}
+            canManageRelease={canManageRelease}
           />
         </div>
 

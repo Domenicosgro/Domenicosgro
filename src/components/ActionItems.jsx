@@ -2,6 +2,7 @@ import React, { useState } from 'react'
 import { Plus, Trash2, CheckSquare, EyeOff, Eye, Search, X,
          CheckCircle2, Circle, User, Calendar, Flag } from 'lucide-react'
 import { emptyActionItem, ACTION_STATUSES, PRIORITIES, formatDate } from '../utils'
+import FreimeldungBadge from './FreimeldungBadge'
 
 function highlight(text, query) {
   if (!query || !text) return text
@@ -16,7 +17,7 @@ function highlight(text, query) {
   )
 }
 
-export default function ActionItems({ items, onChange, agendaItems = [], projectContacts = [] }) {
+export default function ActionItems({ items, onChange, agendaItems = [], projectContacts = [], protocolId = null, canManageRelease = false }) {
   const [hideCompleted, setHideCompleted] = useState(false)
   const [search, setSearch] = useState('')
   const contactListId = 'action-contacts-list'
@@ -166,8 +167,8 @@ export default function ActionItems({ items, onChange, agendaItems = [], project
                     {done ? '✓' : '○'}
                   </span>
                   <div className="flex-1 min-w-0 space-y-0.5">
-                    {(isCarried || item.protocolItemId) && (
-                      <div className="flex flex-wrap gap-1 mb-0.5">
+                    {(isCarried || item.protocolItemId || item.releaseRequest || item.releaseHistory?.length > 0) && (
+                      <div className="flex flex-wrap gap-1 mb-0.5 items-center">
                         {isCarried && <span className="badge-blue text-xs">↩ Übernommen</span>}
                         {item.protocolItemId && (() => {
                           const ref = agendaItems.find(it => it.id === item.protocolItemId)
@@ -175,6 +176,7 @@ export default function ActionItems({ items, onChange, agendaItems = [], project
                             ? <span className="badge text-xs bg-gray-100 text-gray-500">Pkt. {ref.no} – {ref.topic?.slice(0, 30)}</span>
                             : null
                         })()}
+                        <FreimeldungBadge item={item} protocolId={protocolId} canManage={canManageRelease} />
                       </div>
                     )}
                     <input

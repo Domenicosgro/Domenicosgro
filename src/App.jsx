@@ -439,6 +439,7 @@ export default function App() {
           protocols={protocols}
           projects={projectsWithContacts}
           projectContacts={linkedProject?.contacts ?? []}
+          serverUser={serverUser}
           logoDataUrl={logoDataUrl}
           onLogoUpdate={updateLogo}
           onLogoClear={clearLogo}
@@ -505,6 +506,7 @@ export default function App() {
           projects={projectsWithContacts}
           projectId={selectedProjectId}
           projectContacts={project?.contacts ?? []}
+          serverUser={serverUser}
           onOpenProtocol={openProtocolFromDashboard}
           onUpdateProtocol={handleUpdateProtocol}
           onBack={() => setView('project-dashboard')}

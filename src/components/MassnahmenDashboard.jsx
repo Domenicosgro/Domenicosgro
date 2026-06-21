@@ -3,6 +3,7 @@ import { ArrowLeft, AlertTriangle, CheckSquare, Filter, X, Lock, BarChart2,
          Mail, Send, Loader, ChevronDown, ChevronRight, Check } from 'lucide-react'
 import { ACTION_STATUSES, PRIORITIES, formatDate, buildProtocolNo, getChainNo,
          statusBadge, priorityBadge } from '../utils'
+import FreimeldungBadge from './FreimeldungBadge'
 
 const isServer   = typeof window !== 'undefined' && !!window.__SERVER_MODE__
 const isElectron = typeof window !== 'undefined' && !!window.electronAPI
@@ -63,7 +64,7 @@ function EmailModal({ groups, onClose }) {
             'Content-Type': 'application/json',
             ...(token ? { Authorization: `Bearer ${token}` } : {}),
           },
-          body: JSON.stringify({ to: email, responsible: g.responsible, projectName: g.projectName, items: g.items }),
+          body: JSON.stringify({ to: email, responsible: g.responsible, projectName: g.projectName, projectId: g.projectId, items: g.items }),
         })
         if (!resp.ok) {
           const err = await resp.json()
@@ -211,9 +212,17 @@ function EmailModal({ groups, onClose }) {
 }
 
 // ── Hauptkomponente ───────────────────────────────────────────────────────────
-export default function MassnahmenDashboard({ protocols, projects, projectId, projectContacts, onOpenProtocol, onUpdateProtocol, onBack }) {
+export default function MassnahmenDashboard({ protocols, projects, projectId, projectContacts, serverUser, onOpenProtocol, onUpdateProtocol, onBack }) {
   const isScoped = !!projectId
   const scopedName = isScoped ? (projects.find(p => p.id === projectId)?.name || '') : ''
+
+  // Darf der aktuelle Nutzer Freimeldungen genehmigen? (Systemadmin oder Projektadmin)
+  const canManageRelease = (item) => {
+    if (!serverUser) return false
+    if (serverUser.role === 'admin') return true
+    const proj = projects.find(p => p.id === item._projectId)
+    return !!(proj && proj.projectAdminUser === serverUser.username)
+  }
 
   const [filterProject,     setFilterProject]     = useState('')
   const [filterStatus,      setFilterStatus]      = useState('')
@@ -508,6 +517,11 @@ export default function MassnahmenDashboard({ protocols, projects, projectId, pr
                       </span>
                       {item.remarks && (
                         <span className="block text-xs text-gray-400 truncate mt-0.5">{item.remarks}</span>
+                      )}
+                      {(item.releaseRequest || (item.releaseHistory?.length > 0)) && (
+                        <span className="inline-block mt-1" onClick={e => e.stopPropagation()}>
+                          <FreimeldungBadge item={item} protocolId={item._protocolId} canManage={canManageRelease(item)} />
+                        </span>
                       )}
                     </td>
                     <td className="px-4 py-2.5 text-xs text-gray-600 whitespace-nowrap">{item.responsible || '–'}</td>

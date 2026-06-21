@@ -83,6 +83,22 @@ db.exec(`
     expires_at TEXT NOT NULL,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
+
+  CREATE TABLE IF NOT EXISTS release_tokens (
+    token        TEXT PRIMARY KEY,
+    project_id   TEXT NOT NULL,
+    responsible  TEXT NOT NULL,
+    email        TEXT NOT NULL DEFAULT '',
+    created_at   TEXT NOT NULL DEFAULT (datetime('now')),
+    last_used_at TEXT,
+    revoked      INTEGER NOT NULL DEFAULT 0
+  );
+
+  CREATE TABLE IF NOT EXISTS app_state (
+    key        TEXT PRIMARY KEY,
+    value      TEXT NOT NULL DEFAULT '',
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
 `)
 
 // ── Migration from legacy key-value store ─────────────────────────────────────
@@ -322,6 +338,36 @@ const deletionRequests = {
   delete(id)                      { return _drDel.run(id).changes > 0 },
 }
 
+// ── Freimelde-Tokens (Magic-Link je Verantwortlicher + Projekt) ────────────────
+const _rtFind   = db.prepare("SELECT * FROM release_tokens WHERE project_id = ? AND lower(responsible) = lower(?) AND revoked = 0 ORDER BY created_at DESC LIMIT 1")
+const _rtByTok  = db.prepare('SELECT * FROM release_tokens WHERE token = ? AND revoked = 0')
+const _rtInsert = db.prepare('INSERT INTO release_tokens (token, project_id, responsible, email) VALUES (@token, @projectId, @responsible, @email)')
+const _rtTouch  = db.prepare("UPDATE release_tokens SET last_used_at = datetime('now') WHERE token = ?")
+const _rtEmail  = db.prepare('UPDATE release_tokens SET email = @email WHERE token = @token')
+const _rtList   = db.prepare('SELECT * FROM release_tokens WHERE project_id = ? AND revoked = 0 ORDER BY created_at DESC')
+const _rtRevoke = db.prepare('UPDATE release_tokens SET revoked = 1 WHERE token = ?')
+
+const releaseTokens = {
+  find(projectId, responsible)            { return _rtFind.get(projectId, responsible) || null },
+  getByToken(token)                       { return _rtByTok.get(token) || null },
+  create({ token, projectId, responsible, email = '' }) {
+    _rtInsert.run({ token, projectId, responsible, email })
+  },
+  touch(token)                            { _rtTouch.run(token) },
+  updateEmail(token, email)               { _rtEmail.run({ token, email }) },
+  listByProject(projectId)                { return _rtList.all(projectId) },
+  revoke(token)                           { return _rtRevoke.run(token).changes > 0 },
+}
+
+// ── App-State (kleiner Key-Value-Speicher, z.B. Reporting-Zeitstempel) ─────────
+const _asGet = db.prepare('SELECT value FROM app_state WHERE key = ?')
+const _asSet = db.prepare("INSERT INTO app_state (key, value, updated_at) VALUES (@key, @value, datetime('now')) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')")
+
+const appState = {
+  get(key)        { const r = _asGet.get(key); return r ? r.value : null },
+  set(key, value) { _asSet.run({ key, value: String(value) }) },
+}
+
 module.exports = {
   protocols: makeStore('protocols'),
   projects:  makeStore('projects'),
@@ -330,4 +376,6 @@ module.exports = {
   sessions,
   resetRequests,
   deletionRequests,
+  releaseTokens,
+  appState,
 }
