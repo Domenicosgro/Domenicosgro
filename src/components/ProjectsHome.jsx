@@ -299,7 +299,8 @@ function PasswordModal({ mode, projectName, onConfirm, onCancel }) {
 // ── Main component ─────────────────────────────────────────────────────────────
 export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, onDelete, onOpenProject,
                                        onOpenProjectDashboard, onUnlock, onSetPassword, onRemovePassword,
-                                       onOpenDashboard, onImportProject, serverUser, onLogout, onOpenAdmin,
+                                       onOpenDashboard, onOpenContactDatabase, onImportProject,
+                                       serverUser, onLogout, onOpenAdmin,
                                        onRequestDeleteProject, onRefresh }) {
   const [search,        setSearch]        = useState('')
   const [showAll,       setShowAll]       = useState(false)
@@ -372,7 +373,7 @@ export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, 
     if (!project.isUnlocked) {
       setModal({ mode: 'unlock', projectId: project.id })
     } else {
-      onOpenProject(project.id)
+      onOpenProjectDashboard(project.id)
     }
   }
 
@@ -390,7 +391,7 @@ export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, 
     if (mode === 'unlock') {
       await onUnlock(projectId, pw)
       setModal(null)
-      onOpenProject(projectId)
+      onOpenProjectDashboard(projectId)
     }
     if (mode === 'set' || mode === 'change') {
       await onSetPassword(projectId, pw)
@@ -479,6 +480,34 @@ export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, 
       {importError && (
         <p className="text-sm text-red-600 bg-red-50 border border-red-200 px-4 py-2">{importError}</p>
       )}
+
+      {/* Dashboard-Kacheln */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <button
+          className="card px-5 py-4 text-left hover:border-brand-300 hover:shadow-sm transition-all group flex items-center gap-4 border-l-4 border-brand-500"
+          onClick={onOpenContactDatabase}
+        >
+          <Users size={22} className="text-brand-600 flex-shrink-0" />
+          <div className="flex-1 min-w-0">
+            <p className="font-semibold text-gray-900 group-hover:text-brand-700 transition-colors">Kontaktdatenbank</p>
+            <p className="text-xs text-gray-400 truncate">Alle Projektkontakte auf einen Blick</p>
+          </div>
+          <ChevronRight size={16} className="text-gray-300 group-hover:text-brand-400 flex-shrink-0" />
+        </button>
+        {onOpenDashboard && (
+          <button
+            className="card px-5 py-4 text-left hover:border-brand-300 hover:shadow-sm transition-all group flex items-center gap-4 border-l-4 border-amber-400"
+            onClick={onOpenDashboard}
+          >
+            <BarChart2 size={22} className="text-amber-500 flex-shrink-0" />
+            <div className="flex-1 min-w-0">
+              <p className="font-semibold text-gray-900 group-hover:text-brand-700 transition-colors">Maßnahmen-Dashboard</p>
+              <p className="text-xs text-gray-400 truncate">Projektübergreifende Aufgaben &amp; Maßnahmen</p>
+            </div>
+            <ChevronRight size={16} className="text-gray-300 group-hover:text-brand-400 flex-shrink-0" />
+          </button>
+        )}
+      </div>
 
       {/* Search + favorites toggle */}
       {projects.length > 0 && (

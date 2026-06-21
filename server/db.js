@@ -50,6 +50,15 @@ db.exec(`
     updated_by TEXT
   );
 
+  CREATE TABLE IF NOT EXISTS notes (
+    id         TEXT    PRIMARY KEY,
+    project_id TEXT,
+    data       TEXT    NOT NULL,
+    version    INTEGER NOT NULL DEFAULT 1,
+    updated_at TEXT    NOT NULL DEFAULT (datetime('now')),
+    updated_by TEXT
+  );
+
   CREATE TABLE IF NOT EXISTS projects (
     id         TEXT    PRIMARY KEY,
     project_id TEXT,
@@ -289,6 +298,7 @@ const deletionRequests = {
 module.exports = {
   protocols: makeStore('protocols'),
   projects:  makeStore('projects'),
+  notes:     makeStore('notes'),
   users,
   sessions,
   resetRequests,

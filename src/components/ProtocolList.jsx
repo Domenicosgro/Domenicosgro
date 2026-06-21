@@ -1,11 +1,11 @@
 import React, { useState, useRef } from 'react'
 import { Plus, Trash2, Copy, FileText, Search, ChevronRight, Upload, Lock, ArrowLeft, Users, RotateCcw, Download } from 'lucide-react'
-import { formatDate, buildProtocolNo, getChainNo } from '../utils'
+import { formatDate, buildProtocolNo, getChainNo, phaseBadge, PHASES } from '../utils'
 
 const isElectron = typeof window !== 'undefined' && !!window.electronAPI
 
 export default function ProtocolList({
-  protocols, allProtocols, project, onCreate, onOpen, onDelete, onDuplicate,
+  protocols, allProtocols, project, phaseFilter, onCreate, onOpen, onDelete, onDuplicate,
   onImport, onOpenImported, onBack, onManageContacts, onRefresh,
 }) {
   const pool = allProtocols ?? protocols  // fall back to current list if not provided
@@ -13,6 +13,11 @@ export default function ProtocolList({
   const [search,      setSearch]      = useState('')
   const [filterType,  setFilterType]  = useState('')
   const [importError, setImportError] = useState('')
+
+  // Apply phase filter from parent (e.g. coming from ProjectDashboard tile)
+  const phaseFiltered = phaseFilter !== undefined && phaseFilter !== null
+    ? protocols.filter(p => p.phase === phaseFilter)
+    : protocols
 
   const handleExportProject = () => {
     if (!project) return
@@ -75,7 +80,7 @@ export default function ProtocolList({
   }
 
   const q = search.toLowerCase()
-  const filtered = protocols.filter(p => {
+  const filtered = phaseFiltered.filter(p => {
     if (filterType && p.meetingType !== filterType) return false
     if (!q) return true
     const no = buildProtocolNo(p.projectName, p.date, getChainNo(p, pool), p.meetingType)
@@ -86,8 +91,9 @@ export default function ProtocolList({
     )
   })
 
-  const title    = project ? project.name || 'Unbenanntes Projekt' : 'Protokolle ohne Projekt'
-  const contacts = project?.contacts ?? []
+  const phaseInfo = phaseFilter ? phaseBadge(phaseFilter) : null
+  const title     = project ? project.name || 'Unbenanntes Projekt' : 'Protokolle ohne Projekt'
+  const contacts  = project?.contacts ?? []
 
   return (
     <div className="max-w-4xl mx-auto p-4 sm:p-6 space-y-6">
@@ -96,12 +102,17 @@ export default function ProtocolList({
       <div className="flex flex-col sm:flex-row sm:items-stretch justify-between gap-4">
         <div className="flex items-end gap-3">
           <button className="btn-secondary" onClick={onBack}>
-            <ArrowLeft size={16} /> Projekte
+            <ArrowLeft size={16} /> {project ? 'Projekt' : 'Projekte'}
           </button>
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">{title}</h1>
+            <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+              {title}
+              {phaseInfo && (
+                <span className={`text-sm font-medium px-2 py-0.5 border ${phaseInfo.color}`}>{phaseInfo.label}</span>
+              )}
+            </h1>
             <p className="text-sm text-gray-500 mt-0.5">
-              {protocols.length} Protokoll{protocols.length !== 1 ? 'e' : ''}
+              {phaseFiltered.length} Protokoll{phaseFiltered.length !== 1 ? 'e' : ''}
               {contacts.length > 0 && ` · ${contacts.length} Kontakte`}
             </p>
           </div>
@@ -201,7 +212,8 @@ export default function ProtocolList({
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="font-semibold text-gray-900 truncate">{formatDate(p.date)}</span>
-                  <span className="badge-blue">{p.meetingType}</span>
+                  {p.meetingType && <span className="badge-blue">{p.meetingType}</span>}
+                  {p.phase && (() => { const ph = phaseBadge(p.phase); return ph ? <span className={`text-xs px-1.5 py-0.5 border ${ph.color}`}>{ph.label}</span> : null })()}
                   {p.isClosed && (
                     <span className="badge-gray flex items-center gap-1"><Lock size={10} /> Abgeschlossen</span>
                   )}

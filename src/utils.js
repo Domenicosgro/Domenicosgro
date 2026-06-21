@@ -158,6 +158,59 @@ export async function hashPassword(password) {
     .join('')
 }
 
+// ── Phasen & Notizen ─────────────────────────────────────────────────────────
+
+export const PHASES = [
+  { value: 'planung', label: 'Planungsphase', color: 'badge-blue'   },
+  { value: 'bau',     label: 'Bauphase',      color: 'badge-yellow' },
+]
+
+export const phaseBadge = (val) => PHASES.find(p => p.value === val) ?? null
+
+export const NOTE_TYPES = [
+  { value: 'aktennotiz',   label: 'Aktennotiz',       color: 'badge-blue'   },
+  { value: 'telefonnotiz', label: 'Telefonnotiz',      color: 'badge-yellow' },
+  { value: 'besprochen',   label: 'Besprechungsnotiz', color: 'badge-green'  },
+]
+
+export const NOTE_TEMPLATES = [
+  {
+    id: 'tel',
+    type: 'telefonnotiz',
+    label: 'Telefonnotiz',
+    subject: 'Telefonnotiz',
+    content: '<p><strong>Gesprächspartner:</strong> </p><p><strong>Thema:</strong> </p><p><strong>Ergebnis:</strong> </p><p><strong>Weiteres Vorgehen:</strong> </p>',
+  },
+  {
+    id: 'akte',
+    type: 'aktennotiz',
+    label: 'Aktennotiz',
+    subject: 'Aktennotiz',
+    content: '<p><strong>Betreff:</strong> </p><p><strong>Sachverhalt:</strong> </p><p><strong>Ergebnis / Beschluss:</strong> </p>',
+  },
+  {
+    id: 'bespr',
+    type: 'besprochen',
+    label: 'Besprechungsnotiz',
+    subject: 'Besprechungsnotiz',
+    content: '<p><strong>Teilnehmer:</strong> </p><p><strong>Themen:</strong> </p><p><strong>Beschlüsse:</strong> </p><p><strong>Nächste Schritte:</strong> </p>',
+  },
+]
+
+export const emptyNote = (projectId = null) => ({
+  id: uid(),
+  projectId,
+  type: 'aktennotiz',
+  date: today(),
+  time: '',
+  subject: '',
+  content: '',
+  linkedContactId: null,
+  sentAt: null,
+  createdAt: new Date().toISOString(),
+  updatedAt: new Date().toISOString(),
+})
+
 export const emptyProtocol = () => ({
   id: uid(),
   meetingType: '',
@@ -171,6 +224,7 @@ export const emptyProtocol = () => ({
   preparedBy: '',
   notes: '',
   predecessorId: null,
+  phase: null,           // 'planung' | 'bau' | null
   itemCarriedFrom: null, // Vorgänger-ID, dessen Protokollpunkte bereits auto-übernommen wurden
   isClosed: false,       // protocol is finalized / locked
   closedAt: null,

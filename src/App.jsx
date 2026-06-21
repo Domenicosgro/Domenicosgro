@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { useProtocols } from './hooks/useProtocols'
 import { useProjects }  from './hooks/useProjects'
+import { useNotes }     from './hooks/useNotes'
 import { useLogo }      from './hooks/useLogo'
 import ProjectsHome          from './components/ProjectsHome'
 import ProjectManager        from './components/ProjectManager'
@@ -8,6 +9,8 @@ import ProtocolList          from './components/ProtocolList'
 import ProtocolEditor        from './components/ProtocolEditor'
 import MassnahmenDashboard   from './components/MassnahmenDashboard'
 import ProjectDashboard      from './components/ProjectDashboard'
+import NotesList             from './components/NotesList'
+import ContactDatabase       from './components/ContactDatabase'
 import LoginScreen           from './components/LoginScreen'
 import AdminPanel            from './components/AdminPanel'
 import { hashPassword, uid } from './utils'
@@ -31,9 +34,13 @@ export default function App() {
     refetchProjects,
   } = useProjects()
 
+  const {
+    notes, createNote, updateNote, deleteNote, refetchNotes,
+  } = useNotes()
+
   const handleRefresh = useCallback(async () => {
-    await Promise.all([refetchProtocols(), refetchProjects()])
-  }, [refetchProtocols, refetchProjects])
+    await Promise.all([refetchProtocols(), refetchProjects(), refetchNotes()])
+  }, [refetchProtocols, refetchProjects, refetchNotes])
 
   const { logoDataUrl, updateLogo, clearLogo, saveError: logoSaveError, clearSaveError: clearLogoError } = useLogo()
 
@@ -42,6 +49,7 @@ export default function App() {
 
   const [view,              setView]              = useState('home')
   const [selectedProjectId, setSelectedProjectId] = useState(null)
+  const [selectedPhase,     setSelectedPhase]     = useState(null)   // 'planung' | 'bau' | null
   const [contactsOrigin,    setContactsOrigin]    = useState('protocols')
   const [activeId,          setActiveId]          = useState(null)
   const activeIdRef = useRef(activeId)
@@ -286,17 +294,34 @@ export default function App() {
 
   const openProject = (projectId) => { setSelectedProjectId(projectId); setView('protocols') }
   const openProjectDashboard = (projectId) => { setSelectedProjectId(projectId); setView('project-dashboard') }
+  const openProjectProtocols = (projectId, phase) => {
+    setSelectedProjectId(projectId)
+    setSelectedPhase(phase)
+    setView('protocols')
+  }
 
   const handleCreateProtocol = () => {
     const project = projectsWithContacts.find(p => p.id === selectedProjectId)
-    const id = createProtocol({ projectId: selectedProjectId ?? null, projectName: project?.name ?? '' })
+    const id = createProtocol({
+      projectId:   selectedProjectId ?? null,
+      projectName: project?.name ?? '',
+      phase:       selectedPhase ?? null,
+    })
     setActiveId(id)
     setView('editor')
   }
 
   const handleOpenProtocol       = (id) => { setActiveId(id); setView('editor') }
   const handleBackFromEditor     = ()   => { setActiveId(null); setView('protocols') }
-  const handleBackFromProtocols  = ()   => { setSelectedProjectId(null); setView('home') }
+  const handleBackFromProtocols  = ()   => {
+    if (selectedProjectId) {
+      setView('project-dashboard')
+    } else {
+      setSelectedProjectId(null)
+      setView('home')
+    }
+    setSelectedPhase(null)
+  }
 
   const openProtocolFromDashboard = (protocolId) => {
     const p = protocols.find(x => x.id === protocolId)
@@ -436,6 +461,7 @@ export default function App() {
           protocols={filtered}
           allProtocols={protocols}
           project={project}
+          phaseFilter={selectedPhase}
           onCreate={handleCreateProtocol}
           onOpen={handleOpenProtocol}
           onDelete={deleteProtocol}
@@ -491,10 +517,42 @@ export default function App() {
         <ProjectDashboard
           project={project}
           protocols={protocols}
+          notes={notes}
           onBack={() => setView('home')}
-          onOpenProtocols={() => openProject(selectedProjectId)}
+          onOpenProtocols={(phase) => openProjectProtocols(selectedProjectId, phase)}
+          onOpenNotes={() => setView('notes')}
           onManageContacts={() => { setContactsOrigin('project-dashboard'); setView('project-contacts') }}
-          onUpdate={handleUpdateProject}
+        />
+        <UpdateBanner /><SaveErrorBanner />
+      </>
+    )
+  }
+
+  if (view === 'notes') {
+    const project  = projectsWithContacts.find(p => p.id === selectedProjectId) ?? null
+    const filtered = notes.filter(n => n.projectId === selectedProjectId)
+    return wrap(
+      <>
+        <NotesList
+          notes={filtered}
+          projectContacts={project?.contacts ?? []}
+          projectName={project?.name || ''}
+          onCreate={(patch) => createNote({ ...patch, projectId: selectedProjectId })}
+          onUpdate={updateNote}
+          onDelete={deleteNote}
+          onBack={() => setView('project-dashboard')}
+        />
+        <UpdateBanner /><SaveErrorBanner />
+      </>
+    )
+  }
+
+  if (view === 'contact-database') {
+    return wrap(
+      <>
+        <ContactDatabase
+          projects={projectsWithContacts}
+          onBack={() => setView('home')}
         />
         <UpdateBanner /><SaveErrorBanner />
       </>
@@ -515,6 +573,7 @@ export default function App() {
         onSetPassword={handleSetProjectPassword}
         onRemovePassword={handleRemoveProjectPassword}
         onOpenDashboard={() => setView('dashboard')}
+        onOpenContactDatabase={() => setView('contact-database')}
         onImportProject={handleImportProject}
         serverUser={serverUser}
         onLogout={isServer ? handleLogout : null}

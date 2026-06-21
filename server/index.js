@@ -1242,6 +1242,114 @@ app.delete('/api/projects/:id', requireAuth, writeLimiter, (req, res) => {
 app.use('/api/protocols', protocolRouter)
 app.use('/api/projects',  projectRouter)
 
+// ── Notizen-Endpunkte ─────────────────────────────────────────────────────────
+app.get('/api/notes', requireAuth, (req, res) => {
+  try {
+    const all = db.notes.list()
+    res.json(all.filter(n => {
+      if (!n.projectId) return true
+      const proj = db.projects.get(n.projectId)
+      return !proj || canAccessProject(proj, req.user)
+    }))
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.get('/api/notes/:id', requireAuth, (req, res) => {
+  try {
+    const n = db.notes.get(req.params.id)
+    if (!n) return res.status(404).json({ error: 'Nicht gefunden.' })
+    if (n.projectId) {
+      const proj = db.projects.get(n.projectId)
+      if (proj && !canAccessProject(proj, req.user)) return res.status(403).json({ error: 'Kein Zugriff.' })
+    }
+    res.json(n)
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.post('/api/notes', requireAuth, writeLimiter, (req, res) => {
+  try {
+    const data = req.body
+    if (!data?.id) return res.status(400).json({ error: 'Objekt mit "id"-Feld erwartet.' })
+    if (db.notes.get(data.id)) return res.status(409).json({ error: 'ID existiert bereits.' })
+    const result = db.notes.create(data, req.user)
+    broadcast('note', 'create', data.id, data.updatedAt)
+    res.status(201).json(result)
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.patch('/api/notes/:id', requireAuth, writeLimiter, (req, res) => {
+  try {
+    const { data, version } = req.body
+    if (!data || typeof version !== 'number') return res.status(400).json({ error: '"data" und "version" erwartet.' })
+    const existing = db.notes.get(req.params.id)
+    if (!existing) return res.status(404).json({ error: 'Nicht gefunden.' })
+    if (existing.projectId) {
+      const proj = db.projects.get(existing.projectId)
+      if (proj && !canAccessProject(proj, req.user)) return res.status(403).json({ error: 'Kein Zugriff.' })
+    }
+    const result = db.notes.update(req.params.id, data, version, req.user)
+    if (result.notFound) return res.status(404).json({ error: 'Nicht gefunden.' })
+    if (result.conflict) return res.status(409).json({ error: 'Konflikt.', serverVersion: result.serverVersion, serverData: result.serverData })
+    broadcast('note', 'update', req.params.id, data.updatedAt)
+    res.json(result)
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.delete('/api/notes/:id', requireAuth, writeLimiter, (req, res) => {
+  try {
+    if (!db.notes.delete(req.params.id)) return res.status(404).json({ error: 'Nicht gefunden.' })
+    broadcast('note', 'delete', req.params.id, new Date().toISOString())
+    res.json({ ok: true })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.post('/api/notes/:id/send-email', requireAuth, async (req, res) => {
+  try {
+    const note = db.notes.get(req.params.id)
+    if (!note) return res.status(404).json({ error: 'Notiz nicht gefunden.' })
+    const { to, subject } = req.body
+    if (!to) return res.status(400).json({ error: '"to" erwartet.' })
+    if (!mailer.mailerStatus().configured) return res.status(400).json({ error: 'E-Mail-Versand nicht konfiguriert.' })
+
+    const from    = process.env.SMTP_FROM || process.env.GRAPH_SENDER || process.env.SMTP_USER || 'noreply@komplizen'
+    const sender  = req.user !== '__apikey__' && req.user !== '__anonymous__' ? db.users.get(req.user) : null
+    const replyTo = sender?.email || null
+    const fromAddress = sender?.display_name ? `"${sender.display_name} (Komplizen Protokolle)" <${from}>` : from
+
+    const NOTE_TYPE_LABELS = { aktennotiz: 'Aktennotiz', telefonnotiz: 'Telefonnotiz', besprochen: 'Besprechungsnotiz' }
+    const typeLabel = NOTE_TYPE_LABELS[note.type] || 'Notiz'
+    const dateStr   = note.date ? new Date(note.date + 'T12:00:00').toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }) : ''
+    const mailSubject = subject || `${typeLabel} – ${note.subject || 'Ohne Betreff'}`
+
+    const html = `<!DOCTYPE html>
+<html lang="de"><head><meta charset="utf-8"></head>
+<body style="margin:0;padding:0;background:#F0F0F0;font-family:Arial,sans-serif;font-size:14px;color:#1F2937;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#F0F0F0;padding:32px 16px;">
+    <tr><td align="center">
+      <table width="620" cellpadding="0" cellspacing="0" style="background:#FFF;border:1px solid #E5E7EB;max-width:620px;width:100%;">
+        <tr><td style="background:#000040;padding:28px 36px;">
+          <p style="margin:0;color:#8FBEFF;font-size:11px;letter-spacing:2px;text-transform:uppercase;">Komplizen Protokolle</p>
+          <p style="margin:6px 0 0 0;color:#FBFFE6;font-size:20px;font-weight:bold;">${typeLabel}</p>
+          ${note.subject ? `<p style="margin:4px 0 0 0;color:#8FBEFF;font-size:14px;">${note.subject}</p>` : ''}
+          ${dateStr ? `<p style="margin:6px 0 0 0;color:#8FBEFF;font-size:12px;">Datum: ${dateStr}${note.time ? ', ' + note.time + ' Uhr' : ''}</p>` : ''}
+        </td></tr>
+        <tr><td style="padding:28px 36px;">
+          ${note.content || '<p style="color:#9CA3AF;">Kein Inhalt.</p>'}
+        </td></tr>
+        <tr><td style="padding:0 36px 28px 36px;color:#9CA3AF;font-size:11px;">
+          Gesendet über Komplizen Protokolle
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body></html>`
+
+    await mailer.sendMail({ from: fromAddress, to, replyTo, subject: mailSubject, html })
+    db.notes.update(req.params.id, { ...note, sentAt: new Date().toISOString(), updatedAt: new Date().toISOString() }, note._version || 1, req.user)
+    res.json({ ok: true })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
 // ── Backup ────────────────────────────────────────────────────────────────────
 const backupDir = path.join(process.env.DB_PATH || path.join(__dirname, '../data'), 'backups')
 if (!fs.existsSync(backupDir)) fs.mkdirSync(backupDir, { recursive: true })
