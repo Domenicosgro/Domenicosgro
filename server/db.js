@@ -220,12 +220,14 @@ function makeStore(tableName) {
 try { db.exec("ALTER TABLE users ADD COLUMN settings TEXT NOT NULL DEFAULT '{}'") } catch {}
 try { db.exec("ALTER TABLE users ADD COLUMN password_note TEXT NOT NULL DEFAULT ''") } catch {}
 try { db.exec("ALTER TABLE users ADD COLUMN email TEXT NOT NULL DEFAULT ''") } catch {}
+// source: 'local' (lokaler App-Account) | 'synology' (via Synology DSM Auth)
+try { db.exec("ALTER TABLE users ADD COLUMN source TEXT NOT NULL DEFAULT 'local'") } catch {}
 
 // ── Users ─────────────────────────────────────────────────────────────────────
 const _uHasAny      = db.prepare('SELECT 1 FROM users LIMIT 1')
-const _uGet         = db.prepare('SELECT username, display_name, password_hash, role, settings, password_note, email, created_at, last_login FROM users WHERE username = ?')
-const _uList        = db.prepare('SELECT username, display_name, role, password_note, email, created_at, last_login FROM users ORDER BY created_at ASC')
-const _uInsert      = db.prepare('INSERT INTO users (username, display_name, password_hash, role, password_note, email) VALUES (@username, @displayName, @hash, @role, @passwordNote, @email)')
+const _uGet         = db.prepare('SELECT username, display_name, password_hash, role, settings, password_note, email, source, created_at, last_login FROM users WHERE username = ?')
+const _uList        = db.prepare('SELECT username, display_name, role, password_note, email, source, created_at, last_login FROM users ORDER BY created_at ASC')
+const _uInsert      = db.prepare('INSERT INTO users (username, display_name, password_hash, role, password_note, email, source) VALUES (@username, @displayName, @hash, @role, @passwordNote, @email, @source)')
 const _uLastLogin   = db.prepare("UPDATE users SET last_login = datetime('now') WHERE username = ?")
 const _uPassword    = db.prepare('UPDATE users SET password_hash = @hash WHERE username = @username')
 const _uSettings    = db.prepare('UPDATE users SET settings = @settings WHERE username = @username')
@@ -233,13 +235,25 @@ const _uPwNote      = db.prepare('UPDATE users SET password_note = @note WHERE u
 const _uEmail       = db.prepare('UPDATE users SET email = @email WHERE username = @username')
 const _uDelete      = db.prepare('DELETE FROM users WHERE username = ?')
 const _sDeleteUser  = db.prepare('DELETE FROM sessions WHERE username = ?')
+// Upsert für Synology-Nutzer: legt an wenn nicht vorhanden, aktualisiert Rolle wenn geändert
+const _uUpsertSynology = db.prepare(`
+  INSERT INTO users (username, display_name, password_hash, role, source)
+  VALUES (@username, @displayName, '', @role, 'synology')
+  ON CONFLICT(username) DO UPDATE
+    SET display_name = excluded.display_name,
+        role         = excluded.role,
+        source       = 'synology'
+`)
 
 const users = {
   hasAny()                          { return !!_uHasAny.get() },
   get(username)                     { return _uGet.get(username) || null },
   list()                            { return _uList.all() },
   create(username, displayName, hash, role = 'user', passwordNote = '', email = '') {
-    _uInsert.run({ username, displayName, hash, role, passwordNote, email })
+    _uInsert.run({ username, displayName, hash, role, passwordNote, email, source: 'local' })
+  },
+  upsertSynology(username, displayName, role = 'user') {
+    _uUpsertSynology.run({ username, displayName, role })
   },
   updateLastLogin(username)         { _uLastLogin.run(username) },
   updatePassword(username, hash)    { _uPassword.run({ hash, username }) },

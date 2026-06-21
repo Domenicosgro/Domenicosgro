@@ -29,6 +29,7 @@ const db          = require('./db')
 const auth        = require('./auth')
 const attachments = require('./attachments')
 const mailer      = require('./mailer')
+const { synologyAuth } = require('./synologyAuth')
 
 const app      = express()
 const PORT     = parseInt(process.env.PORT  || '3000', 10)
@@ -213,8 +214,31 @@ app.post('/api/auth/login', loginLimiter, async (req, res) => {
   try {
     const { username, password } = req.body
     if (!username || !password) return res.status(400).json({ error: 'Benutzername und Passwort erforderlich.' })
+
+    // ── Synology-Authentifizierung (wenn SYNOLOGY_URL gesetzt) ────────────────
+    if (process.env.SYNOLOGY_URL) {
+      try {
+        const syno = await synologyAuth(username, password)
+        if (syno) {
+          db.users.upsertSynology(username, username, syno.isAdmin ? 'admin' : 'user')
+          const token     = auth.generateToken()
+          const expiresAt = new Date(Date.now() + auth.SESSION_HOURS * 60 * 60 * 1000).toISOString()
+          db.sessions.create(token, username, expiresAt)
+          db.users.updateLastLogin(username)
+          logEvent('LOGIN_SYNOLOGY', req, `user=${username} admin=${syno.isAdmin}`)
+          const user = db.users.get(username)
+          return res.json({ token, expiresAt, user: { username, displayName: user.display_name, role: user.role } })
+        }
+        // syno === null → falsches Passwort oder unbekannter Synology-Nutzer → weiter zu lokalem Fallback
+      } catch (synoErr) {
+        // NAS nicht erreichbar → lokale Konten als Fallback nutzen
+        logEvent('SYNOLOGY_UNREACHABLE', req, `err=${synoErr.message}`)
+      }
+    }
+
+    // ── Lokale Authentifizierung (externe Nutzer / Synology-Ausfall) ──────────
     const user = db.users.get(username)
-    if (!user || !(await auth.verifyPassword(password, user.password_hash))) {
+    if (!user || !user.password_hash || !(await auth.verifyPassword(password, user.password_hash))) {
       logEvent('AUTH_FAIL', req, `user=${username}`)
       return res.status(401).json({ error: 'Ungültige Anmeldedaten.' })
     }
@@ -235,11 +259,11 @@ app.post('/api/auth/logout', requireAuth, (req, res) => {
 })
 
 app.get('/api/auth/me', requireAuth, (req, res) => {
-  if (req.user === '__apikey__')    return res.json({ username: 'apikey',   displayName: 'API Key', role: 'admin' })
-  if (req.user === '__anonymous__') return res.json({ username: '',          displayName: '',        role: 'admin', devMode: true })
+  if (req.user === '__apikey__')    return res.json({ username: 'apikey',   displayName: 'API Key', role: 'admin', source: 'local' })
+  if (req.user === '__anonymous__') return res.json({ username: '',          displayName: '',        role: 'admin', devMode: true, source: 'local' })
   const user = db.users.get(req.user)
   if (!user) return res.status(404).json({ error: 'Benutzer nicht gefunden.' })
-  res.json({ username: user.username, displayName: user.display_name, role: user.role })
+  res.json({ username: user.username, displayName: user.display_name, role: user.role, source: user.source || 'local' })
 })
 
 app.get('/api/auth/users', requireAuth, requireAdmin, (_req, res) => {

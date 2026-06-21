@@ -298,6 +298,9 @@ function UsersTab({ serverUser }) {
                   <div className="text-xs text-gray-500">{u.username}</div>
                 </div>
                 <div className="flex items-center gap-2">
+                  {u.source === 'synology' && (
+                    <span className="badge badge-blue text-xs" title="Synology-Benutzer – Passwort wird über DSM verwaltet">Synology</span>
+                  )}
                   <span className={`badge ${u.role === 'admin' ? 'badge-blue' : 'badge-gray'}`}>{u.role}</span>
                   {u.username !== serverUser?.username && (
                     confirmDel === u.username ? (
@@ -324,46 +327,51 @@ function UsersTab({ serverUser }) {
                 </div>
               </div>
 
-              {/* Stored password note */}
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-gray-400 w-20 shrink-0">Notiz PW:</span>
-                {editingPw === u.username ? (
-                  <>
-                    <input className="input text-xs flex-1 font-mono" value={pwDraft}
-                      onChange={e => setPwDraft(e.target.value)} autoFocus
-                      onKeyDown={e => { if (e.key === 'Enter') savePwNote(u.username); if (e.key === 'Escape') setEditingPw(null) }} />
-                    <button className="btn-ghost p-1 text-green-600" onClick={() => savePwNote(u.username)}><Check size={13} /></button>
-                    <button className="btn-ghost p-1 text-gray-400" onClick={() => setEditingPw(null)}><X size={13} /></button>
-                  </>
-                ) : (
-                  <>
-                    <span className="text-xs font-mono text-gray-700 flex-1">
-                      {u.password_note ? (showPw[u.username] ? u.password_note : '••••••••') : <span className="text-gray-300 italic">–</span>}
-                    </span>
-                    {u.password_note && (
-                      <button className="btn-ghost p-1 text-gray-400" onClick={() => setShowPw(p => ({ ...p, [u.username]: !p[u.username] }))}>
-                        {showPw[u.username] ? <EyeOff size={13} /> : <Eye size={13} />}
-                      </button>
+              {/* Stored password note + login PW reset (nur für lokale Nutzer) */}
+              {u.source !== 'synology' ? (
+                <>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-gray-400 w-20 shrink-0">Notiz PW:</span>
+                    {editingPw === u.username ? (
+                      <>
+                        <input className="input text-xs flex-1 font-mono" value={pwDraft}
+                          onChange={e => setPwDraft(e.target.value)} autoFocus
+                          onKeyDown={e => { if (e.key === 'Enter') savePwNote(u.username); if (e.key === 'Escape') setEditingPw(null) }} />
+                        <button className="btn-ghost p-1 text-green-600" onClick={() => savePwNote(u.username)}><Check size={13} /></button>
+                        <button className="btn-ghost p-1 text-gray-400" onClick={() => setEditingPw(null)}><X size={13} /></button>
+                      </>
+                    ) : (
+                      <>
+                        <span className="text-xs font-mono text-gray-700 flex-1">
+                          {u.password_note ? (showPw[u.username] ? u.password_note : '••••••••') : <span className="text-gray-300 italic">–</span>}
+                        </span>
+                        {u.password_note && (
+                          <button className="btn-ghost p-1 text-gray-400" onClick={() => setShowPw(p => ({ ...p, [u.username]: !p[u.username] }))}>
+                            {showPw[u.username] ? <EyeOff size={13} /> : <Eye size={13} />}
+                          </button>
+                        )}
+                        <button className="btn-ghost p-1 text-gray-400 hover:text-brand-600" title="Notiz bearbeiten" onClick={() => startEditPw(u)}>
+                          <Pencil size={13} />
+                        </button>
+                      </>
                     )}
-                    <button className="btn-ghost p-1 text-gray-400 hover:text-brand-600" title="Notiz bearbeiten" onClick={() => startEditPw(u)}>
-                      <Pencil size={13} />
-                    </button>
-                  </>
-                )}
-              </div>
+                  </div>
 
-              {/* Direct login-password reset */}
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-gray-400 w-20 shrink-0">Login PW:</span>
-                <input className="input text-xs flex-1 font-mono" placeholder="Neues Passwort setzen (min. 8)"
-                  value={resetPw[u.username] || ''}
-                  onChange={e => setResetPw(p => ({ ...p, [u.username]: e.target.value }))} />
-                <button className="btn btn-secondary text-xs py-0.5"
-                  disabled={!resetPw[u.username] || resetPw[u.username].length < 8 || resettingLogin === u.username}
-                  onClick={() => handleResetLoginPw(u.username)}>
-                  {resettingLogin === u.username ? <Loader size={11} className="animate-spin" /> : <Check size={13} />}
-                </button>
-              </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-gray-400 w-20 shrink-0">Login PW:</span>
+                    <input className="input text-xs flex-1 font-mono" placeholder="Neues Passwort setzen (min. 8)"
+                      value={resetPw[u.username] || ''}
+                      onChange={e => setResetPw(p => ({ ...p, [u.username]: e.target.value }))} />
+                    <button className="btn btn-secondary text-xs py-0.5"
+                      disabled={!resetPw[u.username] || resetPw[u.username].length < 8 || resettingLogin === u.username}
+                      onClick={() => handleResetLoginPw(u.username)}>
+                      {resettingLogin === u.username ? <Loader size={11} className="animate-spin" /> : <Check size={13} />}
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <p className="text-xs text-gray-400 italic">Passwort wird über Synology DSM verwaltet.</p>
+              )}
 
               {/* E-Mail + Einladung */}
               <div className="flex items-center gap-2">
@@ -556,6 +564,20 @@ function PasswordTab({ serverUser }) {
 
   const set = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }))
   const inputType = showPw ? 'text' : 'password'
+
+  if (serverUser?.source === 'synology') {
+    return (
+      <div className="space-y-3 text-sm text-gray-600">
+        <p>
+          Du bist als <strong>{serverUser?.displayName || serverUser?.username}</strong> über <strong>Synology DSM</strong> angemeldet.
+        </p>
+        <p className="text-gray-500">
+          Das Passwort wird in der Synology-Benutzerverwaltung verwaltet und kann hier nicht geändert werden.
+          Bitte wende dich an den NAS-Administrator oder ändere das Passwort direkt in der DSM-Oberfläche.
+        </p>
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-4">

@@ -14,6 +14,14 @@ services:
       PUBLIC_URL: "http://192.168.178.250:3000"
       DB_PATH: "/data"
       LOG_PATH: "/logs"
+      # ── Synology-Authentifizierung ──────────────────────────────────────────
+      # Wenn gesetzt: Synology-DSM-Benutzer können sich direkt anmelden.
+      # URL = HTTP-Adresse der NAS inkl. Port (Standard-DSM-Ports: 5000=HTTP, 5001=HTTPS)
+      # SYNOLOGY_ADMIN_GROUP: Synology-Gruppe, die App-Admin-Rechte erhält (Standard: administrators)
+      # SYNOLOGY_ADMIN_USERS: Kommaliste fester Admin-Benutzernamen (Fallback, falls Group-API nicht verfügbar)
+      SYNOLOGY_URL:        "http://192.168.178.250:5000"
+      # SYNOLOGY_ADMIN_GROUP: "administrators"
+      # SYNOLOGY_ADMIN_USERS: ""
       # ── E-Mail-Versand via Microsoft Graph (OAuth2) ──────────────────────────
       # Bevorzugter Weg: kein Passwort, keine MFA, kein Konflikt mit den
       # Microsoft-365-Sicherheitsstandards. Werte aus der in Entra registrierten
