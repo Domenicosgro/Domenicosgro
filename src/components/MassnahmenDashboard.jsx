@@ -213,6 +213,7 @@ function EmailModal({ groups, onClose }) {
 // ── Hauptkomponente ───────────────────────────────────────────────────────────
 export default function MassnahmenDashboard({ protocols, projects, projectId, projectContacts, onOpenProtocol, onBack }) {
   const isScoped = !!projectId
+  const scopedName = isScoped ? (projects.find(p => p.id === projectId)?.name || '') : ''
 
   const [filterProject,     setFilterProject]     = useState('')
   const [filterStatus,      setFilterStatus]      = useState('')
@@ -348,7 +349,7 @@ export default function MassnahmenDashboard({ protocols, projects, projectId, pr
           <div>
             <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2">
               <BarChart2 size={20} className="text-brand-600" />
-              Maßnahmen
+              {isScoped && scopedName ? `${scopedName} · Maßnahmen` : 'Maßnahmen'}
             </h1>
             <p className="text-xs text-gray-400">
               {isScoped ? 'Aufgaben und Maßnahmen aus diesem Projekt' : 'Alle Aufgaben projekt- und protokollübergreifend'}

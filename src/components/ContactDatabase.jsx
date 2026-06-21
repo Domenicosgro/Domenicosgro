@@ -1,10 +1,12 @@
 import React, { useState, useMemo } from 'react'
-import { ArrowLeft, Search, Users, Mail, Phone, Building2, Wrench } from 'lucide-react'
+import { ArrowLeft, Search, Users, Mail, Phone, Building2, Wrench, X } from 'lucide-react'
 
 export default function ContactDatabase({ projects, onBack }) {
   const [search, setSearch] = useState('')
   const [sortField, setSortField] = useState('name')
   const [sortDir,   setSortDir]   = useState('asc')
+  const [filterProject, setFilterProject] = useState('')
+  const [filterCompany, setFilterCompany] = useState('')
 
   // Flatten all contacts from all projects
   const allContacts = useMemo(() => {
@@ -18,25 +20,42 @@ export default function ContactDatabase({ projects, onBack }) {
     return list
   }, [projects])
 
+  // Filter-Optionen für Projekt und Firma
+  const projectOptions = useMemo(() => {
+    const m = new Map()
+    for (const c of allContacts) if (c._projectId) m.set(c._projectId, c._projectName)
+    return [...m.entries()].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name, 'de'))
+  }, [allContacts])
+
+  const companyOptions = useMemo(() => {
+    const s = new Set()
+    for (const c of allContacts) { const v = (c.company || '').trim(); if (v) s.add(v) }
+    return [...s].sort((a, b) => a.localeCompare(b, 'de'))
+  }, [allContacts])
+
   const q = search.trim().toLowerCase()
   const filtered = useMemo(() => {
-    const base = q
-      ? allContacts.filter(c =>
-          (c.name    || '').toLowerCase().includes(q) ||
-          (c.company || '').toLowerCase().includes(q) ||
-          (c.email   || '').toLowerCase().includes(q) ||
-          (c.gewerk  || '').toLowerCase().includes(q) ||
-          (c.role    || '').toLowerCase().includes(q) ||
-          (c._projectName || '').toLowerCase().includes(q)
-        )
-      : [...allContacts]
+    let base = allContacts
+    if (filterProject) base = base.filter(c => c._projectId === filterProject)
+    if (filterCompany) base = base.filter(c => (c.company || '').trim() === filterCompany)
+    if (q) base = base.filter(c =>
+      (c.name    || '').toLowerCase().includes(q) ||
+      (c.company || '').toLowerCase().includes(q) ||
+      (c.email   || '').toLowerCase().includes(q) ||
+      (c.gewerk  || '').toLowerCase().includes(q) ||
+      (c.role    || '').toLowerCase().includes(q) ||
+      (c._projectName || '').toLowerCase().includes(q)
+    )
 
-    return base.sort((a, b) => {
+    return [...base].sort((a, b) => {
       const av = (a[sortField] || a._projectName || '').toLowerCase()
       const bv = (b[sortField] || b._projectName || '').toLowerCase()
       return sortDir === 'asc' ? av.localeCompare(bv) : bv.localeCompare(av)
     })
-  }, [allContacts, q, sortField, sortDir])
+  }, [allContacts, q, filterProject, filterCompany, sortField, sortDir])
+
+  const hasFilters = filterProject || filterCompany || search.trim()
+  const clearFilters = () => { setFilterProject(''); setFilterCompany(''); setSearch('') }
 
   const handleSort = (field) => {
     if (sortField === field) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
@@ -76,15 +95,33 @@ export default function ContactDatabase({ projects, onBack }) {
         </div>
       </div>
 
-      {/* Search */}
-      <div className="relative">
-        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-        <input
-          className="input pl-9"
-          placeholder="Kontakte durchsuchen (Name, Firma, E-Mail, Gewerk, Projekt…)"
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-        />
+      {/* Suche + Filter */}
+      <div className="flex flex-col sm:flex-row gap-2 sm:items-center flex-wrap">
+        <div className="relative flex-1 min-w-[200px]">
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+          <input
+            className="input pl-9"
+            placeholder="Kontakte durchsuchen (Name, Firma, E-Mail, Gewerk, Projekt…)"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+          />
+        </div>
+        <select className="select text-sm" style={{ maxWidth: '220px' }}
+          value={filterProject} onChange={e => setFilterProject(e.target.value)}>
+          <option value="">Alle Projekte</option>
+          {projectOptions.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+        </select>
+        <select className="select text-sm" style={{ maxWidth: '220px' }}
+          value={filterCompany} onChange={e => setFilterCompany(e.target.value)}>
+          <option value="">Alle Firmen</option>
+          {companyOptions.map(c => <option key={c} value={c}>{c}</option>)}
+        </select>
+        {hasFilters && (
+          <button className="btn-ghost text-xs text-gray-400 hover:text-gray-600 flex items-center gap-1"
+            onClick={clearFilters}>
+            <X size={12} /> Zurücksetzen
+          </button>
+        )}
       </div>
 
       {/* Table */}
@@ -96,7 +133,9 @@ export default function ContactDatabase({ projects, onBack }) {
         </div>
       ) : filtered.length === 0 ? (
         <div className="card p-10 text-center">
-          <p className="text-gray-400">Keine Kontakte gefunden für „{search}"</p>
+          <p className="text-gray-400">
+            {search.trim() ? `Keine Kontakte gefunden für „${search}"` : 'Keine Kontakte entsprechen den gewählten Filtern.'}
+          </p>
         </div>
       ) : (
         <div className="card overflow-x-auto">

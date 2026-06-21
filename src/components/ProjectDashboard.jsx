@@ -5,34 +5,24 @@ function DashboardTile({ icon, title, subtitle, accent, onClick, stat1, stat2 })
   return (
     <button
       onClick={onClick}
-      className={`card w-full text-left flex items-stretch gap-0 hover:shadow-sm hover:border-brand-300 transition-all group ${accent ? 'border-l-4 ' + accent : ''}`}
+      title={subtitle}
+      className={`card w-full text-left flex items-center gap-3 p-3 hover:border-brand-300 hover:bg-gray-50 transition-colors group ${accent ? 'border-l-4 ' + accent : ''}`}
     >
-      <div className="flex-1 p-5">
-        <div className="flex items-center gap-2 mb-3">
-          <span className="text-brand-600 group-hover:text-brand-700 transition-colors">{icon}</span>
-          <h3 className="font-semibold text-gray-900 group-hover:text-brand-700 transition-colors">{title}</h3>
-        </div>
-        {subtitle && <p className="text-xs text-gray-500 mb-3">{subtitle}</p>}
+      <span className="text-brand-600 group-hover:text-brand-700 transition-colors flex-shrink-0">{icon}</span>
+      <div className="flex-1 min-w-0">
+        <h3 className="font-semibold text-sm text-gray-900 group-hover:text-brand-700 transition-colors truncate">{title}</h3>
         {(stat1 !== undefined || stat2 !== undefined) && (
-          <div className="flex gap-4 mt-auto">
+          <div className="flex gap-3 mt-0.5 text-xs text-gray-500">
             {stat1 !== undefined && (
-              <div>
-                <div className="text-xl font-bold text-night">{stat1.value}</div>
-                <div className="text-xs text-gray-400">{stat1.label}</div>
-              </div>
+              <span><span className="font-bold text-night">{stat1.value}</span> {stat1.label}</span>
             )}
             {stat2 !== undefined && (
-              <div>
-                <div className="text-xl font-bold text-night">{stat2.value}</div>
-                <div className="text-xs text-gray-400">{stat2.label}</div>
-              </div>
+              <span><span className="font-bold text-night">{stat2.value}</span> {stat2.label}</span>
             )}
           </div>
         )}
       </div>
-      <div className="flex items-center px-3 text-gray-300 group-hover:text-brand-400 transition-colors">
-        <ChevronRight size={18} />
-      </div>
+      <ChevronRight size={16} className="text-gray-300 group-hover:text-brand-400 transition-colors flex-shrink-0" />
     </button>
   )
 }
@@ -63,7 +53,7 @@ export default function ProjectDashboard({
             <ArrowLeft size={16} /> Projekte
           </button>
           <div>
-            <h1 className="text-2xl font-bold text-night">{project.name || 'Unbenanntes Projekt'}</h1>
+            <h1 className="text-2xl font-bold text-night">{(project.name || 'Unbenanntes Projekt')} · Dashboard</h1>
             <p className="text-sm text-gray-500 mt-0.5">
               {protos.length} Protokoll{protos.length !== 1 ? 'e' : ''}
               {projectNotes.length > 0 && ` · ${projectNotes.length} Notiz${projectNotes.length !== 1 ? 'en' : ''}`}
@@ -73,8 +63,8 @@ export default function ProjectDashboard({
         </div>
       </div>
 
-      {/* 5 Kacheln (2 Spalten auf sm, 5 Spalten auf xl) */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-4">
+      {/* 5 Kacheln – kompakt, rechteckig (2 Spalten auf sm, 3 auf lg, 5 auf xl) */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3">
 
         {/* Planungsphase */}
         <DashboardTile
