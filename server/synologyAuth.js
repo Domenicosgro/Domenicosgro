@@ -81,8 +81,10 @@ async function synologyAuth(username, password) {
   return { isAdmin, displayName: username }
 }
 
-// Listet alle lokalen Synology-Benutzer auf (erfordert Admin-Zugangsdaten).
-// Gibt Array von { username, displayName, email } zurück, oder null bei falschen Zugangsdaten.
+// Listet Synology-Benutzer auf (erfordert Admin-Zugangsdaten).
+// Kombiniert lokale Benutzer (mit E-Mail/Name) und Gruppenmitglieder
+// (umfasst i.d.R. auch Domänen-/LDAP-Benutzer).
+// Gibt Array von { username, displayName, email, source } zurück, oder null bei falschen Zugangsdaten.
 // Wirft bei Netzwerkfehlern.
 async function listSynologyUsers(adminUsername, adminPassword) {
   const baseUrl = (process.env.SYNOLOGY_URL || '').replace(/\/$/, '')
@@ -97,26 +99,70 @@ async function listSynologyUsers(adminUsername, adminPassword) {
   if (!loginData.success) return null
 
   const sid = loginData.data?.sid
-  let users = []
+  const byName = new Map()   // username → { username, displayName, email, source }
 
+  // ── 1) Lokale Benutzer (mit E-Mail + Anzeigename) ──────────────────────────
   try {
     const userParams = new URLSearchParams({
       api:        'SYNO.Core.User',
       version:    '1',
       method:     'list',
       additional: '["email","fullname"]',
-      limit:      '500',
+      limit:      '1000',
       _sid:       sid,
     })
     const userData = await fetchSyno(`${baseUrl}/webapi/entry.cgi?${userParams}`)
     if (userData.success && Array.isArray(userData.data?.users)) {
-      users = userData.data.users.map(u => ({
-        username:    u.name,
-        displayName: u.fullname || u.name,
-        email:       u.email || '',
-      }))
+      for (const u of userData.data.users) {
+        byName.set(u.name, {
+          username:    u.name,
+          displayName: u.fullname || u.name,
+          email:       u.email || '',
+          source:      'local',
+        })
+      }
     }
-  } catch { /* User-Listen-API nicht verfügbar */ }
+  } catch { /* lokale User-API nicht verfügbar */ }
+
+  // ── 2) Gruppenmitglieder (umfasst auch Domänen-/LDAP-Benutzer) ─────────────
+  // Mehrere übliche Gruppen abfragen; member_list liefert auch nicht-lokale Nutzer.
+  const groupsToScan = (process.env.SYNOLOGY_USER_GROUPS || 'users,Domain Users')
+    .split(',').map(s => s.trim()).filter(Boolean)
+
+  for (const groupName of groupsToScan) {
+    try {
+      const groupParams = new URLSearchParams({
+        api:     'SYNO.Core.Group',
+        version: '1',
+        method:  'member_list',
+        name:    groupName,
+        limit:   '1000',
+        _sid:    sid,
+      })
+      const groupData = await fetchSyno(`${baseUrl}/webapi/entry.cgi?${groupParams}`)
+      if (groupData.success && Array.isArray(groupData.data?.users)) {
+        for (const m of groupData.data.users) {
+          // member_list-Einträge sind je nach DSM { name } oder String
+          const name = typeof m === 'string' ? m : m.name
+          if (!name) continue
+          if (!byName.has(name)) {
+            byName.set(name, {
+              username:    name,
+              displayName: (typeof m === 'object' && (m.fullname || m.description)) || name,
+              email:       (typeof m === 'object' && m.email) || '',
+              source:      groupName.toLowerCase().includes('domain') ? 'domain' : 'group',
+            })
+          }
+        }
+      } else if (groupData.success && Array.isArray(groupData.data?.members)) {
+        for (const name of groupData.data.members) {
+          if (name && !byName.has(name)) {
+            byName.set(name, { username: name, displayName: name, email: '', source: 'group' })
+          }
+        }
+      }
+    } catch { /* Gruppe existiert nicht / API nicht verfügbar */ }
+  }
 
   try {
     const logoutParams = new URLSearchParams({
@@ -126,7 +172,11 @@ async function listSynologyUsers(adminUsername, adminPassword) {
     await fetchSyno(`${baseUrl}/webapi/auth.cgi?${logoutParams}`, 3000)
   } catch {}
 
-  return users
+  // System-/Dienstkonten herausfiltern
+  const SYSTEM = new Set(['guest', 'admin'])
+  return [...byName.values()]
+    .filter(u => !SYSTEM.has(u.username.toLowerCase()))
+    .sort((a, b) => a.displayName.localeCompare(b.displayName))
 }
 
 module.exports = { synologyAuth, listSynologyUsers }

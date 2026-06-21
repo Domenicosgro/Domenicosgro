@@ -610,6 +610,7 @@ app.post('/api/admin/synology-list', requireAuth, requireAdmin, async (req, res)
       username:    u.username,
       displayName: u.displayName,
       email:       u.email || existing[u.username]?.email || '',
+      synoSource:  u.source || 'local',
       inSystem:    !!existing[u.username],
     }))
 

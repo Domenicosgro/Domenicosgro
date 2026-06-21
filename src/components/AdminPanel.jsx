@@ -1166,7 +1166,7 @@ function RolloutTab() {
             </div>
           </div>
 
-          <div className="border border-gray-200 divide-y divide-gray-100 max-h-80 overflow-y-auto">
+          <div className="border border-gray-200 divide-y divide-gray-100 max-h-[45vh] overflow-y-auto">
             {synoUsers.map(u => {
               const isSel = selected.has(u.username)
               return (
@@ -1185,6 +1185,8 @@ function RolloutTab() {
                     <div className="flex items-center gap-1.5 flex-wrap">
                       <span className="text-sm font-medium text-gray-900 truncate">{u.displayName}</span>
                       <span className="text-xs text-gray-400">{u.username}</span>
+                      {u.synoSource === 'domain' && <span className="badge badge-blue text-xs">Domäne</span>}
+                      {u.synoSource === 'group'  && <span className="badge badge-gray text-xs">Gruppe</span>}
                       {u.inSystem && (
                         <span className="badge badge-green text-xs flex items-center gap-0.5">
                           <UserCheck size={9} /> Im System
@@ -1262,7 +1264,7 @@ export default function AdminPanel({ serverUser, onClose }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="bg-white w-full max-w-3xl max-h-[90vh] flex flex-col border border-gray-200">
+      <div className="bg-white w-full max-w-5xl h-[90vh] flex flex-col border border-gray-200">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200">
           <h2 className="font-semibold text-gray-900">Server-Einstellungen</h2>
