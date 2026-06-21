@@ -275,7 +275,7 @@ const _sGet          = db.prepare("SELECT token, username, expires_at FROM sessi
 const _sInsert       = db.prepare('INSERT INTO sessions (token, username, expires_at) VALUES (@token, @username, @expiresAt)')
 const _sDelete       = db.prepare('DELETE FROM sessions WHERE token = ?')
 const _sExpire       = db.prepare("DELETE FROM sessions WHERE expires_at <= datetime('now')")
-const _sDeleteUser   = db.prepare('DELETE FROM sessions WHERE username = ?')
+// _sDeleteUser already declared above in the users section
 const _sListActive   = db.prepare(`
   SELECT s.token, s.username, s.created_at, s.expires_at,
          u.display_name, u.role, u.source
