@@ -1033,7 +1033,8 @@ function RolloutTab() {
     fetch('/api/admin/smtp-status',    { headers: apiHeaders() })
       .then(r => r.json()).then(d => setSmtpOk(d.configured)).catch(() => setSmtpOk(false))
     fetch('/api/admin/synology-status', { headers: apiHeaders() })
-      .then(r => r.json()).then(setSynoConfig).catch(() => setSynoConfig({ configured: false }))
+      .then(async r => { if (r.ok) setSynoConfig(await r.json()) })
+      .catch(() => {})
   }, [])
 
   async function handleLoad(e) {
