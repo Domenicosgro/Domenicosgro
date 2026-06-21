@@ -1,6 +1,6 @@
 import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react'
 import { flushSync } from 'react-dom'
-import { ArrowLeft, Printer, Download, Send, RefreshCw, AlertCircle, Lock, Unlock, FileText, RotateCcw, Layers, Loader } from 'lucide-react'
+import { ArrowLeft, Printer, Download, Send, RefreshCw, AlertCircle, Lock, Unlock, FileText, RotateCcw, Layers, Loader, Eye, EyeOff, Users } from 'lucide-react'
 import MeetingHeader    from './MeetingHeader'
 import ParticipantsList from './ParticipantsList'
 import AgendaDraft      from './AgendaDraft'
@@ -81,6 +81,14 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
       return true
     })
   }, [projects])
+
+  const [showParticipants, setShowParticipants] = useState(() => {
+    try { return localStorage.getItem('kp_show_participants') !== 'false' } catch { return true }
+  })
+  const toggleParticipants = () => setShowParticipants(v => {
+    try { localStorage.setItem('kp_show_participants', String(!v)) } catch {}
+    return !v
+  })
 
   const [showEmailModal,       setShowEmailModal]       = useState(false)
   const [confirmClose,         setConfirmClose]         = useState(false)
@@ -672,13 +680,23 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
 
         {/* Participants — screen only; print version is on the cover page */}
         <div className="py-6 print:hidden">
-          <ParticipantsList
-            participants={protocol.participants ?? []}
-            onChange={participants => change({ participants })}
-            readOnly={isClosed}
-            projectContacts={projectContacts ?? []}
-            allContacts={allContacts}
-          />
+          <div className="flex items-center justify-between mb-3 no-print">
+            <span className="flex items-center gap-1.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+              <Users size={13} /> Teilnehmer ({(protocol.participants ?? []).length})
+            </span>
+            <button className="btn-ghost text-xs text-gray-400 hover:text-gray-600 flex items-center gap-1" onClick={toggleParticipants}>
+              {showParticipants ? <><EyeOff size={13} /> Ausblenden</> : <><Eye size={13} /> Einblenden</>}
+            </button>
+          </div>
+          {showParticipants && (
+            <ParticipantsList
+              participants={protocol.participants ?? []}
+              onChange={participants => change({ participants })}
+              readOnly={isClosed}
+              projectContacts={projectContacts ?? []}
+              allContacts={allContacts}
+            />
+          )}
         </div>
 
         {/* Agenda draft + controls – screen only; print version is above as hidden print:block */}

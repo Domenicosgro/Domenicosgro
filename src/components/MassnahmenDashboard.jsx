@@ -328,6 +328,17 @@ export default function MassnahmenDashboard({ protocols, projects, projectId, pr
           }
           if (foundEmail) break
         }
+        // Fallback: search protocol participants for a matching name
+        if (!foundEmail) {
+          outer: for (const proto of scopedProtocols) {
+            for (const p of (proto.participants ?? [])) {
+              if ((p.name || '').toLowerCase().trim() === needle && p.email) {
+                foundEmail = p.email
+                break outer
+              }
+            }
+          }
+        }
         map.set(key, { responsible, projectId: itemProjectId, projectName, email: foundEmail, items: [] })
       }
       map.get(key).items.push(item)

@@ -789,6 +789,80 @@ app.post('/api/actions/send-email', requireAuth, async (req, res) => {
       ...(replyTo ? { replyTo } : {}),
     })
     logEvent('ACTIONS_EMAIL_SENT', req, `to=${to} responsible=${responsible} project=${projStr} count=${items.length} sender=${senderName || req.user}`)
+
+    // Bestätigungs-E-Mail an Projektadministratoren
+    if (projectId) {
+      try {
+        const proj = db.projects.get(projectId)
+        if (proj) {
+          const adminUsernames = [...new Set([
+            proj.projectAdminUser,
+            ...(Array.isArray(proj.projectAdmins) ? proj.projectAdmins : []),
+          ].filter(Boolean))]
+          const adminEmails = adminUsernames.map(u => db.users.get(u)?.email).filter(Boolean)
+          if (adminEmails.length > 0) {
+            const confirmSubject = `Aufgaben-E-Mail versendet – ${projStr}`
+            const sentByLine = senderName ? `Versendet von <strong>${senderName}</strong>` : 'Automatischer Versand'
+            const confirmHtml = `<!DOCTYPE html>
+<html lang="de"><head><meta charset="utf-8"></head>
+<body style="margin:0;padding:0;background:#F0F0F0;font-family:Arial,sans-serif;font-size:14px;color:#1F2937;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#F0F0F0;padding:32px 16px;">
+    <tr><td align="center">
+      <table width="580" cellpadding="0" cellspacing="0" style="background:#FFF;border:1px solid #E5E7EB;max-width:580px;width:100%;">
+        <tr><td style="background:#000040;padding:24px 32px;">
+          <p style="margin:0;color:#8FBEFF;font-size:11px;letter-spacing:2px;text-transform:uppercase;">GHBA</p>
+          <p style="margin:6px 0 0 0;color:#FBFFE6;font-size:18px;font-weight:bold;">Aufgaben-E-Mail versendet</p>
+          <p style="margin:4px 0 0 0;color:#8FBEFF;font-size:13px;">${projStr}</p>
+        </td></tr>
+        <tr><td style="padding:24px 32px;">
+          <p style="margin:0 0 12px 0;color:#4B5563;">${sentByLine} am ${today}.</p>
+          <table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #E5E7EB;">
+            <tr style="background:#F9FAFB;">
+              <td style="padding:8px 12px;font-size:12px;font-weight:600;color:#6B7280;text-transform:uppercase;letter-spacing:.05em;width:40%;">Empfänger</td>
+              <td style="padding:8px 12px;font-size:13px;color:#000040;font-weight:600;">${responsible}</td>
+            </tr>
+            <tr>
+              <td style="padding:8px 12px;font-size:12px;font-weight:600;color:#6B7280;text-transform:uppercase;letter-spacing:.05em;border-top:1px solid #E5E7EB;">E-Mail-Adresse</td>
+              <td style="padding:8px 12px;font-size:13px;color:#374151;border-top:1px solid #E5E7EB;">${to}</td>
+            </tr>
+            <tr style="background:#F9FAFB;">
+              <td style="padding:8px 12px;font-size:12px;font-weight:600;color:#6B7280;text-transform:uppercase;letter-spacing:.05em;border-top:1px solid #E5E7EB;">Anzahl Aufgaben</td>
+              <td style="padding:8px 12px;font-size:13px;color:#374151;border-top:1px solid #E5E7EB;">${items.length} Aufgabe${items.length !== 1 ? 'n' : ''}</td>
+            </tr>
+          </table>
+        </td></tr>
+        <tr><td style="padding:16px 32px;border-top:1px solid #E5E7EB;background:#F0F0F0;text-align:center;">
+          <p style="margin:0;color:#9CA3AF;font-size:11px;">GHBA · Automatische Bestätigung · ${today}</p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body></html>`
+            const confirmText = [
+              `Aufgaben-E-Mail versendet – ${projStr}`,
+              '',
+              `${sentByLine.replace(/<[^>]+>/g, '')} am ${today}.`,
+              '',
+              `Empfänger:    ${responsible}`,
+              `E-Mail:       ${to}`,
+              `Aufgaben:     ${items.length}`,
+              '',
+              'GHBA · Automatische Bestätigung',
+            ].join('\n')
+            for (const adminEmail of adminEmails) {
+              mailer.sendMail({
+                from: fromAddress,
+                to: adminEmail,
+                subject: confirmSubject,
+                html: confirmHtml,
+                text: confirmText,
+              }).catch(() => {})
+            }
+          }
+        }
+      } catch (_) {}
+    }
+
     res.json({ ok: true })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
