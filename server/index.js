@@ -1255,6 +1255,108 @@ app.get('/api/protocols/:id', requireAuth, (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
+// Protokoll als PDF-Anhang an die Teilnehmer versenden.
+// Das PDF wird im Browser erzeugt (Logo liegt nur dort) und als base64 übergeben.
+// Der E-Mail-Text beschreibt den Anhang, nennt den nächsten Termin und weist
+// darauf hin, dass die resultierenden Aufgaben separat versendet werden.
+app.post('/api/protocols/:id/send-email', requireAuth, async (req, res) => {
+  try {
+    const protocol = db.protocols.get(req.params.id)
+    if (!protocol) return res.status(404).json({ error: 'Protokoll nicht gefunden.' })
+    if (protocol.projectId) {
+      const proj = db.projects.get(protocol.projectId)
+      if (proj && !canAccessProject(proj, req.user))
+        return res.status(403).json({ error: 'Kein Zugriff auf dieses Protokoll.' })
+    }
+
+    const { to, subject, pdfBase64, pdfFilename } = req.body
+    if (!to) return res.status(400).json({ error: '"to" erwartet.' })
+    if (!mailer.mailerStatus().configured) return res.status(400).json({ error: 'E-Mail-Versand nicht konfiguriert.' })
+
+    const from        = process.env.SMTP_FROM || process.env.GRAPH_SENDER || process.env.SMTP_USER || 'noreply@komplizen'
+    const sender      = req.user !== '__apikey__' && req.user !== '__anonymous__' ? db.users.get(req.user) : null
+    const senderName  = sender?.display_name || null
+    const replyTo     = sender?.email || null
+    const fromAddress = senderName ? `"${senderName} (Komplizen Protokolle)" <${from}>` : from
+
+    const projStr     = protocol.projectName || 'Unbekanntes Projekt'
+    const meetingType = protocol.meetingType || 'Besprechung'
+    const today       = new Date().toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })
+    const fmtDate     = (d) => d ? new Date(d + 'T12:00:00').toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }) : ''
+    const protoDate   = fmtDate(protocol.date)
+    const mailSubject = subject || `Protokoll – ${projStr}${protoDate ? ' – ' + protoDate : ''}`
+
+    const nextStr = protocol.nextMeeting
+      ? `${fmtDate(protocol.nextMeeting)}${protocol.nextMeetingTime ? `, ${protocol.nextMeetingTime} Uhr` : ''}${protocol.location ? ` · ${protocol.location}` : ''}`
+      : null
+    const hasActions = Array.isArray(protocol.actionItems) && protocol.actionItems.length > 0
+
+    const nextMeetingHtml = nextStr
+      ? `<tr><td style="padding:0 36px 4px 36px;color:#000040;font-size:14px;"><strong>Nächste Besprechung:</strong> ${nextStr}</td></tr>`
+      : `<tr><td style="padding:0 36px 4px 36px;color:#6B7280;font-size:14px;">Ein Termin für die nächste Besprechung wird gesondert bekannt gegeben.</td></tr>`
+
+    const actionsHtml = hasActions
+      ? `<tr><td style="padding:8px 36px 0 36px;color:#4B5563;font-size:14px;">Die aus dem Protokoll resultierenden Aufgaben werden <strong>separat versendet</strong>.</td></tr>`
+      : ''
+
+    const html = `<!DOCTYPE html>
+<html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#F0F0F0;font-family:Arial,sans-serif;font-size:14px;color:#1F2937;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#F0F0F0;padding:32px 16px;">
+    <tr><td align="center">
+      <table width="620" cellpadding="0" cellspacing="0" style="background:#FFF;border:1px solid #E5E7EB;max-width:620px;width:100%;">
+        <tr><td style="background:#000040;padding:28px 36px;">
+          <p style="margin:0;color:#8FBEFF;font-size:11px;letter-spacing:2px;text-transform:uppercase;">Komplizen Protokolle</p>
+          <p style="margin:6px 0 0 0;color:#FBFFE6;font-size:20px;font-weight:bold;">${meetingType}</p>
+          <p style="margin:4px 0 0 0;color:#8FBEFF;font-size:14px;font-weight:600;">${projStr}</p>
+          ${protoDate ? `<p style="margin:6px 0 0 0;color:#8FBEFF;font-size:12px;">Datum der Besprechung: ${protoDate}</p>` : ''}
+        </td></tr>
+        <tr><td style="padding:28px 36px 8px 36px;">
+          <p style="margin:0;font-size:15px;color:#000040;">Guten Tag,</p>
+          <p style="margin:10px 0 0 0;color:#4B5563;">im Anhang finden Sie das <strong>Protokoll der Besprechung „${meetingType}"</strong> zum Projekt <strong>${projStr}</strong>${protoDate ? ` vom ${protoDate}` : ''} als PDF-Dokument. Es enthält die Teilnehmer, die behandelten Protokollpunkte sowie die festgehaltenen Maßnahmen.</p>
+        </td></tr>
+        ${nextMeetingHtml}
+        ${actionsHtml}
+        <tr><td style="padding:16px 36px 28px 36px;color:#4B5563;font-size:14px;">
+          Für Rückfragen stehen wir gerne zur Verfügung.
+        </td></tr>
+        <tr><td style="padding:20px 36px;border-top:1px solid #E5E7EB;background:#F0F0F0;text-align:center;">
+          <p style="margin:0;color:#9CA3AF;font-size:12px;">Komplizen Protokolle · ${senderName ? `Gesendet von ${senderName}` : 'Automatische Benachrichtigung'} · ${today}</p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body></html>`
+
+    const text = [
+      `${meetingType} – ${projStr}`,
+      protoDate ? `Datum der Besprechung: ${protoDate}` : '',
+      '',
+      'Guten Tag,',
+      '',
+      `im Anhang finden Sie das Protokoll der Besprechung „${meetingType}" zum Projekt ${projStr}${protoDate ? ` vom ${protoDate}` : ''} als PDF-Dokument.`,
+      'Es enthält die Teilnehmer, die behandelten Protokollpunkte sowie die festgehaltenen Maßnahmen.',
+      '',
+      nextStr ? `Nächste Besprechung: ${nextStr}` : 'Ein Termin für die nächste Besprechung wird gesondert bekannt gegeben.',
+      ...(hasActions ? ['', 'Die aus dem Protokoll resultierenden Aufgaben werden separat versendet.'] : []),
+      '', 'Komplizen Protokolle',
+    ].filter(l => l !== undefined).join('\n')
+
+    const attachments = []
+    if (pdfBase64) {
+      attachments.push({
+        filename:    pdfFilename || `Protokoll_${projStr}.pdf`,
+        content:     Buffer.from(pdfBase64, 'base64'),
+        contentType: 'application/pdf',
+      })
+    }
+
+    await mailer.sendMail({ from: fromAddress, to, replyTo, subject: mailSubject, html, text, attachments })
+    logEvent('PROTOCOL_EMAIL_SENT', req, `to=${to} project=${projStr} sender=${senderName || req.user}`)
+    res.json({ ok: true })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
 app.get('/api/projects', requireAuth, (req, res) => {
   try {
     res.json(db.projects.list().filter(p => canAccessProject(p, req.user)))

@@ -5,6 +5,7 @@ import MeetingHeader    from './MeetingHeader'
 import ParticipantsList from './ParticipantsList'
 import AgendaDraft      from './AgendaDraft'
 import AgendaEmailModal from './AgendaEmailModal'
+import ProtocolEmailModal from './ProtocolEmailModal'
 import ProtocolItems    from './ProtocolItems'
 import ActionItems      from './ActionItems'
 import NotesSection     from './NotesSection'
@@ -15,6 +16,7 @@ import GesamtprotokollModal from './GesamtprotokollModal'
 import TileSidebar from './TileSidebar'
 
 const isElectron = typeof window !== 'undefined' && !!window.electronAPI
+const isServer   = typeof window !== 'undefined' && !!window.__SERVER_MODE__
 
 // ── Carryover helpers ─────────────────────────────────────────────────────────
 function carryProtocolItems(predecessorItems) {
@@ -79,6 +81,7 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
   const [showEmailModal,       setShowEmailModal]       = useState(false)
   const [confirmClose,         setConfirmClose]         = useState(false)
   const [showGesamtprotokoll,  setShowGesamtprotokoll]  = useState(false)
+  const [showProtocolEmail,    setShowProtocolEmail]    = useState(false)
   const [printAttachmentData,  setPrintAttachmentData]  = useState({})  // attId → base64
   const [graphSendState,       setGraphSendState]       = useState(null)  // null | 'confirm' | 'sending' | { error } | 'done'
 
@@ -422,6 +425,12 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
                 <Send size={14} /> Per E-Mail
               </button>
             )
+          )}
+          {isServer && (
+            <button className="btn-secondary" onClick={() => setShowProtocolEmail(true)}
+              title="Protokoll als PDF-Anhang an die Teilnehmer senden">
+              <Send size={14} /> Per E-Mail
+            </button>
           )}
           <button className="btn-secondary" onClick={handlePrint}>
             <Printer size={16} /> Drucken / PDF
@@ -791,6 +800,15 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
           protocols={protocols ?? []}
           logoDataUrl={logoDataUrl}
           onClose={() => setShowGesamtprotokoll(false)}
+        />
+      )}
+
+      {showProtocolEmail && (
+        <ProtocolEmailModal
+          protocol={protocol}
+          protocolNo={protocolNo}
+          logoDataUrl={logoDataUrl}
+          onClose={() => setShowProtocolEmail(false)}
         />
       )}
     </div>
