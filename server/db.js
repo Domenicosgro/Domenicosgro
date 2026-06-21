@@ -235,15 +235,16 @@ const _uPwNote      = db.prepare('UPDATE users SET password_note = @note WHERE u
 const _uEmail       = db.prepare('UPDATE users SET email = @email WHERE username = @username')
 const _uDelete      = db.prepare('DELETE FROM users WHERE username = ?')
 const _sDeleteUser  = db.prepare('DELETE FROM sessions WHERE username = ?')
-// Upsert für Synology-Nutzer: legt an wenn nicht vorhanden, aktualisiert Rolle wenn geändert
+// Upsert für Synology-Nutzer: legt an wenn nicht vorhanden; Rolle nur beim ersten Anlegen gesetzt
+// (ON CONFLICT: Rolle bleibt erhalten, damit Admin-Zuweisungen manuell überschreibbar sind)
 const _uUpsertSynology = db.prepare(`
   INSERT INTO users (username, display_name, password_hash, role, source)
   VALUES (@username, @displayName, '', @role, 'synology')
   ON CONFLICT(username) DO UPDATE
     SET display_name = excluded.display_name,
-        role         = excluded.role,
         source       = 'synology'
 `)
+const _uSetRole = db.prepare('UPDATE users SET role = @role WHERE username = @username')
 
 const users = {
   hasAny()                          { return !!_uHasAny.get() },
@@ -255,6 +256,7 @@ const users = {
   upsertSynology(username, displayName, role = 'user') {
     _uUpsertSynology.run({ username, displayName, role })
   },
+  setRole(username, role) { _uSetRole.run({ role, username }) },
   updateLastLogin(username)         { _uLastLogin.run(username) },
   updatePassword(username, hash)    { _uPassword.run({ hash, username }) },
   updateSettings(username, settings){ _uSettings.run({ settings: JSON.stringify(settings), username }) },
@@ -269,15 +271,26 @@ const users = {
 }
 
 // ── Sessions ──────────────────────────────────────────────────────────────────
-const _sGet    = db.prepare("SELECT token, username, expires_at FROM sessions WHERE token = ? AND expires_at > datetime('now')")
-const _sInsert = db.prepare('INSERT INTO sessions (token, username, expires_at) VALUES (@token, @username, @expiresAt)')
-const _sDelete = db.prepare('DELETE FROM sessions WHERE token = ?')
-const _sExpire = db.prepare("DELETE FROM sessions WHERE expires_at <= datetime('now')")
+const _sGet          = db.prepare("SELECT token, username, expires_at FROM sessions WHERE token = ? AND expires_at > datetime('now')")
+const _sInsert       = db.prepare('INSERT INTO sessions (token, username, expires_at) VALUES (@token, @username, @expiresAt)')
+const _sDelete       = db.prepare('DELETE FROM sessions WHERE token = ?')
+const _sExpire       = db.prepare("DELETE FROM sessions WHERE expires_at <= datetime('now')")
+const _sDeleteUser   = db.prepare('DELETE FROM sessions WHERE username = ?')
+const _sListActive   = db.prepare(`
+  SELECT s.token, s.username, s.created_at, s.expires_at,
+         u.display_name, u.role, u.source
+  FROM sessions s
+  LEFT JOIN users u ON u.username = s.username
+  WHERE s.expires_at > datetime('now')
+  ORDER BY s.created_at DESC
+`)
 
 const sessions = {
   get(token)                         { return _sGet.get(token) || null },
   create(token, username, expiresAt) { _sInsert.run({ token, username, expiresAt }) },
   delete(token)                      { _sDelete.run(token) },
+  deleteByUser(username)             { _sDeleteUser.run(username) },
+  listActive()                       { return _sListActive.all() },
   deleteExpired()                    { return _sExpire.run().changes },
 }
 

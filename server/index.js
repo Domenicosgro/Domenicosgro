@@ -312,6 +312,36 @@ app.post('/api/auth/users/:username/password', requireAuth, async (req, res) => 
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
+// ── Role management ───────────────────────────────────────────────────────────
+app.put('/api/auth/users/:username/role', requireAuth, requireAdmin, (req, res) => {
+  try {
+    const { username } = req.params
+    const { role }     = req.body
+    if (!['user', 'admin'].includes(role)) return res.status(400).json({ error: 'Ungültige Rolle. Erlaubt: user, admin.' })
+    if (username === req.user && role !== 'admin') return res.status(400).json({ error: 'Eigene Admin-Rechte können nicht entzogen werden.' })
+    if (!db.users.get(username)) return res.status(404).json({ error: 'Benutzer nicht gefunden.' })
+    db.users.setRole(username, role)
+    logEvent('ROLE_CHANGED', req, `user=${username} role=${role}`)
+    res.json({ ok: true })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// ── Active sessions ───────────────────────────────────────────────────────────
+app.get('/api/admin/sessions', requireAuth, requireAdmin, (_req, res) => {
+  try { res.json(db.sessions.listActive()) }
+  catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.delete('/api/admin/sessions/:username', requireAuth, requireAdmin, (req, res) => {
+  try {
+    const { username } = req.params
+    if (username === req.user) return res.status(400).json({ error: 'Eigene Sitzung kann nicht beendet werden.' })
+    db.sessions.deleteByUser(username)
+    logEvent('SESSION_FORCE_LOGOUT', req, `user=${username}`)
+    res.json({ ok: true })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
 // ── Password reset requests ───────────────────────────────────────────────────
 app.post('/api/auth/reset-request', (req, res) => {
   try {

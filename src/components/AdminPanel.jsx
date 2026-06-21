@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react'
-import { X, UserPlus, Users, Key, Eye, EyeOff, Loader, Trash2, Printer, Download, Pencil, Check, KeyRound, HardDrive, Upload, Mail, Send, Settings2, Search, AlertTriangle } from 'lucide-react'
+import { X, UserPlus, Users, Key, Eye, EyeOff, Loader, Trash2, Printer, Download, Pencil, Check, KeyRound, HardDrive, Upload, Mail, Send, Settings2, Search, AlertTriangle, Shield, ShieldOff, LogOut, Activity } from 'lucide-react'
 import { formatDate } from '../utils'
 
 function apiHeaders() {
@@ -133,6 +133,7 @@ function UsersTab({ serverUser }) {
   const [contacts,       setContacts]       = useState([])
   const [contactSearch,  setContactSearch]  = useState('')
   const [smtpOk,         setSmtpOk]         = useState(null) // null=unknown, true, false
+  const [togglingRole,   setTogglingRole]   = useState(null) // username being toggled
 
   useEffect(() => { load() }, [])
 
@@ -226,6 +227,17 @@ function UsersTab({ serverUser }) {
     finally { setInviting(null) }
   }
 
+  async function handleToggleRole(u) {
+    const newRole = u.role === 'admin' ? 'user' : 'admin'
+    setTogglingRole(u.username)
+    try {
+      const res = await fetch(`/api/auth/users/${encodeURIComponent(u.username)}/role`, {
+        method: 'PUT', headers: apiHeaders(), body: JSON.stringify({ role: newRole }),
+      })
+      if (res.ok) setUsers(prev => prev.map(x => x.username === u.username ? { ...x, role: newRole } : x))
+    } finally { setTogglingRole(null) }
+  }
+
   async function loadContacts() {
     const res = await fetch('/api/admin/contacts', { headers: apiHeaders() })
     if (res.ok) setContacts(await res.json())
@@ -301,7 +313,23 @@ function UsersTab({ serverUser }) {
                   {u.source === 'synology' && (
                     <span className="badge badge-blue text-xs" title="Synology-Benutzer – Passwort wird über DSM verwaltet">Synology</span>
                   )}
-                  <span className={`badge ${u.role === 'admin' ? 'badge-blue' : 'badge-gray'}`}>{u.role}</span>
+                  {/* Rolle – klickbar zum Umschalten (nicht für eigenen Account) */}
+                  {u.username !== serverUser?.username ? (
+                    <button
+                      className={`badge text-xs flex items-center gap-1 cursor-pointer transition-opacity hover:opacity-70 ${u.role === 'admin' ? 'badge-blue' : 'badge-gray'}`}
+                      title={u.role === 'admin' ? 'Zum normalen Nutzer herabstufen' : 'Zum Administrator ernennen'}
+                      disabled={togglingRole === u.username}
+                      onClick={() => handleToggleRole(u)}
+                    >
+                      {togglingRole === u.username
+                        ? <Loader size={10} className="animate-spin" />
+                        : u.role === 'admin' ? <Shield size={10} /> : <ShieldOff size={10} />
+                      }
+                      {u.role}
+                    </button>
+                  ) : (
+                    <span className={`badge text-xs ${u.role === 'admin' ? 'badge-blue' : 'badge-gray'}`}>{u.role}</span>
+                  )}
                   {u.username !== serverUser?.username && (
                     confirmDel === u.username ? (
                       <div className="flex items-center gap-1">
@@ -893,6 +921,101 @@ function DeletionRequestsTab() {
   )
 }
 
+// ── Active sessions tab ───────────────────────────────────────────────────────
+function SessionsTab({ serverUser }) {
+  const [sessions, setSessions] = useState([])
+  const [loading,  setLoading]  = useState(true)
+  const [kicking,  setKicking]  = useState(null)
+
+  useEffect(() => { load() }, [])
+
+  async function load() {
+    setLoading(true)
+    try {
+      const res = await fetch('/api/admin/sessions', { headers: apiHeaders() })
+      if (res.ok) setSessions(await res.json())
+    } finally { setLoading(false) }
+  }
+
+  async function handleKick(username) {
+    setKicking(username)
+    try {
+      const res = await fetch(`/api/admin/sessions/${encodeURIComponent(username)}`, {
+        method: 'DELETE', headers: apiHeaders(),
+      })
+      if (res.ok) setSessions(prev => prev.filter(s => s.username !== username))
+    } finally { setKicking(null) }
+  }
+
+  // Group by username: show one row per user with the latest session
+  const byUser = Object.values(
+    sessions.reduce((acc, s) => {
+      if (!acc[s.username] || s.created_at > acc[s.username].created_at) acc[s.username] = s
+      return acc
+    }, {})
+  ).sort((a, b) => b.created_at.localeCompare(a.created_at))
+
+  function fmtTime(iso) {
+    if (!iso) return '–'
+    const d = new Date(iso + (iso.endsWith('Z') ? '' : 'Z'))
+    return d.toLocaleString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+  }
+
+  if (loading) return (
+    <div className="flex justify-center py-8 text-gray-400"><Loader size={16} className="animate-spin" /></div>
+  )
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <p className="text-sm text-gray-600">
+          {byUser.length === 0
+            ? 'Keine aktiven Sitzungen.'
+            : `${byUser.length} aktive Sitzung${byUser.length !== 1 ? 'en' : ''}`}
+        </p>
+        <button className="btn btn-secondary text-xs" onClick={load}>Aktualisieren</button>
+      </div>
+
+      {byUser.length > 0 && (
+        <div className="border border-gray-200 divide-y divide-gray-100">
+          {byUser.map(s => {
+            const isSelf = s.username === serverUser?.username
+            return (
+              <div key={s.username} className={`flex items-center justify-between px-4 py-3 gap-3 ${isSelf ? 'bg-brand-50/50' : ''}`}>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-sm font-medium text-gray-900 truncate">
+                      {s.display_name || s.username}
+                    </span>
+                    <span className="text-xs text-gray-400">{s.username}</span>
+                    {isSelf && <span className="badge badge-green text-xs">Du</span>}
+                    <span className={`badge text-xs ${s.role === 'admin' ? 'badge-blue' : 'badge-gray'}`}>{s.role || 'user'}</span>
+                    {s.source === 'synology' && <span className="badge badge-blue text-xs">Synology</span>}
+                  </div>
+                  <div className="text-xs text-gray-400 mt-0.5">
+                    Angemeldet: {fmtTime(s.created_at)} · Gültig bis: {fmtTime(s.expires_at)}
+                  </div>
+                </div>
+                {!isSelf && (
+                  <button
+                    className="btn btn-secondary text-xs flex items-center gap-1 shrink-0 hover:border-red-300 hover:text-red-600"
+                    title="Sitzung beenden (Nutzer wird ausgeloggt)"
+                    disabled={kicking === s.username}
+                    onClick={() => handleKick(s.username)}
+                  >
+                    {kicking === s.username ? <Loader size={11} className="animate-spin" /> : <LogOut size={11} />}
+                    Abmelden
+                  </button>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 export default function AdminPanel({ serverUser, onClose }) {
   const isAdmin = serverUser?.role === 'admin' || serverUser?.devMode
@@ -900,6 +1023,7 @@ export default function AdminPanel({ serverUser, onClose }) {
 
   const tabs = [
     isAdmin              && { id: 'users',    label: 'Benutzer',    icon: <Users size={14} /> },
+    isAdmin              && { id: 'sessions', label: 'Sitzungen',   icon: <Activity size={14} /> },
     isAdmin              && { id: 'deletions', label: 'Löschanfragen', icon: <AlertTriangle size={14} /> },
     isAdmin              && { id: 'smtp',     label: 'E-Mail',      icon: <Mail size={14} /> },
     isAdmin              && { id: 'backup',   label: 'Backup',      icon: <HardDrive size={14} /> },
@@ -935,11 +1059,12 @@ export default function AdminPanel({ serverUser, onClose }) {
 
         {/* Content */}
         <div className="overflow-y-auto flex-1 p-5">
-          {tab === 'users'     && <UsersTab    serverUser={serverUser} />}
+          {tab === 'users'     && <UsersTab      serverUser={serverUser} />}
+          {tab === 'sessions'  && <SessionsTab   serverUser={serverUser} />}
           {tab === 'deletions' && <DeletionRequestsTab />}
           {tab === 'smtp'      && <SmtpTab />}
           {tab === 'backup'    && <BackupTab />}
-          {tab === 'password'  && <PasswordTab serverUser={serverUser} />}
+          {tab === 'password'  && <PasswordTab   serverUser={serverUser} />}
         </div>
       </div>
     </div>
