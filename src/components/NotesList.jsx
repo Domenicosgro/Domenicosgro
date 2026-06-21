@@ -3,6 +3,7 @@ import { ArrowLeft, Plus, Trash2, Send, Mail, Phone, ChevronDown, Printer,
          FileText, Phone as PhoneIcon, Users, Search, X, Check, Loader } from 'lucide-react'
 import { formatDate, NOTE_TYPES, NOTE_TEMPLATES, emptyNote } from '../utils'
 import RichTextEditor from './RichTextEditor'
+import { buildNotePdf } from '../notePdf'
 
 const isServer = typeof window !== 'undefined' && !!window.__SERVER_MODE__
 
@@ -113,7 +114,7 @@ const TYPE_ICONS = {
 }
 
 // ── Email Modal ───────────────────────────────────────────────────────────────
-function NoteEmailModal({ note, contacts, onClose }) {
+function NoteEmailModal({ note, contacts, projectName, logoDataUrl, onClose }) {
   const [recipients,   setRecipients]   = useState([])
   const [customEmail,  setCustomEmail]  = useState('')
   const [subject,      setSubject]      = useState(`${NOTE_TYPES.find(t => t.value === note.type)?.label || 'Notiz'} – ${note.subject || 'Ohne Betreff'}`)
@@ -122,6 +123,7 @@ function NoteEmailModal({ note, contacts, onClose }) {
   const [error,        setError]        = useState('')
 
   const contactsWithEmail = contacts.filter(c => c.email)
+  const linkedContact     = contacts.find(c => c.id === note.linkedContactId) ?? null
 
   const toggleContact = (email) =>
     setRecipients(prev => prev.includes(email) ? prev.filter(e => e !== email) : [...prev, email])
@@ -142,9 +144,18 @@ function NoteEmailModal({ note, contacts, onClose }) {
 
     if (isServer) {
       try {
+        let pdfBase64 = null
+        let pdfFilename = null
+        try {
+          pdfBase64  = await buildNotePdf(note, linkedContact, projectName, logoDataUrl)
+          const typeLabel = NOTE_TYPES.find(t => t.value === note.type)?.label || 'Notiz'
+          const safeName  = (note.subject || typeLabel).replace(/[^a-zA-Z0-9äöüÄÖÜß _\-]/g, '').trim().slice(0, 60)
+          pdfFilename = `${typeLabel}_${safeName || 'Notiz'}${note.date ? '_' + note.date : ''}.pdf`
+        } catch {}
+
         const res = await fetch(`/api/notes/${note.id}/send-email`, {
           method: 'POST', headers: apiHeaders(),
-          body: JSON.stringify({ to: allTo.join(', '), subject }),
+          body: JSON.stringify({ to: allTo.join(', '), subject, pdfBase64, pdfFilename }),
         })
         if (!res.ok) { const d = await res.json(); setError(d.error || 'Fehler beim Senden.'); return }
         setSent(true)
@@ -522,6 +533,8 @@ export default function NotesList({ notes, projectContacts, projectName, logoDat
         <NoteEmailModal
           note={activeNote}
           contacts={contacts}
+          projectName={projectName}
+          logoDataUrl={logoDataUrl}
           onClose={() => setShowEmailModal(false)}
         />
       )}

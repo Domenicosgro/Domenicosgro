@@ -1436,7 +1436,7 @@ app.post('/api/notes/:id/send-email', requireAuth, async (req, res) => {
   try {
     const note = db.notes.get(req.params.id)
     if (!note) return res.status(404).json({ error: 'Notiz nicht gefunden.' })
-    const { to, subject } = req.body
+    const { to, subject, pdfBase64, pdfFilename } = req.body
     if (!to) return res.status(400).json({ error: '"to" erwartet.' })
     if (!mailer.mailerStatus().configured) return res.status(400).json({ error: 'E-Mail-Versand nicht konfiguriert.' })
 
@@ -1473,7 +1473,16 @@ app.post('/api/notes/:id/send-email', requireAuth, async (req, res) => {
   </table>
 </body></html>`
 
-    await mailer.sendMail({ from: fromAddress, to, replyTo, subject: mailSubject, html })
+    const attachments = []
+    if (pdfBase64) {
+      attachments.push({
+        filename:    pdfFilename || `${typeLabel}.pdf`,
+        content:     Buffer.from(pdfBase64, 'base64'),
+        contentType: 'application/pdf',
+      })
+    }
+
+    await mailer.sendMail({ from: fromAddress, to, replyTo, subject: mailSubject, html, attachments })
     db.notes.update(req.params.id, { ...note, sentAt: new Date().toISOString(), updatedAt: new Date().toISOString() }, note._version || 1, req.user)
     res.json({ ok: true })
   } catch (e) { res.status(500).json({ error: e.message }) }
