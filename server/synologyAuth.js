@@ -81,4 +81,52 @@ async function synologyAuth(username, password) {
   return { isAdmin, displayName: username }
 }
 
-module.exports = { synologyAuth }
+// Listet alle lokalen Synology-Benutzer auf (erfordert Admin-Zugangsdaten).
+// Gibt Array von { username, displayName, email } zurück, oder null bei falschen Zugangsdaten.
+// Wirft bei Netzwerkfehlern.
+async function listSynologyUsers(adminUsername, adminPassword) {
+  const baseUrl = (process.env.SYNOLOGY_URL || '').replace(/\/$/, '')
+  if (!baseUrl) return null
+
+  const loginParams = new URLSearchParams({
+    api: 'SYNO.API.Auth', version: '6', method: 'login',
+    account: adminUsername, passwd: adminPassword,
+    session: 'KPUserList', format: 'sid',
+  })
+  const loginData = await fetchSyno(`${baseUrl}/webapi/auth.cgi?${loginParams}`)
+  if (!loginData.success) return null
+
+  const sid = loginData.data?.sid
+  let users = []
+
+  try {
+    const userParams = new URLSearchParams({
+      api:        'SYNO.Core.User',
+      version:    '1',
+      method:     'list',
+      additional: '["email","fullname"]',
+      limit:      '500',
+      _sid:       sid,
+    })
+    const userData = await fetchSyno(`${baseUrl}/webapi/entry.cgi?${userParams}`)
+    if (userData.success && Array.isArray(userData.data?.users)) {
+      users = userData.data.users.map(u => ({
+        username:    u.name,
+        displayName: u.fullname || u.name,
+        email:       u.email || '',
+      }))
+    }
+  } catch { /* User-Listen-API nicht verfügbar */ }
+
+  try {
+    const logoutParams = new URLSearchParams({
+      api: 'SYNO.API.Auth', version: '6', method: 'logout',
+      session: 'KPUserList', _sid: sid,
+    })
+    await fetchSyno(`${baseUrl}/webapi/auth.cgi?${logoutParams}`, 3000)
+  } catch {}
+
+  return users
+}
+
+module.exports = { synologyAuth, listSynologyUsers }

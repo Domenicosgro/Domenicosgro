@@ -29,7 +29,7 @@ const db          = require('./db')
 const auth        = require('./auth')
 const attachments = require('./attachments')
 const mailer      = require('./mailer')
-const { synologyAuth } = require('./synologyAuth')
+const { synologyAuth, listSynologyUsers } = require('./synologyAuth')
 
 const app      = express()
 const PORT     = parseInt(process.env.PORT  || '3000', 10)
@@ -443,52 +443,46 @@ app.post('/api/admin/smtp-test', requireAuth, requireAdmin, async (req, res) => 
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
-app.post('/api/auth/users/:username/invite', requireAuth, requireAdmin, async (req, res) => {
-  try {
-    const { username } = req.params
-    const user = db.users.get(username)
-    if (!user) return res.status(404).json({ error: 'Benutzer nicht gefunden.' })
-    if (!user.email) return res.status(400).json({ error: 'Keine E-Mail-Adresse hinterlegt.' })
+// ── Einladungs-E-Mail bauen ───────────────────────────────────────────────────
+function buildInviteMail({ username, displayName, email, appUrl, isSynology, passwordNote }) {
+  const from        = process.env.SMTP_FROM || process.env.GRAPH_SENDER || process.env.SMTP_USER || 'noreply@komplizen'
+  const shortcutUrl = `${appUrl}/shortcut`
 
-    if (!mailer.mailerStatus().configured) return res.status(400).json({ error: 'E-Mail-Versand nicht konfiguriert. Bitte Graph- oder SMTP-Zugangsdaten in den Server-Einstellungen setzen.' })
+  const logoPath = path.join(__dirname, '../dist/Logo_Komplizen_sky1.png')
+  const logoAttachment = fs.existsSync(logoPath)
+    ? [{ filename: 'Logo_Komplizen_sky1.png', path: logoPath, cid: 'logo@komplizen' }]
+    : []
+  const logoTag = logoAttachment.length
+    ? '<img src="cid:logo@komplizen" alt="Komplizen Protokolle" style="height:80px;display:block;margin:0 auto;">'
+    : '<h2 style="color:#1e3a5f;text-align:center;margin:0;">KOMPLIZEN</h2>'
 
-    const appUrl  = getAppUrl(req)
-    const from    = process.env.SMTP_FROM || process.env.GRAPH_SENDER || process.env.SMTP_USER || 'noreply@komplizen'
-    const pw      = user.password_note || '(bitte beim Admin erfragen)'
+  const pwRow = isSynology
+    ? `<tr><td style="color:#6b7280;white-space:nowrap;padding-right:16px;">Passwort</td><td style="color:#374151;">Ihr <strong>Synology-NAS-Passwort</strong></td></tr>`
+    : `<tr><td style="color:#6b7280;white-space:nowrap;padding-right:16px;">Passwort</td><td style="font-family:monospace;font-weight:bold;">${passwordNote || '(bitte beim Admin erfragen)'}</td></tr>`
 
-    const displayName = user.display_name || username
-    const shortcutUrl = `${appUrl}/shortcut`
+  const pwHint = isSynology
+    ? `<p style="margin:12px 0 0 0;font-size:12px;color:#6b7280;">Du meldest dich mit deinem Synology-DSM-Benutzernamen und -Passwort an. Es ist kein separates Passwort erforderlich.</p>`
+    : `<p style="margin:12px 0 0 0;font-size:12px;color:#ef4444;">⚠ Bitte ändere dein Passwort nach der ersten Anmeldung (Einstellungen → Passwort ändern).</p>`
 
-    // Logo als CID-Anhang einbetten
-    const logoPath = path.join(__dirname, '../dist/Logo_Komplizen_sky1.png')
-    const logoAttachment = fs.existsSync(logoPath)
-      ? [{ filename: 'Logo_Komplizen_sky1.png', path: logoPath, cid: 'logo@komplizen' }]
-      : []
-    const logoTag = logoAttachment.length
-      ? '<img src="cid:logo@komplizen" alt="Komplizen Protokolle" style="height:80px;display:block;margin:0 auto;">'
-      : '<h2 style="color:#1e3a5f;text-align:center;margin:0;">KOMPLIZEN</h2>'
+  const pwTextHint = isSynology
+    ? 'Passwort: Ihr Synology-NAS-Passwort'
+    : `Passwort: ${passwordNote || '(bitte beim Admin erfragen)'}\n\n⚠ Bitte Passwort nach der ersten Anmeldung ändern.`
 
-    const html = `<!DOCTYPE html>
+  const html = `<!DOCTYPE html>
 <html lang="de">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
 <body style="margin:0;padding:0;background:#f3f4f6;font-family:Arial,sans-serif;font-size:14px;color:#1f2937;">
   <table width="100%" cellpadding="0" cellspacing="0" style="background:#f3f4f6;padding:32px 16px;">
     <tr><td align="center">
       <table width="560" cellpadding="0" cellspacing="0" style="background:#ffffff;border:1px solid #e5e7eb;max-width:560px;width:100%;">
-
-        <!-- Header -->
         <tr><td style="background:#ffffff;padding:32px 40px 20px 40px;text-align:center;border-bottom:3px solid #7ab3d4;">
           ${logoTag}
           <p style="color:#7ab3d4;margin:8px 0 0 0;font-size:11px;letter-spacing:2px;text-transform:uppercase;">Einladung</p>
         </td></tr>
-
-        <!-- Greeting -->
         <tr><td style="padding:32px 40px 0 40px;">
           <p style="font-size:22px;font-weight:bold;color:#1e3a5f;margin:0 0 8px 0;">Willkommen, Komplize ${displayName}!</p>
           <p style="margin:0 0 24px 0;color:#6b7280;">Du wurdest eingeladen, Komplizen Protokolle zu nutzen – unser gemeinsames Tool für Besprechungsprotokolle und Projektdokumentation.</p>
         </td></tr>
-
-        <!-- Credentials -->
         <tr><td style="padding:0 40px;">
           <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;border:1px solid #e2e8f0;border-left:4px solid #1e3a5f;">
             <tr><td style="padding:20px 24px;">
@@ -496,14 +490,12 @@ app.post('/api/auth/users/:username/invite', requireAuth, requireAdmin, async (r
               <table cellpadding="4" cellspacing="0">
                 <tr><td style="color:#6b7280;white-space:nowrap;padding-right:16px;">Adresse</td>      <td><a href="${appUrl}" style="color:#2563eb;font-weight:bold;">${appUrl}</a></td></tr>
                 <tr><td style="color:#6b7280;white-space:nowrap;padding-right:16px;">Benutzername</td> <td style="font-family:monospace;font-weight:bold;">${username}</td></tr>
-                <tr><td style="color:#6b7280;white-space:nowrap;padding-right:16px;">Passwort</td>     <td style="font-family:monospace;font-weight:bold;">${pw}</td></tr>
+                ${pwRow}
               </table>
             </td></tr>
           </table>
-          <p style="margin:12px 0 0 0;font-size:12px;color:#ef4444;">⚠ Bitte ändere dein Passwort nach der ersten Anmeldung (Einstellungen → Passwort ändern).</p>
+          ${pwHint}
         </td></tr>
-
-        <!-- App installieren -->
         <tr><td style="padding:24px 40px 0 40px;">
           <p style="font-weight:bold;color:#1e3a5f;font-size:11px;text-transform:uppercase;letter-spacing:1px;margin:0 0 10px 0;">Als App auf dem Desktop installieren</p>
           <table width="100%" cellpadding="0" cellspacing="0" style="background:#f0f7ff;border:1px solid #bfdbfe;margin-bottom:12px;">
@@ -518,7 +510,6 @@ app.post('/api/auth/users/:username/invite', requireAuth, requireAdmin, async (r
               <p style="margin:8px 0 0 0;font-size:12px;color:#6b7280;">Die App erscheint im Startmenü und auf dem Desktop mit dem Komplizen-Logo. Edge ist auf jedem Windows-PC bereits vorinstalliert.</p>
             </td></tr>
           </table>
-
           <p style="margin:12px 0 6px 0;font-size:12px;color:#374151;"><strong>Ich nutze Chrome</strong> – einmalige Einstellung (1 Minute):</p>
           <table width="100%" cellpadding="0" cellspacing="0" style="background:#fafafa;border:1px solid #e5e7eb;">
             <tr><td style="padding:12px 16px;">
@@ -533,8 +524,6 @@ app.post('/api/auth/users/:username/invite', requireAuth, requireAdmin, async (r
           </table>
           <p style="margin:8px 0 0 0;font-size:12px;color:#9ca3af;">Alternative: <a href="${shortcutUrl}" style="color:#6b7280;">Browser-Verknüpfung herunterladen</a></p>
         </td></tr>
-
-        <!-- About -->
         <tr><td style="padding:24px 40px 0 40px;">
           <p style="font-weight:bold;color:#1e3a5f;font-size:11px;text-transform:uppercase;letter-spacing:1px;margin:0 0 10px 0;">Was ist Komplizen Protokolle?</p>
           <ul style="margin:0;padding-left:20px;color:#374151;line-height:1.8;">
@@ -546,45 +535,125 @@ app.post('/api/auth/users/:username/invite', requireAuth, requireAdmin, async (r
           </ul>
           <p style="margin:10px 0 0 0;font-size:12px;color:#6b7280;">Alle Daten liegen sicher auf unserem eigenen Server – kein Cloud-Dienst, keine externen Abhängigkeiten.</p>
         </td></tr>
-
-        <!-- Footer -->
         <tr><td style="padding:32px 40px;text-align:center;border-top:1px solid #e5e7eb;margin-top:24px;">
-          <p style="margin:0;color:#9ca3af;font-size:12px;">Viel Erfolg und willkommen im Team! 🏗</p>
+          <p style="margin:0;color:#9ca3af;font-size:12px;">Viel Erfolg und willkommen im Team!</p>
         </td></tr>
-
       </table>
     </td></tr>
   </table>
 </body>
 </html>`
 
+  const text = [
+    `Willkommen Komplize ${displayName}!`,
+    '',
+    'Du wurdest eingeladen, Komplizen Protokolle zu nutzen.',
+    '',
+    `Adresse:      ${appUrl}`,
+    `Benutzername: ${username}`,
+    pwTextHint,
+    '',
+    'Desktop-Verknüpfung: ' + shortcutUrl,
+    '',
+    'Viel Erfolg und willkommen im Team!',
+  ].join('\n')
+
+  return { from, html, text, attachments: logoAttachment }
+}
+
+app.post('/api/auth/users/:username/invite', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { username } = req.params
+    const user = db.users.get(username)
+    if (!user) return res.status(404).json({ error: 'Benutzer nicht gefunden.' })
+    if (!user.email) return res.status(400).json({ error: 'Keine E-Mail-Adresse hinterlegt.' })
+    if (!mailer.mailerStatus().configured) return res.status(400).json({ error: 'E-Mail-Versand nicht konfiguriert. Bitte Graph- oder SMTP-Zugangsdaten in den Server-Einstellungen setzen.' })
+
+    const appUrl = getAppUrl(req)
+    const { from, html, text, attachments } = buildInviteMail({
+      username,
+      displayName:  user.display_name || username,
+      email:        user.email,
+      appUrl,
+      isSynology:   user.source === 'synology',
+      passwordNote: user.password_note,
+    })
+
     await mailer.sendMail({
-      from,
-      to:      user.email,
-      subject: `Willkommen bei Komplizen Protokolle, ${displayName}!`,
-      html,
-      attachments: logoAttachment,
-      text: [
-        `Willkommen Komplize ${displayName}!`,
-        '',
-        'Du wurdest eingeladen, Komplizen Protokolle zu nutzen –',
-        'unser gemeinsames Tool für Besprechungsprotokolle und Projektdokumentation.',
-        '',
-        `Adresse:      ${appUrl}`,
-        `Benutzername: ${username}`,
-        `Passwort:     ${pw}`,
-        '',
-        '⚠ Bitte ändere dein Passwort nach der ersten Anmeldung.',
-        '  (Einstellungen → Passwort ändern)',
-        '',
-        'Desktop-Verknüpfung: ' + shortcutUrl,
-        '',
-        'Viel Erfolg und willkommen im Team!',
-      ].join('\n'),
+      from, to: user.email,
+      subject: `Willkommen bei Komplizen Protokolle, ${user.display_name || username}!`,
+      html, text, attachments,
     })
 
     logEvent('INVITE_SENT', req, `to=${user.email} user=${username}`)
     res.json({ ok: true })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// ── Synology-Benutzerliste abrufen ────────────────────────────────────────────
+app.post('/api/admin/synology-list', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { username, password } = req.body
+    if (!username || !password) return res.status(400).json({ error: 'Synology-Zugangsdaten erforderlich.' })
+    if (!process.env.SYNOLOGY_URL)  return res.status(400).json({ error: 'SYNOLOGY_URL nicht konfiguriert.' })
+
+    const synoUsers = await listSynologyUsers(username, password)
+    if (!synoUsers) return res.status(401).json({ error: 'Anmeldung fehlgeschlagen. Bitte Zugangsdaten prüfen.' })
+
+    const existing = db.users.list().reduce((acc, u) => { acc[u.username] = u; return acc }, {})
+    const result   = synoUsers.map(u => ({
+      username:    u.username,
+      displayName: u.displayName,
+      email:       u.email || existing[u.username]?.email || '',
+      inSystem:    !!existing[u.username],
+    }))
+
+    logEvent('SYNOLOGY_LIST', req, `count=${result.length}`)
+    res.json(result)
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// ── Synology-Nutzer bulk anlegen + einladen ───────────────────────────────────
+app.post('/api/admin/synology-bulk-invite', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { users: list } = req.body   // [{ username, displayName, email, sendInvite }]
+    if (!Array.isArray(list) || list.length === 0)
+      return res.status(400).json({ error: 'Keine Nutzer angegeben.' })
+
+    const appUrl    = getAppUrl(req)
+    const canEmail  = mailer.mailerStatus().configured
+    const results   = []
+
+    for (const u of list) {
+      const { username, displayName, email, sendInvite } = u
+      db.users.upsertSynology(username, displayName || username, 'user')
+      if (email) db.users.updateEmail(username, email)
+
+      let invited = false; let inviteError = null
+      if (sendInvite && email && canEmail) {
+        try {
+          const { from, html, text, attachments } = buildInviteMail({
+            username, displayName: displayName || username, email, appUrl,
+            isSynology: true, passwordNote: null,
+          })
+          await mailer.sendMail({
+            from, to: email,
+            subject: `Willkommen bei Komplizen Protokolle, ${displayName || username}!`,
+            html, text, attachments,
+          })
+          invited = true
+        } catch (e) { inviteError = e.message }
+      } else if (sendInvite && !email) {
+        inviteError = 'Keine E-Mail-Adresse angegeben.'
+      } else if (sendInvite && !canEmail) {
+        inviteError = 'E-Mail-Versand nicht konfiguriert.'
+      }
+
+      results.push({ username, displayName: displayName || username, invited, inviteError })
+    }
+
+    logEvent('BULK_INVITE', req, `count=${list.length}`)
+    res.json({ ok: true, results })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 

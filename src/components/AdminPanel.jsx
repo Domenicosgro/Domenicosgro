@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react'
-import { X, UserPlus, Users, Key, Eye, EyeOff, Loader, Trash2, Printer, Download, Pencil, Check, KeyRound, HardDrive, Upload, Mail, Send, Settings2, Search, AlertTriangle, Shield, ShieldOff, LogOut, Activity } from 'lucide-react'
+import { X, UserPlus, Users, Key, Eye, EyeOff, Loader, Trash2, Printer, Download, Pencil, Check, KeyRound, HardDrive, Upload, Mail, Send, Settings2, Search, AlertTriangle, Shield, ShieldOff, LogOut, Activity, RefreshCw, UserCheck, CheckSquare, Square } from 'lucide-react'
 import { formatDate } from '../utils'
 
 function apiHeaders() {
@@ -1016,23 +1016,228 @@ function SessionsTab({ serverUser }) {
   )
 }
 
+// ── Rollout tab: Synology-Nutzer importieren & einladen ──────────────────────
+function RolloutTab() {
+  const [creds,      setCreds]      = useState({ username: '', password: '' })
+  const [loading,    setLoading]    = useState(false)
+  const [loadErr,    setLoadErr]    = useState(null)
+  const [synoUsers,  setSynoUsers]  = useState(null)   // null = noch nicht geladen
+  const [selected,   setSelected]   = useState(new Set())
+  const [emailMap,   setEmailMap]   = useState({})
+  const [importing,  setImporting]  = useState(false)
+  const [results,    setResults]    = useState(null)
+  const [smtpOk,     setSmtpOk]    = useState(null)
+
+  useEffect(() => {
+    fetch('/api/admin/smtp-status', { headers: apiHeaders() })
+      .then(r => r.json()).then(d => setSmtpOk(d.configured)).catch(() => setSmtpOk(false))
+  }, [])
+
+  async function handleLoad(e) {
+    e.preventDefault()
+    setLoadErr(null); setLoading(true); setSynoUsers(null); setResults(null)
+    try {
+      const res  = await fetch('/api/admin/synology-list', {
+        method: 'POST', headers: apiHeaders(),
+        body: JSON.stringify({ username: creds.username, password: creds.password }),
+      })
+      const data = await res.json()
+      if (!res.ok) { setLoadErr(data.error); return }
+      setSynoUsers(data)
+      setSelected(new Set(data.filter(u => !u.inSystem).map(u => u.username)))
+      const emails = {}
+      data.forEach(u => { if (u.email) emails[u.username] = u.email })
+      setEmailMap(emails)
+    } catch (e) { setLoadErr('Netzwerkfehler: ' + e.message) }
+    finally { setLoading(false) }
+  }
+
+  function toggleUser(username) {
+    setSelected(prev => {
+      const next = new Set(prev)
+      next.has(username) ? next.delete(username) : next.add(username)
+      return next
+    })
+  }
+
+  function selectAll()  { setSelected(new Set(synoUsers.map(u => u.username))) }
+  function selectNone() { setSelected(new Set()) }
+  function selectNew()  { setSelected(new Set(synoUsers.filter(u => !u.inSystem).map(u => u.username))) }
+
+  async function handleImport() {
+    setImporting(true); setResults(null)
+    const list = [...selected].map(username => {
+      const syno = synoUsers.find(u => u.username === username)
+      const email = emailMap[username] || ''
+      return { username, displayName: syno?.displayName || username, email, sendInvite: !!email }
+    })
+    try {
+      const res  = await fetch('/api/admin/synology-bulk-invite', {
+        method: 'POST', headers: apiHeaders(), body: JSON.stringify({ users: list }),
+      })
+      const data = await res.json()
+      if (!res.ok) { setResults({ error: data.error }); return }
+      setResults(data.results)
+      setSynoUsers(prev => prev.map(u => ({
+        ...u, inSystem: u.inSystem || selected.has(u.username),
+      })))
+      setSelected(new Set())
+    } catch (e) { setResults({ error: e.message }) }
+    finally { setImporting(false) }
+  }
+
+  const synoConfigured = !!window._synoConfigured   // not available, just check if loaded
+  const newCount    = synoUsers ? synoUsers.filter(u => !u.inSystem).length : 0
+  const selCount    = selected.size
+  const inviteCount = [...selected].filter(u => emailMap[u]).length
+
+  return (
+    <div className="space-y-4">
+      <p className="text-sm text-gray-600">
+        Alle Benutzer der Synology NAS auflisten und mit einem Klick im Tool anlegen. Einladungs-E-Mails werden
+        an Benutzer gesendet, für die eine E-Mail-Adresse hinterlegt ist.
+      </p>
+
+      {smtpOk === false && (
+        <div className="flex items-start gap-2 text-xs bg-amber-50 border border-amber-200 text-amber-800 px-3 py-2">
+          <AlertTriangle size={13} className="shrink-0 mt-0.5" />
+          E-Mail-Versand nicht konfiguriert – Einladungen können nicht gesendet werden. Bitte zuerst im Tab „E-Mail" einrichten.
+        </div>
+      )}
+
+      {/* Synology-Zugangsdaten */}
+      <form onSubmit={handleLoad} className="border border-gray-200 bg-gray-50 p-4 space-y-3">
+        <div className="text-xs font-semibold text-gray-700">Synology Admin-Zugangsdaten</div>
+        <div className="text-xs text-gray-500">
+          Wird nur für diesen Abruf verwendet – nicht gespeichert.
+        </div>
+        <div className="flex gap-2">
+          <input className="input text-sm flex-1" placeholder="Synology-Benutzername"
+            value={creds.username} onChange={e => setCreds(p => ({ ...p, username: e.target.value }))} required />
+          <input type="password" className="input text-sm flex-1" placeholder="Passwort"
+            value={creds.password} onChange={e => setCreds(p => ({ ...p, password: e.target.value }))} required />
+          <button type="submit" className="btn btn-primary text-sm shrink-0" disabled={loading}>
+            {loading ? <Loader size={13} className="animate-spin" /> : <RefreshCw size={13} />}
+            {loading ? 'Laden…' : 'Laden'}
+          </button>
+        </div>
+        {loadErr && (
+          <div className="text-xs text-red-600 bg-red-50 border border-red-200 px-2 py-1">{loadErr}</div>
+        )}
+      </form>
+
+      {/* Ergebnisliste */}
+      {synoUsers && (
+        <>
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <div className="text-sm text-gray-700">
+              <strong>{synoUsers.length}</strong> Benutzer gefunden
+              {newCount > 0 && <span className="text-brand-600 ml-2">· {newCount} neu</span>}
+            </div>
+            <div className="flex gap-1.5">
+              <button className="btn btn-secondary text-xs" onClick={selectAll}>Alle</button>
+              <button className="btn btn-secondary text-xs" onClick={selectNew} title="Nur neue Benutzer auswählen">Nur neue</button>
+              <button className="btn btn-secondary text-xs" onClick={selectNone}>Keine</button>
+            </div>
+          </div>
+
+          <div className="border border-gray-200 divide-y divide-gray-100 max-h-80 overflow-y-auto">
+            {synoUsers.map(u => {
+              const isSel = selected.has(u.username)
+              return (
+                <div key={u.username}
+                  className={`flex items-center gap-3 px-3 py-2.5 ${isSel ? 'bg-brand-50/40' : ''}`}>
+                  <button
+                    type="button"
+                    className="shrink-0 text-brand-600"
+                    onClick={() => toggleUser(u.username)}
+                    title={isSel ? 'Abwählen' : 'Auswählen'}
+                  >
+                    {isSel ? <CheckSquare size={16} /> : <Square size={16} className="text-gray-300" />}
+                  </button>
+
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="text-sm font-medium text-gray-900 truncate">{u.displayName}</span>
+                      <span className="text-xs text-gray-400">{u.username}</span>
+                      {u.inSystem && (
+                        <span className="badge badge-green text-xs flex items-center gap-0.5">
+                          <UserCheck size={9} /> Im System
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  <input
+                    type="email"
+                    className="input text-xs w-44 shrink-0"
+                    placeholder="E-Mail für Einladung"
+                    value={emailMap[u.username] || ''}
+                    onChange={e => setEmailMap(p => ({ ...p, [u.username]: e.target.value }))}
+                  />
+                </div>
+              )
+            })}
+          </div>
+
+          {selCount > 0 && (
+            <div className="flex items-center justify-between gap-3">
+              <div className="text-xs text-gray-500">
+                {selCount} ausgewählt
+                {inviteCount > 0 && ` · ${inviteCount} mit E-Mail (Einladung wird gesendet)`}
+                {selCount - inviteCount > 0 && ` · ${selCount - inviteCount} ohne E-Mail (nur angelegt)`}
+              </div>
+              <button className="btn btn-primary text-sm shrink-0" onClick={handleImport} disabled={importing}>
+                {importing ? <Loader size={13} className="animate-spin" /> : <UserPlus size={13} />}
+                {importing ? 'Wird verarbeitet…' : 'Anlegen & einladen'}
+              </button>
+            </div>
+          )}
+
+          {/* Import-Ergebnisse */}
+          {results && !results.error && (
+            <div className="border border-gray-200 divide-y divide-gray-100">
+              <div className="px-3 py-2 text-xs font-semibold text-gray-600 bg-gray-50">Ergebnis</div>
+              {results.map(r => (
+                <div key={r.username} className="flex items-center gap-2 px-3 py-2">
+                  <span className={r.inviteError ? 'text-amber-500' : 'text-green-600'}>
+                    {r.inviteError ? <AlertTriangle size={13} /> : <Check size={13} />}
+                  </span>
+                  <span className="text-sm text-gray-800 flex-1">{r.displayName} <span className="text-gray-400">({r.username})</span></span>
+                  <span className="text-xs text-gray-500">
+                    {r.invited ? 'Einladung gesendet' : r.inviteError ? r.inviteError : 'Angelegt (keine E-Mail)'}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+          {results?.error && (
+            <div className="text-sm text-red-600 bg-red-50 border border-red-200 px-3 py-2">{results.error}</div>
+          )}
+        </>
+      )}
+    </div>
+  )
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 export default function AdminPanel({ serverUser, onClose }) {
   const isAdmin = serverUser?.role === 'admin' || serverUser?.devMode
   const [tab, setTab] = useState(isAdmin ? 'users' : 'password')
 
   const tabs = [
-    isAdmin              && { id: 'users',    label: 'Benutzer',    icon: <Users size={14} /> },
-    isAdmin              && { id: 'sessions', label: 'Sitzungen',   icon: <Activity size={14} /> },
+    isAdmin              && { id: 'users',    label: 'Benutzer',      icon: <Users size={14} /> },
+    isAdmin              && { id: 'rollout',  label: 'Rollout',        icon: <UserPlus size={14} /> },
+    isAdmin              && { id: 'sessions', label: 'Sitzungen',      icon: <Activity size={14} /> },
     isAdmin              && { id: 'deletions', label: 'Löschanfragen', icon: <AlertTriangle size={14} /> },
-    isAdmin              && { id: 'smtp',     label: 'E-Mail',      icon: <Mail size={14} /> },
-    isAdmin              && { id: 'backup',   label: 'Backup',      icon: <HardDrive size={14} /> },
-    !serverUser?.devMode && { id: 'password', label: 'Passwort',    icon: <Key size={14} /> },
+    isAdmin              && { id: 'smtp',     label: 'E-Mail',         icon: <Mail size={14} /> },
+    isAdmin              && { id: 'backup',   label: 'Backup',         icon: <HardDrive size={14} /> },
+    !serverUser?.devMode && { id: 'password', label: 'Passwort',       icon: <Key size={14} /> },
   ].filter(Boolean)
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="bg-white w-full max-w-lg max-h-[90vh] flex flex-col border border-gray-200">
+      <div className="bg-white w-full max-w-3xl max-h-[90vh] flex flex-col border border-gray-200">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200">
           <h2 className="font-semibold text-gray-900">Server-Einstellungen</h2>
@@ -1060,6 +1265,7 @@ export default function AdminPanel({ serverUser, onClose }) {
         {/* Content */}
         <div className="overflow-y-auto flex-1 p-5">
           {tab === 'users'     && <UsersTab      serverUser={serverUser} />}
+          {tab === 'rollout'   && <RolloutTab />}
           {tab === 'sessions'  && <SessionsTab   serverUser={serverUser} />}
           {tab === 'deletions' && <DeletionRequestsTab />}
           {tab === 'smtp'      && <SmtpTab />}
