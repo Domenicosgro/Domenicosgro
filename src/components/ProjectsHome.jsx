@@ -546,8 +546,8 @@ export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, 
         <p className="text-sm text-gray-400 text-center py-4">Kein Favorit gefunden.</p>
       )}
 
-      {/* Project cards */}
-      <div className="space-y-3">
+      {/* Project cards – 16:9-Kacheln */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {displayed.map(project => {
           const protos    = protocolsFor(project.id)
           const last      = lastDate(protos)
@@ -559,78 +559,73 @@ export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, 
 
           return (
             <div key={project.id}
-              className="card p-0 overflow-hidden hover:border-sky transition-colors cursor-pointer group"
+              className={`card flex flex-col aspect-video p-4 hover:border-sky hover:bg-gray-50 transition-colors cursor-pointer group border-l-4 ${isLocked ? 'border-amber-400' : 'border-night'}`}
               onClick={() => handleCardClick(project)}
             >
-              <div className="flex items-start gap-3 p-4">
-                {/* Color bar */}
-                <div className={`w-1.5 self-stretch rounded-full flex-shrink-0 mt-1 ${isLocked ? 'bg-amber-400' : 'bg-night'}`} />
+              {/* Titel + Lock-Badge */}
+              <div className="flex items-start gap-2">
+                <input
+                  className="font-semibold text-base text-gray-900 bg-transparent border-none outline-none w-full focus:bg-white focus:border focus:border-sky focus:rounded px-1 -ml-1 truncate"
+                  value={project.name}
+                  placeholder="Projektname…"
+                  ref={el => {
+                    if (el && project.id === focusIdRef.current) {
+                      el.focus()
+                      focusIdRef.current = null
+                    }
+                  }}
+                  onClick={e => e.stopPropagation()}
+                  onChange={e => onUpdate(project.id, { name: e.target.value })}
+                />
+                {isLocked && (
+                  <span className={`flex-shrink-0 flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full
+                    ${isSession ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
+                    {isSession ? <LockOpen size={11} /> : <Lock size={11} />}
+                    {isSession ? 'Entsperrt' : 'Gesperrt'}
+                  </span>
+                )}
+              </div>
 
-                {/* Info */}
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <input
-                      className="font-semibold text-base text-gray-900 bg-transparent border-none outline-none w-full focus:bg-white focus:border focus:border-sky focus:rounded px-1 -ml-1"
-                      value={project.name}
-                      placeholder="Projektname…"
-                      ref={el => {
-                        if (el && project.id === focusIdRef.current) {
-                          el.focus()
-                          focusIdRef.current = null
-                        }
-                      }}
-                      onClick={e => e.stopPropagation()}
-                      onChange={e => onUpdate(project.id, { name: e.target.value })}
-                    />
-                    {isLocked && (
-                      <span className={`flex-shrink-0 flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full
-                        ${isSession ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
-                        {isSession ? <LockOpen size={11} /> : <Lock size={11} />}
-                        {isSession ? 'Entsperrt' : 'Gesperrt'}
-                      </span>
-                    )}
-                  </div>
+              {/* Kennzahlen */}
+              <div className="flex flex-col gap-1 mt-2 text-xs text-gray-500">
+                <span className="flex items-center gap-1 flex-wrap">
+                  <FileText size={11} className="flex-shrink-0" />
+                  {protos.length} Protokoll{protos.length !== 1 ? 'e' : ''}
+                  {open   > 0 && <span className="badge-yellow ml-1">{open} offen</span>}
+                  {closed > 0 && <span className="badge-gray ml-1">{closed} abgeschlossen</span>}
+                </span>
+                <span className="flex items-center gap-1">
+                  <Users size={11} className="flex-shrink-0" />
+                  {isLocked && !isSession
+                    ? <span className="text-amber-600">Kontakte gesperrt</span>
+                    : `${(project.contacts ?? []).length} Kontakt${(project.contacts ?? []).length !== 1 ? 'e' : ''}`
+                  }
+                </span>
+                {last && (
+                  <span className="flex items-center gap-1">
+                    <Calendar size={11} className="flex-shrink-0" />
+                    Zuletzt: {formatDate(last)}
+                  </span>
+                )}
+                {project.isAccessControlled && (
+                  <span className="flex items-center gap-1 text-brand-600">
+                    <ShieldCheck size={11} className="flex-shrink-0" /> Zugangsbeschränkt
+                  </span>
+                )}
+              </div>
 
-                  <div className="flex items-center gap-3 mt-1 text-xs text-gray-500 flex-wrap">
-                    <span className="flex items-center gap-1">
-                      <FileText size={11} />
-                      {protos.length} Protokoll{protos.length !== 1 ? 'e' : ''}
-                      {open   > 0 && <span className="badge-yellow ml-1">{open} offen</span>}
-                      {closed > 0 && <span className="badge-gray ml-1">{closed} abgeschlossen</span>}
-                    </span>
-                    <span className="flex items-center gap-1">
-                      <Users size={11} />
-                      {isLocked && !isSession
-                        ? <span className="text-amber-600">Kontakte gesperrt</span>
-                        : `${(project.contacts ?? []).length} Kontakt${(project.contacts ?? []).length !== 1 ? 'e' : ''}`
-                      }
-                    </span>
-                    {last && (
-                      <span className="flex items-center gap-1">
-                        <Calendar size={11} />
-                        Zuletzt: {formatDate(last)}
-                      </span>
-                    )}
-                    {project.isAccessControlled && (
-                      <span className="flex items-center gap-1 text-brand-600">
-                        <ShieldCheck size={11} /> Zugangsbeschränkt
-                      </span>
-                    )}
-                  </div>
-
-                </div>
-
-                {/* Actions */}
-                <div className="flex items-center gap-1 flex-shrink-0" onClick={e => e.stopPropagation()}>
+              {/* Aktionen */}
+              <div className="flex items-center justify-between gap-1 mt-auto pt-2" onClick={e => e.stopPropagation()}>
+                <div className="flex items-center gap-0.5">
                   <button
-                    className={`btn-ghost p-2 transition-colors ${isFav ? 'text-amber-400 hover:text-amber-500' : 'text-gray-300 hover:text-amber-400'}`}
+                    className={`btn-ghost p-1.5 transition-colors ${isFav ? 'text-amber-400 hover:text-amber-500' : 'text-gray-300 hover:text-amber-400'}`}
                     title={isFav ? 'Favorit aufheben' : 'Als Favorit markieren'}
                     onClick={() => toggleFavorite(project.id)}
                   >
                     <Star size={14} fill={isFav ? 'currentColor' : 'none'} />
                   </button>
                   <button
-                    className={`btn-ghost p-2 ${isLocked ? 'text-amber-500 hover:text-amber-700' : 'text-gray-400 hover:text-brand-600'}`}
+                    className={`btn-ghost p-1.5 ${isLocked ? 'text-amber-500 hover:text-amber-700' : 'text-gray-400 hover:text-brand-600'}`}
                     title={isLocked ? 'Passwort ändern / entfernen' : 'Passwort festlegen'}
                     onClick={e => handleLockClick(e, project)}
                   >
@@ -638,7 +633,7 @@ export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, 
                   </button>
                   {isServer && (project.projectAdminUser === serverUser?.username || serverUser?.role === 'admin') && (
                     <button
-                      className={`btn-ghost p-2 ${project.isAccessControlled ? 'text-brand-600' : 'text-gray-400 hover:text-brand-600'}`}
+                      className={`btn-ghost p-1.5 ${project.isAccessControlled ? 'text-brand-600' : 'text-gray-400 hover:text-brand-600'}`}
                       title="Zugriffsrechte verwalten"
                       onClick={() => setAccessProject(project)}
                     >
@@ -646,7 +641,7 @@ export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, 
                     </button>
                   )}
                   <button
-                    className="btn-ghost p-2 text-red-400 hover:text-red-600 hover:bg-red-50"
+                    className="btn-ghost p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50"
                     title="Projekt löschen"
                     onClick={() => {
                       if (isServer && serverUser?.role !== 'admin') {
@@ -663,14 +658,14 @@ export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, 
                     <Trash2 size={14} />
                   </button>
                 </div>
-                <ChevronRight size={16} className="text-concrete group-hover:text-sky transition-colors flex-shrink-0 mt-1" />
+                <ChevronRight size={16} className="text-concrete group-hover:text-sky transition-colors flex-shrink-0" />
               </div>
             </div>
           )
         })}
 
         {displayed.length === 0 && projects.length > 0 && !q && hasFavorites && !showAll && (
-          <div className="card p-10 text-center">
+          <div className="card p-10 text-center sm:col-span-2 lg:col-span-3">
             <Star size={32} className="mx-auto text-amber-300 mb-3" />
             <p className="text-gray-500 font-medium">Noch keine Favoriten</p>
             <p className="text-sm text-gray-400 mt-1">Klicke auf den Stern eines Projekts, um es als Favorit zu markieren.</p>
@@ -681,7 +676,7 @@ export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, 
         )}
 
         {displayed.length === 0 && q && (
-          <p className="text-sm text-gray-400 text-center py-4">Kein Projekt gefunden.</p>
+          <p className="text-sm text-gray-400 text-center py-4 sm:col-span-2 lg:col-span-3">Kein Projekt gefunden.</p>
         )}
       </div>
 
