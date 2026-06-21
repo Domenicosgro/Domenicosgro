@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useMemo } from 'react'
-import { ArrowLeft, Plus, Trash2, Send, Mail, Phone, ChevronDown,
+import { ArrowLeft, Plus, Trash2, Send, Mail, Phone, ChevronDown, Printer,
          FileText, Phone as PhoneIcon, Users, Search, X, Check, Loader } from 'lucide-react'
 import { formatDate, NOTE_TYPES, NOTE_TEMPLATES, emptyNote } from '../utils'
 import RichTextEditor from './RichTextEditor'
@@ -16,6 +16,94 @@ function apiHeaders() {
 function stripHtml(html) {
   if (!html) return ''
   return html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
+}
+
+function esc(str) {
+  return (str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+}
+
+// ── Notiz-Druck (Design wie Protokoll) ──────────────────────────────────────────
+function buildNotePrintHtml(note, contact, projectName, logoDataUrl) {
+  const typeInfo = NOTE_TYPES.find(t => t.value === note.type) ?? NOTE_TYPES[0]
+  const today    = new Date().toISOString().slice(0, 10)
+
+  const logoHtml = logoDataUrl
+    ? `<img src="${logoDataUrl}" style="height:40px;max-width:120px;object-fit:contain;display:block;">`
+    : '<div style="height:40px"></div>'
+
+  // Metadaten-Zeilen (nur befüllte anzeigen)
+  const metaRows = []
+  metaRows.push(['Datum', `${formatDate(note.date)}${note.time ? `, ${esc(note.time)} Uhr` : ''}`])
+  if (projectName)      metaRows.push(['Projekt', esc(projectName)])
+  if (contact) {
+    const label = note.type === 'telefonnotiz' ? 'Gesprächspartner' : 'Kontakt'
+    const parts = [contact.name, contact.company].filter(Boolean).map(esc).join(' · ')
+    metaRows.push([label, parts || '–'])
+    if (contact.phone) metaRows.push(['Telefon', esc(contact.phone)])
+    if (contact.email) metaRows.push(['E-Mail', esc(contact.email)])
+  }
+
+  const metaHtml = metaRows.map(([k, v]) => `
+    <tr>
+      <td style="padding:1mm 6mm 1mm 0;font-size:7pt;text-transform:uppercase;letter-spacing:.05em;color:#777;white-space:nowrap;vertical-align:top;width:30mm;">${k}</td>
+      <td style="padding:1mm 0;font-size:9pt;color:#000;vertical-align:top;">${v}</td>
+    </tr>`).join('')
+
+  // Notizinhalt ist bereits HTML (RichTextEditor) → direkt einbetten
+  const contentHtml = note.content && stripHtml(note.content)
+    ? note.content
+    : '<p style="color:#aaa;font-style:italic;">Kein Inhalt.</p>'
+
+  return `<!DOCTYPE html>
+<html lang="de"><head><meta charset="UTF-8">
+<title>${esc(typeInfo.label)} – ${esc(note.subject || projectName || '')}</title>
+<style>
+  @page { size: A4; margin: 12mm 12mm 16mm 12mm; }
+  * { box-sizing: border-box; }
+  body { font-family: Arial, sans-serif; font-size: 10pt; color: #000; margin: 0; background: #fff; line-height: 1.5; }
+  p { margin: 0 0 2mm; }
+  ul, ol { margin: 0 0 2mm; padding-left: 6mm; }
+  strong { font-weight: bold; }
+</style></head><body>
+<div style="display:flex;align-items:flex-end;justify-content:space-between;border-bottom:1pt solid #000;padding-bottom:4mm;margin-bottom:6mm;">
+  <div>${logoHtml}</div>
+  <div style="text-align:right;line-height:1.4;">
+    <div style="font-size:6.5pt;text-transform:uppercase;letter-spacing:.1em;color:#555;">${esc(typeInfo.label)}</div>
+    <div style="font-size:15pt;font-weight:bold;">${esc(note.subject || typeInfo.label)}</div>
+    <div style="font-size:7pt;color:#555;">${esc(projectName || '')}${projectName ? ' · ' : ''}Stand: ${formatDate(today)}</div>
+  </div>
+</div>
+
+<table style="width:100%;border-collapse:collapse;margin-bottom:6mm;">${metaHtml}</table>
+
+<div style="border-top:0.5pt solid #ccc;padding-top:4mm;">
+  <div style="font-size:6.5pt;text-transform:uppercase;letter-spacing:.05em;color:#777;margin-bottom:2mm;">Inhalt</div>
+  ${contentHtml}
+</div>
+</body></html>`
+}
+
+function printNote(note, contact, projectName, logoDataUrl) {
+  const html   = buildNotePrintHtml(note, contact, projectName, logoDataUrl)
+  const iframe = document.createElement('iframe')
+  iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:210mm;height:297mm;border:none;visibility:hidden;'
+  document.body.appendChild(iframe)
+
+  const doc = iframe.contentDocument || iframe.contentWindow.document
+  doc.open(); doc.write(html); doc.close()
+
+  const doPrint = () => {
+    iframe.style.visibility = 'visible'
+    iframe.contentWindow.focus()
+    iframe.contentWindow.print()
+    setTimeout(() => {
+      if (document.body.contains(iframe)) document.body.removeChild(iframe)
+    }, 2000)
+  }
+
+  const img = doc.querySelector('img')
+  if (img && !img.complete) { img.onload = doPrint; img.onerror = doPrint }
+  else { setTimeout(doPrint, 150) }
 }
 
 const TYPE_ICONS = {
@@ -153,7 +241,7 @@ function NoteEmailModal({ note, contacts, onClose }) {
 }
 
 // ── Note Editor ───────────────────────────────────────────────────────────────
-function NoteEditor({ note, contacts, onUpdate, onDelete, onSendEmail }) {
+function NoteEditor({ note, contacts, projectName, logoDataUrl, onUpdate, onDelete, onSendEmail }) {
   const set = (field) => (val) => onUpdate(note.id, { [field]: typeof val === 'object' && val?.target ? val.target.value : val })
 
   const linkedContact = contacts.find(c => c.id === note.linkedContactId)
@@ -235,6 +323,13 @@ function NoteEditor({ note, contacts, onUpdate, onDelete, onSendEmail }) {
           >
             <Mail size={14} /> Per E-Mail senden
           </button>
+          <button
+            className="btn-secondary flex items-center gap-1 text-sm"
+            onClick={() => printNote(note, linkedContact, projectName, logoDataUrl)}
+            title="Notiz drucken / als PDF speichern"
+          >
+            <Printer size={14} /> Drucken / PDF
+          </button>
         </div>
         <button
           className="btn-ghost p-2 text-red-400 hover:text-red-600 hover:bg-red-50"
@@ -249,7 +344,7 @@ function NoteEditor({ note, contacts, onUpdate, onDelete, onSendEmail }) {
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
-export default function NotesList({ notes, projectContacts, projectName, onCreate, onUpdate, onDelete, onBack }) {
+export default function NotesList({ notes, projectContacts, projectName, logoDataUrl, onCreate, onUpdate, onDelete, onBack }) {
   const [activeId,       setActiveId]       = useState(null)
   const [search,         setSearch]         = useState('')
   const [filterType,     setFilterType]     = useState('')
@@ -413,6 +508,8 @@ export default function NotesList({ notes, projectContacts, projectName, onCreat
             <NoteEditor
               note={activeNote}
               contacts={contacts}
+              projectName={projectName}
+              logoDataUrl={logoDataUrl}
               onUpdate={onUpdate}
               onDelete={handleDelete}
               onSendEmail={() => setShowEmailModal(true)}

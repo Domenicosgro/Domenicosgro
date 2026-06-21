@@ -542,6 +542,7 @@ export default function App() {
           notes={filtered}
           projectContacts={project?.contacts ?? []}
           projectName={project?.name || ''}
+          logoDataUrl={logoDataUrl}
           onCreate={(patch) => createNote({ ...patch, projectId: selectedProjectId })}
           onUpdate={updateNote}
           onDelete={deleteNote}
