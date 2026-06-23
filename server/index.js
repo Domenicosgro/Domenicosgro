@@ -2351,6 +2351,83 @@ app.post('/api/notes/:id/send-email', requireAuth, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
+// ── Notebooks ────────────────────────────────────────────────────────────────
+
+app.get('/api/notebooks/:projectId', requireAuth, (req, res) => {
+  try {
+    const proj = db.projects.get(req.params.projectId)
+    if (!proj) return res.status(404).json({ error: 'Projekt nicht gefunden.' })
+    if (!canAccessProject(proj, req.user)) return res.status(403).json({ error: 'Kein Zugriff.' })
+    const nb = db.notebooks.get(req.params.projectId)
+    if (!nb) return res.json({ id: req.params.projectId, projectId: req.params.projectId, topics: [], updatedAt: null })
+    res.json(nb)
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.put('/api/notebooks/:projectId', requireAuth, writeLimiter, (req, res) => {
+  try {
+    const proj = db.projects.get(req.params.projectId)
+    if (!proj) return res.status(404).json({ error: 'Projekt nicht gefunden.' })
+    if (!canAccessProject(proj, req.user)) return res.status(403).json({ error: 'Kein Zugriff.' })
+    const { version, ...rest } = req.body
+    const data = { ...rest, id: req.params.projectId, projectId: req.params.projectId, updatedAt: new Date().toISOString() }
+    const existing = db.notebooks.get(req.params.projectId)
+    let result
+    if (!existing) {
+      result = db.notebooks.create(data, req.user)
+    } else {
+      const ver = typeof version === 'number' ? version : (existing._version || 1)
+      result = db.notebooks.update(req.params.projectId, data, ver, req.user)
+      if (result.conflict) {
+        result = db.notebooks.update(req.params.projectId, data, result.serverVersion, req.user)
+      }
+      if (result.notFound) {
+        result = db.notebooks.create(data, req.user)
+      }
+    }
+    res.json(result)
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.post('/api/notebooks/:projectId/send-email', requireAuth, async (req, res) => {
+  try {
+    const proj = db.projects.get(req.params.projectId)
+    if (!proj) return res.status(404).json({ error: 'Projekt nicht gefunden.' })
+    if (!canAccessProject(proj, req.user)) return res.status(403).json({ error: 'Kein Zugriff.' })
+    if (!mailer.mailerStatus().configured) return res.status(400).json({ error: 'E-Mail-Versand nicht konfiguriert.' })
+    const { to, subject, html: bodyHtml, pdfBase64, pdfFilename } = req.body
+    if (!to) return res.status(400).json({ error: '"to" erwartet.' })
+    const from       = process.env.SMTP_FROM || process.env.GRAPH_SENDER || process.env.SMTP_USER || 'noreply@ghba'
+    const sender     = req.user !== '__apikey__' && req.user !== '__anonymous__' ? db.users.get(req.user) : null
+    const replyTo    = sender?.email || null
+    const fromAddress = sender?.display_name ? `"${sender.display_name} (GHBA)" <${from}>` : from
+    const mailSubject = subject || `Notizbuch – ${proj.name || 'Projekt'}`
+    const html = `<!DOCTYPE html>
+<html lang="de"><head><meta charset="utf-8"></head>
+<body style="margin:0;padding:0;background:#F0F0F0;font-family:Arial,sans-serif;font-size:14px;color:#1F2937;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#F0F0F0;padding:32px 16px;">
+    <tr><td align="center">
+      <table width="620" cellpadding="0" cellspacing="0" style="background:#FFF;border:1px solid #E5E7EB;max-width:620px;width:100%;">
+        <tr><td style="background:#000040;padding:28px 36px;">
+          <p style="margin:0;color:#8FBEFF;font-size:11px;letter-spacing:2px;text-transform:uppercase;">GHBA</p>
+          <p style="margin:6px 0 0 0;color:#FBFFE6;font-size:20px;font-weight:bold;">Notizbuch</p>
+          <p style="margin:4px 0 0 0;color:#8FBEFF;font-size:14px;">${proj.name || 'Projekt'}</p>
+        </td></tr>
+        <tr><td style="padding:28px 36px;">
+          ${bodyHtml || '<p style="color:#9CA3AF;">Kein Inhalt.</p>'}
+        </td></tr>
+        <tr><td style="padding:0 36px 28px 36px;color:#9CA3AF;font-size:11px;">Gesendet über GHBA</td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body></html>`
+    const atts = []
+    if (pdfBase64) atts.push({ filename: pdfFilename || 'Notizbuch.pdf', content: Buffer.from(pdfBase64, 'base64'), contentType: 'application/pdf' })
+    await mailer.sendMail({ from: fromAddress, to, replyTo, subject: mailSubject, html, attachments: atts })
+    res.json({ ok: true })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
 // ── Backup ────────────────────────────────────────────────────────────────────
 const backupDir = path.join(process.env.DB_PATH || path.join(__dirname, '../data'), 'backups')
 if (!fs.existsSync(backupDir)) fs.mkdirSync(backupDir, { recursive: true })

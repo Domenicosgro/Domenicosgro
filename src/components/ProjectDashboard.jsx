@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { ArrowLeft, FileText, Users, HardHat, Pencil, NotebookPen, ChevronRight, Clock, CheckCircle2, BarChart2, UserCog } from 'lucide-react'
+import { ArrowLeft, FileText, Users, HardHat, Pencil, NotebookPen, ChevronRight, Clock, CheckCircle2, BarChart2, UserCog, BookOpen } from 'lucide-react'
 import ProjectAdminPanel from './ProjectAdminPanel'
 
 const isServer = typeof window !== 'undefined' && !!window.__SERVER_MODE__
@@ -37,7 +37,7 @@ function DashboardTile({ icon, title, subtitle, accent, onClick, stat1, stat2 })
 
 export default function ProjectDashboard({
   project, protocols, notes, serverUser,
-  onBack, onOpenProtocols, onOpenNotes, onManageContacts, onOpenMassnahmen, onSaved,
+  onBack, onOpenProtocols, onOpenNotes, onManageContacts, onOpenMassnahmen, onOpenNotizbuch, onSaved,
 }) {
   const [showAdminPanel, setShowAdminPanel] = useState(false)
 
@@ -134,6 +134,15 @@ export default function ProjectDashboard({
           onClick={onOpenMassnahmen}
           stat1={{ value: allActions.length, label: 'Maßnahmen' }}
           stat2={{ value: openActions,       label: 'offen' }}
+        />
+
+        {/* Notizbuch */}
+        <DashboardTile
+          icon={<BookOpen size={20} />}
+          title="Notizbuch"
+          subtitle="Interne Notizen, Themen und Aufgaben für das Projektteam"
+          accent="border-teal-500"
+          onClick={onOpenNotizbuch}
         />
 
         {/* Administration – nur für Projektadmins und Systemadmins */}

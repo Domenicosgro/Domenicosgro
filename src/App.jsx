@@ -8,6 +8,7 @@ import ProjectManager        from './components/ProjectManager'
 import ProtocolList          from './components/ProtocolList'
 import ProtocolEditor        from './components/ProtocolEditor'
 import MassnahmenDashboard   from './components/MassnahmenDashboard'
+import NotizbuchView         from './components/NotizbuchView'
 import ProjectDashboard      from './components/ProjectDashboard'
 import NotesList             from './components/NotesList'
 import ContactDatabase       from './components/ContactDatabase'
@@ -516,6 +517,21 @@ export default function App() {
     )
   }
 
+  if (view === 'project-notizbuch') {
+    const project = projectsWithContacts.find(p => p.id === selectedProjectId)
+    if (!project) { setView('home'); return null }
+    return wrap(
+      <>
+        <NotizbuchView
+          project={project}
+          serverUser={serverUser}
+          onBack={() => setView('project-dashboard')}
+        />
+        <UpdateBanner /><SaveErrorBanner />
+      </>
+    )
+  }
+
   if (view === 'project-dashboard') {
     const project = projectsWithContacts.find(p => p.id === selectedProjectId)
     if (!project) { setView('home'); return null }
@@ -531,6 +547,7 @@ export default function App() {
           onOpenNotes={() => setView('notes')}
           onManageContacts={() => { setContactsOrigin('project-dashboard'); setView('project-contacts') }}
           onOpenMassnahmen={() => setView('project-massnahmen')}
+          onOpenNotizbuch={() => setView('project-notizbuch')}
           onSaved={isServer ? handleRefresh : undefined}
         />
         <UpdateBanner /><SaveErrorBanner />

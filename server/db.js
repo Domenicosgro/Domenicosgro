@@ -99,6 +99,15 @@ db.exec(`
     value      TEXT NOT NULL DEFAULT '',
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
+
+  CREATE TABLE IF NOT EXISTS notebooks (
+    id         TEXT    PRIMARY KEY,
+    project_id TEXT,
+    data       TEXT    NOT NULL,
+    version    INTEGER NOT NULL DEFAULT 1,
+    updated_at TEXT    NOT NULL DEFAULT (datetime('now')),
+    updated_by TEXT
+  );
 `)
 
 // ── Migration from legacy key-value store ─────────────────────────────────────
@@ -372,6 +381,7 @@ module.exports = {
   protocols: makeStore('protocols'),
   projects:  makeStore('projects'),
   notes:     makeStore('notes'),
+  notebooks: makeStore('notebooks'),
   users,
   sessions,
   resetRequests,
