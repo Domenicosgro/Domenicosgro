@@ -1,29 +1,152 @@
-import React, { useState, useMemo } from 'react'
-import { ArrowLeft, Search, Users, Mail, Phone, Building2, Wrench, X } from 'lucide-react'
+import React, { useState, useMemo, useCallback } from 'react'
+import { ArrowLeft, Search, Users, Mail, Phone, Building2, Wrench, X, Plus, Pencil } from 'lucide-react'
+import { uid } from '../utils'
 
-export default function ContactDatabase({ projects, onBack }) {
-  const [search, setSearch] = useState('')
-  const [sortField, setSortField] = useState('name')
-  const [sortDir,   setSortDir]   = useState('asc')
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function getDedupKey(contact) {
+  const emailKey = (contact.email || '').trim().toLowerCase()
+  const nameKey  = `${(contact.name || '').trim().toLowerCase()}|||${(contact.company || '').trim().toLowerCase()}`
+  return emailKey || nameKey || null
+}
+
+function findInProject(project, dedupKey) {
+  if (!dedupKey) return null
+  for (const c of (project.contacts || [])) {
+    if (getDedupKey(c) === dedupKey) return c
+  }
+  return null
+}
+
+// ── Contact modal (add + edit) ────────────────────────────────────────────────
+
+function ContactModal({ contact, isNew, allProjects, onSave, onClose }) {
+  const [form, setForm] = useState({
+    name:    contact.name    || '',
+    company: contact.company || '',
+    gewerk:  contact.gewerk  || '',
+    role:    contact.role    || '',
+    email:   contact.email   || '',
+    phone:   contact.phone   || '',
+  })
+  const [selProjects, setSelProjects] = useState(
+    () => new Set((contact._projects || []).map(p => p.id))
+  )
+
+  const set = (field, val) => setForm(prev => ({ ...prev, [field]: val }))
+
+  const toggle = (id) => setSelProjects(prev => {
+    const next = new Set(prev)
+    next.has(id) ? next.delete(id) : next.add(id)
+    return next
+  })
+
+  const hasProject = selProjects.size > 0
+  const canSave    = (form.name.trim() || form.company.trim() || form.email.trim()) && hasProject
+
+  const handleSave = () => {
+    const oldKey = isNew ? null : getDedupKey(contact)
+    onSave({ ...form }, [...selProjects], oldKey)
+    onClose()
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="card w-full max-w-2xl bg-white flex flex-col" style={{ maxHeight: '90vh' }}>
+        <div className="flex items-center justify-between p-5 border-b border-gray-200">
+          <h2 className="font-semibold text-night">{isNew ? 'Neuer Kontakt' : 'Kontakt bearbeiten'}</h2>
+          <button className="text-gray-400 hover:text-gray-600" onClick={onClose}><X size={18} /></button>
+        </div>
+
+        <div className="overflow-y-auto flex-1 p-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">Name</label>
+            <input className="input w-full" value={form.name} onChange={e => set('name', e.target.value)} placeholder="Vor- und Nachname" />
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">Firma</label>
+            <input className="input w-full" value={form.company} onChange={e => set('company', e.target.value)} placeholder="Unternehmensname" />
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">Gewerk</label>
+            <input className="input w-full" value={form.gewerk} onChange={e => set('gewerk', e.target.value)} placeholder="z.B. Elektro, Rohbau, HVLS" />
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">Funktion</label>
+            <input className="input w-full" value={form.role} onChange={e => set('role', e.target.value)} placeholder="z.B. Bauleiter, Planer" />
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">E-Mail</label>
+            <input className="input w-full" type="email" value={form.email} onChange={e => set('email', e.target.value)} placeholder="kontakt@firma.de" />
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">Telefon</label>
+            <input className="input w-full" value={form.phone} onChange={e => set('phone', e.target.value)} placeholder="+49 …" />
+          </div>
+
+          {/* Project assignment */}
+          <div className="col-span-full">
+            <label className="block text-xs text-gray-500 mb-2">
+              Projektzuordnung <span className="text-gray-400">(mindestens 1)</span>
+            </label>
+            <div className="border border-gray-200 divide-y divide-gray-100 max-h-44 overflow-y-auto">
+              {allProjects.length === 0 && (
+                <p className="text-xs text-gray-400 p-3">Keine Projekte vorhanden.</p>
+              )}
+              {allProjects.map(p => (
+                <label key={p.id} className="flex items-center gap-2.5 px-3 py-2 hover:bg-gray-50 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    className="accent-brand-600 flex-shrink-0"
+                    checked={selProjects.has(p.id)}
+                    onChange={() => toggle(p.id)}
+                  />
+                  <span className="text-sm text-gray-700 truncate">{p.name || 'Unbenanntes Projekt'}</span>
+                </label>
+              ))}
+            </div>
+            {!hasProject && (
+              <p className="text-xs text-amber-600 mt-1">Bitte mindestens ein Projekt auswählen.</p>
+            )}
+          </div>
+        </div>
+
+        <div className="flex justify-end gap-2 p-5 border-t border-gray-200">
+          <button className="btn-secondary" onClick={onClose}>Abbrechen</button>
+          <button className="btn-primary" onClick={handleSave} disabled={!canSave}>
+            {isNew ? 'Kontakt anlegen' : 'Speichern'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Main component ────────────────────────────────────────────────────────────
+
+export default function ContactDatabase({ projects, onUpdate, onBack }) {
+  const [search,        setSearch]        = useState('')
+  const [sortField,     setSortField]     = useState('name')
+  const [sortDir,       setSortDir]       = useState('asc')
   const [filterProject, setFilterProject] = useState('')
   const [filterCompany, setFilterCompany] = useState('')
+  const [editContact,   setEditContact]   = useState(null)   // entry from allContacts
+  const [showNew,       setShowNew]       = useState(false)
 
-  // Flatten all contacts from all projects, deduplicating by email (or name+company)
+  // Flatten + deduplicate contacts from all projects
   const allContacts = useMemo(() => {
     const list = []
-    const seen = new Map() // dedupKey → index in list
+    const seen = new Map()
     for (const project of projects) {
       for (const contact of (project.contacts ?? [])) {
         if (!contact.name && !contact.company && !contact.email) continue
-        const emailKey = (contact.email || '').trim().toLowerCase()
-        const nameKey  = `${(contact.name || '').trim().toLowerCase()}|||${(contact.company || '').trim().toLowerCase()}`
-        const dedupKey = emailKey || nameKey
+        const key  = getDedupKey(contact)
         const proj = { id: project.id, name: project.name || 'Unbenanntes Projekt' }
-        if (dedupKey && seen.has(dedupKey)) {
-          list[seen.get(dedupKey)]._projects.push(proj)
+        if (key && seen.has(key)) {
+          list[seen.get(key)]._projects.push(proj)
         } else {
           const entry = { ...contact, _projectId: project.id, _projectName: project.name || 'Unbenanntes Projekt', _projects: [proj] }
-          if (dedupKey) seen.set(dedupKey, list.length)
+          if (key) seen.set(key, list.length)
           list.push(entry)
         }
       }
@@ -31,7 +154,6 @@ export default function ContactDatabase({ projects, onBack }) {
     return list
   }, [projects])
 
-  // Filter-Optionen für Projekt und Firma
   const projectOptions = useMemo(() => {
     const m = new Map()
     for (const c of allContacts) for (const p of c._projects) if (p.id) m.set(p.id, p.name)
@@ -57,7 +179,6 @@ export default function ContactDatabase({ projects, onBack }) {
       (c.role    || '').toLowerCase().includes(q) ||
       (c._projectName || '').toLowerCase().includes(q)
     )
-
     return [...base].sort((a, b) => {
       const av = (a[sortField] || a._projectName || '').toLowerCase()
       const bv = (b[sortField] || b._projectName || '').toLowerCase()
@@ -65,7 +186,7 @@ export default function ContactDatabase({ projects, onBack }) {
     })
   }, [allContacts, q, filterProject, filterCompany, sortField, sortDir])
 
-  const hasFilters = filterProject || filterCompany || search.trim()
+  const hasFilters  = filterProject || filterCompany || search.trim()
   const clearFilters = () => { setFilterProject(''); setFilterCompany(''); setSearch('') }
 
   const handleSort = (field) => {
@@ -83,8 +204,39 @@ export default function ContactDatabase({ projects, onBack }) {
     </button>
   )
 
-  // Unique project count
+  // ── Save handler (add + edit) ─────────────────────────────────────────────
+  const handleSave = useCallback((fields, nextProjectIds, oldKey) => {
+    if (!onUpdate) return
+    const nextSet = new Set(nextProjectIds)
+
+    for (const project of projects) {
+      const wasIn    = oldKey ? !!findInProject(project, oldKey) : false
+      const willBeIn = nextSet.has(project.id)
+
+      if (!wasIn && !willBeIn) continue
+
+      const contacts = [...(project.contacts || [])]
+
+      if (wasIn && willBeIn) {
+        // Update in place – preserve id and other fields not in form
+        const updated = contacts.map(c =>
+          getDedupKey(c) === oldKey ? { ...c, ...fields } : c
+        )
+        onUpdate(project.id, { contacts: updated })
+      } else if (!wasIn && willBeIn) {
+        // Add to project
+        onUpdate(project.id, { contacts: [...contacts, { id: uid(), ...fields }] })
+      } else {
+        // wasIn && !willBeIn → remove from project
+        onUpdate(project.id, { contacts: contacts.filter(c => getDedupKey(c) !== oldKey) })
+      }
+    }
+  }, [projects, onUpdate])
+
   const projectCount = new Set(allContacts.flatMap(c => c._projects.map(p => p.id))).size
+
+  // Empty contact template for new modal
+  const emptyEntry = { name: '', company: '', gewerk: '', role: '', email: '', phone: '', _projects: [] }
 
   return (
     <div className="app-page">
@@ -104,6 +256,13 @@ export default function ContactDatabase({ projects, onBack }) {
             </p>
           </div>
         </div>
+        {onUpdate && (
+          <div className="flex items-center gap-2 self-end sm:self-center">
+            <button className="btn-primary" onClick={() => setShowNew(true)}>
+              <Plus size={15} /> Neuer Kontakt
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Suche + Filter */}
@@ -140,7 +299,11 @@ export default function ContactDatabase({ projects, onBack }) {
         <div className="card p-12 text-center">
           <Users size={40} className="mx-auto text-gray-300 mb-3" />
           <p className="text-gray-500 font-medium">Keine Kontakte vorhanden</p>
-          <p className="text-sm text-gray-400 mt-1">Füge Kontakte über die Projektverwaltung hinzu.</p>
+          <p className="text-sm text-gray-400 mt-1">
+            {onUpdate
+              ? 'Lege den ersten Kontakt mit „Neuer Kontakt" an oder füge Kontakte über die Projektverwaltung hinzu.'
+              : 'Füge Kontakte über die Projektverwaltung hinzu.'}
+          </p>
         </div>
       ) : filtered.length === 0 ? (
         <div className="card p-10 text-center">
@@ -159,11 +322,12 @@ export default function ContactDatabase({ projects, onBack }) {
                 <th className="text-left px-4 py-2.5 hidden lg:table-cell"><SortBtn field="role">Funktion</SortBtn></th>
                 <th className="text-left px-4 py-2.5 hidden sm:table-cell">E-Mail / Telefon</th>
                 <th className="text-left px-4 py-2.5"><SortBtn field="_projectName">Projekt</SortBtn></th>
+                {onUpdate && <th className="w-10 px-2 py-2.5" />}
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
               {filtered.map((c, i) => (
-                <tr key={`${c._projectId}-${c.id || i}`} className="hover:bg-gray-50 transition-colors">
+                <tr key={`${c._projectId}-${c.id || i}`} className="hover:bg-gray-50 transition-colors group">
                   <td className="px-4 py-2.5 font-medium text-gray-900">{c.name || <span className="text-gray-300">–</span>}</td>
                   <td className="px-4 py-2.5 text-gray-600 hidden md:table-cell">
                     {c.company ? <span className="flex items-center gap-1"><Building2 size={11} className="text-gray-400" />{c.company}</span> : <span className="text-gray-300">–</span>}
@@ -188,6 +352,17 @@ export default function ContactDatabase({ projects, onBack }) {
                       ))}
                     </div>
                   </td>
+                  {onUpdate && (
+                    <td className="px-2 py-2.5">
+                      <button
+                        className="p-1 text-gray-300 hover:text-brand-600 opacity-0 group-hover:opacity-100 transition-opacity"
+                        title="Kontakt bearbeiten"
+                        onClick={() => setEditContact(c)}
+                      >
+                        <Pencil size={14} />
+                      </button>
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>
@@ -197,6 +372,29 @@ export default function ContactDatabase({ projects, onBack }) {
           </div>
         </div>
       )}
+
+      {/* Edit modal */}
+      {editContact && (
+        <ContactModal
+          contact={editContact}
+          isNew={false}
+          allProjects={projects}
+          onSave={handleSave}
+          onClose={() => setEditContact(null)}
+        />
+      )}
+
+      {/* New contact modal */}
+      {showNew && (
+        <ContactModal
+          contact={emptyEntry}
+          isNew={true}
+          allProjects={projects}
+          onSave={handleSave}
+          onClose={() => setShowNew(false)}
+        />
+      )}
+
     </div>
   )
 }

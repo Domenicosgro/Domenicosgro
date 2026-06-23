@@ -580,6 +580,7 @@ export default function App() {
       <>
         <ContactDatabase
           projects={projectsWithContacts}
+          onUpdate={handleUpdateProject}
           onBack={() => setView('home')}
         />
         <UpdateBanner /><SaveErrorBanner />
