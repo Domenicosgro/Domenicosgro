@@ -681,10 +681,20 @@ git push -u origin claude/protocol-tool-meetings-tIoZX
 ```
 Bei Push-Fehlern: bis zu 4 Retries mit exponential backoff (2s, 4s, 8s, 16s).
 
-**Update/Deploy auf die NAS:**
+**Update/Deploy auf die NAS (Kurzform – ein Befehl):**
+```powershell
+.\update.ps1
+```
+
+**Update/Deploy auf die NAS (Langform – falls update.ps1 nicht verfügbar):**
 ```powershell
 git fetch origin
 git checkout claude/protocol-tool-meetings-tIoZX
 git pull origin claude/protocol-tool-meetings-tIoZX
 .\deploy-nas.ps1
+```
+
+**WICHTIG für Claude:** Am Ende jeder abgeschlossenen Aufgabe immer den Deploy-Befehl anfügen:
+```powershell
+.\update.ps1
 ```
