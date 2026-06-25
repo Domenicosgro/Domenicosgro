@@ -83,7 +83,13 @@ function exportOutlookCsv(contacts, baseFilename = 'Kontakte_Outlook') {
         '', '', '', '', '', '', // Adressfelder
       ].map(wrap).join(',')
     })
-    return [OUTLOOK_HEADERS.join(','), ...rows].join('\r\n')
+    // UTF-8 BOM als rohe Bytes voranstellen – hilft Outlook/Excel bei der Encoding-Erkennung
+    // ohne den ersten Spaltennamen zu korrumpieren
+    const bom  = new Uint8Array([0xEF, 0xBB, 0xBF])
+    const text = new TextEncoder().encode([OUTLOOK_HEADERS.join(','), ...rows].join('\r\n'))
+    const out  = new Uint8Array(bom.length + text.length)
+    out.set(bom); out.set(text, bom.length)
+    return out
   }
 
   const chunks = []
@@ -95,7 +101,7 @@ function exportOutlookCsv(contacts, baseFilename = 'Kontakte_Outlook') {
       ? `${baseFilename}_Teil${idx + 1}_von_${total}.csv`
       : `${baseFilename}.csv`
     setTimeout(() => {
-      const blob = new Blob([buildCsv(chunk)], { type: 'text/csv;charset=utf-8;' })
+      const blob = new Blob([buildCsv(chunk)], { type: 'text/csv;charset=utf-8' })
       const url  = URL.createObjectURL(blob)
       Object.assign(document.createElement('a'), { href: url, download: filename }).click()
       URL.revokeObjectURL(url)
