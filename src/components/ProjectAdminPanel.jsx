@@ -81,8 +81,8 @@ export default function ProjectAdminPanel({ project, serverUser, onClose, onSave
   }
 
   const nameOf = (username) => users.find(u => u.username === username)?.display_name || username
-  // Kandidaten für Co-Admins/Autoren: keine Systemadmins (haben immer Zugang), nicht der Ersteller
-  const candidates = users.filter(u => u.username !== creator && u.role !== 'admin')
+  const sysAdmins      = users.filter(u => u.username !== creator && u.role === 'admin')
+  const candidates     = users.filter(u => u.username !== creator && u.role !== 'admin')
   const authorCandidates = candidates.filter(u => !projectAdmins.includes(u.username))
 
   return (
@@ -108,10 +108,20 @@ export default function ProjectAdminPanel({ project, serverUser, onClose, onSave
             </div>
             {loadingUsers ? (
               <div className="flex justify-center py-3"><Loader size={16} className="animate-spin text-gray-400" /></div>
-            ) : candidates.length === 0 ? (
+            ) : candidates.length === 0 && sysAdmins.length === 0 ? (
               <p className="text-sm text-gray-400 text-center py-2 border border-gray-100">Keine weiteren Benutzer vorhanden.</p>
             ) : (
               <div className="border border-gray-200 divide-y divide-gray-100 max-h-40 overflow-y-auto">
+                {sysAdmins.map(u => (
+                  <div key={u.username} className="flex items-center gap-3 px-3 py-2 bg-gray-50 opacity-60">
+                    <input type="checkbox" className="w-4 h-4 flex-shrink-0" checked disabled />
+                    <div className="flex-1 min-w-0">
+                      <span className="text-sm text-gray-600">{u.display_name || u.username}</span>
+                      <span className="text-xs text-gray-400 ml-1.5">@{u.username}</span>
+                    </div>
+                    <span className="text-xs text-gray-400 italic">Systemadmin</span>
+                  </div>
+                ))}
                 {candidates.map(u => (
                   <label key={u.username} className="flex items-center gap-3 px-3 py-2 hover:bg-gray-50 cursor-pointer">
                     <input type="checkbox" className="w-4 h-4 accent-brand-600 flex-shrink-0"
@@ -141,10 +151,20 @@ export default function ProjectAdminPanel({ project, serverUser, onClose, onSave
             {isAccessControlled && (
               <div className="mt-3">
                 <p className="text-xs font-medium text-gray-700 mb-2">Autoren mit Zugang:</p>
-                {authorCandidates.length === 0 ? (
+                {authorCandidates.length === 0 && sysAdmins.length === 0 ? (
                   <p className="text-sm text-gray-400 text-center py-2 border border-gray-100">Keine weiteren Benutzer vorhanden.</p>
                 ) : (
                   <div className="border border-gray-200 divide-y divide-gray-100 max-h-40 overflow-y-auto">
+                    {sysAdmins.map(u => (
+                      <div key={u.username} className="flex items-center gap-3 px-3 py-2 bg-gray-50 opacity-60">
+                        <input type="checkbox" className="w-4 h-4 flex-shrink-0" checked disabled />
+                        <div className="flex-1 min-w-0">
+                          <span className="text-sm text-gray-600">{u.display_name || u.username}</span>
+                          <span className="text-xs text-gray-400 ml-1.5">@{u.username}</span>
+                        </div>
+                        <span className="text-xs text-gray-400 italic">Systemadmin</span>
+                      </div>
+                    ))}
                     {authorCandidates.map(u => (
                       <label key={u.username} className="flex items-center gap-3 px-3 py-2 hover:bg-gray-50 cursor-pointer">
                         <input type="checkbox" className="w-4 h-4 accent-brand-600 flex-shrink-0"
@@ -157,7 +177,9 @@ export default function ProjectAdminPanel({ project, serverUser, onClose, onSave
                     ))}
                   </div>
                 )}
-                <p className="text-xs text-gray-400 mt-1.5">Systemadministratoren haben immer uneingeschränkten Zugang.</p>
+                <p className="text-xs text-gray-400 mt-1.5">
+                  Systemadministratoren haben immer uneingeschränkten Zugang. Fehlen Kollegen in der Liste, können sie über <strong>Admin → Synology-Import</strong> hinzugefügt werden.
+                </p>
               </div>
             )}
           </div>
