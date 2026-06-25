@@ -58,9 +58,10 @@ export default function BimView({ project, serverUser, token, onBack, onProjectU
         if (token) viewer.IFC.loader.setRequestHeader({ 'Authorization': `Bearer ${token}` })
 
         let ifcError = null
+        // fitToFrame=true: web-ifc-viewer repositions camera via its own controls
         const model = await viewer.IFC.loadIfcUrl(
           `/api/projects/${project.id}/bim`,
-          false,
+          true,
           undefined,
           (err) => { ifcError = err }
         )
@@ -68,17 +69,7 @@ export default function BimView({ project, serverUser, token, onBack, onProjectU
         if (cancelled) return
         if (!model) throw ifcError || new Error('IFC-Datei konnte nicht geparst werden (Konsole prüfen)')
 
-        // Kamera auf das Modell ausrichten
-        const bb     = new THREE.Box3().setFromObject(model.mesh)
-        const center = bb.getCenter(new THREE.Vector3())
-        const size   = bb.getSize(new THREE.Vector3())
-        const dist   = Math.max(size.x, size.y, size.z) * 1.5
-        if (!cancelled && viewer.context) {
-          viewer.context.getCamera().position.set(center.x + dist, center.y + dist * 0.5, center.z + dist)
-          viewer.context.getCamera().lookAt(center)
-        }
-
-        if (!cancelled) setModelInfo({ center, size })
+        if (!cancelled) setModelInfo({ loaded: true })
       } catch (e) {
         if (!cancelled) setError(`Modell konnte nicht geladen werden: ${e.message}`)
       } finally {
