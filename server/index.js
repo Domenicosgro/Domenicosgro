@@ -990,6 +990,57 @@ app.get('/api/projects/:id/bim', requireAuth, (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
+// ── BIM Issues ────────────────────────────────────────────────────────────────
+app.get('/api/projects/:id/bim-issues', requireAuth, (req, res) => {
+  try {
+    const all = db.bimIssues.list()
+    res.json(all.filter(i => i.projectId === req.params.id))
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.post('/api/projects/:id/bim-issues', requireAuth, writeLimiter, (req, res) => {
+  try {
+    const { nanoid } = require('nanoid')
+    const id   = nanoid()
+    const now  = new Date().toISOString()
+    const data = {
+      id,
+      projectId:   req.params.id,
+      title:       req.body.title       || 'Unbenanntes Issue',
+      description: req.body.description || '',
+      type:        req.body.type        || 'info',
+      status:      req.body.status      || 'offen',
+      priority:    req.body.priority    || 'mittel',
+      assignedTo:  req.body.assignedTo  || '',
+      dueDate:     req.body.dueDate     || '',
+      viewpoint:   req.body.viewpoint   || null,
+      createdBy:   req.user?.displayName || req.user?.username || '',
+      createdAt:   now,
+      updatedAt:   now,
+    }
+    db.bimIssues.create(data, req.user?.username)
+    res.status(201).json(data)
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.patch('/api/projects/:id/bim-issues/:issueId', requireAuth, writeLimiter, (req, res) => {
+  try {
+    const { data, version } = req.body
+    const updated = { ...data, updatedAt: new Date().toISOString() }
+    const result  = db.bimIssues.update(req.params.issueId, updated, version, req.user?.username)
+    if (result.notFound)  return res.status(404).json({ error: 'Nicht gefunden.' })
+    if (result.conflict)  return res.status(409).json({ conflict: true, ...result })
+    res.json({ ok: true })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.delete('/api/projects/:id/bim-issues/:issueId', requireAuth, writeLimiter, (req, res) => {
+  try {
+    db.bimIssues.delete(req.params.issueId)
+    res.json({ ok: true })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
 // DELETE /api/projects/:id/bim  → Modell entfernen
 app.delete('/api/projects/:id/bim', requireAuth, writeLimiter, (req, res) => {
   try {

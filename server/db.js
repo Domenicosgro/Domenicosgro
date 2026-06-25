@@ -108,6 +108,15 @@ db.exec(`
     updated_at TEXT    NOT NULL DEFAULT (datetime('now')),
     updated_by TEXT
   );
+
+  CREATE TABLE IF NOT EXISTS bim_issues (
+    id         TEXT    PRIMARY KEY,
+    project_id TEXT,
+    data       TEXT    NOT NULL,
+    version    INTEGER NOT NULL DEFAULT 1,
+    updated_at TEXT    NOT NULL DEFAULT (datetime('now')),
+    updated_by TEXT
+  );
 `)
 
 // ── Migration from legacy key-value store ─────────────────────────────────────
@@ -378,10 +387,11 @@ const appState = {
 }
 
 module.exports = {
-  protocols: makeStore('protocols'),
-  projects:  makeStore('projects'),
-  notes:     makeStore('notes'),
-  notebooks: makeStore('notebooks'),
+  protocols:  makeStore('protocols'),
+  projects:   makeStore('projects'),
+  notes:      makeStore('notes'),
+  notebooks:  makeStore('notebooks'),
+  bimIssues:  makeStore('bim_issues'),
   users,
   sessions,
   resetRequests,
