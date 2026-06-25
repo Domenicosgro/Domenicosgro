@@ -2164,6 +2164,56 @@ app.patch('/api/projects/:id/access', requireAuth, writeLimiter, (req, res) => {
     if (result.conflict) return res.status(409).json({ error: 'Konflikt – bitte erneut versuchen.' })
     broadcast('project', 'update', req.params.id, updated.updatedAt)
     logEvent('PROJECT_ACCESS_CHANGED', req, `project=${req.params.id} by=${req.user}`)
+
+    // Benachrichtigung an neu hinzugefügte Co-Admins
+    if (mailer.mailerStatus().configured) {
+      const oldAdmins = new Set(Array.isArray(p.projectAdmins) ? p.projectAdmins : [])
+      const newAdmins = (updated.projectAdmins ?? []).filter(u => !oldAdmins.has(u))
+      if (newAdmins.length > 0) {
+        const from        = process.env.SMTP_FROM || process.env.GRAPH_SENDER || process.env.SMTP_USER || 'noreply@ghba'
+        const assignedBy  = db.users.get(req.user)
+        const byName      = assignedBy?.display_name || req.user
+        const appUrl      = getAppUrl(req)
+        const projName    = updated.name || 'Unbekanntes Projekt'
+        const today       = new Date().toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })
+        for (const username of newAdmins) {
+          const u = db.users.get(username)
+          if (!u?.email) continue
+          const displayName = u.display_name || username
+          const html = `<!DOCTYPE html>
+<html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#F0F0F0;font-family:Arial,sans-serif;font-size:14px;color:#1F2937;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#F0F0F0;padding:32px 16px;">
+    <tr><td align="center">
+      <table width="620" cellpadding="0" cellspacing="0" style="background:#FFF;border:1px solid #E5E7EB;max-width:620px;width:100%;">
+        <tr><td style="background:#000040;padding:28px 36px;">
+          <p style="margin:0;color:#8FBEFF;font-size:11px;letter-spacing:2px;text-transform:uppercase;">GHBA</p>
+          <p style="margin:6px 0 0 0;color:#FBFFE6;font-size:20px;font-weight:bold;">Projektadministrator</p>
+          <p style="margin:4px 0 0 0;color:#8FBEFF;font-size:14px;">${projName}</p>
+        </td></tr>
+        <tr><td style="padding:28px 36px 16px 36px;">
+          <p style="margin:0;font-size:15px;color:#000040;">Guten Tag, ${displayName},</p>
+          <p style="margin:12px 0 0 0;color:#4B5563;">Sie wurden von <strong>${byName}</strong> als <strong>Projektadministrator</strong> für das Projekt <strong>${projName}</strong> ernannt.</p>
+          <p style="margin:10px 0 0 0;color:#4B5563;">Als Projektadministrator können Sie den Projektzugang, Co-Administratoren, Autoren und Freimelde-Links verwalten.</p>
+          ${appUrl ? `<p style="margin:20px 0 0 0;"><a href="${appUrl}" style="background:#000040;color:#FBFFE6;padding:10px 22px;text-decoration:none;font-weight:bold;font-size:14px;display:inline-block;">Zur Anwendung</a></p>` : ''}
+        </td></tr>
+        <tr><td style="padding:20px 36px;border-top:1px solid #E5E7EB;background:#F0F0F0;text-align:center;">
+          <p style="margin:0;color:#9CA3AF;font-size:12px;">GHBA · ${today}</p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body></html>`
+          const text = `Guten Tag, ${displayName},\n\nSie wurden von ${byName} als Projektadministrator für das Projekt „${projName}" ernannt.\n\nAls Projektadministrator können Sie den Projektzugang, Co-Administratoren, Autoren und Freimelde-Links verwalten.\n\n${appUrl ? 'Zur Anwendung: ' + appUrl + '\n\n' : ''}GHBA`
+          mailer.sendMail({
+            from, to: u.email,
+            subject: `Projektadministrator – ${projName}`,
+            html, text,
+          }).catch(() => {})
+        }
+      }
+    }
+
     res.json({ ok: true })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
