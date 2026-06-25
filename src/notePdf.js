@@ -40,7 +40,7 @@ function wrapText(text, font, fontSize, maxWidth) {
   return lines
 }
 
-export async function buildNotePdf(note, contact, projectName, logoDataUrl) {
+export async function buildNotePdf(note, contact, projectName, logoDataUrl, clientLogoDataUrl = null) {
   const pdfDoc = await PDFDocument.create()
   const PAGE_W = 595.28
   const PAGE_H = 841.89
@@ -63,21 +63,29 @@ export async function buildNotePdf(note, contact, projectName, logoDataUrl) {
     }
   }
 
-  // Logo
-  let logoImg = null
-  if (logoDataUrl) {
+  // Logos (Büro-Logo + optionales Auftraggeber-Logo)
+  const embedLogo = async (dataUrl) => {
+    if (!dataUrl) return null
     try {
-      const comma = logoDataUrl.indexOf(',')
-      const isPng = logoDataUrl.slice(0, comma).includes('png')
-      const b64   = logoDataUrl.slice(comma + 1)
-      logoImg = isPng ? await pdfDoc.embedPng(b64) : await pdfDoc.embedJpg(b64)
-    } catch {}
+      const comma = dataUrl.indexOf(',')
+      const isPng = dataUrl.slice(0, comma).includes('png')
+      const b64   = dataUrl.slice(comma + 1)
+      return isPng ? await pdfDoc.embedPng(b64) : await pdfDoc.embedJpg(b64)
+    } catch { return null }
   }
+  const logoImg       = await embedLogo(logoDataUrl)
+  const clientLogoImg = await embedLogo(clientLogoDataUrl)
 
   const HEADER_H = 44
+  let logoX = MARGIN
   if (logoImg) {
     const d = logoImg.scaleToFit(100, 32)
-    page.drawImage(logoImg, { x: MARGIN, y: y - d.height, width: d.width, height: d.height })
+    page.drawImage(logoImg, { x: logoX, y: y - d.height, width: d.width, height: d.height })
+    logoX += d.width + 12
+  }
+  if (clientLogoImg) {
+    const d = clientLogoImg.scaleToFit(100, 32)
+    page.drawImage(clientLogoImg, { x: logoX, y: y - d.height, width: d.width, height: d.height })
   }
 
   // Right header block

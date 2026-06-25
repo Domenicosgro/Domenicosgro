@@ -2313,6 +2313,15 @@ app.post('/api/notes/:id/send-email', requireAuth, async (req, res) => {
     const dateStr   = note.date ? new Date(note.date + 'T12:00:00').toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }) : ''
     const mailSubject = subject || `${typeLabel} – ${note.subject || 'Ohne Betreff'}`
 
+    const escHtml = (s) => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    const participants = Array.isArray(note.participants) ? note.participants : []
+    const participantsHtml = participants.length > 0
+      ? `<tr><td style="padding:0 36px 8px 36px;">
+           <p style="margin:0 0 4px 0;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:#777;">Teilnehmer</p>
+           <p style="margin:0;font-size:13px;color:#1F2937;">${participants.map(p => escHtml([p.name, p.company].filter(Boolean).join(', ') || p.email)).join(' · ')}</p>
+         </td></tr>`
+      : ''
+
     const html = `<!DOCTYPE html>
 <html lang="de"><head><meta charset="utf-8"></head>
 <body style="margin:0;padding:0;background:#F0F0F0;font-family:Arial,sans-serif;font-size:14px;color:#1F2937;">
@@ -2325,6 +2334,7 @@ app.post('/api/notes/:id/send-email', requireAuth, async (req, res) => {
           ${note.subject ? `<p style="margin:4px 0 0 0;color:#8FBEFF;font-size:14px;">${note.subject}</p>` : ''}
           ${dateStr ? `<p style="margin:6px 0 0 0;color:#8FBEFF;font-size:12px;">Datum: ${dateStr}${note.time ? ', ' + note.time + ' Uhr' : ''}</p>` : ''}
         </td></tr>
+        ${participantsHtml}
         <tr><td style="padding:28px 36px;">
           ${note.content || '<p style="color:#9CA3AF;">Kein Inhalt.</p>'}
         </td></tr>

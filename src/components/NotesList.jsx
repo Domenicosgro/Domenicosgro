@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useMemo } from 'react'
 import { ArrowLeft, Plus, Trash2, Send, Mail, Phone, ChevronDown, Printer,
          FileText, Phone as PhoneIcon, Users, Search, X, Check, Loader } from 'lucide-react'
-import { formatDate, NOTE_TYPES, NOTE_TEMPLATES, emptyNote } from '../utils'
+import { formatDate, NOTE_TYPES, NOTE_TEMPLATES, emptyNote, uid } from '../utils'
 import RichTextEditor from './RichTextEditor'
 import { buildNotePdf } from '../notePdf'
 
@@ -24,12 +24,18 @@ function esc(str) {
 }
 
 // ── Notiz-Druck (Design wie Protokoll) ──────────────────────────────────────────
-function buildNotePrintHtml(note, contact, projectName, logoDataUrl) {
+function buildNotePrintHtml(note, contact, projectName, logoDataUrl, clientLogoDataUrl) {
   const typeInfo = NOTE_TYPES.find(t => t.value === note.type) ?? NOTE_TYPES[0]
   const today    = new Date().toISOString().slice(0, 10)
 
-  const logoHtml = logoDataUrl
+  const officeImg = logoDataUrl
     ? `<img src="${logoDataUrl}" style="height:40px;max-width:120px;object-fit:contain;display:block;">`
+    : ''
+  const clientImg = clientLogoDataUrl
+    ? `<img src="${clientLogoDataUrl}" style="height:40px;max-width:120px;object-fit:contain;display:block;">`
+    : ''
+  const logoHtml = (officeImg || clientImg)
+    ? `<div style="display:flex;align-items:flex-end;gap:14px;">${officeImg}${clientImg}</div>`
     : '<div style="height:40px"></div>'
 
   // Metadaten-Zeilen (nur befüllte anzeigen)
@@ -42,6 +48,14 @@ function buildNotePrintHtml(note, contact, projectName, logoDataUrl) {
     metaRows.push([label, parts || '–'])
     if (contact.phone) metaRows.push(['Telefon', esc(contact.phone)])
     if (contact.email) metaRows.push(['E-Mail', esc(contact.email)])
+  }
+  const participants = note.participants ?? []
+  if (participants.length > 0) {
+    const names = participants.map(p => {
+      const base = [p.name, p.company].filter(Boolean).map(esc).join(', ')
+      return base || esc(p.email || '')
+    }).filter(Boolean).join(' · ')
+    metaRows.push(['Teilnehmer', names])
   }
 
   const metaHtml = metaRows.map(([k, v]) => `
@@ -84,8 +98,8 @@ function buildNotePrintHtml(note, contact, projectName, logoDataUrl) {
 </body></html>`
 }
 
-function printNote(note, contact, projectName, logoDataUrl) {
-  const html   = buildNotePrintHtml(note, contact, projectName, logoDataUrl)
+function printNote(note, contact, projectName, logoDataUrl, clientLogoDataUrl) {
+  const html   = buildNotePrintHtml(note, contact, projectName, logoDataUrl, clientLogoDataUrl)
   const iframe = document.createElement('iframe')
   iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:210mm;height:297mm;border:none;visibility:hidden;'
   document.body.appendChild(iframe)
@@ -114,9 +128,12 @@ const TYPE_ICONS = {
 }
 
 // ── Email Modal ───────────────────────────────────────────────────────────────
-function NoteEmailModal({ note, contacts, projectName, logoDataUrl, onClose }) {
-  const [recipients,   setRecipients]   = useState([])
+function NoteEmailModal({ note, contacts, allContacts, projectName, logoDataUrl, clientLogoDataUrl, onClose }) {
+  // Teilnehmer mit E-Mail vorab auswählen
+  const participantEmails = (note.participants ?? []).map(p => p.email).filter(Boolean)
+  const [recipients,   setRecipients]   = useState(() => [...new Set(participantEmails)])
   const [customEmail,  setCustomEmail]  = useState('')
+  const [dbSearch,     setDbSearch]     = useState('')
   const [subject,      setSubject]      = useState(`${NOTE_TYPES.find(t => t.value === note.type)?.label || 'Notiz'} – ${note.subject || 'Ohne Betreff'}`)
   const [sending,      setSending]      = useState(false)
   const [sent,         setSent]         = useState(false)
@@ -124,6 +141,16 @@ function NoteEmailModal({ note, contacts, projectName, logoDataUrl, onClose }) {
 
   const contactsWithEmail = contacts.filter(c => c.email)
   const linkedContact     = contacts.find(c => c.id === note.linkedContactId) ?? null
+
+  // Kontaktdatenbank (projektübergreifend) – nur mit E-Mail, gefiltert per Suche
+  const dbContacts = useMemo(() => {
+    const q = dbSearch.trim().toLowerCase()
+    const projectEmails = new Set(contactsWithEmail.map(c => (c.email || '').toLowerCase()))
+    return (allContacts ?? [])
+      .filter(c => c.email && !projectEmails.has(c.email.toLowerCase()))
+      .filter(c => !q || (c.name || '').toLowerCase().includes(q) || (c.company || '').toLowerCase().includes(q) || (c.email || '').toLowerCase().includes(q))
+      .slice(0, 50)
+  }, [allContacts, contactsWithEmail, dbSearch])
 
   const toggleContact = (email) =>
     setRecipients(prev => prev.includes(email) ? prev.filter(e => e !== email) : [...prev, email])
@@ -147,7 +174,7 @@ function NoteEmailModal({ note, contacts, projectName, logoDataUrl, onClose }) {
         let pdfBase64 = null
         let pdfFilename = null
         try {
-          pdfBase64  = await buildNotePdf(note, linkedContact, projectName, logoDataUrl)
+          pdfBase64  = await buildNotePdf(note, linkedContact, projectName, logoDataUrl, clientLogoDataUrl)
           const typeLabel = NOTE_TYPES.find(t => t.value === note.type)?.label || 'Notiz'
           const safeName  = (note.subject || typeLabel).replace(/[^a-zA-Z0-9äöüÄÖÜß _\-]/g, '').trim().slice(0, 60)
           pdfFilename = `${typeLabel}_${safeName || 'Notiz'}${note.date ? '_' + note.date : ''}.pdf`
@@ -213,6 +240,42 @@ function NoteEmailModal({ note, contacts, projectName, logoDataUrl, onClose }) {
             </div>
           )}
 
+          {/* Aus Kontaktdatenbank (projektübergreifend) */}
+          <div>
+            <p className="text-xs font-medium text-gray-700 mb-2">Aus Kontaktdatenbank ergänzen</p>
+            <div className="relative mb-2">
+              <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input
+                className="input pl-8 text-sm"
+                placeholder="Kontakt suchen (Name, Firma, E-Mail)…"
+                value={dbSearch}
+                onChange={e => setDbSearch(e.target.value)}
+              />
+            </div>
+            {dbSearch.trim() && (
+              dbContacts.length > 0 ? (
+                <div className="border border-gray-200 divide-y divide-gray-100 max-h-40 overflow-y-auto">
+                  {dbContacts.map(c => (
+                    <label key={c.id || c.email} className="flex items-center gap-3 px-3 py-2 hover:bg-gray-50 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        className="w-4 h-4 accent-brand-600 flex-shrink-0"
+                        checked={recipients.includes(c.email)}
+                        onChange={() => toggleContact(c.email)}
+                      />
+                      <div className="flex-1 min-w-0">
+                        <span className="text-sm text-gray-900">{c.name || c.company || c.email}</span>
+                        <span className="text-xs text-gray-400 ml-1.5">{c.email}</span>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-gray-400 px-1">Keine Kontakte gefunden.</p>
+              )
+            )}
+          </div>
+
           {/* Eigene Adresse */}
           <div>
             <p className="text-xs font-medium text-gray-700 mb-2">Weitere Empfänger</p>
@@ -252,11 +315,41 @@ function NoteEmailModal({ note, contacts, projectName, logoDataUrl, onClose }) {
 }
 
 // ── Note Editor ───────────────────────────────────────────────────────────────
-function NoteEditor({ note, contacts, projectName, logoDataUrl, onUpdate, onDelete, onSendEmail }) {
+const contactKey = (c) => (c.email || '').trim().toLowerCase()
+  || `${(c.name || '').trim().toLowerCase()}|${(c.company || '').trim().toLowerCase()}`
+
+function NoteEditor({ note, contacts, allContacts, projectName, logoDataUrl, clientLogoDataUrl, onUpdate, onDelete, onSendEmail }) {
   const set = (field) => (val) => onUpdate(note.id, { [field]: typeof val === 'object' && val?.target ? val.target.value : val })
 
   const linkedContact = contacts.find(c => c.id === note.linkedContactId)
   const typeInfo = NOTE_TYPES.find(t => t.value === note.type) ?? NOTE_TYPES[0]
+
+  // Teilnehmer aus Kontakten (Projektkontakte + Kontaktdatenbank, dedupliziert)
+  const participants = note.participants ?? []
+  const participantKeys = new Set(participants.map(contactKey))
+
+  const contactPool = useMemo(() => {
+    const map = new Map()
+    for (const c of [...(contacts ?? []), ...(allContacts ?? [])]) {
+      if (!c.name && !c.company && !c.email) continue
+      const k = contactKey(c)
+      if (!map.has(k)) map.set(k, c)
+    }
+    return [...map.values()].sort((a, b) => (a.name || a.company).localeCompare(b.name || b.company, 'de'))
+  }, [contacts, allContacts])
+
+  const availableContacts = contactPool.filter(c => !participantKeys.has(contactKey(c)))
+
+  const addParticipant = (key) => {
+    const c = contactPool.find(x => contactKey(x) === key)
+    if (!c) return
+    const entry = { id: c.id || uid(), name: c.name || '', company: c.company || '', email: c.email || '' }
+    onUpdate(note.id, { participants: [...participants, entry] })
+  }
+
+  const removeParticipant = (key) => {
+    onUpdate(note.id, { participants: participants.filter(p => contactKey(p) !== key) })
+  }
 
   return (
     <div className="flex flex-col gap-4">
@@ -312,6 +405,38 @@ function NoteEditor({ note, contacts, projectName, logoDataUrl, onUpdate, onDele
         </div>
       )}
 
+      {/* Teilnehmer aus Kontakten */}
+      <div>
+        <label className="text-xs font-medium text-gray-500 block mb-1 flex items-center gap-1.5">
+          <Users size={12} /> Teilnehmer (aus Kontakten)
+        </label>
+        {participants.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 mb-2">
+            {participants.map(p => (
+              <span key={contactKey(p)} className="inline-flex items-center gap-1 text-xs px-2 py-1 bg-brand-50 border border-brand-100 text-brand-800">
+                {p.name || p.company || p.email}
+                {p.email && <span className="text-brand-400">·{p.email}</span>}
+                <button className="ml-0.5 text-brand-400 hover:text-red-500" onClick={() => removeParticipant(contactKey(p))} title="Entfernen">
+                  <X size={11} />
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
+        <select
+          className="input text-sm"
+          value=""
+          onChange={e => { if (e.target.value) addParticipant(e.target.value) }}
+        >
+          <option value="">＋ Teilnehmer aus Kontakten hinzufügen…</option>
+          {availableContacts.map(c => (
+            <option key={contactKey(c)} value={contactKey(c)}>
+              {c.name || c.company}{c.company && c.name ? ` (${c.company})` : ''}{c.email ? ` · ${c.email}` : ''}
+            </option>
+          ))}
+        </select>
+      </div>
+
       {/* Content */}
       <div>
         <label className="text-xs font-medium text-gray-500 block mb-1">Inhalt</label>
@@ -336,7 +461,7 @@ function NoteEditor({ note, contacts, projectName, logoDataUrl, onUpdate, onDele
           </button>
           <button
             className="btn-secondary flex items-center gap-1 text-sm"
-            onClick={() => printNote(note, linkedContact, projectName, logoDataUrl)}
+            onClick={() => printNote(note, linkedContact, projectName, logoDataUrl, clientLogoDataUrl)}
             title="Notiz drucken / als PDF speichern"
           >
             <Printer size={14} /> Drucken / PDF
@@ -355,7 +480,7 @@ function NoteEditor({ note, contacts, projectName, logoDataUrl, onUpdate, onDele
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
-export default function NotesList({ notes, projectContacts, projectName, logoDataUrl, onCreate, onUpdate, onDelete, onBack }) {
+export default function NotesList({ notes, projectContacts, allContacts, projectName, logoDataUrl, clientLogoDataUrl, onCreate, onUpdate, onDelete, onBack }) {
   const [activeId,       setActiveId]       = useState(null)
   const [search,         setSearch]         = useState('')
   const [filterType,     setFilterType]     = useState('')
@@ -519,8 +644,10 @@ export default function NotesList({ notes, projectContacts, projectName, logoDat
             <NoteEditor
               note={activeNote}
               contacts={contacts}
+              allContacts={allContacts}
               projectName={projectName}
               logoDataUrl={logoDataUrl}
+              clientLogoDataUrl={clientLogoDataUrl}
               onUpdate={onUpdate}
               onDelete={handleDelete}
               onSendEmail={() => setShowEmailModal(true)}
@@ -533,8 +660,10 @@ export default function NotesList({ notes, projectContacts, projectName, logoDat
         <NoteEmailModal
           note={activeNote}
           contacts={contacts}
+          allContacts={allContacts}
           projectName={projectName}
           logoDataUrl={logoDataUrl}
+          clientLogoDataUrl={clientLogoDataUrl}
           onClose={() => setShowEmailModal(false)}
         />
       )}

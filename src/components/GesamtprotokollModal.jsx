@@ -20,10 +20,16 @@ function buildChain(protocol, allProtocols) {
   return chain
 }
 
-function buildPrintHtml(chain, allProtocols, logoDataUrl, today) {
+function buildPrintHtml(chain, allProtocols, logoDataUrl, today, clientLogoDataUrl) {
   const project = chain[chain.length - 1]
-  const logoHtml = logoDataUrl
+  const officeImg = logoDataUrl
     ? `<img src="${logoDataUrl}" style="height:40px;max-width:120px;object-fit:contain;display:block;">`
+    : ''
+  const clientImg = clientLogoDataUrl
+    ? `<img src="${clientLogoDataUrl}" style="height:40px;max-width:120px;object-fit:contain;display:block;">`
+    : ''
+  const logoHtml = (officeImg || clientImg)
+    ? `<div style="display:flex;align-items:flex-end;gap:14px;">${officeImg}${clientImg}</div>`
     : '<div style="height:40px"></div>'
 
   const sections = chain.map((protocol, pi) => {
@@ -98,13 +104,13 @@ ${sections}
 </body></html>`
 }
 
-export default function GesamtprotokollModal({ protocol, protocols, logoDataUrl, onClose }) {
+export default function GesamtprotokollModal({ protocol, protocols, logoDataUrl, clientLogoDataUrl, onClose }) {
   const today      = new Date().toISOString().slice(0, 10)
   const chain      = buildChain(protocol, protocols)
   const totalItems = chain.reduce((s, p) => s + (p.agendaItems ?? []).length, 0)
 
   const handlePrint = () => {
-    const html   = buildPrintHtml(chain, protocols, logoDataUrl, today)
+    const html   = buildPrintHtml(chain, protocols, logoDataUrl, today, clientLogoDataUrl)
     const iframe = document.createElement('iframe')
     iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:210mm;height:297mm;border:none;visibility:hidden;'
     document.body.appendChild(iframe)
@@ -155,11 +161,14 @@ export default function GesamtprotokollModal({ protocol, protocols, logoDataUrl,
 
             {/* Document header */}
             <div className="flex items-end justify-between pb-4 border-b border-black">
-              <div className="flex-shrink-0">
+              <div className="flex-shrink-0 flex items-end gap-4">
                 {logoDataUrl
-                  ? <img src={logoDataUrl} alt="Logo" className="h-10 max-w-[120px] object-contain" />
+                  ? <img src={logoDataUrl} alt="Büro-Logo" className="h-10 max-w-[120px] object-contain" />
                   : <div className="h-10 w-8" />
                 }
+                {clientLogoDataUrl && (
+                  <img src={clientLogoDataUrl} alt="Auftraggeber-Logo" className="h-10 max-w-[120px] object-contain" />
+                )}
               </div>
               <div className="text-right leading-tight">
                 <div className="text-xs uppercase tracking-widest text-gray-500">Gesamtprotokoll</div>

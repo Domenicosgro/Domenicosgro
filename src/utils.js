@@ -145,6 +145,8 @@ export const emptyProject = () => ({
   hoaiServices: [],          // HOAI-Leistungsbilder mit LPH-Fortschritt
   linkedFolders: [],         // verknüpfte Synology-Freigabe-Links
   tiles: [],                 // Schnellzugriff-Kacheln (gültig für alle Protokolle des Projekts)
+  logo: '',                  // Büro-/Eigen-Logo (base64) – Fallback auf globales Logo
+  clientLogo: '',            // Auftraggeber-Logo (base64)
   createdAt: new Date().toISOString(),
   updatedAt: new Date().toISOString(),
 })
@@ -206,6 +208,7 @@ export const emptyNote = (projectId = null) => ({
   subject: '',
   content: '',
   linkedContactId: null,
+  participants: [],          // Teilnehmer aus Kontakten: { id, name, company, email }
   sentAt: null,
   createdAt: new Date().toISOString(),
   updatedAt: new Date().toISOString(),

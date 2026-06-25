@@ -1,7 +1,7 @@
 import React, { useRef } from 'react'
 import { ImagePlus, X } from 'lucide-react'
 
-export default function LogoUpload({ logoDataUrl, onUpdate, onClear }) {
+export default function LogoUpload({ logoDataUrl, onUpdate, onClear, label = 'Firmenlogo' }) {
   const inputRef = useRef(null)
 
   const handleFile = (e) => {
@@ -21,7 +21,7 @@ export default function LogoUpload({ logoDataUrl, onUpdate, onClear }) {
         <>
           <img
             src={logoDataUrl}
-            alt="Firmenlogo"
+            alt={label}
             className="h-12 max-w-[160px] object-contain border border-gray-200 rounded p-1 bg-white"
           />
           <div className="flex flex-col gap-1">
@@ -35,7 +35,7 @@ export default function LogoUpload({ logoDataUrl, onUpdate, onClear }) {
         </>
       ) : (
         <button className="btn-secondary text-sm" onClick={() => inputRef.current?.click()}>
-          <ImagePlus size={15} /> Firmenlogo hochladen
+          <ImagePlus size={15} /> {label} hochladen
         </button>
       )}
     </div>

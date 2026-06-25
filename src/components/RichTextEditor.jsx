@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from 'react'
 import { useEditor, EditorContent } from '@tiptap/react'
+import { Extension } from '@tiptap/core'
 import StarterKit from '@tiptap/starter-kit'
 import Underline from '@tiptap/extension-underline'
 import Placeholder from '@tiptap/extension-placeholder'
@@ -43,6 +44,46 @@ export function stripHtml(html) {
 
 // ── Tiptap extensions ─────────────────────────────────────────────────────────
 
+// Tab innerhalb einer Liste erzeugt einen Unterpunkt. Liegt der Cursor in einer
+// nummerierten Liste, wird der neu eingerückte Unterpunkt automatisch in eine
+// nicht-nummerierte (Punkt-)Aufzählung umgewandelt – wie in klassischen
+// Textverarbeitungen (1. → •). Shift-Tab rückt wieder aus.
+const SmartIndent = Extension.create({
+  name: 'smartIndent',
+  priority: 1000,
+  addKeyboardShortcuts() {
+    return {
+      Tab: () => {
+        const editor = this.editor
+        if (!editor.isActive('listItem')) return false
+        const ok = editor.chain().focus().sinkListItem('listItem').run()
+        if (!ok) return false
+        // Nächstgelegene Listen-Ebene um den Cursor finden; ist sie nummeriert,
+        // in eine Punkt-Aufzählung umwandeln (Unterpunkt = nicht-nummerisch).
+        const { state, view } = editor
+        const orderedList = state.schema.nodes.orderedList
+        const bulletList  = state.schema.nodes.bulletList
+        const { $from } = state.selection
+        for (let d = $from.depth; d > 0; d--) {
+          const node = $from.node(d)
+          if (node.type === bulletList) break          // bereits Punkt-Liste – nichts tun
+          if (node.type === orderedList) {
+            const pos = $from.before(d)
+            view.dispatch(state.tr.setNodeMarkup(pos, bulletList))
+            break
+          }
+        }
+        return true
+      },
+      'Shift-Tab': () => {
+        const editor = this.editor
+        if (!editor.isActive('listItem')) return false
+        return editor.chain().focus().liftListItem('listItem').run()
+      },
+    }
+  },
+})
+
 const buildExtensions = (placeholder) => [
   StarterKit.configure({
     heading:         false,
@@ -52,6 +93,7 @@ const buildExtensions = (placeholder) => [
     code:            false,
   }),
   Underline,
+  SmartIndent,
   Placeholder.configure({ placeholder: placeholder ?? '' }),
 ]
 

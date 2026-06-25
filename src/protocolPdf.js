@@ -43,7 +43,17 @@ function wrapText(text, font, fontSize, maxWidth) {
   return lines
 }
 
-export async function buildProtocolPdf(protocol, protocolNo, logoDataUrl) {
+async function embedLogo(pdfDoc, dataUrl) {
+  if (!dataUrl) return null
+  try {
+    const comma = dataUrl.indexOf(',')
+    const isPng = dataUrl.slice(0, comma).includes('png')
+    const b64   = dataUrl.slice(comma + 1)
+    return isPng ? await pdfDoc.embedPng(b64) : await pdfDoc.embedJpg(b64)
+  } catch { return null }
+}
+
+export async function buildProtocolPdf(protocol, protocolNo, logoDataUrl, clientLogoDataUrl = null) {
   const pdfDoc = await PDFDocument.create()
   const PAGE_W = 595.28
   const PAGE_H = 841.89
@@ -54,15 +64,8 @@ export async function buildProtocolPdf(protocol, protocolNo, logoDataUrl) {
   const fontReg  = await pdfDoc.embedFont(StandardFonts.Helvetica)
   const fontItal = await pdfDoc.embedFont(StandardFonts.HelveticaOblique)
 
-  let logoImg = null
-  if (logoDataUrl) {
-    try {
-      const comma = logoDataUrl.indexOf(',')
-      const isPng = logoDataUrl.slice(0, comma).includes('png')
-      const b64   = logoDataUrl.slice(comma + 1)
-      logoImg = isPng ? await pdfDoc.embedPng(b64) : await pdfDoc.embedJpg(b64)
-    } catch {}
-  }
+  const logoImg       = await embedLogo(pdfDoc, logoDataUrl)
+  const clientLogoImg = await embedLogo(pdfDoc, clientLogoDataUrl)
 
   let page = pdfDoc.addPage([PAGE_W, PAGE_H])
   let y    = PAGE_H - MARGIN
@@ -73,9 +76,15 @@ export async function buildProtocolPdf(protocol, protocolNo, logoDataUrl) {
   // ── Seitenkopf: Logo links · Dokumenttyp/Titel/Projekt rechts · Linie ──────────
   const drawHeader = () => {
     const HEADER_H = 46
+    let logoX = MARGIN
     if (logoImg) {
       const d = logoImg.scaleToFit(110, 34)
-      page.drawImage(logoImg, { x: MARGIN, y: y - d.height, width: d.width, height: d.height })
+      page.drawImage(logoImg, { x: logoX, y: y - d.height, width: d.width, height: d.height })
+      logoX += d.width + 14
+    }
+    if (clientLogoImg) {
+      const d = clientLogoImg.scaleToFit(110, 34)
+      page.drawImage(clientLogoImg, { x: logoX, y: y - d.height, width: d.width, height: d.height })
     }
     const typeText  = 'BESPRECHUNGSPROTOKOLL'
     const titleText = protocol.meetingType || 'Protokoll'

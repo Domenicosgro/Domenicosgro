@@ -306,6 +306,7 @@ Ein-Befehl-Deploy, komplett passwortlos via SSH-Key:
 | `protocols` | Protokolle (JSON-Dokument je Zeile, versioniert) |
 | `projects` | Projekte inkl. Kontakte/Zugriffsrechte (JSON) |
 | `notes` | Akten- und Telefonnotizen |
+| `notebooks` | Projekt-Notizbuch (Hauptthemen + Notizen, je Projekt eine Zeile) |
 | `users` | Benutzer (bcrypt-Hash, Rolle, E-Mail, Anzeigename, Settings) |
 | `sessions` | Opake Session-Token, 8h TTL |
 | `reset_requests` | Passwort-Zurücksetzen-Anfragen |
@@ -330,9 +331,19 @@ Persistenz im WAL-Modus; `makeStore()` kapselt CRUD + optimistische Versionierun
   hoaiServices: [...],            // HOAI-Leistungsbilder (optional)
   linkedFolders: [...],           // verknüpfte Synology-Freigabe-Links
   tiles: [...],                   // Schnellzugriff-Kacheln (Editor-Sidebar)
+  logo,                           // Büro-/Eigen-Logo (base64) – Fallback auf globales Logo
+  clientLogo,                     // Auftraggeber-Logo (base64)
   createdAt, updatedAt
 }
 ```
+
+> **Logos pro Projekt:** Büro- und Auftraggeber-Logo werden im **Projekt-Dashboard**
+> (Kachel „Logos") gesetzt – nicht mehr im Protokoll. Auflösung: `project.logo ||`
+> globales Logo (`useLogo`); `project.clientLogo` erscheint zusätzlich daneben.
+> Beide Logos durchlaufen alle Ausgaben: Protokoll-Kopf, Druck, PDF
+> (`protocolPdf.js`/`notePdf.js`), Word-Export (`exportDocx.js`), Gesamtprotokoll
+> und Notiz-Druck/-PDF. Signaturen erhielten dafür ein zusätzliches
+> `clientLogoDataUrl`-Argument.
 
 ### 4.3 Kontakt
 ```js
@@ -409,6 +420,8 @@ GET/POST/PATCH/DELETE  /api/protocols[/:id]
 GET/POST/PATCH/DELETE  /api/notes[/:id]
 POST                   /api/protocols/:id/send-email       Protokoll als PDF
 POST                   /api/notes/:id/send-email
+GET/PUT                /api/notebooks/:projectId           Projekt-Notizbuch (Hauptthemen + Notizen)
+POST                   /api/notebooks/:projectId/send-email
 ```
 
 **Maßnahmen / Freimeldung (login-freie Magic-Links)**
@@ -569,6 +582,33 @@ prüft zusätzlich das Vollformat, Fallback über Protokoll-Teilnehmer.
 ### Teilnehmer-Panel ein-/ausblendbar
 `ProtocolEditor` hat einen Toggle (Persistenz in `localStorage`,
 `kp_show_participants`).
+
+### Notizbuch (projektintern, 2 Ebenen)
+Projekt-Dashboard-Kachel „Notizbuch" → `NotizbuchView.jsx`. Ebene 1 = Hauptthema,
+Ebene 2 = Notizen mit Rich-Text + interner Aufgabenliste (Checkbox, Zuständiger,
+Frist). Datenhaltung `useNotebook.js`: Server `notebooks`-Tabelle
+(`GET/PUT /api/notebooks/:projectId`, Auto-Save), lokal `localStorage`.
+Drucken via `window.print()`, E-Mail über `/api/notebooks/:projectId/send-email`.
+
+### Notiz-Teilnehmer & Verteiler aus Kontakten
+`NotesList`: Notizen haben `participants[]` (aus Projektkontakten **und**
+projektübergreifender Kontaktdatenbank `allContacts`, dedupliziert per E-Mail bzw.
+Name+Firma). Der E-Mail-Verteiler ist mit den Teilnehmern vorbelegt und lässt sich
+per Suchfeld um beliebige Datenbankkontakte ergänzen. Teilnehmer erscheinen in
+Druck/PDF und in der server-seitigen Notiz-E-Mail.
+
+### Kontaktdatenbank bearbeitbar
+`ContactDatabase`: „Neuer Kontakt" + Bearbeiten-Stift je Zeile. Speichern
+synchronisiert in **alle zugeordneten Projekte** (Abgleich per E-Mail- oder
+Name+Firma-Key); Projektzuordnung per Checkboxen (hinzufügen/entfernen).
+Felder Firma/Gewerk/Funktion mit `<datalist>`-Autovervollständigung aus
+bisherigen Einträgen.
+
+### RichTextEditor: Tab = Unterpunkt
+Eigene Extension `SmartIndent` (in `RichTextEditor.jsx`): Tab rückt den Listenpunkt
+ein; liegt der Cursor in einer **nummerierten** Liste, wird die neu erzeugte
+Unterebene automatisch in eine **Punkt-Aufzählung** umgewandelt (1. → •).
+Shift-Tab rückt aus.
 
 ### Vorgänger-Kette / Carryover
 `predecessorId` → `getChainNo()` → `buildProtocolNo()`. Carryover via `useEffect`,

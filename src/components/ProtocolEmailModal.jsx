@@ -13,7 +13,7 @@ function apiHeaders() {
 // Versendet das Protokoll als PDF-Anhang an die Teilnehmer (Server-Modus).
 // Der E-Mail-Text (Inhalt des Anhangs, nächster Termin, Hinweis auf separaten
 // Aufgabenversand) wird serverseitig aus den Protokolldaten erzeugt.
-export default function ProtocolEmailModal({ protocol, protocolNo, logoDataUrl, onClose, onSent }) {
+export default function ProtocolEmailModal({ protocol, protocolNo, logoDataUrl, clientLogoDataUrl, onClose, onSent }) {
   const recipientCandidates = useMemo(
     () => (protocol.participants ?? []).filter(p => p.email),
     [protocol.participants]
@@ -44,7 +44,7 @@ export default function ProtocolEmailModal({ protocol, protocolNo, logoDataUrl, 
     if (allTo.length === 0) { setError('Bitte mindestens einen Empfänger angeben.'); return }
     setSending(true); setError('')
     try {
-      const pdfBase64   = await buildProtocolPdf(protocol, protocolNo, logoDataUrl)
+      const pdfBase64   = await buildProtocolPdf(protocol, protocolNo, logoDataUrl, clientLogoDataUrl)
       const pdfFilename = `${protocolNo.replace(/[/\\:*?"<>|]/g, '-')}.pdf`
 
       const res = await fetch(`/api/protocols/${protocol.id}/send-email`, {

@@ -110,8 +110,8 @@ function dataTable(columns, dataRows) {
   })
 }
 
-// Page header: logo left · doc-type/title/project right · bottom black line
-function buildPageHeader(protocol, subtitle, logoImage) {
+// Page header: logo(s) left · doc-type/title/project right · bottom black line
+function buildPageHeader(protocol, subtitle, logoImage, clientImage) {
   const textChildren = [
     new Paragraph({
       alignment: AlignmentType.RIGHT,
@@ -129,13 +129,17 @@ function buildPageHeader(protocol, subtitle, logoImage) {
       children:  [new TextRun({ text: protocol.projectName || '', size: 20, color: BLACK, font: FONT })],
     }),
   ]
+  const logoRuns = [logoImage, clientImage].filter(Boolean)
   const leftCell = new TableCell({
     width:         { size: 35, type: WidthType.PERCENTAGE },
     borders:       { top: NO_BORDER, left: NO_BORDER, right: NO_BORDER, bottom: LINE_BORDER },
     verticalAlign: VerticalAlign.BOTTOM,
     margins:       { top: 0, bottom: 80, left: 0, right: 160 },
-    children:      logoImage
-      ? [new Paragraph({ children: [logoImage], spacing: { before: 0, after: 0 } })]
+    children:      logoRuns.length
+      ? [new Paragraph({
+          spacing: { before: 0, after: 0 },
+          children: logoRuns.flatMap((img, i) => i === 0 ? [img] : [new TextRun({ text: '   ', font: FONT }), img]),
+        })]
       : [sp(0)],
   })
   const rightCell = new TableCell({
@@ -158,13 +162,13 @@ function buildPageHeader(protocol, subtitle, logoImage) {
 
 // ── Section builders ──────────────────────────────────────────────────────────
 
-function buildAgendaPage(protocol, logoImage) {
+function buildAgendaPage(protocol, logoImage, clientImage) {
   const agenda   = protocol.agenda ?? []
   const present  = (protocol.participants ?? []).filter(p => p.present)
   const totalMin = agenda.reduce((s, a) => s + (parseInt(a.duration) || 0), 0)
 
   const out = []
-  out.push(...buildPageHeader(protocol, 'Einladung / Agenda', logoImage))
+  out.push(...buildPageHeader(protocol, 'Einladung / Agenda', logoImage, clientImage))
   out.push(metaTable([
     ['Datum',     formatDate(protocol.date)],
     ['Ort',       protocol.location || '–'],
@@ -223,13 +227,13 @@ function buildAgendaPage(protocol, logoImage) {
   return out
 }
 
-function buildCoverPage(protocol, protocolNo, logoImage) {
+function buildCoverPage(protocol, protocolNo, logoImage, clientImage) {
   const present  = (protocol.participants ?? []).filter(p => p.present)
   const absent   = (protocol.participants ?? []).filter(p => !p.present)
   const isClosed = !!protocol.isClosed
 
   const out = []
-  out.push(...buildPageHeader(protocol, 'Besprechungsprotokoll', logoImage))
+  out.push(...buildPageHeader(protocol, 'Besprechungsprotokoll', logoImage, clientImage))
   out.push(metaTable([
     ['Protokoll-Nr.',      protocolNo],
     ['Datum',              formatDate(protocol.date)],
@@ -355,30 +359,33 @@ function buildContent(protocol, protocolNo) {
 
 // ── Public API ─────────────────────────────────────────────────────────────────
 
+// Prepare an ImageRun from a data URL for Word (returns null on error)
+async function prepareLogoImage(dataUrl, maxW = 120) {
+  if (!dataUrl) return null
+  try {
+    const typeMatch  = dataUrl.match(/data:image\/(\w+);/)
+    const typeRaw    = (typeMatch?.[1] ?? 'png').toLowerCase().replace('jpeg', 'jpg')
+    const validTypes = ['png', 'jpg', 'gif', 'bmp', 'svg']
+    const type       = validTypes.includes(typeRaw) ? typeRaw : 'png'
+    const base64     = dataUrl.split(',')[1]
+    const img        = new Image()
+    img.src          = dataUrl
+    await new Promise(r => { img.onload = r; img.onerror = r })
+    const scale = img.naturalWidth > 0 ? Math.min(1, maxW / img.naturalWidth) : 1
+    const w     = Math.round((img.naturalWidth  || maxW) * scale)
+    const h     = Math.round((img.naturalHeight || 50)  * scale)
+    return new ImageRun({ data: base64, type, transformation: { width: w, height: h } })
+  } catch { return null }
+}
+
 // returnBlob: when true, returns { blob, filename } instead of triggering a download
-export async function exportDocx(protocol, chainNo = null, logoDataUrl = null, returnBlob = false) {
+export async function exportDocx(protocol, chainNo = null, logoDataUrl = null, returnBlob = false, clientLogoDataUrl = null) {
   const protocolNo = buildProtocolNo(protocol.projectName, protocol.date, chainNo, protocol.meetingType)
   const agenda     = protocol.agenda ?? []
 
-  // Prepare logo image for Word
-  let logoImage = null
-  if (logoDataUrl) {
-    try {
-      const typeMatch  = logoDataUrl.match(/data:image\/(\w+);/)
-      const typeRaw    = (typeMatch?.[1] ?? 'png').toLowerCase().replace('jpeg', 'jpg')
-      const validTypes = ['png', 'jpg', 'gif', 'bmp', 'svg']
-      const type       = validTypes.includes(typeRaw) ? typeRaw : 'png'
-      const base64     = logoDataUrl.split(',')[1]
-      const img        = new Image()
-      img.src          = logoDataUrl
-      await new Promise(r => { img.onload = r; img.onerror = r })
-      const maxW  = 120
-      const scale = img.naturalWidth > 0 ? Math.min(1, maxW / img.naturalWidth) : 1
-      const w     = Math.round((img.naturalWidth  || maxW) * scale)
-      const h     = Math.round((img.naturalHeight || 50)  * scale)
-      logoImage = new ImageRun({ data: base64, type, transformation: { width: w, height: h } })
-    } catch { /* logo silently omitted on error */ }
-  }
+  // Prepare logo images for Word (office logo + optional client logo)
+  const logoImage   = await prepareLogoImage(logoDataUrl)
+  const clientImage = await prepareLogoImage(clientLogoDataUrl)
 
   // Pre-process image attachments on protocol items
   const attachmentPages = []
@@ -420,8 +427,8 @@ export async function exportDocx(protocol, chainNo = null, logoDataUrl = null, r
   }
 
   const children = [
-    ...(agenda.length > 0 ? buildAgendaPage(protocol, logoImage) : []),
-    ...buildCoverPage(protocol, protocolNo, logoImage),
+    ...(agenda.length > 0 ? buildAgendaPage(protocol, logoImage, clientImage) : []),
+    ...buildCoverPage(protocol, protocolNo, logoImage, clientImage),
     ...buildContent(protocol, protocolNo),
     ...attachmentPages,
   ]

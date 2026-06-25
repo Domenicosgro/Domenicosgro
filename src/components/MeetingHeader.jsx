@@ -1,9 +1,8 @@
 import React from 'react'
 import { MEETING_TYPES, PHASES, formatDate, buildProtocolNo, getChainNo } from '../utils'
-import LogoUpload from './LogoUpload'
 import { FolderOpen, Star } from 'lucide-react'
 
-export default function MeetingHeader({ protocol, protocols, projects, logoDataUrl, onLogoUpdate, onLogoClear, onChange }) {
+export default function MeetingHeader({ protocol, protocols, projects, logoDataUrl, clientLogoDataUrl, onChange }) {
   const set = (field) => (e) => onChange({ [field]: e.target.value })
 
   const chainNo    = getChainNo(protocol, protocols ?? [])
@@ -52,13 +51,16 @@ export default function MeetingHeader({ protocol, protocols, projects, logoDataU
     <div className="space-y-4">
       {/* Logo + project row */}
       <div className="flex items-start gap-4 flex-wrap">
-        {/* Logo */}
-        <div className="no-print">
-          <LogoUpload logoDataUrl={logoDataUrl} onUpdate={onLogoUpdate} onClear={onLogoClear} />
-        </div>
-        {/* Logo in print */}
-        {logoDataUrl && (
-          <img src={logoDataUrl} alt="Logo" className="hidden print:block h-14 max-w-[180px] object-contain" />
+        {/* Logos (Bildschirm + Druck) – Verwaltung erfolgt im Projekt-Dashboard */}
+        {(logoDataUrl || clientLogoDataUrl) && (
+          <div className="flex items-center gap-4">
+            {logoDataUrl && (
+              <img src={logoDataUrl} alt="Büro-Logo" className="h-14 max-w-[180px] object-contain" />
+            )}
+            {clientLogoDataUrl && (
+              <img src={clientLogoDataUrl} alt="Auftraggeber-Logo" className="h-14 max-w-[180px] object-contain" />
+            )}
+          </div>
         )}
         <div className="flex-1 grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div className="sm:col-span-2">

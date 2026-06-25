@@ -55,7 +55,7 @@ function promoteAgenda(agenda, existingItems) {
   ]
 }
 
-export default function ProtocolEditor({ protocol, protocols, projects, projectContacts, serverUser, logoDataUrl, onLogoUpdate, onLogoClear, onUpdate, onUpdateProject, onBack, onRefresh }) {
+export default function ProtocolEditor({ protocol, protocols, projects, projectContacts, serverUser, logoDataUrl, clientLogoDataUrl, onUpdate, onUpdateProject, onBack, onRefresh }) {
   const change = (patch) => onUpdate(protocol.id, patch)
   const linkedProject  = (projects ?? []).find(p => p.id === protocol.projectId) ?? null
   // Freimeldung genehmigen: Systemadmin oder Projektadmin (Ersteller/Co-Admin)
@@ -330,7 +330,7 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
     if (graphSendState === 'confirm') {
       setGraphSendState('sending')
       try {
-        const { blob, filename } = await exportDocx(protocol, chainNo, logoDataUrl, true)
+        const { blob, filename } = await exportDocx(protocol, chainNo, logoDataUrl, true, clientLogoDataUrl)
         const base64 = await new Promise((res, rej) => {
           const reader = new FileReader()
           reader.onload = () => res(reader.result.split(',')[1])
@@ -369,11 +369,14 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
   const PrintHeader = ({ subtitle }) => (
     <div className="mb-4">
       <div className="flex items-end justify-between pb-3 border-b border-black">
-        <div className="flex-shrink-0">
+        <div className="flex-shrink-0 flex items-end gap-4">
           {logoDataUrl
-            ? <img src={logoDataUrl} alt="Logo" className="h-12 max-w-[150px] object-contain" />
+            ? <img src={logoDataUrl} alt="Büro-Logo" className="h-12 max-w-[150px] object-contain" />
             : <div className="h-12 w-8" />
           }
+          {clientLogoDataUrl && (
+            <img src={clientLogoDataUrl} alt="Auftraggeber-Logo" className="h-12 max-w-[150px] object-contain" />
+          )}
         </div>
         <div className="text-right">
           <div className="text-xs uppercase tracking-widest">{subtitle}</div>
@@ -411,7 +414,7 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
               <Layers size={16} /> Gesamtprotokoll
             </button>
           )}
-          <button className="btn-secondary" onClick={() => exportDocx(protocol, chainNo, logoDataUrl)}>
+          <button className="btn-secondary" onClick={() => exportDocx(protocol, chainNo, logoDataUrl, false, clientLogoDataUrl)}>
             <FileText size={16} /> Word
           </button>
           {isElectron && window.electronAPI?.graphSendProtocol && (
@@ -673,7 +676,7 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
         <div className="py-4">
           <MeetingHeader
             protocol={protocol} protocols={protocols} projects={projects ?? []}
-            logoDataUrl={logoDataUrl} onLogoUpdate={onLogoUpdate} onLogoClear={onLogoClear}
+            logoDataUrl={logoDataUrl} clientLogoDataUrl={clientLogoDataUrl}
             onChange={change}
           />
         </div>
@@ -823,6 +826,7 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
           protocol={protocol}
           protocols={protocols ?? []}
           logoDataUrl={logoDataUrl}
+          clientLogoDataUrl={clientLogoDataUrl}
           onClose={() => setShowGesamtprotokoll(false)}
         />
       )}
@@ -832,6 +836,7 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
           protocol={protocol}
           protocolNo={protocolNo}
           logoDataUrl={logoDataUrl}
+          clientLogoDataUrl={clientLogoDataUrl}
           onClose={() => setShowProtocolEmail(false)}
         />
       )}

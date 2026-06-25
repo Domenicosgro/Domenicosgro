@@ -20,7 +20,7 @@ function findInProject(project, dedupKey) {
 
 // ── Contact modal (add + edit) ────────────────────────────────────────────────
 
-function ContactModal({ contact, isNew, allProjects, onSave, onClose }) {
+function ContactModal({ contact, isNew, allProjects, suggestions, onSave, onClose }) {
   const [form, setForm] = useState({
     name:    contact.name    || '',
     company: contact.company || '',
@@ -65,15 +65,24 @@ function ContactModal({ contact, isNew, allProjects, onSave, onClose }) {
           </div>
           <div>
             <label className="block text-xs text-gray-500 mb-1">Firma</label>
-            <input className="input w-full" value={form.company} onChange={e => set('company', e.target.value)} placeholder="Unternehmensname" />
+            <input className="input w-full" value={form.company} onChange={e => set('company', e.target.value)} placeholder="Unternehmensname" list="cdb-companies" autoComplete="off" />
+            <datalist id="cdb-companies">
+              {(suggestions?.companies || []).map(v => <option key={v} value={v} />)}
+            </datalist>
           </div>
           <div>
             <label className="block text-xs text-gray-500 mb-1">Gewerk</label>
-            <input className="input w-full" value={form.gewerk} onChange={e => set('gewerk', e.target.value)} placeholder="z.B. Elektro, Rohbau, HVLS" />
+            <input className="input w-full" value={form.gewerk} onChange={e => set('gewerk', e.target.value)} placeholder="z.B. Elektro, Rohbau, HVLS" list="cdb-gewerke" autoComplete="off" />
+            <datalist id="cdb-gewerke">
+              {(suggestions?.gewerke || []).map(v => <option key={v} value={v} />)}
+            </datalist>
           </div>
           <div>
             <label className="block text-xs text-gray-500 mb-1">Funktion</label>
-            <input className="input w-full" value={form.role} onChange={e => set('role', e.target.value)} placeholder="z.B. Bauleiter, Planer" />
+            <input className="input w-full" value={form.role} onChange={e => set('role', e.target.value)} placeholder="z.B. Bauleiter, Planer" list="cdb-roles" autoComplete="off" />
+            <datalist id="cdb-roles">
+              {(suggestions?.roles || []).map(v => <option key={v} value={v} />)}
+            </datalist>
           </div>
           <div>
             <label className="block text-xs text-gray-500 mb-1">E-Mail</label>
@@ -165,6 +174,16 @@ export default function ContactDatabase({ projects, onUpdate, onBack }) {
     for (const c of allContacts) { const v = (c.company || '').trim(); if (v) s.add(v) }
     return [...s].sort((a, b) => a.localeCompare(b, 'de'))
   }, [allContacts])
+
+  // Vorschlagslisten für die Eingabefelder (aus allen bisherigen Kontakten)
+  const suggestions = useMemo(() => {
+    const collect = (field) => {
+      const s = new Set()
+      for (const c of allContacts) { const v = (c[field] || '').trim(); if (v) s.add(v) }
+      return [...s].sort((a, b) => a.localeCompare(b, 'de'))
+    }
+    return { companies: companyOptions, gewerke: collect('gewerk'), roles: collect('role') }
+  }, [allContacts, companyOptions])
 
   const q = search.trim().toLowerCase()
   const filtered = useMemo(() => {
@@ -379,6 +398,7 @@ export default function ContactDatabase({ projects, onUpdate, onBack }) {
           contact={editContact}
           isNew={false}
           allProjects={projects}
+          suggestions={suggestions}
           onSave={handleSave}
           onClose={() => setEditContact(null)}
         />
@@ -390,6 +410,7 @@ export default function ContactDatabase({ projects, onUpdate, onBack }) {
           contact={emptyEntry}
           isNew={true}
           allProjects={projects}
+          suggestions={suggestions}
           onSave={handleSave}
           onClose={() => setShowNew(false)}
         />

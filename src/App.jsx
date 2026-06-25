@@ -68,6 +68,23 @@ export default function App() {
     })),
   [projects, decryptedContacts, projectCryptoKeys])
 
+  // Projektübergreifende Kontaktdatenbank (dedupliziert) – für Notiz-Teilnehmer/Verteiler
+  const allContacts = useMemo(() => {
+    const list = []
+    const seen = new Set()
+    for (const p of projectsWithContacts) {
+      for (const c of (p.contacts ?? [])) {
+        if (!c.name && !c.company && !c.email) continue
+        const key = (c.email || '').trim().toLowerCase()
+          || `${(c.name || '').trim().toLowerCase()}|${(c.company || '').trim().toLowerCase()}`
+        if (seen.has(key)) continue
+        seen.add(key)
+        list.push({ id: c.id, name: c.name || '', company: c.company || '', email: c.email || '', phone: c.phone || '' })
+      }
+    }
+    return list.sort((a, b) => (a.name || a.company).localeCompare(b.name || b.company, 'de'))
+  }, [projectsWithContacts])
+
   // ── Server auth state ─────────────────────────────────────────────────────
   // serverAuthChecked starts as true in local/Electron mode (no auth needed).
   const [serverUser,        setServerUser]        = useState(null)
@@ -441,9 +458,8 @@ export default function App() {
           projects={projectsWithContacts}
           projectContacts={linkedProject?.contacts ?? []}
           serverUser={serverUser}
-          logoDataUrl={logoDataUrl}
-          onLogoUpdate={updateLogo}
-          onLogoClear={clearLogo}
+          logoDataUrl={linkedProject?.logo || logoDataUrl}
+          clientLogoDataUrl={linkedProject?.clientLogo || ''}
           onUpdate={handleUpdateProtocol}
           onUpdateProject={handleUpdateProject}
           onBack={handleBackFromEditor}
@@ -542,6 +558,8 @@ export default function App() {
           protocols={protocols}
           notes={notes}
           serverUser={serverUser}
+          globalLogoDataUrl={logoDataUrl}
+          onUpdateProject={handleUpdateProject}
           onBack={() => setView('home')}
           onOpenProtocols={(phase) => openProjectProtocols(selectedProjectId, phase)}
           onOpenNotes={() => setView('notes')}
@@ -563,8 +581,10 @@ export default function App() {
         <NotesList
           notes={filtered}
           projectContacts={project?.contacts ?? []}
+          allContacts={allContacts}
           projectName={project?.name || ''}
-          logoDataUrl={logoDataUrl}
+          logoDataUrl={project?.logo || logoDataUrl}
+          clientLogoDataUrl={project?.clientLogo || ''}
           onCreate={(patch) => createNote({ ...patch, projectId: selectedProjectId })}
           onUpdate={updateNote}
           onDelete={deleteNote}
