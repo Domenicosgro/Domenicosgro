@@ -82,9 +82,11 @@ function exportOutlookCsv(contacts, baseFilename = 'Kontakte_Outlook') {
     return 0
   }
 
-  const wrap = v => {
-    const s = String(v ?? '')
-    return (s.includes(',') || s.includes('"') || s.includes('\n'))
+  // Steuerzeichen (Zeilenumbrüche etc.) bereinigen – sonst bricht Outlook den Import ab
+  const clean = v => String(v ?? '').replace(/[\x00-\x1F\x7F]/g, ' ').replace(/\s+/g, ' ').trim()
+  const wrap  = v => {
+    const s = clean(v)
+    return (s.includes(',') || s.includes('"'))
       ? `"${s.replace(/"/g, '""')}"` : s
   }
 
