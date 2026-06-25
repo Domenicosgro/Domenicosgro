@@ -63,10 +63,14 @@ export default function BimView({ project, serverUser, token, onBack, onProjectU
         const url  = URL.createObjectURL(blob)
 
         if (cancelled || !viewer.IFC) { URL.revokeObjectURL(url); return }
-        const model = await viewer.IFC.loadIfcUrl(url, false)
+
+        // loadIfcUrl catches errors internally and returns null — capture via callback
+        let ifcError = null
+        const model = await viewer.IFC.loadIfcUrl(url, false, undefined, (err) => { ifcError = err })
         URL.revokeObjectURL(url)
 
-        if (cancelled || !model) return
+        if (cancelled) return
+        if (!model) throw ifcError || new Error('IFC-Datei konnte nicht geparst werden (web-ifc Fehler – Konsole prüfen)')
 
         // Kamera auf das Modell ausrichten
         const bb     = new THREE.Box3().setFromObject(model.mesh)
