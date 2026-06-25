@@ -1871,27 +1871,45 @@ app.get('/freimeldung/:token', (req, res) => {
   res.send(renderReleasePage(row))
 })
 
-// ── Wöchentliches Freimeldungs-Reporting (Freitags 15:00) ─────────────────────
-// Sendet je Projekt eine Übersicht der in den letzten 7 Tagen genehmigten
-// Freimeldungen an alle Besprechungsteilnehmer (dedupliziert per E-Mail).
-// Erweiterbar zu einem allgemeinen Aufgaben-/Fragen-Reporting.
+// ── Wöchentliches Reporting (Freitags 10:00) ──────────────────────────────────
+// Sendet je Projekt:
+//   – diese Woche freigemeldete (genehmigte) Aufgaben
+//   – alle offenen / in Bearbeitung befindlichen Aufgaben
+// Empfänger: alle Projektkontakte mit E-Mail-Adresse (Projektdatenbank)
 async function sendWeeklyReleaseReports({ appUrl } = {}) {
   if (!mailer.mailerStatus().configured) return { skipped: 'mailer-not-configured' }
-  const sinceMs = Date.now() - 7 * 24 * 60 * 60 * 1000
+  const sinceMs  = Date.now() - 7 * 24 * 60 * 60 * 1000
+  const todayStr = new Date().toISOString().slice(0, 10)
   const protocols = db.protocols.list()
 
-  // genehmigte Freimeldungen der letzten 7 Tage je Projekt sammeln
-  const byProject = new Map()
+  // Daten je Projekt sammeln
+  const byProject = new Map()  // projectId → { releases: [], openTasks: [] }
   for (const proto of protocols) {
     if (!proto.projectId) continue
+    if (!byProject.has(proto.projectId)) byProject.set(proto.projectId, { releases: [], openTasks: [] })
+    const data     = byProject.get(proto.projectId)
+    const protoRef = proto.date
+      ? new Date(proto.date + 'T12:00:00').toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })
+      : ''
+
     for (const a of (proto.actionItems ?? [])) {
+      // Freigemeldete Aufgaben dieser Woche (genehmigt)
       for (const h of (a.releaseHistory ?? [])) {
         if (h.event !== 'genehmigt') continue
         if (!h.at || new Date(h.at).getTime() < sinceMs) continue
-        if (!byProject.has(proto.projectId)) byProject.set(proto.projectId, [])
-        byProject.get(proto.projectId).push({
-          no: a.no || '', description: a.description || '', responsible: a.responsible || '',
-          approvedAt: h.at,
+        data.releases.push({
+          no: a.no || '', description: a.description || '',
+          responsible: a.responsible || '', approvedAt: h.at,
+        })
+      }
+      // Offene und in Bearbeitung befindliche Aufgaben
+      if (a.status === 'offen' || a.status === 'in_arbeit') {
+        data.openTasks.push({
+          no: a.no || '', description: a.description || '',
+          responsible: a.responsible || '', deadline: a.deadline || '',
+          priority: a.priority || 'mittel', status: a.status,
+          overdue: !!(a.deadline && a.deadline < todayStr),
+          protoRef,
         })
       }
     }
@@ -1899,93 +1917,156 @@ async function sendWeeklyReleaseReports({ appUrl } = {}) {
 
   const { from } = systemFrom()
   let sentProjects = 0
-  for (const [projectId, releases] of byProject) {
-    if (!releases.length) continue
+  for (const [projectId, data] of byProject) {
+    if (!data.releases.length && !data.openTasks.length) continue
     const project = db.projects.get(projectId)
-    const projName = project?.name || 'Projekt'
+    if (!project) continue
+    const projName = project.name || 'Projekt'
 
-    // Empfänger: alle Teilnehmer aus Protokollen dieses Projekts (dedupliziert)
+    // Empfänger: alle Projektkontakte mit E-Mail (Projektdatenbank)
     const recipients = new Map()
-    for (const proto of protocols) {
-      if (proto.projectId !== projectId) continue
-      for (const part of (proto.participants ?? [])) {
-        const email = (part.email || '').trim().toLowerCase()
-        if (email) recipients.set(email, part.email.trim())
-      }
+    for (const c of (project.contacts ?? [])) {
+      const email = (c.email || '').trim().toLowerCase()
+      if (email) recipients.set(email, c.email.trim())
     }
     if (recipients.size === 0) continue
 
-    const html = buildWeeklyReportHtml(projName, releases)
-    const text = buildWeeklyReportText(projName, releases)
-    const to = Array.from(recipients.values()).join(', ')
+    const html = buildWeeklyReportHtml(projName, data.releases, data.openTasks)
+    const text = buildWeeklyReportText(projName, data.releases, data.openTasks)
+    const to   = Array.from(recipients.values()).join(', ')
     try {
-      await mailer.sendMail({ from, to, subject: `Freigemeldete Aufgaben – ${projName}`, html, text })
+      await mailer.sendMail({ from, to, subject: `Wochenbericht Aufgaben – ${projName}`, html, text })
       sentProjects++
     } catch (e) { console.warn('[reporting] Versand für', projName, 'fehlgeschlagen:', e.message) }
   }
   return { sentProjects }
 }
 
-function buildWeeklyReportHtml(projName, releases) {
+const PRIORITY_LABEL = { hoch: 'Hoch', mittel: 'Mittel', niedrig: 'Niedrig' }
+const PRIORITY_COLOR = { hoch: '#DC2626', mittel: '#D97706', niedrig: '#6B7280' }
+const STATUS_LABEL   = { offen: 'Offen', in_arbeit: 'In Arbeit' }
+
+function buildWeeklyReportHtml(projName, releases, openTasks) {
   const today = new Date().toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })
-  const rows = releases.map(r => `<tr style="border-bottom:1px solid #e5e7eb;">
-    <td style="padding:9px 12px;font-size:12px;color:#6b7280;white-space:nowrap;font-family:Arial,sans-serif;">${r.no || '–'}</td>
-    <td style="padding:9px 12px;font-weight:bold;color:#000040;font-family:Arial,sans-serif;">${r.description || '–'}</td>
-    <td style="padding:9px 12px;font-size:12px;color:#374151;white-space:nowrap;font-family:Arial,sans-serif;">${r.responsible || '–'}</td>
-    <td style="padding:9px 12px;font-size:12px;color:#374151;white-space:nowrap;font-family:Arial,sans-serif;">${fmtDateDe(r.approvedAt)}</td>
-  </tr>`).join('')
+
+  const releaseRows = releases.map(r => `
+    <tr style="border-bottom:1px solid #E5E7EB;">
+      <td style="padding:9px 12px;font-size:12px;color:#6B7280;white-space:nowrap;font-family:Arial,sans-serif;">${r.no || '–'}</td>
+      <td style="padding:9px 12px;font-weight:bold;color:#000040;font-family:Arial,sans-serif;">${esc(r.description)}</td>
+      <td style="padding:9px 12px;font-size:12px;color:#374151;white-space:nowrap;font-family:Arial,sans-serif;">${esc(r.responsible)}</td>
+      <td style="padding:9px 12px;font-size:12px;color:#374151;white-space:nowrap;font-family:Arial,sans-serif;">${fmtDateDe(r.approvedAt)}</td>
+    </tr>`).join('')
+
+  const openRows = openTasks.map(t => {
+    const dlText  = t.deadline ? new Date(t.deadline + 'T12:00:00').toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '–'
+    const dlColor = t.overdue ? '#DC2626' : '#374151'
+    const prColor = PRIORITY_COLOR[t.priority] || '#6B7280'
+    const prLabel = PRIORITY_LABEL[t.priority] || t.priority
+    const stLabel = STATUS_LABEL[t.status] || t.status
+    return `
+    <tr style="border-bottom:1px solid #E5E7EB;">
+      <td style="padding:9px 12px;font-size:12px;color:#6B7280;white-space:nowrap;font-family:Arial,sans-serif;">${t.no || '–'}</td>
+      <td style="padding:9px 12px;font-weight:bold;color:#000040;font-family:Arial,sans-serif;">${esc(t.description)}</td>
+      <td style="padding:9px 12px;font-size:12px;color:#374151;white-space:nowrap;font-family:Arial,sans-serif;">${esc(t.responsible)}</td>
+      <td style="padding:9px 12px;font-size:12px;color:${dlColor};white-space:nowrap;font-family:Arial,sans-serif;font-weight:${t.overdue ? 'bold' : 'normal'};">${dlText}${t.overdue ? ' ⚠' : ''}</td>
+      <td style="padding:9px 12px;font-size:11px;font-weight:bold;color:${prColor};white-space:nowrap;font-family:Arial,sans-serif;">${prLabel}</td>
+      <td style="padding:9px 12px;font-size:11px;color:#374151;white-space:nowrap;font-family:Arial,sans-serif;">${stLabel}</td>
+    </tr>`
+  }).join('')
+
+  const releasesSection = releases.length ? `
+    <tr><td style="padding:20px 36px 8px 36px;">
+      <p style="margin:0 0 10px 0;font-size:13px;font-weight:bold;color:#000040;text-transform:uppercase;letter-spacing:1px;font-family:Arial,sans-serif;">Diese Woche freigemeldete Aufgaben</p>
+      <p style="margin:0 0 12px 0;color:#4B5563;font-size:13px;font-family:Arial,sans-serif;">Folgende Aufgaben wurden in den letzten 7 Tagen genehmigt:</p>
+      <table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #E5E7EB;border-collapse:collapse;">
+        <thead><tr style="background:#166534;">
+          <th style="padding:9px 12px;text-align:left;font-size:11px;text-transform:uppercase;color:#BBF7D0;font-family:Arial,sans-serif;">Nr.</th>
+          <th style="padding:9px 12px;text-align:left;font-size:11px;text-transform:uppercase;color:#BBF7D0;font-family:Arial,sans-serif;">Aufgabe</th>
+          <th style="padding:9px 12px;text-align:left;font-size:11px;text-transform:uppercase;color:#BBF7D0;font-family:Arial,sans-serif;">Verantwortlich</th>
+          <th style="padding:9px 12px;text-align:left;font-size:11px;text-transform:uppercase;color:#BBF7D0;font-family:Arial,sans-serif;">Freigegeben</th>
+        </tr></thead>
+        <tbody>${releaseRows}</tbody>
+      </table>
+    </td></tr>` : ''
+
+  const openSection = openTasks.length ? `
+    <tr><td style="padding:20px 36px 8px 36px;">
+      <p style="margin:0 0 10px 0;font-size:13px;font-weight:bold;color:#000040;text-transform:uppercase;letter-spacing:1px;font-family:Arial,sans-serif;">Offene Aufgaben</p>
+      <p style="margin:0 0 12px 0;color:#4B5563;font-size:13px;font-family:Arial,sans-serif;">Folgende Aufgaben sind aktuell noch offen oder in Bearbeitung:</p>
+      <table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #E5E7EB;border-collapse:collapse;">
+        <thead><tr style="background:#000040;">
+          <th style="padding:9px 12px;text-align:left;font-size:11px;text-transform:uppercase;color:#8FBEFF;font-family:Arial,sans-serif;">Nr.</th>
+          <th style="padding:9px 12px;text-align:left;font-size:11px;text-transform:uppercase;color:#8FBEFF;font-family:Arial,sans-serif;">Aufgabe</th>
+          <th style="padding:9px 12px;text-align:left;font-size:11px;text-transform:uppercase;color:#8FBEFF;font-family:Arial,sans-serif;">Verantwortlich</th>
+          <th style="padding:9px 12px;text-align:left;font-size:11px;text-transform:uppercase;color:#8FBEFF;font-family:Arial,sans-serif;">Frist</th>
+          <th style="padding:9px 12px;text-align:left;font-size:11px;text-transform:uppercase;color:#8FBEFF;font-family:Arial,sans-serif;">Priorität</th>
+          <th style="padding:9px 12px;text-align:left;font-size:11px;text-transform:uppercase;color:#8FBEFF;font-family:Arial,sans-serif;">Status</th>
+        </tr></thead>
+        <tbody>${openRows}</tbody>
+      </table>
+    </td></tr>` : ''
+
   return `<!DOCTYPE html>
 <html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
 <body style="margin:0;padding:0;background:#F0F0F0;font-family:Arial,sans-serif;font-size:14px;color:#1F2937;">
   <table width="100%" cellpadding="0" cellspacing="0" style="background:#F0F0F0;padding:32px 16px;"><tr><td align="center">
-    <table width="640" cellpadding="0" cellspacing="0" style="background:#FFF;border:1px solid #E5E7EB;max-width:640px;width:100%;">
+    <table width="680" cellpadding="0" cellspacing="0" style="background:#FFF;border:1px solid #E5E7EB;max-width:680px;width:100%;">
       <tr><td style="background:#000040;padding:28px 36px;">
         <p style="margin:0;color:#8FBEFF;font-size:11px;letter-spacing:2px;text-transform:uppercase;font-family:Arial,sans-serif;">GHBA</p>
-        <p style="margin:6px 0 0 0;color:#FBFFE6;font-size:20px;font-weight:bold;font-family:Arial,sans-serif;">Freigemeldete Aufgaben</p>
-        <p style="margin:4px 0 0 0;color:#8FBEFF;font-size:14px;font-weight:600;font-family:Arial,sans-serif;">${projName}</p>
-        <p style="margin:6px 0 0 0;color:#8FBEFF;font-size:12px;font-family:Arial,sans-serif;">Wochenübersicht · Stand ${today}</p>
+        <p style="margin:6px 0 0 0;color:#FBFFE6;font-size:20px;font-weight:bold;font-family:Arial,sans-serif;">Wochenbericht Aufgaben</p>
+        <p style="margin:4px 0 0 0;color:#8FBEFF;font-size:14px;font-weight:600;font-family:Arial,sans-serif;">${esc(projName)}</p>
+        <p style="margin:6px 0 0 0;color:#8FBEFF;font-size:12px;font-family:Arial,sans-serif;">Stand ${today}</p>
       </td></tr>
-      <tr><td style="padding:24px 36px 8px 36px;font-family:Arial,sans-serif;">
-        <p style="margin:0;color:#4B5563;">in der vergangenen Woche wurden folgende Aufgaben freigemeldet und genehmigt:</p>
-      </td></tr>
-      <tr><td style="padding:8px 36px 28px 36px;">
-        <table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #E5E7EB;border-collapse:collapse;">
-          <thead><tr style="background:#000040;">
-            <th style="padding:9px 12px;text-align:left;font-size:11px;text-transform:uppercase;color:#8FBEFF;font-family:Arial,sans-serif;">Nr.</th>
-            <th style="padding:9px 12px;text-align:left;font-size:11px;text-transform:uppercase;color:#8FBEFF;font-family:Arial,sans-serif;">Aufgabe</th>
-            <th style="padding:9px 12px;text-align:left;font-size:11px;text-transform:uppercase;color:#8FBEFF;font-family:Arial,sans-serif;">Verantwortlich</th>
-            <th style="padding:9px 12px;text-align:left;font-size:11px;text-transform:uppercase;color:#8FBEFF;font-family:Arial,sans-serif;">Freigegeben</th>
-          </tr></thead>
-          <tbody>${rows}</tbody>
-        </table>
-      </td></tr>
+      ${releasesSection}
+      ${openSection}
       <tr><td style="padding:20px 36px;border-top:1px solid #E5E7EB;background:#F0F0F0;text-align:center;font-family:Arial,sans-serif;">
-        <p style="margin:0;color:#9CA3AF;font-size:12px;">GHBA · Automatische Wochenübersicht · ${today}</p>
+        <p style="margin:0;color:#9CA3AF;font-size:12px;">GHBA · Automatischer Wochenbericht · ${today}</p>
       </td></tr>
     </table>
   </td></tr></table>
 </body></html>`
 }
 
-function buildWeeklyReportText(projName, releases) {
-  const today = new Date().toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })
-  return [
-    `Freigemeldete Aufgaben – ${projName}`,
-    `Wochenübersicht · Stand ${today}`, '',
-    'In der vergangenen Woche wurden folgende Aufgaben freigemeldet und genehmigt:', '',
-    ...releases.map(r => `• ${r.no ? r.no + '. ' : ''}${r.description} (${r.responsible || '–'}) – freigegeben ${fmtDateDe(r.approvedAt)}`),
-    '', 'GHBA',
-  ].join('\n')
+function esc(s) {
+  return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }
 
-// Scheduler: prüft minütlich, ob Freitag 15:00 erreicht ist (einmal pro Tag).
+function buildWeeklyReportText(projName, releases, openTasks) {
+  const today = new Date().toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })
+  const lines = [`Wochenbericht Aufgaben – ${projName}`, `Stand ${today}`, '']
+
+  if (releases.length) {
+    lines.push('DIESE WOCHE FREIGEMELDETE AUFGABEN', '-'.repeat(50))
+    releases.forEach(r => lines.push(
+      `• ${r.no ? r.no + '. ' : ''}${r.description} (${r.responsible || '–'}) – freigegeben ${fmtDateDe(r.approvedAt)}`
+    ))
+    lines.push('')
+  }
+
+  if (openTasks.length) {
+    lines.push('OFFENE AUFGABEN', '-'.repeat(50))
+    openTasks.forEach(t => {
+      const dl     = t.deadline ? new Date(t.deadline + 'T12:00:00').toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '–'
+      const status = STATUS_LABEL[t.status] || t.status
+      const prio   = PRIORITY_LABEL[t.priority] || t.priority
+      const overdue = t.overdue ? ' [ÜBERFÄLLIG]' : ''
+      lines.push(`• ${t.no ? t.no + '. ' : ''}${t.description} – ${t.responsible || '–'} | Frist: ${dl}${overdue} | ${prio} | ${status}`)
+    })
+    lines.push('')
+  }
+
+  lines.push('GHBA')
+  return lines.join('\n')
+}
+
+// Scheduler: prüft minütlich, ob Freitag 10:00 erreicht ist (einmal pro Woche).
 function startWeeklyReportScheduler() {
   const KEY = 'weekly_report_last_run'   // YYYY-MM-DD des letzten Versands
   setInterval(() => {
     try {
       const now = new Date()
       if (now.getDay() !== 5) return                 // 5 = Freitag
-      if (now.getHours() < 15) return                // ab 15:00
+      if (now.getHours() < 10) return                // ab 10:00
       const todayKey = now.toISOString().slice(0, 10)
       if (db.appState.get(KEY) === todayKey) return   // heute schon gelaufen
       db.appState.set(KEY, todayKey)                  // Marker zuerst (verhindert Doppelversand)
@@ -2759,9 +2840,9 @@ const onListen = (protocol) => () => {
   try { const f = createBackup(); console.log(`  Backup        : ${f}`) } catch (e) { console.warn('  Backup fehlgeschlagen:', e.message) }
   setInterval(() => { try { createBackup() } catch {} }, 6 * 60 * 60 * 1000)
 
-  // Wöchentliches Freimeldungs-Reporting (Freitags 15:00)
+  // Wöchentliches Reporting (Freitags 10:00)
   startWeeklyReportScheduler()
-  console.log('  Reporting     : Wochenbericht Freitags 15:00')
+  console.log('  Reporting     : Wochenbericht Freitags 10:00')
 }
 
 if (certFile && keyFile && fs.existsSync(certFile) && fs.existsSync(keyFile)) {
