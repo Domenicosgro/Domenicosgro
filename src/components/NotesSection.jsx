@@ -15,6 +15,7 @@ export default function NotesSection({ notes, onChange, readOnly }) {
             value={notes}
             placeholder="Allgemeine Anmerkungen, Verteilliste, nächste Schritte…"
             onChange={onChange}
+            allowImages
           />
       }
     </div>

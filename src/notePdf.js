@@ -1,6 +1,17 @@
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib'
 import { NOTE_TYPES, formatDate } from './utils'
 
+function extractHtmlImages(html) {
+  if (!html) return []
+  const re  = /<img[^>]+src="(data:image\/([^;]+);base64,([A-Za-z0-9+/=]+))"[^>]*>/gi
+  const out = []
+  let m
+  while ((m = re.exec(html)) !== null) {
+    out.push({ mimeType: m[2].toLowerCase().replace('jpeg', 'jpg'), base64: m[3] })
+  }
+  return out
+}
+
 function stripHtmlForPdf(html) {
   if (!html) return ''
   return html
@@ -169,6 +180,18 @@ export async function buildNotePdf(note, contact, projectName, logoDataUrl, clie
     ensureSpace(LINE_H)
     if (l) page.drawText(l, { x: MARGIN, y, size: FONT_SIZE, font: fontReg, color: rgb(0, 0, 0) })
     y -= LINE_H
+  }
+
+  for (const { mimeType, base64 } of extractHtmlImages(note.content)) {
+    try {
+      const pdfImg = mimeType === 'png'
+        ? await pdfDoc.embedPng(base64)
+        : await pdfDoc.embedJpg(base64)
+      const d = pdfImg.scaleToFit(CONTENT_W, 280)
+      ensureSpace(d.height + 10)
+      page.drawImage(pdfImg, { x: MARGIN, y: y - d.height, width: d.width, height: d.height })
+      y -= d.height + 10
+    } catch {}
   }
 
   return pdfDoc.saveAsBase64()

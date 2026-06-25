@@ -445,6 +445,7 @@ function NoteEditor({ note, contacts, allContacts, projectName, logoDataUrl, cli
             value={note.content || ''}
             onChange={val => onUpdate(note.id, { content: val })}
             placeholder="Notizinhalt…"
+            allowImages
           />
         </div>
       </div>

@@ -454,6 +454,7 @@ export default function NotizbuchView({ project, serverUser, onBack }) {
                   value={selNote.content || ''}
                   onChange={v => updateNote(selectedTopicId, selectedNoteId, { content: v })}
                   placeholder="Inhalt eingeben…"
+                  allowImages
                 />
               </div>
 
