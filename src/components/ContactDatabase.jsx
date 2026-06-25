@@ -43,10 +43,12 @@ function findInProject(project, dedupKey) {
 // eine E-Mail-Adresse je Kontakt. Firma/Telefon/Kategorie kommen in Notizen.
 const OUTLOOK_CHUNK = 40
 
+// Exakt die 16 Spalten aus der offiziellen Outlook.com-Importvorlage:
 const OUTLOOK_HEADERS = [
-  'Vorname', 'Zweiter Vorname', 'Nachname', 'Titel', 'Suffix', 'Initialen',
-  'Webseite', 'Geschlecht', 'Geburtstag', 'Jahrestag', 'Ort', 'Sprache',
-  'Internetverfügbarkeit', 'Notizen', 'E-Mail-Adresse', 'E-Mail-Anzeigename',
+  'Kontaktperson', 'Vorname', 'Nachname', 'E-Mail', 'Unternehmen',
+  'Telefon (geschäftlich)', 'Mobiltelefon', 'Faxnummer', 'Titel', 'Website',
+  'Straße und Hausnummer', 'Straße und Hausnummer 2', 'Ort', 'Bundesland',
+  'Postleitzahl', 'Land oder Region',
 ]
 
 function exportOutlookCsv(contacts, baseFilename = 'Kontakte_Outlook') {
@@ -67,20 +69,18 @@ function exportOutlookCsv(contacts, baseFilename = 'Kontakte_Outlook') {
       const parts     = (c.name || '').trim().split(/\s+/)
       const firstName = parts.length > 1 ? parts.slice(0, -1).join(' ') : (parts[0] || '')
       const lastName  = parts.length > 1 ? parts[parts.length - 1] : ''
-      const catLabel  = categoryInfo(c.category)?.label || ''
-      const notizParts = []
-      if (c.company) notizParts.push(`Firma: ${c.company}`)
-      if (c.role)    notizParts.push(`Funktion: ${c.role}`)
-      if (c.gewerk)  notizParts.push(`Gewerk: ${c.gewerk}`)
-      if (c.phone)   notizParts.push(`Tel.: ${c.phone}`)
-      if (catLabel)  notizParts.push(`Kategorie: ${catLabel}`)
+      const titel     = [c.role, c.gewerk].filter(Boolean).join(' · ')
       return [
-        firstName, '', lastName, '', '', '',
-        '', '', '', '', '', '',
-        '',
-        notizParts.join(' | '),
-        c.email,
-        c.name || c.email,
+        c.name || '',   // Kontaktperson (Anzeigename)
+        firstName,      // Vorname
+        lastName,       // Nachname
+        c.email || '',  // E-Mail
+        c.company || '', // Unternehmen
+        c.phone || '',  // Telefon (geschäftlich)
+        '', '',         // Mobiltelefon, Faxnummer
+        titel,          // Titel (Funktion · Gewerk)
+        '',             // Website
+        '', '', '', '', '', '', // Adressfelder
       ].map(wrap).join(',')
     })
     return '﻿' + [OUTLOOK_HEADERS.join(','), ...rows].join('\r\n')
