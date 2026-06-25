@@ -279,6 +279,19 @@ export default function ContactDatabase({ projects, onUpdate, onBack }) {
     }
   }, [projects, onUpdate])
 
+  // Kategorie direkt in der Tabelle ändern – aktualisiert den Kontakt in allen zugeordneten Projekten
+  const handleCategoryChange = useCallback((contact, newCategory) => {
+    if (!onUpdate) return
+    const key = getDedupKey(contact)
+    for (const project of projects) {
+      const contacts = project.contacts || []
+      const idx = key ? contacts.findIndex(c => getDedupKey(c) === key) : -1
+      if (idx === -1) continue
+      const updated = contacts.map((c, i) => i === idx ? { ...c, category: newCategory } : c)
+      onUpdate(project.id, { contacts: updated })
+    }
+  }, [projects, onUpdate])
+
   const projectCount = new Set(allContacts.flatMap(c => c._projects.map(p => p.id))).size
 
   const emptyEntry = { name: '', company: '', gewerk: '', role: '', email: '', phone: '', category: '', _projects: [] }
@@ -380,8 +393,22 @@ export default function ContactDatabase({ projects, onUpdate, onBack }) {
               {filtered.map((c, i) => (
                 <tr key={`${c._projectId}-${c.id || i}`} className="hover:bg-gray-50 transition-colors group">
                   <td className="px-4 py-2.5 font-medium text-gray-900">{c.name || <span className="text-gray-300">–</span>}</td>
-                  <td className="px-4 py-2.5 hidden sm:table-cell">
-                    {c.category ? <CategoryBadge value={c.category} /> : <span className="text-gray-300">–</span>}
+                  <td className="px-3 py-1.5 hidden sm:table-cell">
+                    {onUpdate ? (
+                      <select
+                        className="select text-xs py-1 px-2"
+                        value={c.category || ''}
+                        onChange={e => handleCategoryChange(c, e.target.value)}
+                        onClick={e => e.stopPropagation()}
+                      >
+                        <option value="">–</option>
+                        {CATEGORIES.map(cat => (
+                          <option key={cat.value} value={cat.value}>{cat.label}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      c.category ? <CategoryBadge value={c.category} /> : <span className="text-gray-300">–</span>
+                    )}
                   </td>
                   <td className="px-4 py-2.5 text-gray-600 hidden md:table-cell">
                     {c.company ? <span className="flex items-center gap-1"><Building2 size={11} className="text-gray-400" />{c.company}</span> : <span className="text-gray-300">–</span>}
