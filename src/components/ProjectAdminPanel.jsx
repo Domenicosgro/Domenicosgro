@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
-import { X, ShieldCheck, Loader, Link2, Copy, Trash2, UserCog } from 'lucide-react'
+import { X, ShieldCheck, Loader, Link2, Copy, Trash2, UserCog, Image as ImageIcon } from 'lucide-react'
 import { formatDate } from '../utils'
+import LogoUpload from './LogoUpload'
 
 function apiHeaders() {
   const h = { 'Content-Type': 'application/json' }
@@ -12,7 +13,7 @@ function apiHeaders() {
 // ── Projekt-Admin-Panel ─────────────────────────────────────────────────────────
 // Projektadministratoren (Ersteller + benannte Co-Admins) verwalten hier den
 // Projektzugang, weitere Administratoren, Autoren und die Freimelde-Links.
-export default function ProjectAdminPanel({ project, serverUser, onClose, onSaved }) {
+export default function ProjectAdminPanel({ project, serverUser, onClose, onSaved, globalLogoDataUrl = null, onUpdateProject = null }) {
   const [users,              setUsers]              = useState([])
   const [loadingUsers,       setLoadingUsers]       = useState(true)
   const [saving,             setSaving]             = useState(false)
@@ -186,6 +187,41 @@ export default function ProjectAdminPanel({ project, serverUser, onClose, onSave
                     </button>
                   </div>
                 ))}
+              </div>
+            </div>
+          )}
+
+          {/* Logos */}
+          {onUpdateProject && (
+            <div>
+              <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2 flex items-center gap-1.5">
+                <ImageIcon size={13} className="text-brand-600" /> Projekt-Logos
+              </p>
+              <div className="space-y-4">
+                <div>
+                  <p className="text-xs font-medium text-gray-700 mb-1.5">Büro-Logo (projektspezifisch)</p>
+                  <LogoUpload
+                    label="Büro-Logo"
+                    logoDataUrl={project.logo || ''}
+                    onUpdate={(dataUrl) => onUpdateProject(project.id, { logo: dataUrl })}
+                    onClear={() => onUpdateProject(project.id, { logo: '' })}
+                  />
+                  {!project.logo && globalLogoDataUrl && (
+                    <p className="text-xs text-gray-400 mt-1">Aktuell wird das globale Standard-Logo verwendet.</p>
+                  )}
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-gray-700 mb-1.5">Auftraggeber-Logo</p>
+                  <LogoUpload
+                    label="Auftraggeber-Logo"
+                    logoDataUrl={project.clientLogo || ''}
+                    onUpdate={(dataUrl) => onUpdateProject(project.id, { clientLogo: dataUrl })}
+                    onClear={() => onUpdateProject(project.id, { clientLogo: '' })}
+                  />
+                  <p className="text-xs text-gray-400 mt-1">
+                    Erscheint neben dem Büro-Logo in Protokollen, Notizen, Druck, PDF und Word-Export.
+                  </p>
+                </div>
               </div>
             </div>
           )}

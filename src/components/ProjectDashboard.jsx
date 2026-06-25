@@ -1,7 +1,6 @@
 import React, { useState } from 'react'
-import { ArrowLeft, FileText, Users, HardHat, Pencil, NotebookPen, ChevronRight, Clock, CheckCircle2, BarChart2, UserCog, BookOpen, Image as ImageIcon } from 'lucide-react'
+import { ArrowLeft, FileText, Users, HardHat, Pencil, NotebookPen, ChevronRight, BarChart2, UserCog, BookOpen } from 'lucide-react'
 import ProjectAdminPanel from './ProjectAdminPanel'
-import LogoUpload from './LogoUpload'
 
 const isServer = typeof window !== 'undefined' && !!window.__SERVER_MODE__
 
@@ -41,7 +40,6 @@ export default function ProjectDashboard({
   onUpdateProject, onBack, onOpenProtocols, onOpenNotes, onManageContacts, onOpenMassnahmen, onOpenNotizbuch, onSaved,
 }) {
   const [showAdminPanel, setShowAdminPanel] = useState(false)
-  const [showLogos,      setShowLogos]      = useState(false)
 
   // Darf der aktuelle Nutzer dieses Projekt administrieren? (Systemadmin oder Projektadmin)
   const canAdmin = isServer && serverUser && (
@@ -147,17 +145,6 @@ export default function ProjectDashboard({
           onClick={onOpenNotizbuch}
         />
 
-        {/* Logos – Büro- und Auftraggeber-Logo für dieses Projekt */}
-        {onUpdateProject && (
-          <DashboardTile
-            icon={<ImageIcon size={20} />}
-            title="Logos"
-            subtitle="Büro- und Auftraggeber-Logo für Protokolle, Notizen, Druck und Export"
-            accent="border-sky-400"
-            onClick={() => setShowLogos(true)}
-          />
-        )}
-
         {/* Administration – nur für Projektadmins und Systemadmins */}
         {canAdmin && (
           <DashboardTile
@@ -197,57 +184,9 @@ export default function ProjectDashboard({
           serverUser={serverUser}
           onClose={() => setShowAdminPanel(false)}
           onSaved={onSaved}
+          globalLogoDataUrl={globalLogoDataUrl}
+          onUpdateProject={onUpdateProject}
         />
-      )}
-
-      {/* Logo-Verwaltung */}
-      {showLogos && onUpdateProject && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="card w-full max-w-lg bg-white p-6">
-            <div className="flex items-center justify-between mb-5">
-              <h2 className="font-semibold text-night flex items-center gap-2">
-                <ImageIcon size={18} className="text-brand-600" /> Projekt-Logos
-              </h2>
-              <button className="text-gray-400 hover:text-gray-600" onClick={() => setShowLogos(false)}>✕</button>
-            </div>
-
-            <div className="space-y-6">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Büro-Logo (eigenes Logo)</label>
-                <LogoUpload
-                  label="Büro-Logo"
-                  logoDataUrl={project.logo || ''}
-                  onUpdate={(dataUrl) => onUpdateProject(project.id, { logo: dataUrl })}
-                  onClear={() => onUpdateProject(project.id, { logo: '' })}
-                />
-                {!project.logo && globalLogoDataUrl && (
-                  <p className="text-xs text-gray-400 mt-2">
-                    Aktuell wird das globale Standard-Logo verwendet. Lade hier ein projektspezifisches Logo hoch, um es zu überschreiben.
-                  </p>
-                )}
-              </div>
-
-              <div className="h-px bg-gray-100" />
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Auftraggeber-Logo</label>
-                <LogoUpload
-                  label="Auftraggeber-Logo"
-                  logoDataUrl={project.clientLogo || ''}
-                  onUpdate={(dataUrl) => onUpdateProject(project.id, { clientLogo: dataUrl })}
-                  onClear={() => onUpdateProject(project.id, { clientLogo: '' })}
-                />
-                <p className="text-xs text-gray-400 mt-2">
-                  Erscheint zusätzlich neben dem Büro-Logo in Protokollen, Notizen, beim Drucken sowie im PDF- und Word-Export.
-                </p>
-              </div>
-            </div>
-
-            <div className="flex justify-end mt-6">
-              <button className="btn-primary" onClick={() => setShowLogos(false)}>Fertig</button>
-            </div>
-          </div>
-        </div>
       )}
 
     </div>
