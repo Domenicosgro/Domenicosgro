@@ -9,6 +9,7 @@ import ProtocolList          from './components/ProtocolList'
 import ProtocolEditor        from './components/ProtocolEditor'
 import MassnahmenDashboard   from './components/MassnahmenDashboard'
 import NotizbuchView         from './components/NotizbuchView'
+import BimView               from './components/BimView'
 import ProjectDashboard      from './components/ProjectDashboard'
 import NotesList             from './components/NotesList'
 import ContactDatabase       from './components/ContactDatabase'
@@ -533,6 +534,20 @@ export default function App() {
     )
   }
 
+  if (view === 'project-bim') {
+    const project = projectsWithContacts.find(p => p.id === selectedProjectId)
+    if (!project) { setView('home'); return null }
+    return (
+      <BimView
+        project={project}
+        serverUser={serverUser}
+        token={typeof localStorage !== 'undefined' ? localStorage.getItem('kp_session_token') : null}
+        onBack={() => setView('project-dashboard')}
+        onProjectUpdated={handleRefresh}
+      />
+    )
+  }
+
   if (view === 'project-notizbuch') {
     const project = projectsWithContacts.find(p => p.id === selectedProjectId)
     if (!project) { setView('home'); return null }
@@ -566,6 +581,7 @@ export default function App() {
           onManageContacts={() => { setContactsOrigin('project-dashboard'); setView('project-contacts') }}
           onOpenMassnahmen={() => setView('project-massnahmen')}
           onOpenNotizbuch={() => setView('project-notizbuch')}
+          onOpenBim={() => setView('project-bim')}
           onSaved={isServer ? handleRefresh : undefined}
         />
         <UpdateBanner /><SaveErrorBanner />

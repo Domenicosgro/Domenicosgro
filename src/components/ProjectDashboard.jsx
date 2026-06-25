@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { ArrowLeft, FileText, Users, HardHat, Pencil, NotebookPen, ChevronRight, BarChart2, UserCog, BookOpen } from 'lucide-react'
+import { ArrowLeft, FileText, Users, HardHat, Pencil, NotebookPen, ChevronRight, BarChart2, UserCog, BookOpen, Box } from 'lucide-react'
 import ProjectAdminPanel from './ProjectAdminPanel'
 
 const isServer = typeof window !== 'undefined' && !!window.__SERVER_MODE__
@@ -37,7 +37,7 @@ function DashboardTile({ icon, title, subtitle, accent, onClick, stat1, stat2 })
 
 export default function ProjectDashboard({
   project, protocols, notes, serverUser, globalLogoDataUrl,
-  onUpdateProject, onBack, onOpenProtocols, onOpenNotes, onManageContacts, onOpenMassnahmen, onOpenNotizbuch, onSaved,
+  onUpdateProject, onBack, onOpenProtocols, onOpenNotes, onManageContacts, onOpenMassnahmen, onOpenNotizbuch, onOpenBim, onSaved,
 }) {
   const [showAdminPanel, setShowAdminPanel] = useState(false)
 
@@ -143,6 +143,18 @@ export default function ProjectDashboard({
           subtitle="Interne Notizen, Themen und Aufgaben für das Projektteam"
           accent="border-teal-500"
           onClick={onOpenNotizbuch}
+        />
+
+        {/* BIM-Modell */}
+        <DashboardTile
+          icon={<Box size={20} />}
+          title="BIM-Modell"
+          subtitle={project.bimMeta
+            ? `${project.bimMeta.filename} · ${project.bimMeta.uploadedBy}`
+            : 'IFC-Modell hochladen und im Browser betrachten'}
+          accent="border-cyan-500"
+          onClick={onOpenBim}
+          stat1={project.bimMeta ? { value: 'IFC', label: 'Modell vorhanden' } : undefined}
         />
 
         {/* Administration – nur für Projektadmins und Systemadmins */}

@@ -43,11 +43,12 @@ app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc:  ["'self'"],
-      scriptSrc:   ["'self'", "'unsafe-inline'"],
+      scriptSrc:   ["'self'", "'unsafe-inline'", "'wasm-unsafe-eval'"],
       styleSrc:    ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
       fontSrc:     ["'self'", 'https://fonts.gstatic.com'],
       imgSrc:      ["'self'", 'data:', 'blob:'],
       connectSrc:  ["'self'"],
+      workerSrc:   ["'self'", 'blob:'],
       objectSrc:   ["'none'"],
       frameAncestors: ["'none'"],
       upgradeInsecureRequests: isHttps ? [] : null,
@@ -937,6 +938,70 @@ app.delete('/api/attachments/:id', requireAuth, writeLimiter, async (req, res) =
   try {
     if (!validAttachmentId(req.params.id)) return res.status(400).json({ error: 'Ungültige ID.' })
     await attachments.remove(req.params.id)
+    res.json({ ok: true })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// ── BIM / IFC-Modell ─────────────────────────────────────────────────────────
+const BIM_DIR = path.join(process.env.DB_PATH || path.join(__dirname, '../data'), 'ifc')
+fs.mkdirSync(BIM_DIR, { recursive: true })
+
+// POST /api/projects/:id/bim  (Content-Type: application/octet-stream, X-Filename header)
+app.post('/api/projects/:id/bim', requireAuth, writeLimiter,
+  express.raw({ type: 'application/octet-stream', limit: '500mb' }),
+  (req, res) => {
+    try {
+      const project = db.projects.get(req.params.id)
+      if (!project) return res.status(404).json({ error: 'Projekt nicht gefunden.' })
+
+      const filename  = (req.headers['x-filename'] || 'model.ifc').replace(/[^a-zA-Z0-9._-]/g, '_')
+      const filePath  = path.join(BIM_DIR, `${req.params.id}.ifc`)
+
+      fs.writeFileSync(filePath, req.body)
+
+      const stat    = fs.statSync(filePath)
+      const bimMeta = {
+        filename,
+        size:       stat.size,
+        uploadedAt: new Date().toISOString(),
+        uploadedBy: req.user?.displayName || req.user?.username || 'Unbekannt',
+      }
+      const { _version, _updatedAt, ...pData } = project
+      const updated = { ...pData, bimMeta, updatedAt: bimMeta.uploadedAt }
+      db.projects.update(req.params.id, updated, _version, req.user)
+      broadcast('project', 'update', req.params.id, updated.updatedAt)
+      logEvent('BIM_UPLOAD', req, `project=${req.params.id} file=${filename} size=${stat.size}`)
+      res.status(201).json({ ok: true, bimMeta })
+    } catch (e) { res.status(500).json({ error: e.message }) }
+  }
+)
+
+// GET /api/projects/:id/bim  → IFC-Datei streamen
+app.get('/api/projects/:id/bim', requireAuth, (req, res) => {
+  try {
+    const filePath = path.join(BIM_DIR, `${req.params.id}.ifc`)
+    if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'Kein BIM-Modell vorhanden.' })
+    res.setHeader('Content-Type', 'application/octet-stream')
+    res.setHeader('Content-Disposition', `inline; filename="${req.params.id}.ifc"`)
+    res.setHeader('Cache-Control', 'private, max-age=300')
+    fs.createReadStream(filePath).pipe(res)
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// DELETE /api/projects/:id/bim  → Modell entfernen
+app.delete('/api/projects/:id/bim', requireAuth, writeLimiter, (req, res) => {
+  try {
+    const project = db.projects.get(req.params.id)
+    if (!project) return res.status(404).json({ error: 'Projekt nicht gefunden.' })
+
+    const filePath = path.join(BIM_DIR, `${req.params.id}.ifc`)
+    if (fs.existsSync(filePath)) fs.unlinkSync(filePath)
+
+    const { _version, _updatedAt, bimMeta: _bimMeta, ...pData } = project
+    const updated = { ...pData, updatedAt: new Date().toISOString() }
+    db.projects.update(req.params.id, updated, _version, req.user)
+    broadcast('project', 'update', req.params.id, updated.updatedAt)
+    logEvent('BIM_DELETE', req, `project=${req.params.id}`)
     res.json({ ok: true })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })

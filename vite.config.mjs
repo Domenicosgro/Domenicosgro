@@ -25,4 +25,8 @@ export default defineConfig({
   },
   // Required for Electron: assets use relative paths (file:// protocol)
   base: './',
+  optimizeDeps: {
+    exclude: ['web-ifc'],
+  },
+  assetsInclude: ['**/*.wasm'],
 })

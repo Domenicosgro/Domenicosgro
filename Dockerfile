@@ -9,6 +9,8 @@ COPY package*.json .npmrc ./
 RUN npm ci
 
 COPY . .
+# WASM-Datei für den IFC-Viewer im Build zugänglich machen
+RUN cp node_modules/web-ifc/web-ifc.wasm public/web-ifc.wasm
 RUN npm run build
 
 
