@@ -5,6 +5,48 @@ import {
 } from 'docx'
 import { buildProtocolNo, formatDate } from './utils'
 
+// ── HTML helpers ──────────────────────────────────────────────────────────────
+
+function stripHtmlForDocx(html) {
+  if (!html) return ''
+  return html
+    .replace(/<img[^>]*>/gi, '')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/p>/gi, '\n')
+    .replace(/<\/li>/gi, '\n')
+    .replace(/<li[^>]*>/gi, '• ')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+}
+
+async function extractDocxImages(html, maxW = 420) {
+  if (!html) return []
+  const re  = /<img[^>]+src="(data:image\/([^;]+);base64,([A-Za-z0-9+/=]+))"[^>]*>/gi
+  const runs = []
+  let m
+  while ((m = re.exec(html)) !== null) {
+    const mimeRaw = m[2].toLowerCase()
+    const mime    = mimeRaw.replace('jpeg', 'jpg')
+    const type    = ['png', 'jpg', 'gif', 'bmp'].includes(mime) ? mime : 'png'
+    const base64  = m[3]
+    try {
+      const img = new Image()
+      img.src = `data:image/${mimeRaw};base64,${base64}`
+      await new Promise(r => { img.onload = r; img.onerror = r })
+      const scale = img.naturalWidth > maxW ? maxW / img.naturalWidth : 1
+      const w = Math.round((img.naturalWidth  || maxW) * scale)
+      const h = Math.round((img.naturalHeight || 300) * scale)
+      runs.push(new ImageRun({ data: base64, type, transformation: { width: w, height: h } }))
+    } catch {}
+  }
+  return runs
+}
+
 // ── Design tokens ──────────────────────────────────────────────────────────────
 const BLACK = '000000'
 const FONT  = 'Arial'
@@ -272,7 +314,7 @@ function buildCoverPage(protocol, protocolNo, logoImage, clientImage) {
   return out
 }
 
-function buildContent(protocol, protocolNo) {
+async function buildContent(protocol, protocolNo) {
   const items    = protocol.agendaItems ?? []
   const actions  = protocol.actionItems ?? []
 
@@ -302,10 +344,21 @@ function buildContent(protocol, protocolNo) {
         border:  lvl === 1 && !isGray ? { left: LEFT_BAR } : {},
       }))
 
-      if (item.discussion?.trim()) {
-        out.push(para([run(item.discussion, { size: 19, italic: isGray })], {
+      const discText = stripHtmlForDocx(item.discussion)
+      if (discText) {
+        out.push(para([run(discText, { size: 19, italic: isGray })], {
           indent:  { left: indent + 280 },
           spacing: { before: 0, after: 40 },
+        }))
+      }
+
+      // Inline images from discussion
+      const imgRuns = await extractDocxImages(item.discussion)
+      for (const imgRun of imgRuns) {
+        out.push(new Paragraph({
+          spacing: { before: 60, after: 60 },
+          indent:  { left: indent + 280 },
+          children: [imgRun],
         }))
       }
 
@@ -348,10 +401,11 @@ function buildContent(protocol, protocolNo) {
   }
 
   // Notes
-  if (protocol.notes?.trim()) {
+  const notesText = stripHtmlForDocx(protocol.notes)
+  if (notesText) {
     out.push(sp(80))
     out.push(sectionTitle('Notizen'))
-    out.push(para([run(protocol.notes)], { spacing: { before: 100, after: 0 } }))
+    out.push(para([run(notesText)], { spacing: { before: 100, after: 0 } }))
   }
 
   return out
@@ -429,7 +483,7 @@ export async function exportDocx(protocol, chainNo = null, logoDataUrl = null, r
   const children = [
     ...(agenda.length > 0 ? buildAgendaPage(protocol, logoImage, clientImage) : []),
     ...buildCoverPage(protocol, protocolNo, logoImage, clientImage),
-    ...buildContent(protocol, protocolNo),
+    ...await buildContent(protocol, protocolNo),
     ...attachmentPages,
   ]
 

@@ -4,6 +4,17 @@ import { formatDate } from './utils'
 const STATUS_LABELS   = { offen: 'Offen', in_arbeit: 'In Arbeit', erledigt: 'Erledigt', verschoben: 'Verschoben' }
 const PRIORITY_LABELS = { hoch: 'Hoch', mittel: 'Mittel', niedrig: 'Niedrig' }
 
+function extractHtmlImages(html) {
+  if (!html) return []
+  const re  = /<img[^>]+src="(data:image\/([^;]+);base64,([A-Za-z0-9+/=]+))"[^>]*>/gi
+  const out = []
+  let m
+  while ((m = re.exec(html)) !== null) {
+    out.push({ mimeType: m[2].toLowerCase().replace('jpeg', 'jpg'), base64: m[3] })
+  }
+  return out
+}
+
 function stripHtmlForPdf(html) {
   if (!html) return ''
   return html
@@ -189,6 +200,20 @@ export async function buildProtocolPdf(protocol, protocolNo, logoDataUrl, client
       const disc = stripHtmlForPdf(item.discussion)
       if (disc) {
         drawParagraph(disc, { size: 9.5, font: isGray ? fontItal : fontReg, color, indent: indent + 14, lineH: 13, gap: 2 })
+      }
+
+      // Inline images embedded in the discussion field
+      for (const { mimeType, base64 } of extractHtmlImages(item.discussion)) {
+        try {
+          const pdfImg = mimeType === 'png'
+            ? await pdfDoc.embedPng(base64)
+            : await pdfDoc.embedJpg(base64)
+          const maxImgW = CONTENT_W - indent - 14
+          const d = pdfImg.scaleToFit(maxImgW, 280)
+          ensureSpace(d.height + 10)
+          page.drawImage(pdfImg, { x: MARGIN + indent + 14, y: y - d.height, width: d.width, height: d.height })
+          y -= d.height + 10
+        } catch {}
       }
 
       const myTasks = actions.filter(t => t.protocolItemId === item.id)

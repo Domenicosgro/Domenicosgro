@@ -1,12 +1,14 @@
 import React, { useEffect, useRef } from 'react'
 import { useEditor, EditorContent } from '@tiptap/react'
 import { Extension } from '@tiptap/core'
+import { Plugin } from '@tiptap/pm/state'
 import StarterKit from '@tiptap/starter-kit'
 import Underline from '@tiptap/extension-underline'
 import Placeholder from '@tiptap/extension-placeholder'
+import TiptapImage from '@tiptap/extension-image'
 import {
   Bold, Italic, Underline as UIcon, Strikethrough,
-  List, ListOrdered,
+  List, ListOrdered, Image as ImageIcon,
 } from 'lucide-react'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -41,6 +43,64 @@ export function stripHtml(html) {
     .replace(/&nbsp;/g, ' ')
     .trim()
 }
+
+// ── Image helpers ─────────────────────────────────────────────────────────────
+
+// Resize an image to max 1400 px on the longest edge and re-encode as JPEG.
+function compressImage(dataUrl, maxDim = 1400) {
+  return new Promise(resolve => {
+    const img = new Image()
+    img.onload = () => {
+      const scale = (img.width > maxDim || img.height > maxDim)
+        ? Math.min(maxDim / img.width, maxDim / img.height) : 1
+      const canvas = document.createElement('canvas')
+      canvas.width  = Math.round(img.width * scale)
+      canvas.height = Math.round(img.height * scale)
+      canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height)
+      resolve(canvas.toDataURL('image/jpeg', 0.82))
+    }
+    img.onerror = () => resolve(dataUrl)
+    img.src = dataUrl
+  })
+}
+
+function readAndInsertImage(file, editor) {
+  if (!file || !file.type.startsWith('image/')) return
+  if (file.size > 15 * 1024 * 1024) { alert('Bild ist zu groß (max. 15 MB).'); return }
+  const reader = new FileReader()
+  reader.onload = async e => {
+    const src = await compressImage(e.target.result)
+    editor?.chain().focus().setImage({ src }).run()
+  }
+  reader.readAsDataURL(file)
+}
+
+// Intercepts clipboard paste + drag-and-drop of image files.
+const ImagePastePlugin = Extension.create({
+  name: 'imagePastePlugin',
+  addProseMirrorPlugins() {
+    const editor = this.editor
+    return [new Plugin({
+      props: {
+        handlePaste(view, event) {
+          const items = Array.from(event.clipboardData?.items ?? [])
+          const imgItem = items.find(i => i.type.startsWith('image/'))
+          if (!imgItem) return false
+          const file = imgItem.getAsFile()
+          if (file) readAndInsertImage(file, editor)
+          return !!file
+        },
+        handleDrop(view, event, _slice, moved) {
+          if (moved) return false
+          const files = Array.from(event.dataTransfer?.files ?? []).filter(f => f.type.startsWith('image/'))
+          if (!files.length) return false
+          files.forEach(f => readAndInsertImage(f, editor))
+          return true
+        },
+      },
+    })]
+  },
+})
 
 // ── Tiptap extensions ─────────────────────────────────────────────────────────
 
@@ -84,7 +144,7 @@ const SmartIndent = Extension.create({
   },
 })
 
-const buildExtensions = (placeholder) => [
+const buildExtensions = (placeholder, allowImages = false) => [
   StarterKit.configure({
     heading:         false,
     codeBlock:       false,
@@ -95,6 +155,7 @@ const buildExtensions = (placeholder) => [
   Underline,
   SmartIndent,
   Placeholder.configure({ placeholder: placeholder ?? '' }),
+  ...(allowImages ? [TiptapImage.configure({ allowBase64: true }), ImagePastePlugin] : []),
 ]
 
 // ── Toolbar button ─────────────────────────────────────────────────────────────
@@ -124,14 +185,13 @@ export default function RichTextEditor({
   placeholder,
   disabled = false,
   className = '',
+  allowImages = false,
 }) {
-  // Track the last HTML string WE sent to the parent via onChange.
-  // This lets the sync-effect below skip re-setting content when the parent
-  // re-renders with the value we just emitted (which would reset the cursor).
   const lastEmittedRef = useRef(null)
+  const fileInputRef   = useRef(null)
 
   const editor = useEditor({
-    extensions: buildExtensions(placeholder),
+    extensions: buildExtensions(placeholder, allowImages),
     content:    toHtml(value),
     editable:   !disabled,
     onUpdate: ({ editor }) => {
@@ -187,6 +247,25 @@ export default function RichTextEditor({
         <Btn onClick={() => e.chain().focus().toggleOrderedList().run()}  active={e.isActive('orderedList')} title="Nummerierte Liste  (Tipp: «1. » am Zeilenanfang)">
           <ListOrdered size={12} />
         </Btn>
+        {allowImages && (
+          <>
+            <div className="w-px h-3.5 bg-gray-200 mx-0.5" />
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={ev => {
+                const f = ev.target.files?.[0]
+                if (f) readAndInsertImage(f, editor)
+                ev.target.value = ''
+              }}
+            />
+            <Btn onClick={() => fileInputRef.current?.click()} active={false} title="Bild einfügen (auch Screenshot einfügen mit Strg+V)">
+              <ImageIcon size={12} />
+            </Btn>
+          </>
+        )}
       </div>
 
       <EditorContent editor={editor} className="rich-editor-content" />

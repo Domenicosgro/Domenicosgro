@@ -146,6 +146,15 @@
 .rich-text s,
 .rich-editor-content .ProseMirror s     { text-decoration: line-through; }
 
+.rich-text img,
+.rich-editor-content .ProseMirror img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+  margin: 6px 0;
+  border: 1px solid #e5e7eb;
+}
+
 /* ── Print ───────────────────────────────────────────────── */
 @media print {
   @page { size: A4; margin: 12mm 12mm 20mm 12mm; }

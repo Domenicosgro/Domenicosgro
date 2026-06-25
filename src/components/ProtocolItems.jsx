@@ -553,8 +553,9 @@ export default function ProtocolItems({ items, onChange, allTasks = [], onTasksC
                           />
                         : <RichTextEditor
                             value={item.discussion}
-                            placeholder="Inhalt… (- oder 1. für Listen, Strg+B für Fett)"
+                            placeholder="Inhalt… (- oder 1. für Listen, Strg+B für Fett, Bild einfügen mit Strg+V)"
                             onChange={html => update(item.id, 'discussion', html)}
+                            allowImages
                           />
                       }
                     </div>
