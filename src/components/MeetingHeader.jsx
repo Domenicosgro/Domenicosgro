@@ -94,7 +94,7 @@ export default function MeetingHeader({ protocol, protocols, projects, logoDataU
       {/* Date / time / location / phase */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         <div>
-          <label className="block text-xs font-medium text-gray-500 mb-1">Datum</label>
+          <label className="block text-xs font-medium text-gray-500 mb-1">Datum der Besprechung</label>
           <input className="input" type="date" value={protocol.date} onChange={set('date')} />
         </div>
         <div>

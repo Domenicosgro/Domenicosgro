@@ -276,7 +276,7 @@ export const buildAgendaEmailBody = (protocol) => {
   lines.push('='.repeat(50))
   lines.push('')
   lines.push(`Projekt:   ${projectName || '–'}`)
-  lines.push(`Datum:     ${dateStr}${timeStr ? '   ' + timeStr : ''}`)
+  lines.push(`Datum der Besprechung: ${dateStr}${timeStr ? '   ' + timeStr : ''}`)
   lines.push(`Ort:       ${location || '–'}`)
   if (preparedBy) lines.push(`Einladung: ${preparedBy}`)
   lines.push('')

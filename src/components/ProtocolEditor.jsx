@@ -536,9 +536,9 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
               <table className="w-full text-sm mb-4 border-collapse">
                 <tbody>
                   {[
-                    ['Datum',    formatDate(protocol.date)],
-                    ['Ort',      protocol.location || '–'],
-                    ['Einladung',protocol.preparedBy || '–'],
+                    ['Datum der Besprechung', formatDate(protocol.date)],
+                    ['Ort',                  protocol.location || '–'],
+                    ['Einladung',            protocol.preparedBy || '–'],
                   ].map(([l, v]) => (
                     <tr key={l}>
                       <td className="py-1 pr-6 text-xs uppercase tracking-wide w-28">{l}</td>
@@ -631,10 +631,11 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
           <table className="w-full text-sm mb-6 border-collapse">
             <tbody>
               {[
-                ['Protokoll-Nr.', protocolNo],
-                ['Datum',         formatDate(protocol.date)],
-                ['Ort / Raum',    protocol.location || '–'],
-                ['Erstellt von',  protocol.preparedBy || '–'],
+                ['Protokoll-Nr.',        protocolNo],
+                ['Datum der Besprechung', formatDate(protocol.date)],
+                ['Erstellt am',          createdDate],
+                ['Ort / Raum',           protocol.location || '–'],
+                ['Erstellt von',         protocol.preparedBy || '–'],
                 ...(isClosed ? [['Status', 'Abgeschlossen']] : []),
                 ...(protocol.nextMeeting ? [['Nächste Besprechung', formatDate(protocol.nextMeeting)]] : []),
               ].map(([label, value]) => (
