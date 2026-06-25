@@ -39,17 +39,28 @@ function findInProject(project, dedupKey) {
 }
 
 // ── Outlook-CSV-Export ────────────────────────────────────────────────────────
-// Outlook-Limit: max. 40 Kontakte pro Import → bei mehr wird automatisch
-// in Teildateien à 40 aufgeteilt, die nacheinander heruntergeladen werden.
+// Outlook.com erfordert exakt 16 Spalten mit deutschen Bezeichnungen und
+// eine E-Mail-Adresse je Kontakt. Firma/Telefon/Kategorie kommen in Notizen.
 const OUTLOOK_CHUNK = 40
 
+const OUTLOOK_HEADERS = [
+  'Vorname', 'Zweiter Vorname', 'Nachname', 'Titel', 'Suffix', 'Initialen',
+  'Webseite', 'Geschlecht', 'Geburtstag', 'Jahrestag', 'Ort', 'Sprache',
+  'Internetverfügbarkeit', 'Notizen', 'E-Mail-Adresse', 'E-Mail-Anzeigename',
+]
+
 function exportOutlookCsv(contacts, baseFilename = 'Kontakte_Outlook') {
+  const valid = contacts.filter(c => (c.email || '').trim())
+  if (!valid.length) {
+    alert('Keine Kontakte mit E-Mail-Adresse gefunden.\nOutlook.com erfordert eine E-Mail-Adresse pro Kontakt.')
+    return 0
+  }
+
   const wrap = v => {
     const s = String(v ?? '')
     return (s.includes(',') || s.includes('"') || s.includes('\n'))
       ? `"${s.replace(/"/g, '""')}"` : s
   }
-  const HEADERS = ['First Name', 'Last Name', 'E-mail Address', 'Business Phone', 'Company', 'Job Title', 'Department', 'Categories']
 
   const buildCsv = chunk => {
     const rows = chunk.map(c => {
@@ -57,14 +68,26 @@ function exportOutlookCsv(contacts, baseFilename = 'Kontakte_Outlook') {
       const firstName = parts.length > 1 ? parts.slice(0, -1).join(' ') : (parts[0] || '')
       const lastName  = parts.length > 1 ? parts[parts.length - 1] : ''
       const catLabel  = categoryInfo(c.category)?.label || ''
-      return [firstName, lastName, c.email || '', c.phone || '', c.company || '', c.role || '', c.gewerk || '', catLabel]
-        .map(wrap).join(',')
+      const notizParts = []
+      if (c.company) notizParts.push(`Firma: ${c.company}`)
+      if (c.role)    notizParts.push(`Funktion: ${c.role}`)
+      if (c.gewerk)  notizParts.push(`Gewerk: ${c.gewerk}`)
+      if (c.phone)   notizParts.push(`Tel.: ${c.phone}`)
+      if (catLabel)  notizParts.push(`Kategorie: ${catLabel}`)
+      return [
+        firstName, '', lastName, '', '', '',
+        '', '', '', '', '', '',
+        '',
+        notizParts.join(' | '),
+        c.email,
+        c.name || c.email,
+      ].map(wrap).join(',')
     })
-    return '﻿' + [HEADERS.join(','), ...rows].join('\r\n')
+    return '﻿' + [OUTLOOK_HEADERS.join(','), ...rows].join('\r\n')
   }
 
   const chunks = []
-  for (let i = 0; i < contacts.length; i += OUTLOOK_CHUNK) chunks.push(contacts.slice(i, i + OUTLOOK_CHUNK))
+  for (let i = 0; i < valid.length; i += OUTLOOK_CHUNK) chunks.push(valid.slice(i, i + OUTLOOK_CHUNK))
   const total = chunks.length
 
   chunks.forEach((chunk, idx) => {
@@ -78,6 +101,7 @@ function exportOutlookCsv(contacts, baseFilename = 'Kontakte_Outlook') {
       URL.revokeObjectURL(url)
     }, idx * 600)
   })
+  return valid.length
 }
 
 // ── Contact modal (add + edit) ────────────────────────────────────────────────
@@ -365,9 +389,13 @@ export default function ContactDatabase({ projects, onUpdate, onBack }) {
               }}>
               <Download size={15} />
               {(() => {
-                const files = Math.ceil(filtered.length / OUTLOOK_CHUNK)
-                const label = hasFilters ? `${filtered.length} exportieren (gefiltert)` : `Alle ${filtered.length} exportieren`
-                return files > 1 ? `${label} · ${files} Dateien` : label
+                const validCount = filtered.filter(c => (c.email || '').trim()).length
+                const skipped    = filtered.length - validCount
+                const files      = Math.ceil(validCount / OUTLOOK_CHUNK)
+                let label = hasFilters ? `${validCount} exportieren (gefiltert)` : `Alle ${validCount} exportieren`
+                if (skipped > 0) label += ` · ${skipped} ohne E-Mail`
+                if (files > 1)   label += ` · ${files} Dateien`
+                return label
               })()}
             </button>
           )}
