@@ -1,12 +1,18 @@
 import React, { useState, useRef } from 'react'
-import { Plus, Trash2, Copy, FileText, Search, ChevronRight, Upload, Lock, ArrowLeft, Users, RotateCcw, Download } from 'lucide-react'
+import { Plus, Trash2, Copy, FileText, Search, ChevronRight, Upload, Lock, ArrowLeft, Users, RotateCcw, Download, Box } from 'lucide-react'
 import { formatDate, buildProtocolNo, getChainNo, phaseBadge, PHASES } from '../utils'
+
+function formatBytes(bytes) {
+  if (!bytes) return ''
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
 
 const isElectron = typeof window !== 'undefined' && !!window.electronAPI
 
 export default function ProtocolList({
   protocols, allProtocols, project, phaseFilter, onCreate, onOpen, onDelete, onDuplicate,
-  onImport, onOpenImported, onBack, onManageContacts, onRefresh,
+  onImport, onOpenImported, onBack, onManageContacts, onRefresh, onOpenBim,
 }) {
   const pool = allProtocols ?? protocols  // fall back to current list if not provided
   const fileInputRef = useRef(null)
@@ -185,6 +191,28 @@ export default function ProtocolList({
               )}
             </div>
           )}
+        </div>
+      )}
+
+      {/* BIM-Verknüpfung */}
+      {project?.bimMeta && onOpenBim && (
+        <div
+          className="card p-4 flex items-center gap-4 border-l-4 border-cyan-400 hover:border-cyan-300 hover:bg-cyan-50 cursor-pointer transition-colors group"
+          onClick={onOpenBim}
+        >
+          <Box size={18} className="text-cyan-600 flex-shrink-0" />
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="font-semibold text-gray-900 text-sm">BIM-Modell &amp; Issues</span>
+              <span className="text-xs px-1.5 py-0.5 border border-cyan-300 text-cyan-700 bg-cyan-50">IFC</span>
+            </div>
+            <p className="text-xs text-gray-500 mt-0.5">
+              {project.bimMeta.filename}
+              {project.bimMeta.size ? ` · ${formatBytes(project.bimMeta.size)}` : ''}
+              {project.bimMeta.uploadedAt ? ` · hochgeladen ${formatDate(project.bimMeta.uploadedAt.slice(0, 10))}` : ''}
+            </p>
+          </div>
+          <ChevronRight size={16} className="text-concrete group-hover:text-cyan-500 transition-colors flex-shrink-0" />
         </div>
       )}
 

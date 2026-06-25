@@ -53,6 +53,7 @@ export default function App() {
   const [selectedProjectId, setSelectedProjectId] = useState(null)
   const [selectedPhase,     setSelectedPhase]     = useState(null)   // 'planung' | 'bau' | null
   const [contactsOrigin,    setContactsOrigin]    = useState('protocols')
+  const [bimReturnView,     setBimReturnView]     = useState('project-dashboard')
   const [activeId,          setActiveId]          = useState(null)
   const activeIdRef = useRef(activeId)
   activeIdRef.current = activeId
@@ -490,6 +491,7 @@ export default function App() {
           onBack={handleBackFromProtocols}
           onManageContacts={() => { setContactsOrigin('protocols'); setView('project-contacts') }}
           onRefresh={handleRefresh}
+          onOpenBim={project?.bimMeta ? () => { setBimReturnView('protocols'); setView('project-bim') } : undefined}
         />
         <UpdateBanner /><SaveErrorBanner />
       </>
@@ -542,7 +544,8 @@ export default function App() {
         project={project}
         serverUser={serverUser}
         token={typeof localStorage !== 'undefined' ? localStorage.getItem('kp_session_token') : null}
-        onBack={() => setView('project-dashboard')}
+        onBack={() => setView(bimReturnView)}
+        backLabel={bimReturnView === 'protocols' ? 'Protokolle' : 'Dashboard'}
         onProjectUpdated={handleRefresh}
       />
     )
@@ -581,7 +584,7 @@ export default function App() {
           onManageContacts={() => { setContactsOrigin('project-dashboard'); setView('project-contacts') }}
           onOpenMassnahmen={() => setView('project-massnahmen')}
           onOpenNotizbuch={() => setView('project-notizbuch')}
-          onOpenBim={() => setView('project-bim')}
+          onOpenBim={() => { setBimReturnView('project-dashboard'); setView('project-bim') }}
           onSaved={isServer ? handleRefresh : undefined}
         />
         <UpdateBanner /><SaveErrorBanner />

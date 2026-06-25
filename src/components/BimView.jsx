@@ -13,7 +13,7 @@ function formatBytes(bytes) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
-export default function BimView({ project, serverUser, token, onBack, onProjectUpdated }) {
+export default function BimView({ project, serverUser, token, onBack, backLabel = 'Dashboard', onProjectUpdated }) {
   const containerRef = useRef(null)
   const viewerRef    = useRef(null)
   const fileInputRef = useRef(null)
@@ -182,7 +182,7 @@ export default function BimView({ project, serverUser, token, onBack, onProjectU
             className="flex items-center gap-1.5 text-sm text-gray-300 hover:text-white transition-colors"
             onClick={onBack}
           >
-            <ArrowLeft size={15} /> Dashboard
+            <ArrowLeft size={15} /> {backLabel}
           </button>
           <span className="text-gray-600">|</span>
           <Box size={15} className="text-brand-400" />
