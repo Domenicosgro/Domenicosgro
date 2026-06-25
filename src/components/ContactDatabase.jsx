@@ -71,8 +71,10 @@ function isOutlookSafeEmail(email) {
 function exportOutlookCsv(contacts, baseFilename = 'Kontakte_Outlook') {
   const seen  = new Set()
   const valid = contacts.filter(c => {
-    const email = (c.email || '').trim().toLowerCase()
+    const email       = (c.email || '').trim().toLowerCase()
+    const displayName = (c.name || c.company || '').trim()
     if (!isOutlookSafeEmail(email)) return false
+    if (!displayName) return false  // Outlook erfordert zwingend einen Anzeigenamen
     if (seen.has(email)) return false
     seen.add(email)
     return true
@@ -84,23 +86,24 @@ function exportOutlookCsv(contacts, baseFilename = 'Kontakte_Outlook') {
 
   // Steuerzeichen (Zeilenumbrüche etc.) bereinigen – sonst bricht Outlook den Import ab
   const clean = v => String(v ?? '').replace(/[\x00-\x1F\x7F]/g, ' ').replace(/\s+/g, ' ').trim()
-  // Semikolon als Trennzeichen (deutscher Windows-Standard – Excel zeigt Spalten korrekt)
+  // Komma als Trennzeichen – Outlook.com erwartet kommagetrennte CSV (wie eigene Vorlage)
   const wrap  = v => {
     const s = clean(v)
-    return (s.includes(';') || s.includes('"'))
+    return (s.includes(',') || s.includes('"'))
       ? `"${s.replace(/"/g, '""')}"` : s
   }
 
   const buildCsv = chunk => {
     const rows = chunk.map(c => {
-      const parts     = (c.name || '').trim().split(/\s+/)
-      const firstName = parts.length > 1 ? parts.slice(0, -1).join(' ') : (parts[0] || '')
-      const lastName  = parts.length > 1 ? parts[parts.length - 1] : ''
-      const titel     = [c.role, c.gewerk].filter(Boolean).join(' - ')
+      const displayName = (c.name || c.company || '').trim()
+      const nameParts   = (c.name || '').trim().split(/\s+/)
+      const firstName   = nameParts.length > 1 ? nameParts.slice(0, -1).join(' ') : (nameParts[0] || '')
+      const lastName    = nameParts.length > 1 ? nameParts[nameParts.length - 1] : ''
+      const titel       = [c.role, c.gewerk].filter(Boolean).join(' - ')
       return [
-        c.name || '',    // Kontaktperson (Anzeigename)
-        firstName,       // Vorname
-        lastName,        // Nachname
+        displayName,     // Kontaktperson (Anzeigename – Pflichtfeld, Firma als Fallback)
+        firstName,        // Vorname
+        lastName,         // Nachname
         c.email || '',   // E-Mail
         c.company || '', // Unternehmen
         c.phone || '',   // Telefon (geschäftlich)
@@ -108,12 +111,12 @@ function exportOutlookCsv(contacts, baseFilename = 'Kontakte_Outlook') {
         titel,           // Titel (Funktion - Gewerk)
         '',              // Website
         '', '', '', '', '', '', // Adressfelder
-      ].map(wrap).join(';')
+      ].map(wrap).join(',')
     })
     // UTF-8 BOM als rohe Bytes voranstellen – hilft Outlook/Excel bei der Encoding-Erkennung
     // ohne den ersten Spaltennamen zu korrumpieren
     const bom  = new Uint8Array([0xEF, 0xBB, 0xBF])
-    const text = new TextEncoder().encode([OUTLOOK_HEADERS.join(';'), ...rows].join('\r\n'))
+    const text = new TextEncoder().encode([OUTLOOK_HEADERS.join(','), ...rows].join('\r\n'))
     const out  = new Uint8Array(bom.length + text.length)
     out.set(bom); out.set(text, bom.length)
     return out
