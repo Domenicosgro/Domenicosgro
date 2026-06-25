@@ -32,6 +32,8 @@ export default function BimView({ project, serverUser, token, onBack, onProjectU
   useEffect(() => {
     if (!containerRef.current || !bimMeta) return
 
+    let cancelled = false
+
     const viewer = new IfcViewerAPI({
       container: containerRef.current,
       backgroundColor: new THREE.Color(0x1e1e2e),
@@ -45,38 +47,50 @@ export default function BimView({ project, serverUser, token, onBack, onProjectU
       setLoading(true)
       setError(null)
       try {
+        // Guard after every await: dispose() sets viewer.IFC = null asynchronously
+        if (cancelled || !viewer.IFC) return
         await viewer.IFC.setWasmPath('/')
 
         const headers = {}
         if (token) headers['Authorization'] = `Bearer ${token}`
 
+        if (cancelled || !viewer.IFC) return
         const response = await fetch(`/api/projects/${project.id}/bim`, { headers })
         if (!response.ok) throw new Error(`HTTP ${response.status}`)
 
-        const blob   = await response.blob()
-        const url    = URL.createObjectURL(blob)
-        const model  = await viewer.IFC.loadIfcUrl(url, false)
+        if (cancelled || !viewer.IFC) return
+        const blob = await response.blob()
+        const url  = URL.createObjectURL(blob)
+
+        if (cancelled || !viewer.IFC) { URL.revokeObjectURL(url); return }
+        const model = await viewer.IFC.loadIfcUrl(url, false)
         URL.revokeObjectURL(url)
 
+        if (cancelled || !model) return
+
         // Kamera auf das Modell ausrichten
-        const bb = new THREE.Box3().setFromObject(model.mesh)
+        const bb     = new THREE.Box3().setFromObject(model.mesh)
         const center = bb.getCenter(new THREE.Vector3())
         const size   = bb.getSize(new THREE.Vector3())
         const dist   = Math.max(size.x, size.y, size.z) * 1.5
-        viewer.context.getCamera().position.set(center.x + dist, center.y + dist * 0.5, center.z + dist)
-        viewer.context.getCamera().lookAt(center)
+        if (!cancelled && viewer.context) {
+          viewer.context.getCamera().position.set(center.x + dist, center.y + dist * 0.5, center.z + dist)
+          viewer.context.getCamera().lookAt(center)
+        }
 
-        setModelInfo({ center, size })
+        if (!cancelled) setModelInfo({ center, size })
       } catch (e) {
-        setError(`Modell konnte nicht geladen werden: ${e.message}`)
+        if (!cancelled) setError(`Modell konnte nicht geladen werden: ${e.message}`)
       } finally {
-        setLoading(false)
+        if (!cancelled) setLoading(false)
       }
     }
 
     loadModel()
 
     return () => {
+      cancelled = true
+      viewerRef.current = null
       try { viewer.dispose() } catch (_) {}
     }
   }, [project.id, bimMeta, token])
@@ -85,7 +99,9 @@ export default function BimView({ project, serverUser, token, onBack, onProjectU
   useEffect(() => {
     if (!containerRef.current || !bimMeta) return
     const el = containerRef.current
-    const onMouseMove = () => { if (viewerRef.current) viewerRef.current.IFC.selector.prePickIfcItem() }
+    const onMouseMove = () => {
+      if (viewerRef.current?.IFC) viewerRef.current.IFC.selector.prePickIfcItem()
+    }
     el.addEventListener('mousemove', onMouseMove)
     return () => el.removeEventListener('mousemove', onMouseMove)
   }, [bimMeta])
@@ -248,7 +264,7 @@ export default function BimView({ project, serverUser, token, onBack, onProjectU
           )}
 
           {/* Steuerungshinweis */}
-          {!loading && !error && (
+          {!loading && !error && modelInfo && (
             <div className="absolute bottom-4 right-4 bg-gray-900/70 border border-gray-700 px-3 py-2 text-xs text-gray-400 z-10">
               <span className="flex items-center gap-1.5">
                 <Info size={11} />
