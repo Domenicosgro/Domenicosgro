@@ -86,32 +86,52 @@ export async function buildProtocolPdf(protocol, protocolNo, logoDataUrl, client
 
   // ── Seitenkopf: Logo links · Dokumenttyp/Titel/Projekt rechts · Linie ──────────
   const drawHeader = () => {
-    const HEADER_H = 46
-    let logoX = MARGIN
+    // Draw logos left-to-right and track the right edge of the logo area
+    let logoRight = MARGIN
     if (logoImg) {
       const d = logoImg.scaleToFit(110, 34)
-      page.drawImage(logoImg, { x: logoX, y: y - d.height, width: d.width, height: d.height })
-      logoX += d.width + 14
+      page.drawImage(logoImg, { x: logoRight, y: y - d.height, width: d.width, height: d.height })
+      logoRight += d.width + 14
     }
     if (clientLogoImg) {
       const d = clientLogoImg.scaleToFit(110, 34)
-      page.drawImage(clientLogoImg, { x: logoX, y: y - d.height, width: d.width, height: d.height })
+      page.drawImage(clientLogoImg, { x: logoRight, y: y - d.height, width: d.width, height: d.height })
+      logoRight += d.width + 14
     }
+
+    // Right text column — never let text reach into the logo area
+    const TEXT_COL_MIN_X = logoRight + 8
+    const TEXT_COL_W     = PAGE_W - MARGIN - TEXT_COL_MIN_X
+
     const typeText  = 'BESPRECHUNGSPROTOKOLL'
-    const titleText = protocol.meetingType || 'Protokoll'
+    const rawTitle  = protocol.meetingType || 'Protokoll'
     const projText  = protocol.projectName || ''
+
+    const TITLE_SIZE   = 14
+    const TITLE_LINE_H = 17
+    const titleLines   = wrapText(rawTitle, fontBold, TITLE_SIZE, TEXT_COL_W)
+    const HEADER_H     = Math.max(46, 10 + titleLines.length * TITLE_LINE_H + (projText ? 14 : 0) + 10)
+
     page.drawText(typeText, {
       x: PAGE_W - MARGIN - fontReg.widthOfTextAtSize(typeText, 7),
       y: y - 10, size: 7, font: fontReg, color: rgb(0.33, 0.33, 0.33),
     })
-    page.drawText(titleText, {
-      x: PAGE_W - MARGIN - fontBold.widthOfTextAtSize(titleText, 15),
-      y: y - 26, size: 15, font: fontBold, color: rgb(0, 0, 0),
-    })
-    if (projText) page.drawText(projText, {
-      x: PAGE_W - MARGIN - fontReg.widthOfTextAtSize(projText, 9),
-      y: y - 40, size: 9, font: fontReg, color: rgb(0.33, 0.33, 0.33),
-    })
+    let titleY = y - 26
+    for (const line of titleLines) {
+      const lineW = fontBold.widthOfTextAtSize(line, TITLE_SIZE)
+      page.drawText(line, {
+        x: Math.max(TEXT_COL_MIN_X, PAGE_W - MARGIN - lineW),
+        y: titleY, size: TITLE_SIZE, font: fontBold, color: rgb(0, 0, 0),
+      })
+      titleY -= TITLE_LINE_H
+    }
+    if (projText) {
+      const projW = fontReg.widthOfTextAtSize(projText, 9)
+      page.drawText(projText, {
+        x: Math.max(TEXT_COL_MIN_X, PAGE_W - MARGIN - projW),
+        y: titleY + 2, size: 9, font: fontReg, color: rgb(0.33, 0.33, 0.33),
+      })
+    }
     y -= HEADER_H
     page.drawLine({ start: { x: MARGIN, y }, end: { x: PAGE_W - MARGIN, y }, thickness: 1, color: rgb(0, 0, 0) })
     y -= 14
