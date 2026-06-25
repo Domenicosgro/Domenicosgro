@@ -51,10 +51,34 @@ const OUTLOOK_HEADERS = [
   'Postleitzahl', 'Land oder Region',
 ]
 
+// Outlook.com lehnt Adressen mit Nicht-ASCII-Zeichen, Leerzeichen oder
+// ungültigem Format ab. Nur Adressen, die diesen Check bestehen, werden exportiert.
+function isOutlookSafeEmail(email) {
+  const e = (email || '').trim()
+  if (!e) return false
+  const at = e.indexOf('@')
+  if (at <= 0 || at !== e.lastIndexOf('@')) return false
+  const local  = e.slice(0, at)
+  const domain = e.slice(at + 1)
+  if (!local || !domain || domain.indexOf('.') < 0) return false
+  if (local.startsWith('.') || local.endsWith('.')) return false
+  if (local.length > 64 || e.length > 254) return false
+  if (/[^\x00-\x7F]/.test(e)) return false  // keine Nicht-ASCII-Zeichen (Umlaute etc.)
+  if (/[ ,;'"<>()[\]\\]/.test(e)) return false  // keine Sonderzeichen
+  return true
+}
+
 function exportOutlookCsv(contacts, baseFilename = 'Kontakte_Outlook') {
-  const valid = contacts.filter(c => (c.email || '').trim())
+  const seen  = new Set()
+  const valid = contacts.filter(c => {
+    const email = (c.email || '').trim().toLowerCase()
+    if (!isOutlookSafeEmail(email)) return false
+    if (seen.has(email)) return false
+    seen.add(email)
+    return true
+  })
   if (!valid.length) {
-    alert('Keine Kontakte mit E-Mail-Adresse gefunden.\nOutlook.com erfordert eine E-Mail-Adresse pro Kontakt.')
+    alert('Keine Kontakte mit gültiger E-Mail-Adresse gefunden.\nOutlook.com erfordert eine gültige E-Mail-Adresse pro Kontakt.\n\nMögliche Ursachen: Umlaute/Sonderzeichen in der Adresse, doppelte Adressen, fehlendes @.')
     return 0
   }
 
@@ -69,17 +93,17 @@ function exportOutlookCsv(contacts, baseFilename = 'Kontakte_Outlook') {
       const parts     = (c.name || '').trim().split(/\s+/)
       const firstName = parts.length > 1 ? parts.slice(0, -1).join(' ') : (parts[0] || '')
       const lastName  = parts.length > 1 ? parts[parts.length - 1] : ''
-      const titel     = [c.role, c.gewerk].filter(Boolean).join(' · ')
+      const titel     = [c.role, c.gewerk].filter(Boolean).join(' - ')
       return [
-        c.name || '',   // Kontaktperson (Anzeigename)
-        firstName,      // Vorname
-        lastName,       // Nachname
-        c.email || '',  // E-Mail
+        c.name || '',    // Kontaktperson (Anzeigename)
+        firstName,       // Vorname
+        lastName,        // Nachname
+        c.email || '',   // E-Mail
         c.company || '', // Unternehmen
-        c.phone || '',  // Telefon (geschäftlich)
-        '', '',         // Mobiltelefon, Faxnummer
-        titel,          // Titel (Funktion · Gewerk)
-        '',             // Website
+        c.phone || '',   // Telefon (geschäftlich)
+        '', '',          // Mobiltelefon, Faxnummer
+        titel,           // Titel (Funktion - Gewerk)
+        '',              // Website
         '', '', '', '', '', '', // Adressfelder
       ].map(wrap).join(',')
     })
@@ -395,12 +419,20 @@ export default function ContactDatabase({ projects, onUpdate, onBack }) {
               }}>
               <Download size={15} />
               {(() => {
-                const validCount = filtered.filter(c => (c.email || '').trim()).length
-                const skipped    = filtered.length - validCount
-                const files      = Math.ceil(validCount / OUTLOOK_CHUNK)
+                const seenBtn = new Set()
+                let validCount = 0
+                for (const c of filtered) {
+                  const email = (c.email || '').trim().toLowerCase()
+                  if (!isOutlookSafeEmail(email)) continue
+                  if (seenBtn.has(email)) continue
+                  seenBtn.add(email)
+                  validCount++
+                }
+                const skipped = filtered.length - validCount
+                const files   = Math.ceil(validCount / OUTLOOK_CHUNK)
                 let label = hasFilters ? `${validCount} exportieren (gefiltert)` : `Alle ${validCount} exportieren`
-                if (skipped > 0) label += ` · ${skipped} ohne E-Mail`
-                if (files > 1)   label += ` · ${files} Dateien`
+                if (skipped > 0) label += ` - ${skipped} ungültig`
+                if (files > 1)   label += ` - ${files} Dateien`
                 return label
               })()}
             </button>
