@@ -324,7 +324,12 @@ export default function MassnahmenDashboard({ protocols, projects, projectId, pr
           : projects
         for (const project of contactSources) {
           if (!project.isUnlocked) continue
-          for (const c of (project.contacts ?? [])) {
+          // Search both regular contacts and admin contacts
+          const allContactsInProject = [
+            ...(project.contacts ?? []),
+            ...(project.adminContacts ?? []),
+          ]
+          for (const c of allContactsInProject) {
             const cName = (c.name || '').toLowerCase().trim()
             const cFull = c.company
               ? `${cName} (${(c.company || '').toLowerCase().trim()})`

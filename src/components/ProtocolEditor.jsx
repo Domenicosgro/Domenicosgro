@@ -82,6 +82,22 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
     })
   }, [projects])
 
+  // Enriched contact list for task assignment: project contacts + admin users (deduplicated)
+  const enrichedProjectContacts = React.useMemo(() => {
+    const seen = new Set()
+    const result = []
+    const add = (c) => {
+      if (!c.name && !c.email) return
+      const key = c.email ? c.email.toLowerCase() : (c.name || '').toLowerCase().trim()
+      if (!key || seen.has(key)) return
+      seen.add(key)
+      result.push(c)
+    }
+    ;(projectContacts ?? []).forEach(add)
+    ;(linkedProject?.adminContacts ?? []).forEach(add)
+    return result
+  }, [projectContacts, linkedProject?.adminContacts])
+
   const [showParticipants, setShowParticipants] = useState(() => {
     try { return localStorage.getItem('kp_show_participants') !== 'false' } catch { return true }
   })
@@ -758,7 +774,7 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
             items={protocol.actionItems ?? []}
             onChange={actionItems => change({ actionItems })}
             agendaItems={protocol.agendaItems ?? []}
-            projectContacts={projectContacts ?? []}
+            projectContacts={enrichedProjectContacts}
             protocolId={protocol.id}
             canManageRelease={canManageRelease}
           />

@@ -526,7 +526,7 @@ export default function App() {
           protocols={projectProtos}
           projects={projectsWithContacts}
           projectId={selectedProjectId}
-          projectContacts={project?.contacts ?? []}
+          projectContacts={[...(project?.contacts ?? []), ...(project?.adminContacts ?? [])]}
           serverUser={serverUser}
           onOpenProtocol={openProtocolFromDashboard}
           onUpdateProtocol={handleUpdateProtocol}

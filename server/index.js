@@ -2224,9 +2224,29 @@ app.post('/api/protocols/:id/send-email', requireAuth, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
+// Enriches a project with display names + emails of admin users (from users table)
+function withAdminContacts(project) {
+  const adminUsernames = [
+    project.projectAdminUser,
+    ...(Array.isArray(project.projectAdmins) ? project.projectAdmins : []),
+  ].filter(Boolean)
+  const adminContacts = adminUsernames.map(username => {
+    const u = db.users.get(username)
+    return {
+      id:      `__admin__${username}`,
+      name:    (u?.displayName) || username,
+      email:   u?.email || '',
+      company: '',
+      role:    'Projektadmin',
+      _isAdmin: true,
+    }
+  })
+  return { ...project, adminContacts }
+}
+
 app.get('/api/projects', requireAuth, (req, res) => {
   try {
-    res.json(db.projects.list().filter(p => canAccessProject(p, req.user)))
+    res.json(db.projects.list().filter(p => canAccessProject(p, req.user)).map(withAdminContacts))
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
@@ -2341,7 +2361,7 @@ app.get('/api/projects/:id', requireAuth, (req, res) => {
     const p = db.projects.get(req.params.id)
     if (!p) return res.status(404).json({ error: 'Nicht gefunden.' })
     if (!canAccessProject(p, req.user)) return res.status(403).json({ error: 'Kein Zugriff auf dieses Projekt.' })
-    res.json(p)
+    res.json(withAdminContacts(p))
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
