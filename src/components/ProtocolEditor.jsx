@@ -1,6 +1,6 @@
 import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react'
 import { flushSync } from 'react-dom'
-import { ArrowLeft, Printer, Download, Send, RefreshCw, AlertCircle, Lock, Unlock, FileText, RotateCcw, Layers, Loader, Eye, EyeOff, Users } from 'lucide-react'
+import { ArrowLeft, Printer, Download, Send, RefreshCw, AlertCircle, Lock, Unlock, FileText, RotateCcw, Layers, Loader, Eye, EyeOff, Users, Box } from 'lucide-react'
 import MeetingHeader    from './MeetingHeader'
 import ParticipantsList from './ParticipantsList'
 import AgendaDraft      from './AgendaDraft'
@@ -55,7 +55,7 @@ function promoteAgenda(agenda, existingItems) {
   ]
 }
 
-export default function ProtocolEditor({ protocol, protocols, projects, projectContacts, serverUser, logoDataUrl, clientLogoDataUrl, onUpdate, onUpdateProject, onBack, onRefresh }) {
+export default function ProtocolEditor({ protocol, protocols, projects, projectContacts, serverUser, logoDataUrl, clientLogoDataUrl, onUpdate, onUpdateProject, onBack, onRefresh, onOpenBim }) {
   const change = (patch) => onUpdate(protocol.id, patch)
   const linkedProject  = (projects ?? []).find(p => p.id === protocol.projectId) ?? null
   // Freimeldung genehmigen: Systemadmin oder Projektadmin (Ersteller/Co-Admin)
@@ -176,6 +176,13 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
     carriedForRef.current = predecessor.id
     handleItemCarryover()
   }, [predecessor?.id, protocol.itemCarriedFrom]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Phase inheritance: auto-inherit phase from predecessor when not already set
+  useEffect(() => {
+    if (!predecessor?.phase) return
+    if (protocol.phase) return
+    change({ phase: predecessor.phase })
+  }, [predecessor?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Live sync: whenever agenda changes, create/move/remove protocol items immediately.
   // "Neu erstellen" (null)  → standalone new Hauptpunkt appended at the end.
@@ -398,6 +405,15 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
           <button className="btn-ghost p-2 text-gray-400" title="Daten aktualisieren" onClick={onRefresh}>
             <RotateCcw size={15} />
           </button>
+          {onOpenBim && linkedProject?.bimMeta && (
+            <button
+              className="btn-secondary text-cyan-700 border-cyan-300 hover:border-cyan-400 hover:bg-cyan-50"
+              onClick={onOpenBim}
+              title="BIM-Modell & Issues öffnen"
+            >
+              <Box size={15} className="text-cyan-600" /> BIM-Modell
+            </button>
+          )}
         </div>
         <div className="flex items-center gap-2 flex-wrap justify-end">
           <span className="text-xs text-gray-400 hidden sm:inline">

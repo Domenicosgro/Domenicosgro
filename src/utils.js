@@ -291,16 +291,50 @@ export const buildAgendaEmailBody = (protocol) => {
 
   const totalMinutes = agenda.reduce((s, a) => s + (parseInt(a.duration) || 0), 0)
 
-  agenda.forEach((item, i) => {
-    const no          = item.no || String(i + 1)
-    const topic       = item.topic       || '(kein Thema)'
-    const dur         = item.duration    ? `${item.duration} min` : ''
-    const responsible = item.responsible ? `  [${item.responsible}]` : ''
-    lines.push(`${no.padEnd(4)} ${topic.padEnd(40)} ${dur.padStart(7)}${responsible}`)
-    if (item.documents) lines.push(`     Unterlagen: ${item.documents}`)
-  })
+  // Level-1 protocol items without linkedFromAgendaId serve as section headers
+  const sectionItems = (protocol.agendaItems ?? []).filter(
+    it => it.topic && (it.level ?? 1) === 1 && !it.linkedFromAgendaId
+  )
 
-  if (agenda.length === 0) lines.push('(keine Tagesordnungspunkte erfasst)')
+  if (sectionItems.length > 0) {
+    // Structured view: section headers from agendaItems, sub-items from agenda[]
+    sectionItems.forEach(si => {
+      const label = `${si.no ? si.no + ' – ' : ''}${si.topic}`
+      lines.push('')
+      lines.push(`** ${label} **`)
+      const linked = agenda.filter(a => a.linkedProtocolItemId === si.id)
+      linked.forEach((item, i) => {
+        const no          = item.no || String(i + 1)
+        const topic       = item.topic       || '(kein Thema)'
+        const dur         = item.duration    ? `${item.duration} min` : ''
+        const responsible = item.responsible ? `  [${item.responsible}]` : ''
+        lines.push(`  ${no.padEnd(4)} ${topic.padEnd(38)} ${dur.padStart(7)}${responsible}`)
+        if (item.documents) lines.push(`       Unterlagen: ${item.documents}`)
+      })
+    })
+    // Unlinked agenda items (not under any section)
+    const linkedIds = new Set(sectionItems.map(si => si.id))
+    const unlinked = agenda.filter(a => !a.linkedProtocolItemId || !linkedIds.has(a.linkedProtocolItemId))
+    unlinked.forEach((item, i) => {
+      const no          = item.no || String(i + 1)
+      const topic       = item.topic       || '(kein Thema)'
+      const dur         = item.duration    ? `${item.duration} min` : ''
+      const responsible = item.responsible ? `  [${item.responsible}]` : ''
+      lines.push(`${no.padEnd(4)} ${topic.padEnd(40)} ${dur.padStart(7)}${responsible}`)
+      if (item.documents) lines.push(`     Unterlagen: ${item.documents}`)
+    })
+  } else {
+    agenda.forEach((item, i) => {
+      const no          = item.no || String(i + 1)
+      const topic       = item.topic       || '(kein Thema)'
+      const dur         = item.duration    ? `${item.duration} min` : ''
+      const responsible = item.responsible ? `  [${item.responsible}]` : ''
+      lines.push(`${no.padEnd(4)} ${topic.padEnd(40)} ${dur.padStart(7)}${responsible}`)
+      if (item.documents) lines.push(`     Unterlagen: ${item.documents}`)
+    })
+  }
+
+  if (agenda.length === 0 && sectionItems.length === 0) lines.push('(keine Tagesordnungspunkte erfasst)')
 
   lines.push('-'.repeat(50))
   if (totalMinutes > 0) lines.push(`     Geplante Dauer gesamt: ca. ${totalMinutes} min`)

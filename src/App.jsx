@@ -466,6 +466,7 @@ export default function App() {
           onUpdateProject={handleUpdateProject}
           onBack={handleBackFromEditor}
           onRefresh={handleRefresh}
+          onOpenBim={linkedProject?.bimMeta ? () => { setBimReturnView('editor'); setView('project-bim') } : undefined}
         />
         <UpdateBanner /><SaveErrorBanner />
       </>
@@ -545,7 +546,7 @@ export default function App() {
         serverUser={serverUser}
         token={typeof localStorage !== 'undefined' ? localStorage.getItem('kp_session_token') : null}
         onBack={() => setView(bimReturnView)}
-        backLabel={bimReturnView === 'protocols' ? 'Protokolle' : 'Dashboard'}
+        backLabel={bimReturnView === 'protocols' ? 'Protokolle' : bimReturnView === 'editor' ? 'Protokoll' : 'Dashboard'}
         onProjectUpdated={handleRefresh}
       />
     )
