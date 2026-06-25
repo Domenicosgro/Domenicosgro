@@ -5,7 +5,7 @@ WORKDIR /app
 # Build-Tools für better-sqlite3 (native Modul)
 RUN apk add --no-cache python3 make g++
 
-COPY package*.json ./
+COPY package*.json .npmrc ./
 RUN npm ci
 
 COPY . .
