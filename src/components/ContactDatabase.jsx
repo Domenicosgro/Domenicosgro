@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useCallback } from 'react'
-import { ArrowLeft, Search, Users, Mail, Phone, Building2, Wrench, X, Plus, Pencil } from 'lucide-react'
+import { ArrowLeft, Search, Users, Mail, Phone, Building2, Wrench, X, Plus, Pencil, Download } from 'lucide-react'
 import { uid } from '../utils'
 
 // ── Kategorien ────────────────────────────────────────────────────────────────
@@ -36,6 +36,30 @@ function findInProject(project, dedupKey) {
     if (getDedupKey(c) === dedupKey) return c
   }
   return null
+}
+
+// ── Outlook-CSV-Export ────────────────────────────────────────────────────────
+// Outlook erwartet englische Spaltennamen, Komma als Trenner und UTF-8 BOM.
+function exportOutlookCsv(contacts, filename = 'Kontakte_Outlook.csv') {
+  const wrap = v => {
+    const s = String(v ?? '')
+    return (s.includes(',') || s.includes('"') || s.includes('\n'))
+      ? `"${s.replace(/"/g, '""')}"` : s
+  }
+  const HEADERS = ['First Name', 'Last Name', 'E-mail Address', 'Business Phone', 'Company', 'Job Title', 'Department', 'Categories']
+  const rows = contacts.map(c => {
+    const parts     = (c.name || '').trim().split(/\s+/)
+    const firstName = parts.length > 1 ? parts.slice(0, -1).join(' ') : (parts[0] || '')
+    const lastName  = parts.length > 1 ? parts[parts.length - 1] : ''
+    const catLabel  = categoryInfo(c.category)?.label || ''
+    return [firstName, lastName, c.email || '', c.phone || '', c.company || '', c.role || '', c.gewerk || '', catLabel]
+      .map(wrap).join(',')
+  })
+  const csv  = '﻿' + [HEADERS.join(','), ...rows].join('\r\n')
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+  const url  = URL.createObjectURL(blob)
+  Object.assign(document.createElement('a'), { href: url, download: filename }).click()
+  URL.revokeObjectURL(url)
 }
 
 // ── Contact modal (add + edit) ────────────────────────────────────────────────
@@ -314,13 +338,25 @@ export default function ContactDatabase({ projects, onUpdate, onBack }) {
             </p>
           </div>
         </div>
-        {onUpdate && (
-          <div className="flex items-center gap-2 self-end sm:self-center">
+        <div className="flex items-center gap-2 self-end sm:self-center">
+          {filtered.length > 0 && (
+            <button className="btn-secondary" title="Aktuelle Auswahl als Outlook-kompatible CSV exportieren"
+              onClick={() => {
+                const suffix = hasFilters ? '_gefiltert' : '_alle'
+                exportOutlookCsv(filtered, `Kontakte${suffix}_Outlook.csv`)
+              }}>
+              <Download size={15} />
+              {hasFilters
+                ? `${filtered.length} exportieren (gefiltert)`
+                : `Alle ${filtered.length} exportieren`}
+            </button>
+          )}
+          {onUpdate && (
             <button className="btn-primary" onClick={() => setShowNew(true)}>
               <Plus size={15} /> Neuer Kontakt
             </button>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       {/* Suche + Filter */}
