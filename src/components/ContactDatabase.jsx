@@ -2,6 +2,26 @@ import React, { useState, useMemo, useCallback } from 'react'
 import { ArrowLeft, Search, Users, Mail, Phone, Building2, Wrench, X, Plus, Pencil } from 'lucide-react'
 import { uid } from '../utils'
 
+// ── Kategorien ────────────────────────────────────────────────────────────────
+
+const CATEGORIES = [
+  { value: 'auftraggeber', label: 'Auftraggeber',        badge: 'badge-blue'   },
+  { value: 'planer',       label: 'Planer',              badge: 'badge-green'  },
+  { value: 'ausfuehrend',  label: 'Ausführende Firma',   badge: 'badge-yellow' },
+  { value: 'organisation', label: 'Eigene Organisation', badge: 'badge-gray'   },
+  { value: 'nutzer',       label: 'Nutzer',              badge: 'badge-gray'   },
+]
+
+function categoryInfo(value) {
+  return CATEGORIES.find(c => c.value === value) || null
+}
+
+function CategoryBadge({ value }) {
+  const cat = categoryInfo(value)
+  if (!cat) return null
+  return <span className={`badge ${cat.badge} whitespace-nowrap`}>{cat.label}</span>
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function getDedupKey(contact) {
@@ -22,12 +42,13 @@ function findInProject(project, dedupKey) {
 
 function ContactModal({ contact, isNew, allProjects, suggestions, onSave, onClose }) {
   const [form, setForm] = useState({
-    name:    contact.name    || '',
-    company: contact.company || '',
-    gewerk:  contact.gewerk  || '',
-    role:    contact.role    || '',
-    email:   contact.email   || '',
-    phone:   contact.phone   || '',
+    name:     contact.name     || '',
+    company:  contact.company  || '',
+    gewerk:   contact.gewerk   || '',
+    role:     contact.role     || '',
+    email:    contact.email    || '',
+    phone:    contact.phone    || '',
+    category: contact.category || '',
   })
   const [selProjects, setSelProjects] = useState(
     () => new Set((contact._projects || []).map(p => p.id))
@@ -71,17 +92,24 @@ function ContactModal({ contact, isNew, allProjects, suggestions, onSave, onClos
             </datalist>
           </div>
           <div>
-            <label className="block text-xs text-gray-500 mb-1">Gewerk</label>
-            <input className="input w-full" value={form.gewerk} onChange={e => set('gewerk', e.target.value)} placeholder="z.B. Elektro, Rohbau, HVLS" list="cdb-gewerke" autoComplete="off" />
-            <datalist id="cdb-gewerke">
-              {(suggestions?.gewerke || []).map(v => <option key={v} value={v} />)}
-            </datalist>
+            <label className="block text-xs text-gray-500 mb-1">Kategorie</label>
+            <select className="select w-full" value={form.category} onChange={e => set('category', e.target.value)}>
+              <option value="">– keine Angabe –</option>
+              {CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+            </select>
           </div>
           <div>
             <label className="block text-xs text-gray-500 mb-1">Funktion</label>
             <input className="input w-full" value={form.role} onChange={e => set('role', e.target.value)} placeholder="z.B. Bauleiter, Planer" list="cdb-roles" autoComplete="off" />
             <datalist id="cdb-roles">
               {(suggestions?.roles || []).map(v => <option key={v} value={v} />)}
+            </datalist>
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">Gewerk</label>
+            <input className="input w-full" value={form.gewerk} onChange={e => set('gewerk', e.target.value)} placeholder="z.B. Elektro, Rohbau, HVLS" list="cdb-gewerke" autoComplete="off" />
+            <datalist id="cdb-gewerke">
+              {(suggestions?.gewerke || []).map(v => <option key={v} value={v} />)}
             </datalist>
           </div>
           <div>
@@ -134,13 +162,14 @@ function ContactModal({ contact, isNew, allProjects, suggestions, onSave, onClos
 // ── Main component ────────────────────────────────────────────────────────────
 
 export default function ContactDatabase({ projects, onUpdate, onBack }) {
-  const [search,        setSearch]        = useState('')
-  const [sortField,     setSortField]     = useState('name')
-  const [sortDir,       setSortDir]       = useState('asc')
-  const [filterProject, setFilterProject] = useState('')
-  const [filterCompany, setFilterCompany] = useState('')
-  const [editContact,   setEditContact]   = useState(null)   // entry from allContacts
-  const [showNew,       setShowNew]       = useState(false)
+  const [search,          setSearch]          = useState('')
+  const [sortField,       setSortField]       = useState('name')
+  const [sortDir,         setSortDir]         = useState('asc')
+  const [filterProject,   setFilterProject]   = useState('')
+  const [filterCompany,   setFilterCompany]   = useState('')
+  const [filterCategory,  setFilterCategory]  = useState('')
+  const [editContact,     setEditContact]     = useState(null)
+  const [showNew,         setShowNew]         = useState(false)
 
   // Flatten + deduplicate contacts from all projects
   const allContacts = useMemo(() => {
@@ -175,7 +204,6 @@ export default function ContactDatabase({ projects, onUpdate, onBack }) {
     return [...s].sort((a, b) => a.localeCompare(b, 'de'))
   }, [allContacts])
 
-  // Vorschlagslisten für die Eingabefelder (aus allen bisherigen Kontakten)
   const suggestions = useMemo(() => {
     const collect = (field) => {
       const s = new Set()
@@ -188,14 +216,16 @@ export default function ContactDatabase({ projects, onUpdate, onBack }) {
   const q = search.trim().toLowerCase()
   const filtered = useMemo(() => {
     let base = allContacts
-    if (filterProject) base = base.filter(c => c._projects.some(p => p.id === filterProject))
-    if (filterCompany) base = base.filter(c => (c.company || '').trim() === filterCompany)
+    if (filterProject)  base = base.filter(c => c._projects.some(p => p.id === filterProject))
+    if (filterCompany)  base = base.filter(c => (c.company || '').trim() === filterCompany)
+    if (filterCategory) base = base.filter(c => (c.category || '') === filterCategory)
     if (q) base = base.filter(c =>
-      (c.name    || '').toLowerCase().includes(q) ||
-      (c.company || '').toLowerCase().includes(q) ||
-      (c.email   || '').toLowerCase().includes(q) ||
-      (c.gewerk  || '').toLowerCase().includes(q) ||
-      (c.role    || '').toLowerCase().includes(q) ||
+      (c.name     || '').toLowerCase().includes(q) ||
+      (c.company  || '').toLowerCase().includes(q) ||
+      (c.email    || '').toLowerCase().includes(q) ||
+      (c.gewerk   || '').toLowerCase().includes(q) ||
+      (c.role     || '').toLowerCase().includes(q) ||
+      (c.category ? (categoryInfo(c.category)?.label || '').toLowerCase().includes(q) : false) ||
       (c._projectName || '').toLowerCase().includes(q)
     )
     return [...base].sort((a, b) => {
@@ -203,10 +233,10 @@ export default function ContactDatabase({ projects, onUpdate, onBack }) {
       const bv = (b[sortField] || b._projectName || '').toLowerCase()
       return sortDir === 'asc' ? av.localeCompare(bv) : bv.localeCompare(av)
     })
-  }, [allContacts, q, filterProject, filterCompany, sortField, sortDir])
+  }, [allContacts, q, filterProject, filterCompany, filterCategory, sortField, sortDir])
 
-  const hasFilters  = filterProject || filterCompany || search.trim()
-  const clearFilters = () => { setFilterProject(''); setFilterCompany(''); setSearch('') }
+  const hasFilters   = filterProject || filterCompany || filterCategory || search.trim()
+  const clearFilters = () => { setFilterProject(''); setFilterCompany(''); setFilterCategory(''); setSearch('') }
 
   const handleSort = (field) => {
     if (sortField === field) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
@@ -237,16 +267,13 @@ export default function ContactDatabase({ projects, onUpdate, onBack }) {
       const contacts = [...(project.contacts || [])]
 
       if (wasIn && willBeIn) {
-        // Update in place – preserve id and other fields not in form
         const updated = contacts.map(c =>
           getDedupKey(c) === oldKey ? { ...c, ...fields } : c
         )
         onUpdate(project.id, { contacts: updated })
       } else if (!wasIn && willBeIn) {
-        // Add to project
         onUpdate(project.id, { contacts: [...contacts, { id: uid(), ...fields }] })
       } else {
-        // wasIn && !willBeIn → remove from project
         onUpdate(project.id, { contacts: contacts.filter(c => getDedupKey(c) !== oldKey) })
       }
     }
@@ -254,8 +281,7 @@ export default function ContactDatabase({ projects, onUpdate, onBack }) {
 
   const projectCount = new Set(allContacts.flatMap(c => c._projects.map(p => p.id))).size
 
-  // Empty contact template for new modal
-  const emptyEntry = { name: '', company: '', gewerk: '', role: '', email: '', phone: '', _projects: [] }
+  const emptyEntry = { name: '', company: '', gewerk: '', role: '', email: '', phone: '', category: '', _projects: [] }
 
   return (
     <div className="app-page">
@@ -295,12 +321,17 @@ export default function ContactDatabase({ projects, onUpdate, onBack }) {
             onChange={e => setSearch(e.target.value)}
           />
         </div>
-        <select className="select text-sm" style={{ maxWidth: '220px' }}
+        <select className="select text-sm" style={{ maxWidth: '200px' }}
+          value={filterCategory} onChange={e => setFilterCategory(e.target.value)}>
+          <option value="">Alle Kategorien</option>
+          {CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+        </select>
+        <select className="select text-sm" style={{ maxWidth: '200px' }}
           value={filterProject} onChange={e => setFilterProject(e.target.value)}>
           <option value="">Alle Projekte</option>
           {projectOptions.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
         </select>
-        <select className="select text-sm" style={{ maxWidth: '220px' }}
+        <select className="select text-sm" style={{ maxWidth: '200px' }}
           value={filterCompany} onChange={e => setFilterCompany(e.target.value)}>
           <option value="">Alle Firmen</option>
           {companyOptions.map(c => <option key={c} value={c}>{c}</option>)}
@@ -336,6 +367,7 @@ export default function ContactDatabase({ projects, onUpdate, onBack }) {
             <thead>
               <tr className="border-b border-gray-200 bg-gray-50 text-xs text-gray-500">
                 <th className="text-left px-4 py-2.5"><SortBtn field="name">Name</SortBtn></th>
+                <th className="text-left px-4 py-2.5 hidden sm:table-cell"><SortBtn field="category">Kategorie</SortBtn></th>
                 <th className="text-left px-4 py-2.5 hidden md:table-cell"><SortBtn field="company">Firma</SortBtn></th>
                 <th className="text-left px-4 py-2.5 hidden lg:table-cell"><SortBtn field="gewerk">Gewerk</SortBtn></th>
                 <th className="text-left px-4 py-2.5 hidden lg:table-cell"><SortBtn field="role">Funktion</SortBtn></th>
@@ -348,6 +380,9 @@ export default function ContactDatabase({ projects, onUpdate, onBack }) {
               {filtered.map((c, i) => (
                 <tr key={`${c._projectId}-${c.id || i}`} className="hover:bg-gray-50 transition-colors group">
                   <td className="px-4 py-2.5 font-medium text-gray-900">{c.name || <span className="text-gray-300">–</span>}</td>
+                  <td className="px-4 py-2.5 hidden sm:table-cell">
+                    {c.category ? <CategoryBadge value={c.category} /> : <span className="text-gray-300">–</span>}
+                  </td>
                   <td className="px-4 py-2.5 text-gray-600 hidden md:table-cell">
                     {c.company ? <span className="flex items-center gap-1"><Building2 size={11} className="text-gray-400" />{c.company}</span> : <span className="text-gray-300">–</span>}
                   </td>

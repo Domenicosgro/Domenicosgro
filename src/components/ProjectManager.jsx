@@ -4,6 +4,14 @@ import { Plus, Trash2, ArrowLeft, Users, FolderOpen, ChevronRight, ChevronDown,
 import { emptyContact, uid } from '../utils'
 import BeteiligtenModal from './BeteiligtenModal'
 
+const CONTACT_CATEGORIES = [
+  { value: 'auftraggeber', label: 'Auftraggeber'        },
+  { value: 'planer',       label: 'Planer'              },
+  { value: 'ausfuehrend',  label: 'Ausführende Firma'   },
+  { value: 'organisation', label: 'Eigene Organisation' },
+  { value: 'nutzer',       label: 'Nutzer'              },
+]
+
 // ── CSV helpers ───────────────────────────────────────────────────────────────
 
 function parseLine(line, sep) {
@@ -514,10 +522,11 @@ export default function ProjectManager({ projects, allProjects, onCreate, onUpda
                         <thead>
                           <tr className="border-b border-gray-200 text-xs text-gray-500">
                             {!isSortActive && <th className="pb-2 pr-2 w-6" />}
-                            <SortTh label="Name"     field="name"    sort={sort} onSort={f => handleSort(project.id, f)} />
-                            <SortTh label="Firma"    field="company" sort={sort} onSort={f => handleSort(project.id, f)} />
-                            <SortTh label="Gewerk"   field="gewerk"  sort={sort} onSort={f => handleSort(project.id, f)} />
-                            <SortTh label="Funktion" field="role"    sort={sort} onSort={f => handleSort(project.id, f)} />
+                            <SortTh label="Name"      field="name"     sort={sort} onSort={f => handleSort(project.id, f)} />
+                            <SortTh label="Firma"     field="company"  sort={sort} onSort={f => handleSort(project.id, f)} />
+                            <SortTh label="Kategorie" field="category" sort={sort} onSort={f => handleSort(project.id, f)} />
+                            <SortTh label="Gewerk"    field="gewerk"   sort={sort} onSort={f => handleSort(project.id, f)} />
+                            <SortTh label="Funktion"  field="role"     sort={sort} onSort={f => handleSort(project.id, f)} />
                             <SortTh label="E-Mail"   field="email"   sort={sort} onSort={f => handleSort(project.id, f)}>
                               <span className="flex items-center gap-1"><Mail size={11} /> E-Mail</span>
                             </SortTh>
@@ -557,6 +566,15 @@ export default function ProjectManager({ projects, allProjects, onCreate, onUpda
                                 <td className="py-2 pr-3">
                                   <input className="input py-1" placeholder="Baufirma GmbH"
                                     value={c.company} onChange={e => updateContact(project, c.id, 'company', e.target.value)} />
+                                </td>
+                                <td className="py-2 pr-3">
+                                  <select className="select py-1 text-sm"
+                                    value={c.category ?? ''} onChange={e => updateContact(project, c.id, 'category', e.target.value)}>
+                                    <option value="">–</option>
+                                    {CONTACT_CATEGORIES.map(cat => (
+                                      <option key={cat.value} value={cat.value}>{cat.label}</option>
+                                    ))}
+                                  </select>
                                 </td>
                                 <td className="py-2 pr-3">
                                   <input className="input py-1" placeholder="Rohbau"

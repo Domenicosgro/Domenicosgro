@@ -131,6 +131,7 @@ export const emptyContact = () => ({
   role: '',
   email: '',
   phone: '',
+  category: '',
 })
 
 export const emptyProject = () => ({
