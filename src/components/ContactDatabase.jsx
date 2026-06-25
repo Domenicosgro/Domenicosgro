@@ -84,9 +84,10 @@ function exportOutlookCsv(contacts, baseFilename = 'Kontakte_Outlook') {
 
   // Steuerzeichen (Zeilenumbrüche etc.) bereinigen – sonst bricht Outlook den Import ab
   const clean = v => String(v ?? '').replace(/[\x00-\x1F\x7F]/g, ' ').replace(/\s+/g, ' ').trim()
+  // Semikolon als Trennzeichen (deutscher Windows-Standard – Excel zeigt Spalten korrekt)
   const wrap  = v => {
     const s = clean(v)
-    return (s.includes(',') || s.includes('"'))
+    return (s.includes(';') || s.includes('"'))
       ? `"${s.replace(/"/g, '""')}"` : s
   }
 
@@ -107,12 +108,12 @@ function exportOutlookCsv(contacts, baseFilename = 'Kontakte_Outlook') {
         titel,           // Titel (Funktion - Gewerk)
         '',              // Website
         '', '', '', '', '', '', // Adressfelder
-      ].map(wrap).join(',')
+      ].map(wrap).join(';')
     })
     // UTF-8 BOM als rohe Bytes voranstellen – hilft Outlook/Excel bei der Encoding-Erkennung
     // ohne den ersten Spaltennamen zu korrumpieren
     const bom  = new Uint8Array([0xEF, 0xBB, 0xBF])
-    const text = new TextEncoder().encode([OUTLOOK_HEADERS.join(','), ...rows].join('\r\n'))
+    const text = new TextEncoder().encode([OUTLOOK_HEADERS.join(';'), ...rows].join('\r\n'))
     const out  = new Uint8Array(bom.length + text.length)
     out.set(bom); out.set(text, bom.length)
     return out
