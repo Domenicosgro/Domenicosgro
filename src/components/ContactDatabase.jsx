@@ -39,27 +39,45 @@ function findInProject(project, dedupKey) {
 }
 
 // ── Outlook-CSV-Export ────────────────────────────────────────────────────────
-// Outlook erwartet englische Spaltennamen, Komma als Trenner und UTF-8 BOM.
-function exportOutlookCsv(contacts, filename = 'Kontakte_Outlook.csv') {
+// Outlook-Limit: max. 40 Kontakte pro Import → bei mehr wird automatisch
+// in Teildateien à 40 aufgeteilt, die nacheinander heruntergeladen werden.
+const OUTLOOK_CHUNK = 40
+
+function exportOutlookCsv(contacts, baseFilename = 'Kontakte_Outlook') {
   const wrap = v => {
     const s = String(v ?? '')
     return (s.includes(',') || s.includes('"') || s.includes('\n'))
       ? `"${s.replace(/"/g, '""')}"` : s
   }
   const HEADERS = ['First Name', 'Last Name', 'E-mail Address', 'Business Phone', 'Company', 'Job Title', 'Department', 'Categories']
-  const rows = contacts.map(c => {
-    const parts     = (c.name || '').trim().split(/\s+/)
-    const firstName = parts.length > 1 ? parts.slice(0, -1).join(' ') : (parts[0] || '')
-    const lastName  = parts.length > 1 ? parts[parts.length - 1] : ''
-    const catLabel  = categoryInfo(c.category)?.label || ''
-    return [firstName, lastName, c.email || '', c.phone || '', c.company || '', c.role || '', c.gewerk || '', catLabel]
-      .map(wrap).join(',')
+
+  const buildCsv = chunk => {
+    const rows = chunk.map(c => {
+      const parts     = (c.name || '').trim().split(/\s+/)
+      const firstName = parts.length > 1 ? parts.slice(0, -1).join(' ') : (parts[0] || '')
+      const lastName  = parts.length > 1 ? parts[parts.length - 1] : ''
+      const catLabel  = categoryInfo(c.category)?.label || ''
+      return [firstName, lastName, c.email || '', c.phone || '', c.company || '', c.role || '', c.gewerk || '', catLabel]
+        .map(wrap).join(',')
+    })
+    return '﻿' + [HEADERS.join(','), ...rows].join('\r\n')
+  }
+
+  const chunks = []
+  for (let i = 0; i < contacts.length; i += OUTLOOK_CHUNK) chunks.push(contacts.slice(i, i + OUTLOOK_CHUNK))
+  const total = chunks.length
+
+  chunks.forEach((chunk, idx) => {
+    const filename = total > 1
+      ? `${baseFilename}_Teil${idx + 1}_von_${total}.csv`
+      : `${baseFilename}.csv`
+    setTimeout(() => {
+      const blob = new Blob([buildCsv(chunk)], { type: 'text/csv;charset=utf-8;' })
+      const url  = URL.createObjectURL(blob)
+      Object.assign(document.createElement('a'), { href: url, download: filename }).click()
+      URL.revokeObjectURL(url)
+    }, idx * 600)
   })
-  const csv  = '﻿' + [HEADERS.join(','), ...rows].join('\r\n')
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
-  const url  = URL.createObjectURL(blob)
-  Object.assign(document.createElement('a'), { href: url, download: filename }).click()
-  URL.revokeObjectURL(url)
 }
 
 // ── Contact modal (add + edit) ────────────────────────────────────────────────
@@ -343,12 +361,14 @@ export default function ContactDatabase({ projects, onUpdate, onBack }) {
             <button className="btn-secondary" title="Aktuelle Auswahl als Outlook-kompatible CSV exportieren"
               onClick={() => {
                 const suffix = hasFilters ? '_gefiltert' : '_alle'
-                exportOutlookCsv(filtered, `Kontakte${suffix}_Outlook.csv`)
+                exportOutlookCsv(filtered, `Kontakte${suffix}_Outlook`)
               }}>
               <Download size={15} />
-              {hasFilters
-                ? `${filtered.length} exportieren (gefiltert)`
-                : `Alle ${filtered.length} exportieren`}
+              {(() => {
+                const files = Math.ceil(filtered.length / OUTLOOK_CHUNK)
+                const label = hasFilters ? `${filtered.length} exportieren (gefiltert)` : `Alle ${filtered.length} exportieren`
+                return files > 1 ? `${label} · ${files} Dateien` : label
+              })()}
             </button>
           )}
           {onUpdate && (
