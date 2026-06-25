@@ -981,7 +981,9 @@ app.get('/api/projects/:id/bim', requireAuth, (req, res) => {
   try {
     const filePath = path.join(BIM_DIR, `${req.params.id}.ifc`)
     if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'Kein BIM-Modell vorhanden.' })
+    const stat = fs.statSync(filePath)
     res.setHeader('Content-Type', 'application/octet-stream')
+    res.setHeader('Content-Length', stat.size)
     res.setHeader('Content-Disposition', `inline; filename="${req.params.id}.ifc"`)
     res.setHeader('Cache-Control', 'private, max-age=300')
     fs.createReadStream(filePath).pipe(res)

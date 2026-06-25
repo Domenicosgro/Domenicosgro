@@ -51,26 +51,22 @@ export default function BimView({ project, serverUser, token, onBack, onProjectU
         if (cancelled || !viewer.IFC) return
         await viewer.IFC.setWasmPath('/')
 
-        const headers = {}
-        if (token) headers['Authorization'] = `Bearer ${token}`
-
         if (cancelled || !viewer.IFC) return
-        const response = await fetch(`/api/projects/${project.id}/bim`, { headers })
-        if (!response.ok) throw new Error(`HTTP ${response.status}`)
 
-        if (cancelled || !viewer.IFC) return
-        const blob = await response.blob()
-        const url  = URL.createObjectURL(blob)
+        // Pass the API URL directly to the IFC loader with auth header —
+        // avoids fetching the large file twice into browser memory
+        if (token) viewer.IFC.loader.setRequestHeader({ 'Authorization': `Bearer ${token}` })
 
-        if (cancelled || !viewer.IFC) { URL.revokeObjectURL(url); return }
-
-        // loadIfcUrl catches errors internally and returns null — capture via callback
         let ifcError = null
-        const model = await viewer.IFC.loadIfcUrl(url, false, undefined, (err) => { ifcError = err })
-        URL.revokeObjectURL(url)
+        const model = await viewer.IFC.loadIfcUrl(
+          `/api/projects/${project.id}/bim`,
+          false,
+          undefined,
+          (err) => { ifcError = err }
+        )
 
         if (cancelled) return
-        if (!model) throw ifcError || new Error('IFC-Datei konnte nicht geparst werden (web-ifc Fehler – Konsole prüfen)')
+        if (!model) throw ifcError || new Error('IFC-Datei konnte nicht geparst werden (Konsole prüfen)')
 
         // Kamera auf das Modell ausrichten
         const bb     = new THREE.Box3().setFromObject(model.mesh)
