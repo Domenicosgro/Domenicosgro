@@ -2061,7 +2061,8 @@ app.post('/api/protocols/:id/send-email', requireAuth, async (req, res) => {
         </td></tr>
         <tr><td style="padding:28px 36px 8px 36px;">
           <p style="margin:0;font-size:15px;color:#000040;">Guten Tag,</p>
-          <p style="margin:10px 0 0 0;color:#4B5563;">im Anhang finden Sie das <strong>Protokoll der Besprechung „${meetingType}"</strong> zum Projekt <strong>${projStr}</strong>${protoDate ? ` vom ${protoDate}` : ''} als PDF-Dokument. Es enthält die Teilnehmer, die behandelten Protokollpunkte sowie die festgehaltenen Maßnahmen.</p>
+          <p style="margin:10px 0 0 0;color:#4B5563;">im Anhang finden Sie das <strong>Protokoll der Besprechung „${meetingType}"</strong> zum Projekt <strong>${projStr}</strong>${protoDate ? ` vom ${protoDate}` : ''}${protocol.preparedBy ? `, erstellt von <strong>${protocol.preparedBy}</strong>` : ''}.</p>
+          <p style="margin:10px 0 0 0;color:#4B5563;">Das Protokoll enthält die Teilnehmer, die behandelten Protokollpunkte sowie die festgehaltenen Maßnahmen und liegt dieser E-Mail als <strong>PDF-Anlage</strong> bei.</p>
         </td></tr>
         ${nextMeetingHtml}
         ${actionsHtml}
@@ -2082,8 +2083,8 @@ app.post('/api/protocols/:id/send-email', requireAuth, async (req, res) => {
       '',
       'Guten Tag,',
       '',
-      `im Anhang finden Sie das Protokoll der Besprechung „${meetingType}" zum Projekt ${projStr}${protoDate ? ` vom ${protoDate}` : ''} als PDF-Dokument.`,
-      'Es enthält die Teilnehmer, die behandelten Protokollpunkte sowie die festgehaltenen Maßnahmen.',
+      `im Anhang finden Sie das Protokoll der Besprechung „${meetingType}" zum Projekt ${projStr}${protoDate ? ` vom ${protoDate}` : ''}${protocol.preparedBy ? `, erstellt von ${protocol.preparedBy}` : ''}.`,
+      'Das Protokoll enthält die Teilnehmer, die behandelten Protokollpunkte sowie die festgehaltenen Maßnahmen und liegt dieser E-Mail als PDF-Anlage bei.',
       '',
       nextStr ? `Nächste Besprechung: ${nextStr}` : 'Ein Termin für die nächste Besprechung wird gesondert bekannt gegeben.',
       ...(hasActions ? ['', 'Die aus dem Protokoll resultierenden Aufgaben werden separat versendet.'] : []),
@@ -2309,8 +2310,11 @@ app.post('/api/notes/:id/send-email', requireAuth, async (req, res) => {
     const fromAddress = sender?.display_name ? `"${sender.display_name} (GHBA)" <${from}>` : from
 
     const NOTE_TYPE_LABELS = { aktennotiz: 'Aktennotiz', telefonnotiz: 'Telefonnotiz', besprochen: 'Besprechungsnotiz' }
-    const typeLabel = NOTE_TYPE_LABELS[note.type] || 'Notiz'
-    const dateStr   = note.date ? new Date(note.date + 'T12:00:00').toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }) : ''
+    const typeLabel   = NOTE_TYPE_LABELS[note.type] || 'Notiz'
+    const dateStr     = note.date ? new Date(note.date + 'T12:00:00').toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }) : ''
+    const today       = new Date().toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })
+    const projName    = note.projectName || (note.projectId ? (db.projects.get(note.projectId)?.name || null) : null)
+    const creatorName = sender?.display_name || null
     const mailSubject = subject || `${typeLabel} – ${note.subject || 'Ohne Betreff'}`
 
     const escHtml = (s) => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -2322,8 +2326,17 @@ app.post('/api/notes/:id/send-email', requireAuth, async (req, res) => {
          </td></tr>`
       : ''
 
+    const introLine = [
+      `anbei erhalten Sie eine <strong>${escHtml(typeLabel)}</strong>`,
+      note.subject ? ` mit dem Betreff <em>„${escHtml(note.subject)}"</em>` : '',
+      projName    ? ` zum Projekt <strong>${escHtml(projName)}</strong>` : '',
+      dateStr     ? ` vom ${dateStr}` : '',
+      creatorName ? `, erstellt von <strong>${escHtml(creatorName)}</strong>` : '',
+      '.',
+    ].join('')
+
     const html = `<!DOCTYPE html>
-<html lang="de"><head><meta charset="utf-8"></head>
+<html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
 <body style="margin:0;padding:0;background:#F0F0F0;font-family:Arial,sans-serif;font-size:14px;color:#1F2937;">
   <table width="100%" cellpadding="0" cellspacing="0" style="background:#F0F0F0;padding:32px 16px;">
     <tr><td align="center">
@@ -2331,15 +2344,21 @@ app.post('/api/notes/:id/send-email', requireAuth, async (req, res) => {
         <tr><td style="background:#000040;padding:28px 36px;">
           <p style="margin:0;color:#8FBEFF;font-size:11px;letter-spacing:2px;text-transform:uppercase;">GHBA</p>
           <p style="margin:6px 0 0 0;color:#FBFFE6;font-size:20px;font-weight:bold;">${typeLabel}</p>
-          ${note.subject ? `<p style="margin:4px 0 0 0;color:#8FBEFF;font-size:14px;">${note.subject}</p>` : ''}
-          ${dateStr ? `<p style="margin:6px 0 0 0;color:#8FBEFF;font-size:12px;">Datum: ${dateStr}${note.time ? ', ' + note.time + ' Uhr' : ''}</p>` : ''}
+          ${projName  ? `<p style="margin:4px 0 0 0;color:#8FBEFF;font-size:14px;">${escHtml(projName)}</p>` : ''}
+          ${dateStr   ? `<p style="margin:6px 0 0 0;color:#8FBEFF;font-size:12px;">Datum: ${dateStr}${note.time ? ', ' + note.time + ' Uhr' : ''}</p>` : ''}
+        </td></tr>
+        <tr><td style="padding:28px 36px 12px 36px;">
+          <p style="margin:0;font-size:15px;color:#000040;">Guten Tag,</p>
+          <p style="margin:10px 0 0 0;color:#4B5563;">${introLine}</p>
+          ${pdfBase64 ? `<p style="margin:10px 0 0 0;color:#4B5563;">Die <strong>${escHtml(typeLabel)}</strong> ist dieser E-Mail als <strong>PDF-Anlage</strong> beigefügt.</p>` : ''}
         </td></tr>
         ${participantsHtml}
-        <tr><td style="padding:28px 36px;">
-          ${note.content || '<p style="color:#9CA3AF;">Kein Inhalt.</p>'}
+        <tr><td style="padding:12px 36px 8px 36px;border-top:1px solid #E5E7EB;">
+          <p style="margin:0 0 8px 0;font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:#9CA3AF;">Inhalt</p>
+          <div style="font-size:14px;color:#1F2937;line-height:1.6;">${note.content || '<p style="color:#9CA3AF;">Kein Inhalt.</p>'}</div>
         </td></tr>
-        <tr><td style="padding:0 36px 28px 36px;color:#9CA3AF;font-size:11px;">
-          Gesendet über GHBA
+        <tr><td style="padding:20px 36px;border-top:1px solid #E5E7EB;background:#F0F0F0;text-align:center;">
+          <p style="margin:0;color:#9CA3AF;font-size:12px;">GHBA · ${creatorName ? `Gesendet von ${escHtml(creatorName)}` : 'Automatische Benachrichtigung'} · ${today}</p>
         </td></tr>
       </table>
     </td></tr>
@@ -2412,8 +2431,11 @@ app.post('/api/notebooks/:projectId/send-email', requireAuth, async (req, res) =
     const replyTo    = sender?.email || null
     const fromAddress = sender?.display_name ? `"${sender.display_name} (GHBA)" <${from}>` : from
     const mailSubject = subject || `Notizbuch – ${proj.name || 'Projekt'}`
+    const nbToday     = new Date().toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })
+    const nbCreator   = sender?.display_name || null
+    const escNb       = (s) => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
     const html = `<!DOCTYPE html>
-<html lang="de"><head><meta charset="utf-8"></head>
+<html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
 <body style="margin:0;padding:0;background:#F0F0F0;font-family:Arial,sans-serif;font-size:14px;color:#1F2937;">
   <table width="100%" cellpadding="0" cellspacing="0" style="background:#F0F0F0;padding:32px 16px;">
     <tr><td align="center">
@@ -2421,12 +2443,20 @@ app.post('/api/notebooks/:projectId/send-email', requireAuth, async (req, res) =
         <tr><td style="background:#000040;padding:28px 36px;">
           <p style="margin:0;color:#8FBEFF;font-size:11px;letter-spacing:2px;text-transform:uppercase;">GHBA</p>
           <p style="margin:6px 0 0 0;color:#FBFFE6;font-size:20px;font-weight:bold;">Notizbuch</p>
-          <p style="margin:4px 0 0 0;color:#8FBEFF;font-size:14px;">${proj.name || 'Projekt'}</p>
+          <p style="margin:4px 0 0 0;color:#8FBEFF;font-size:14px;">${escNb(proj.name || 'Projekt')}</p>
         </td></tr>
-        <tr><td style="padding:28px 36px;">
-          ${bodyHtml || '<p style="color:#9CA3AF;">Kein Inhalt.</p>'}
+        <tr><td style="padding:28px 36px 12px 36px;">
+          <p style="margin:0;font-size:15px;color:#000040;">Guten Tag,</p>
+          <p style="margin:10px 0 0 0;color:#4B5563;">anbei erhalten Sie einen Auszug aus dem <strong>Notizbuch</strong> zum Projekt <strong>${escNb(proj.name || 'Projekt')}</strong>${nbCreator ? `, gesendet von <strong>${escNb(nbCreator)}</strong>` : ''}.</p>
+          ${pdfBase64 ? `<p style="margin:10px 0 0 0;color:#4B5563;">Das Notizbuch ist dieser E-Mail als <strong>PDF-Anlage</strong> beigefügt.</p>` : ''}
         </td></tr>
-        <tr><td style="padding:0 36px 28px 36px;color:#9CA3AF;font-size:11px;">Gesendet über GHBA</td></tr>
+        <tr><td style="padding:12px 36px 8px 36px;border-top:1px solid #E5E7EB;">
+          <p style="margin:0 0 8px 0;font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:#9CA3AF;">Inhalt</p>
+          <div style="font-size:14px;color:#1F2937;line-height:1.6;">${bodyHtml || '<p style="color:#9CA3AF;">Kein Inhalt.</p>'}</div>
+        </td></tr>
+        <tr><td style="padding:20px 36px;border-top:1px solid #E5E7EB;background:#F0F0F0;text-align:center;">
+          <p style="margin:0;color:#9CA3AF;font-size:12px;">GHBA · ${nbCreator ? `Gesendet von ${escNb(nbCreator)}` : 'Automatische Benachrichtigung'} · ${nbToday}</p>
+        </td></tr>
       </table>
     </td></tr>
   </table>
