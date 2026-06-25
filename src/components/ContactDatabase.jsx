@@ -83,7 +83,7 @@ function exportOutlookCsv(contacts, baseFilename = 'Kontakte_Outlook') {
         '', '', '', '', '', '', // Adressfelder
       ].map(wrap).join(',')
     })
-    return '﻿' + [OUTLOOK_HEADERS.join(','), ...rows].join('\r\n')
+    return [OUTLOOK_HEADERS.join(','), ...rows].join('\r\n')
   }
 
   const chunks = []
