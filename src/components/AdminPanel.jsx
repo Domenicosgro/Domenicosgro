@@ -1250,11 +1250,92 @@ function RolloutTab() {
 // ── Email templates tab ───────────────────────────────────────────────────────
 const DAY_NAMES = ['Sonntag', 'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag']
 
+const EMAIL_TYPES = [
+  {
+    id: 'invite',
+    label: 'Einladung',
+    desc: 'Neue Benutzer einladen',
+    fields: [
+      { key: 'subject',  label: 'Betreff',        hint: '{name}',         rows: 1 },
+      { key: 'greeting', label: 'Einleitungstext', hint: null,             rows: 3 },
+      { key: 'footer',   label: 'Fußzeile',        hint: null,             rows: 1 },
+    ],
+  },
+  {
+    id: 'protocol',
+    label: 'Protokoll-E-Mail',
+    desc: 'Protokoll als PDF versenden',
+    fields: [
+      { key: 'subject',         label: 'Betreff',                    hint: '{project}, {date}',  rows: 1 },
+      { key: 'intro',           label: 'Einleitungstext',             hint: '{project}, {date}',  rows: 2 },
+      { key: 'detail',          label: 'Detailsatz (PDF-Anlage)',     hint: null,                 rows: 2 },
+      { key: 'no_next_meeting', label: 'Kein Folgetermin – Text',     hint: null,                 rows: 2 },
+      { key: 'actions_note',    label: 'Hinweis Aufgaben-Versand',    hint: null,                 rows: 1 },
+      { key: 'reply_note',      label: 'Rückfragen-Hinweis',          hint: null,                 rows: 1 },
+      { key: 'footer',          label: 'Fußzeile',                   hint: null,                 rows: 1 },
+    ],
+  },
+  {
+    id: 'note',
+    label: 'Akten- / Telefonnotiz',
+    desc: 'Notiz als PDF per E-Mail',
+    fields: [
+      { key: 'subject',  label: 'Betreff',        hint: '{type}, {note_subject}, {project}, {date}', rows: 1 },
+      { key: 'greeting', label: 'Anrede',          hint: null,                                        rows: 1 },
+      { key: 'intro',    label: 'Einleitungstext', hint: '{type}, {project}, {date}',                 rows: 2 },
+      { key: 'footer',   label: 'Fußzeile',        hint: null,                                        rows: 1 },
+    ],
+  },
+  {
+    id: 'notebook',
+    label: 'Notizbuch',
+    desc: 'Notizbuch-Auszug versenden',
+    fields: [
+      { key: 'subject',  label: 'Betreff',        hint: '{project}', rows: 1 },
+      { key: 'greeting', label: 'Anrede',          hint: null,        rows: 1 },
+      { key: 'intro',    label: 'Einleitungstext', hint: '{project}', rows: 2 },
+      { key: 'footer',   label: 'Fußzeile',        hint: null,        rows: 1 },
+    ],
+  },
+  {
+    id: 'task_assignment',
+    label: 'Aufgaben-E-Mail',
+    desc: 'Aufgaben pro Verantwortlicher',
+    fields: [
+      { key: 'subject', label: 'Betreff',        hint: '{project}, {date}',   rows: 1 },
+      { key: 'intro',   label: 'Einleitungstext', hint: '{project}, {count}',  rows: 3 },
+      { key: 'footer',  label: 'Fußzeile',        hint: null,                  rows: 1 },
+    ],
+  },
+  {
+    id: 'release_notification',
+    label: 'Freimeldung (Admin)',
+    desc: 'Benachrichtigung an Admins',
+    fields: [
+      { key: 'subject', label: 'Betreff', hint: '{project}, {responsible}, {count}', rows: 1 },
+      { key: 'intro',   label: 'Text',    hint: '{responsible}, {count}, {project}', rows: 3 },
+      { key: 'footer',  label: 'Fußzeile', hint: null,                               rows: 1 },
+    ],
+  },
+  {
+    id: 'weekly_report',
+    label: 'Wochenbericht',
+    desc: 'Automatisch · Freitags',
+    schedule: true,
+    fields: [
+      { key: 'subject',        label: 'Betreff',                       hint: '{project}', rows: 1 },
+      { key: 'releases_intro', label: 'Abschnitt: Freigemeldete Aufgaben', hint: null,   rows: 2 },
+      { key: 'open_intro',     label: 'Abschnitt: Offene Aufgaben',    hint: null,        rows: 2 },
+      { key: 'footer',         label: 'Fußzeile',                      hint: null,        rows: 1 },
+    ],
+  },
+]
+
 function EmailTemplatesTab() {
   const [settings, setSettings] = useState(null)
   const [saving,   setSaving]   = useState(false)
   const [msg,      setMsg]      = useState(null)
-  const [open,     setOpen]     = useState('invite')
+  const [active,   setActive]   = useState('invite')
 
   useEffect(() => {
     fetch('/api/admin/email-settings', { headers: apiHeaders() })
@@ -1263,6 +1344,7 @@ function EmailTemplatesTab() {
 
   function set(type, field, value) {
     setSettings(prev => ({ ...prev, [type]: { ...prev[type], [field]: value } }))
+    setMsg(null)
   }
 
   async function handleSave() {
@@ -1274,164 +1356,105 @@ function EmailTemplatesTab() {
       const data = await res.json()
       if (!res.ok) { setMsg({ type: 'err', text: data.error || 'Fehler beim Speichern.' }); return }
       setSettings(data.settings)
-      setMsg({ type: 'ok', text: 'Einstellungen gespeichert.' })
+      setMsg({ type: 'ok', text: 'Gespeichert.' })
     } catch { setMsg({ type: 'err', text: 'Netzwerkfehler.' }) }
     finally { setSaving(false) }
   }
 
   if (!settings) return <div className="text-sm text-gray-400 py-4">Lade …</div>
 
-  const Section = ({ id, title, children }) => (
-    <div className="border border-gray-200">
-      <button
-        className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium text-gray-800 hover:bg-gray-50"
-        onClick={() => setOpen(v => v === id ? null : id)}
-      >
-        <span>{title}</span>
-        <span className="text-gray-400 text-xs">{open === id ? '▲' : '▼'}</span>
-      </button>
-      {open === id && <div className="px-4 pb-4 pt-2 space-y-3 border-t border-gray-100">{children}</div>}
-    </div>
-  )
-
-  const Field = ({ label, hint, value, onChange, rows = 2 }) => (
-    <div>
-      <label className="block text-xs font-medium text-gray-500 mb-1">{label}</label>
-      {rows === 1
-        ? <input className="input text-sm w-full" value={value} onChange={e => onChange(e.target.value)} />
-        : <textarea className="input text-sm w-full resize-y" rows={rows} value={value} onChange={e => onChange(e.target.value)} />}
-      {hint && <p className="mt-1 text-xs text-gray-400">{hint}</p>}
-    </div>
-  )
+  const typeDef  = EMAIL_TYPES.find(t => t.id === active)
+  const typeData = settings[active] || {}
 
   return (
-    <div className="space-y-4 text-sm">
-      <p className="text-gray-600 text-sm">
-        Betreff und Texte der System-E-Mails anpassen. Platzhalter in <code className="text-xs bg-gray-100 px-1">{'{geschweifte Klammern}'}</code> werden automatisch ersetzt.
-      </p>
-
-      <div className="space-y-2">
-        <Section id="invite" title="Einladungs-E-Mail">
-          <Field
-            label="Betreff" rows={1}
-            hint="Platzhalter: {name}"
-            value={settings.invite.subject}
-            onChange={v => set('invite', 'subject', v)}
-          />
-          <Field
-            label="Einleitungstext"
-            hint="Erscheint unter dem 'Willkommen'-Titel."
-            value={settings.invite.greeting}
-            onChange={v => set('invite', 'greeting', v)}
-          />
-          <Field
-            label="Fußzeile"
-            hint="Kurzer Abschlusstext."
-            value={settings.invite.footer}
-            onChange={v => set('invite', 'footer', v)}
-          />
-        </Section>
-
-        <Section id="task_assignment" title="Aufgaben-E-Mail (pro Verantwortlicher)">
-          <Field
-            label="Betreff" rows={1}
-            hint="Platzhalter: {project}, {date}"
-            value={settings.task_assignment.subject}
-            onChange={v => set('task_assignment', 'subject', v)}
-          />
-          <Field
-            label="Einleitungstext"
-            hint="Platzhalter: {project}, {count}"
-            value={settings.task_assignment.intro}
-            onChange={v => set('task_assignment', 'intro', v)}
-          />
-          <Field
-            label="Fußzeile" rows={1}
-            value={settings.task_assignment.footer}
-            onChange={v => set('task_assignment', 'footer', v)}
-          />
-        </Section>
-
-        <Section id="release_notification" title="Freimeldungs-Benachrichtigung (an Admin)">
-          <Field
-            label="Betreff" rows={1}
-            hint="Platzhalter: {project}, {responsible}, {count}"
-            value={settings.release_notification.subject}
-            onChange={v => set('release_notification', 'subject', v)}
-          />
-          <Field
-            label="Text"
-            hint="Platzhalter: {responsible}, {count}, {project}"
-            value={settings.release_notification.intro}
-            onChange={v => set('release_notification', 'intro', v)}
-          />
-          <Field
-            label="Fußzeile" rows={1}
-            value={settings.release_notification.footer}
-            onChange={v => set('release_notification', 'footer', v)}
-          />
-        </Section>
-
-        <Section id="weekly_report" title="Wöchentlicher Aufgaben-Bericht">
-          <Field
-            label="Betreff" rows={1}
-            hint="Platzhalter: {project}"
-            value={settings.weekly_report.subject}
-            onChange={v => set('weekly_report', 'subject', v)}
-          />
-          <Field
-            label="Einleitung – freigemeldete Aufgaben"
-            value={settings.weekly_report.releases_intro}
-            onChange={v => set('weekly_report', 'releases_intro', v)}
-          />
-          <Field
-            label="Einleitung – offene Aufgaben"
-            value={settings.weekly_report.open_intro}
-            onChange={v => set('weekly_report', 'open_intro', v)}
-          />
-          <Field
-            label="Fußzeile" rows={1}
-            value={settings.weekly_report.footer}
-            onChange={v => set('weekly_report', 'footer', v)}
-          />
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1">Versandtag</label>
-              <select className="select w-full"
-                value={settings.weekly_report.schedule_day}
-                onChange={e => set('weekly_report', 'schedule_day', parseInt(e.target.value))}
-              >
-                {DAY_NAMES.map((n, i) => <option key={i} value={i}>{n}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1">Versandzeit (Stunde)</label>
-              <select className="select w-full"
-                value={settings.weekly_report.schedule_hour}
-                onChange={e => set('weekly_report', 'schedule_hour', parseInt(e.target.value))}
-              >
-                {Array.from({ length: 24 }, (_, h) => (
-                  <option key={h} value={h}>{String(h).padStart(2, '0')}:00 Uhr</option>
-                ))}
-              </select>
-            </div>
-          </div>
-          <p className="text-xs text-gray-400">
-            Versand erfolgt {DAY_NAMES[settings.weekly_report.schedule_day]}s ab {String(settings.weekly_report.schedule_hour).padStart(2, '0')}:00 Uhr (Serverzeit).
-            Empfänger sind alle Projektkontakte mit E-Mail-Adresse.
-          </p>
-        </Section>
+    <div className="flex w-full" style={{ minHeight: 0 }}>
+      {/* Sidebar */}
+      <div className="w-52 flex-shrink-0 border-r border-gray-200 overflow-y-auto">
+        <div className="py-1">
+          {EMAIL_TYPES.map(t => (
+            <button
+              key={t.id}
+              onClick={() => { setActive(t.id); setMsg(null) }}
+              className={`w-full text-left px-3 py-2.5 border-b border-gray-100 last:border-0 transition-colors ${
+                active === t.id
+                  ? 'bg-brand-50 border-l-2 border-l-brand-600 text-brand-800'
+                  : 'text-gray-700 hover:bg-gray-50'
+              }`}
+            >
+              <div className="text-xs font-semibold leading-tight">{t.label}</div>
+              <div className="text-xs text-gray-400 mt-0.5 leading-tight">{t.desc}</div>
+            </button>
+          ))}
+        </div>
       </div>
 
-      <div className="flex items-center gap-3 pt-2">
-        <button className="btn-primary text-sm" onClick={handleSave} disabled={saving}>
-          {saving ? <Loader size={13} className="animate-spin" /> : <Check size={13} />}
-          {saving ? 'Wird gespeichert…' : 'Einstellungen speichern'}
-        </button>
-        {msg && (
-          <span className={`text-xs px-3 py-1.5 border ${msg.type === 'ok' ? 'text-green-700 bg-green-50 border-green-200' : 'text-red-600 bg-red-50 border-red-200'}`}>
-            {msg.text}
-          </span>
+      {/* Editor */}
+      <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
+        {typeDef && (
+          <>
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="font-semibold text-gray-900 text-sm">{typeDef.label}</h3>
+                <p className="text-xs text-gray-400 mt-0.5">
+                  Platzhalter in <code className="bg-gray-100 px-1">{'{}'}</code> werden automatisch ersetzt.
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                {msg && (
+                  <span className={`text-xs px-2 py-1 border ${msg.type === 'ok' ? 'text-green-700 bg-green-50 border-green-200' : 'text-red-600 bg-red-50 border-red-200'}`}>
+                    {msg.text}
+                  </span>
+                )}
+                <button className="btn-primary text-xs py-1.5 px-3" onClick={handleSave} disabled={saving}>
+                  {saving ? <Loader size={12} className="animate-spin" /> : <Check size={12} />}
+                  {saving ? 'Speichert…' : 'Speichern'}
+                </button>
+              </div>
+            </div>
+
+            {typeDef.fields.map(f => (
+              <div key={f.key}>
+                <label className="block text-xs font-medium text-gray-500 mb-1">
+                  {f.label}
+                  {f.hint && <span className="ml-1 font-normal text-gray-400">· Platzhalter: <code className="bg-gray-100 px-0.5">{f.hint}</code></span>}
+                </label>
+                {f.rows === 1
+                  ? <input className="input text-sm w-full" value={typeData[f.key] ?? ''} onChange={e => set(active, f.key, e.target.value)} />
+                  : <textarea className="input text-sm w-full resize-y" rows={f.rows} value={typeData[f.key] ?? ''} onChange={e => set(active, f.key, e.target.value)} />}
+              </div>
+            ))}
+
+            {typeDef.schedule && (
+              <div className="pt-2 border-t border-gray-100 space-y-3">
+                <p className="text-xs font-medium text-gray-500">Versandzeitplan</p>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-1">Tag</label>
+                    <select className="select w-full text-sm"
+                      value={typeData.schedule_day ?? 5}
+                      onChange={e => set(active, 'schedule_day', parseInt(e.target.value))}
+                    >
+                      {DAY_NAMES.map((n, i) => <option key={i} value={i}>{n}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-1">Uhrzeit</label>
+                    <select className="select w-full text-sm"
+                      value={typeData.schedule_hour ?? 10}
+                      onChange={e => set(active, 'schedule_hour', parseInt(e.target.value))}
+                    >
+                      {Array.from({ length: 24 }, (_, h) => (
+                        <option key={h} value={h}>{String(h).padStart(2, '0')}:00 Uhr</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                <p className="text-xs text-gray-400">
+                  Automatischer Versand {DAY_NAMES[typeData.schedule_day ?? 5]}s ab {String(typeData.schedule_hour ?? 10).padStart(2, '0')}:00 Uhr (Serverzeit) an alle Projektkontakte mit E-Mail-Adresse.
+                </p>
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>
@@ -1482,7 +1505,7 @@ export default function AdminPanel({ serverUser, onClose }) {
         )}
 
         {/* Content */}
-        <div className="overflow-y-auto flex-1 p-5">
+        <div className={`flex-1 overflow-hidden ${tab === 'templates' ? 'flex' : 'overflow-y-auto p-5'}`}>
           {tab === 'users'     && <UsersTab      serverUser={serverUser} />}
           {tab === 'rollout'   && <RolloutTab />}
           {tab === 'sessions'  && <SessionsTab   serverUser={serverUser} />}
