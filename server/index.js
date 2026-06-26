@@ -1983,10 +1983,21 @@ app.get('/freimeldung/:token', (req, res) => {
 //   – alle offenen / in Bearbeitung befindlichen Aufgaben
 // Empfänger: alle Projektkontakte mit E-Mail-Adresse (Projektdatenbank)
 async function sendWeeklyReleaseReports({ appUrl } = {}) {
-  if (!mailer.mailerStatus().configured) return { skipped: 'mailer-not-configured' }
+  if (!mailer.mailerStatus().configured) {
+    console.warn('[reporting] Übersprungen: E-Mail nicht konfiguriert.')
+    return { skipped: 'mailer-not-configured', sentProjects: 0, skippedProjects: [] }
+  }
   const sinceMs  = Date.now() - 7 * 24 * 60 * 60 * 1000
   const todayStr = new Date().toISOString().slice(0, 10)
   const protocols = db.protocols.list()
+
+  // System-Admins mit E-Mail – erhalten immer eine Kopie
+  const adminRecipients = new Map()
+  for (const u of db.users.list()) {
+    if (u.role === 'admin' && u.email) {
+      adminRecipients.set(u.email.trim().toLowerCase(), u.email.trim())
+    }
+  }
 
   // Daten je Projekt sammeln
   const byProject = new Map()  // projectId → { releases: [], openTasks: [] }
@@ -2022,32 +2033,55 @@ async function sendWeeklyReleaseReports({ appUrl } = {}) {
   }
 
   const { from } = systemFrom()
+  const weeklyTpl = getEmailSettings().weekly_report
   let sentProjects = 0
+  const skippedProjects = []
+
   for (const [projectId, data] of byProject) {
-    if (!data.releases.length && !data.openTasks.length) continue
+    if (!data.releases.length && !data.openTasks.length) {
+      const p = db.projects.get(projectId)
+      if (p) {
+        console.log(`[reporting] ${p.name || projectId}: keine offenen Aufgaben/Freimeldungen – übersprungen`)
+        skippedProjects.push({ id: projectId, name: p.name, reason: 'no-tasks' })
+      }
+      continue
+    }
     const project = db.projects.get(projectId)
     if (!project) continue
     const projName = project.name || 'Projekt'
 
-    // Empfänger: alle Projektkontakte mit E-Mail (Projektdatenbank)
-    const recipients = new Map()
+    // Empfänger: alle Projektkontakte + System-Admins (erhalten immer eine Kopie)
+    const recipients = new Map(adminRecipients)
     for (const c of (project.contacts ?? [])) {
       const email = (c.email || '').trim().toLowerCase()
       if (email) recipients.set(email, c.email.trim())
     }
-    if (recipients.size === 0) continue
+    if (recipients.size === 0) {
+      console.warn(`[reporting] ${projName}: keine Empfänger (keine Projektkontakte + keine Admins mit E-Mail) – übersprungen`)
+      skippedProjects.push({ id: projectId, name: projName, reason: 'no-recipients' })
+      continue
+    }
 
-    const weeklyTpl = getEmailSettings().weekly_report
-    const html = buildWeeklyReportHtml(projName, data.releases, data.openTasks, weeklyTpl)
-    const text = buildWeeklyReportText(projName, data.releases, data.openTasks, weeklyTpl)
-    const to   = Array.from(recipients.values()).join(', ')
+    const html    = buildWeeklyReportHtml(projName, data.releases, data.openTasks, weeklyTpl)
+    const text    = buildWeeklyReportText(projName, data.releases, data.openTasks, weeklyTpl)
+    const to      = Array.from(recipients.values()).join(', ')
     const subject = applyTpl(weeklyTpl.subject, { project: projName })
+    console.log(`[reporting] Versende für "${projName}" an ${recipients.size} Empfänger (${to})`)
     try {
       await mailer.sendMail({ from, to, subject, html, text })
       sentProjects++
-    } catch (e) { console.warn('[reporting] Versand für', projName, 'fehlgeschlagen:', e.message) }
+      console.log(`[reporting] "${projName}" OK`)
+    } catch (e) {
+      console.warn(`[reporting] "${projName}" fehlgeschlagen:`, e.message)
+      skippedProjects.push({ id: projectId, name: projName, reason: 'send-error', detail: e.message })
+    }
   }
-  return { sentProjects }
+
+  if (byProject.size === 0) {
+    console.warn('[reporting] Keine Projekte mit Protokollen und projectId gefunden.')
+  }
+  console.log(`[reporting] Abgeschlossen: ${sentProjects} versendet, ${skippedProjects.length} übersprungen`)
+  return { sentProjects, skippedProjects }
 }
 
 const PRIORITY_LABEL = { hoch: 'Hoch', mittel: 'Mittel', niedrig: 'Niedrig' }
@@ -2166,22 +2200,30 @@ function buildWeeklyReportText(projName, releases, openTasks, tpl) {
 }
 
 // Scheduler: prüft minütlich, ob der konfigurierte Wochentag + Uhrzeit erreicht ist.
+// Feuert auch beim Start nach, wenn der heutige Versand noch aussteht.
 function startWeeklyReportScheduler() {
   const KEY = 'weekly_report_last_run'   // YYYY-MM-DD des letzten Versands
-  setInterval(() => {
+
+  function tryRun() {
     try {
       const { schedule_day, schedule_hour } = getEmailSettings().weekly_report
-      const now = new Date()
-      if (now.getDay() !== schedule_day) return
-      if (now.getHours() < schedule_hour) return
-      const todayKey = now.toISOString().slice(0, 10)
+      const now      = new Date()
+      const todayKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+      if (now.getDay()   !== schedule_day)   return
+      if (now.getHours() <  schedule_hour)   return
       if (db.appState.get(KEY) === todayKey) return   // heute schon gelaufen
       db.appState.set(KEY, todayKey)                  // Marker zuerst (verhindert Doppelversand)
+      console.log('[reporting] Starte Wochenbericht …')
       sendWeeklyReleaseReports()
-        .then(r => console.log('[reporting] Wochenbericht versendet:', JSON.stringify(r)))
-        .catch(e => console.warn('[reporting] Wochenbericht fehlgeschlagen:', e.message))
+        .then(r => console.log('[reporting] Ergebnis:', JSON.stringify(r)))
+        .catch(e => console.warn('[reporting] Fehlgeschlagen:', e.message))
     } catch (e) { console.warn('[reporting] Scheduler-Fehler:', e.message) }
-  }, 60 * 1000)
+  }
+
+  // Beim Start sofort prüfen (Nachholung falls Container nach 10:00 gestartet)
+  tryRun()
+  // Danach minütlich prüfen
+  setInterval(tryRun, 60 * 1000)
 }
 
 // Admin-Trigger zum manuellen Testen des Wochenberichts.

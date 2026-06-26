@@ -1332,10 +1332,12 @@ const EMAIL_TYPES = [
 ]
 
 function EmailTemplatesTab() {
-  const [settings, setSettings] = useState(null)
-  const [saving,   setSaving]   = useState(false)
-  const [msg,      setMsg]      = useState(null)
-  const [active,   setActive]   = useState('invite')
+  const [settings,    setSettings]    = useState(null)
+  const [saving,      setSaving]      = useState(false)
+  const [msg,         setMsg]         = useState(null)
+  const [active,      setActive]      = useState('invite')
+  const [testRunning, setTestRunning] = useState(false)
+  const [testResult,  setTestResult]  = useState(null)
 
   useEffect(() => {
     fetch('/api/admin/email-settings', { headers: apiHeaders() })
@@ -1359,6 +1361,32 @@ function EmailTemplatesTab() {
       setMsg({ type: 'ok', text: 'Gespeichert.' })
     } catch { setMsg({ type: 'err', text: 'Netzwerkfehler.' }) }
     finally { setSaving(false) }
+  }
+
+  async function handleTestReport() {
+    setTestRunning(true); setTestResult(null)
+    try {
+      const res  = await fetch('/api/admin/release-report-test', { method: 'POST', headers: apiHeaders() })
+      const data = await res.json()
+      if (!res.ok) { setTestResult({ ok: false, msg: data.error || 'Fehler.' }); return }
+      if (data.skipped) {
+        setTestResult({ ok: false, msg: `Übersprungen: ${data.skipped}` })
+      } else {
+        const skips = (data.skippedProjects || []).map(s => {
+          const reason = s.reason === 'no-tasks' ? 'keine Aufgaben'
+            : s.reason === 'no-recipients' ? 'keine Empfänger'
+            : s.reason === 'send-error' ? `Fehler: ${s.detail}`
+            : s.reason
+          return `${s.name}: ${reason}`
+        })
+        setTestResult({
+          ok: data.sentProjects > 0 || skips.length > 0,
+          msg: `${data.sentProjects} Projekt(e) versendet${skips.length ? '; übersprungen: ' + skips.join(', ') : '.'}`,
+          warn: data.sentProjects === 0,
+        })
+      }
+    } catch { setTestResult({ ok: false, msg: 'Netzwerkfehler.' }) }
+    finally { setTestRunning(false) }
   }
 
   if (!settings) return <div className="text-sm text-gray-400 py-4">Lade …</div>
@@ -1450,8 +1478,28 @@ function EmailTemplatesTab() {
                   </div>
                 </div>
                 <p className="text-xs text-gray-400">
-                  Automatischer Versand {DAY_NAMES[typeData.schedule_day ?? 5]}s ab {String(typeData.schedule_hour ?? 10).padStart(2, '0')}:00 Uhr (Serverzeit) an alle Projektkontakte mit E-Mail-Adresse.
+                  Automatischer Versand {DAY_NAMES[typeData.schedule_day ?? 5]}s ab {String(typeData.schedule_hour ?? 10).padStart(2, '0')}:00 Uhr (Serverzeit).
+                  System-Admins erhalten immer eine Kopie; zusätzlich alle Projektkontakte mit E-Mail-Adresse.
                 </p>
+                <div className="pt-1 border-t border-gray-100 space-y-2">
+                  <p className="text-xs font-medium text-gray-500">Manuell auslösen</p>
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <button className="btn-secondary text-xs py-1.5 px-3" onClick={handleTestReport} disabled={testRunning}>
+                      {testRunning ? <Loader size={12} className="animate-spin" /> : <Send size={12} />}
+                      {testRunning ? 'Wird gesendet…' : 'Wochenbericht jetzt versenden'}
+                    </button>
+                    {testResult && (
+                      <span className={`text-xs px-2 py-1 border max-w-xs ${
+                        testResult.warn ? 'text-amber-700 bg-amber-50 border-amber-200'
+                        : testResult.ok  ? 'text-green-700 bg-green-50 border-green-200'
+                                         : 'text-red-600 bg-red-50 border-red-200'
+                      }`}>
+                        {testResult.msg}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-gray-400">Ignoriert den Wochentag/Uhrzeit-Check – nützlich zum Testen oder Nachholen eines versäumten Versands.</p>
+                </div>
               </div>
             )}
           </>
