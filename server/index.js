@@ -983,6 +983,10 @@ app.delete('/api/attachments/:id', requireAuth, writeLimiter, async (req, res) =
 const BIM_DIR = path.join(process.env.DB_PATH || path.join(__dirname, '../data'), 'ifc')
 fs.mkdirSync(BIM_DIR, { recursive: true })
 
+// ── Learning-Plattform (Schulungsvideos) ────────────────────────────────────
+const LEARNING_DIR = path.join(process.env.DB_PATH || path.join(__dirname, '../data'), 'learning')
+fs.mkdirSync(LEARNING_DIR, { recursive: true })
+
 // POST /api/projects/:id/bim  (Content-Type: application/octet-stream, X-Filename header)
 app.post('/api/projects/:id/bim', requireAuth, writeLimiter,
   express.raw({ type: 'application/octet-stream', limit: '500mb' }),
@@ -1091,6 +1095,160 @@ app.delete('/api/projects/:id/bim', requireAuth, writeLimiter, (req, res) => {
     db.projects.update(req.params.id, updated, _version, req.user)
     broadcast('project', 'update', req.params.id, updated.updatedAt)
     logEvent('BIM_DELETE', req, `project=${req.params.id}`)
+    res.json({ ok: true })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// ── Learning-Plattform: Schulungsvideos ──────────────────────────────────────
+// Videos sind global (projektübergreifend) – sie erklären die Bedienung der App.
+// Lesen: jeder angemeldete Nutzer. Verwalten (Upload/Ändern/Löschen): nur Admins.
+function displayNameOf(reqUser) {
+  if (!reqUser || reqUser === '__anonymous__' || reqUser === '__apikey__') return 'Admin'
+  const u = db.users.get(reqUser)
+  return u?.display_name || reqUser
+}
+
+// GET – Liste aller Videos (Metadaten, ohne Binärdaten)
+app.get('/api/learning-videos', requireAuth, (req, res) => {
+  try {
+    const all = db.learningVideos.list()
+    all.sort((a, b) => (a.order ?? 0) - (b.order ?? 0)
+      || (a.createdAt || '').localeCompare(b.createdAt || ''))
+    res.json(all)
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// POST – neues Video-Metadatenobjekt anlegen (Admin); Datei folgt separat
+app.post('/api/learning-videos', requireAuth, requireAdmin, writeLimiter, (req, res) => {
+  try {
+    const id  = require('crypto').randomBytes(12).toString('base64url')
+    const now = new Date().toISOString()
+    const existing = db.learningVideos.list()
+    const maxOrder = existing.reduce((m, v) => Math.max(m, v.order ?? 0), 0)
+    const data = {
+      id,
+      title:       req.body.title       || 'Neues Video',
+      description: req.body.description || '',
+      category:    req.body.category    || 'Allgemein',
+      order:       typeof req.body.order === 'number' ? req.body.order : maxOrder + 1,
+      filename:    '',
+      size:        0,
+      mimeType:    '',
+      hasFile:     false,
+      uploadedAt:  null,
+      uploadedBy:  '',
+      createdBy:   displayNameOf(req.user),
+      createdAt:   now,
+      updatedAt:   now,
+    }
+    db.learningVideos.create(data, req.user)
+    logEvent('LEARNING_CREATE', req, `id=${id} title=${data.title}`)
+    res.status(201).json(data)
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// POST – Video-Datei hochladen (Admin); Content-Type: application/octet-stream
+app.post('/api/learning-videos/:id/file', requireAuth, requireAdmin, writeLimiter,
+  express.raw({ type: 'application/octet-stream', limit: '2048mb' }),
+  (req, res) => {
+    try {
+      const video = db.learningVideos.get(req.params.id)
+      if (!video) return res.status(404).json({ error: 'Video nicht gefunden.' })
+
+      const filename = (req.headers['x-filename'] || 'video.mp4').replace(/[^a-zA-Z0-9._-]/g, '_')
+      const mimeType = req.headers['x-mimetype'] || 'video/mp4'
+      const filePath = path.join(LEARNING_DIR, req.params.id)
+
+      fs.writeFileSync(filePath, req.body)
+      const stat = fs.statSync(filePath)
+
+      const { _version, _updatedAt, ...vData } = video
+      const now     = new Date().toISOString()
+      const updated = {
+        ...vData,
+        filename,
+        mimeType,
+        size:       stat.size,
+        hasFile:    true,
+        uploadedAt: now,
+        uploadedBy: displayNameOf(req.user),
+        updatedAt:  now,
+      }
+      db.learningVideos.update(req.params.id, updated, _version, req.user)
+      logEvent('LEARNING_UPLOAD', req, `id=${req.params.id} file=${filename} size=${stat.size}`)
+      res.status(201).json(updated)
+    } catch (e) { res.status(500).json({ error: e.message }) }
+  }
+)
+
+// GET – Video-Datei streamen (mit Range-Support für Vor-/Zurückspulen)
+// Auth über Authorization-Header ODER ?token= (das <video>-Element kann keine
+// Header setzen) bzw. Open-Mode wenn noch keine Benutzer registriert sind.
+app.get('/api/learning-videos/:id/file', (req, res) => {
+  try {
+    const authHeader = req.headers['authorization']
+    const headerTok  = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null
+    const token      = headerTok || req.query.token
+    const authed     = (token && resolveToken(token)) || !db.users.hasAny()
+      || (API_KEY && req.headers['x-api-key'] === API_KEY)
+    if (!authed) return res.status(401).json({ error: 'Nicht angemeldet.' })
+
+    const video    = db.learningVideos.get(req.params.id)
+    const filePath = path.join(LEARNING_DIR, req.params.id)
+    if (!video || !fs.existsSync(filePath)) return res.status(404).json({ error: 'Kein Video vorhanden.' })
+
+    const stat      = fs.statSync(filePath)
+    const total     = stat.size
+    const mimeType  = video.mimeType || 'video/mp4'
+    const range     = req.headers.range
+
+    if (range) {
+      const match = /bytes=(\d*)-(\d*)/.exec(range)
+      let start = match && match[1] ? parseInt(match[1], 10) : 0
+      let end   = match && match[2] ? parseInt(match[2], 10) : total - 1
+      if (isNaN(start) || start < 0) start = 0
+      if (isNaN(end)   || end >= total) end = total - 1
+      if (start > end) { start = 0; end = total - 1 }
+
+      res.status(206)
+      res.setHeader('Content-Range',  `bytes ${start}-${end}/${total}`)
+      res.setHeader('Accept-Ranges',  'bytes')
+      res.setHeader('Content-Length', end - start + 1)
+      res.setHeader('Content-Type',   mimeType)
+      fs.createReadStream(filePath, { start, end }).pipe(res)
+    } else {
+      res.setHeader('Content-Length', total)
+      res.setHeader('Accept-Ranges',  'bytes')
+      res.setHeader('Content-Type',   mimeType)
+      res.setHeader('Cache-Control',  'private, max-age=300')
+      fs.createReadStream(filePath).pipe(res)
+    }
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// PATCH – Metadaten ändern (Admin)
+app.patch('/api/learning-videos/:id', requireAuth, requireAdmin, writeLimiter, (req, res) => {
+  try {
+    const video = db.learningVideos.get(req.params.id)
+    if (!video) return res.status(404).json({ error: 'Video nicht gefunden.' })
+    const { _version, _updatedAt, ...vData } = video
+    const allowed = (({ title, description, category, order }) => ({ title, description, category, order }))(req.body)
+    const updated = { ...vData, ...Object.fromEntries(Object.entries(allowed).filter(([, v]) => v !== undefined)), updatedAt: new Date().toISOString() }
+    const result  = db.learningVideos.update(req.params.id, updated, _version, req.user)
+    if (result.notFound) return res.status(404).json({ error: 'Nicht gefunden.' })
+    if (result.conflict) return res.status(409).json({ conflict: true, ...result })
+    logEvent('LEARNING_UPDATE', req, `id=${req.params.id}`)
+    res.json(updated)
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// DELETE – Video + Datei löschen (Admin)
+app.delete('/api/learning-videos/:id', requireAuth, requireAdmin, writeLimiter, (req, res) => {
+  try {
+    const filePath = path.join(LEARNING_DIR, req.params.id)
+    if (fs.existsSync(filePath)) fs.unlinkSync(filePath)
+    db.learningVideos.delete(req.params.id)
+    logEvent('LEARNING_DELETE', req, `id=${req.params.id}`)
     res.json({ ok: true })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })

@@ -16,6 +16,7 @@ import ContactDatabase       from './components/ContactDatabase'
 import LoginScreen           from './components/LoginScreen'
 import AdminPanel            from './components/AdminPanel'
 import BimViewerPopup        from './components/BimViewerPopup'
+import LearningPlatform      from './components/LearningPlatform'
 import { hashPassword, uid } from './utils'
 import { deriveKey, encryptJSON, decryptJSON, newSalt } from './crypto'
 
@@ -673,6 +674,18 @@ export default function App() {
     )
   }
 
+  if (view === 'learning') {
+    return wrap(
+      <>
+        <LearningPlatform
+          serverUser={serverUser}
+          onBack={() => setView('home')}
+        />
+        <UpdateBanner /><SaveErrorBanner />
+      </>
+    )
+  }
+
   return wrap(
     <>
       <ProjectsHome
@@ -687,6 +700,7 @@ export default function App() {
         onSetPassword={handleSetProjectPassword}
         onRemovePassword={handleRemoveProjectPassword}
         onOpenContactDatabase={() => setView('contact-database')}
+        onOpenLearning={() => setView('learning')}
         onImportProject={handleImportProject}
         serverUser={serverUser}
         onLogout={isServer ? handleLogout : null}
