@@ -55,7 +55,7 @@ function promoteAgenda(agenda, existingItems) {
   ]
 }
 
-export default function ProtocolEditor({ protocol, protocols, projects, projectContacts, serverUser, logoDataUrl, clientLogoDataUrl, onUpdate, onUpdateProject, onBack, onRefresh, onOpenBim }) {
+export default function ProtocolEditor({ protocol, protocols, projects, projectContacts, serverUser, logoDataUrl, clientLogoDataUrl, onUpdate, onUpdateProject, onBack, onRefresh, onOpenBim, onOpenBimIssue }) {
   const change = (patch) => onUpdate(protocol.id, patch)
   const linkedProject  = (projects ?? []).find(p => p.id === protocol.projectId) ?? null
   // Freimeldung genehmigen: Systemadmin oder Projektadmin (Ersteller/Co-Admin)
@@ -778,6 +778,7 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
             projectContacts={enrichedProjectContacts}
             protocolId={protocol.id}
             canManageRelease={canManageRelease}
+            onOpenBimIssue={onOpenBimIssue}
           />
         </div>
 

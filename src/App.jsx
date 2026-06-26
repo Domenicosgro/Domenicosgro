@@ -15,6 +15,7 @@ import NotesList             from './components/NotesList'
 import ContactDatabase       from './components/ContactDatabase'
 import LoginScreen           from './components/LoginScreen'
 import AdminPanel            from './components/AdminPanel'
+import BimViewerPopup        from './components/BimViewerPopup'
 import { hashPassword, uid } from './utils'
 import { deriveKey, encryptJSON, decryptJSON, newSalt } from './crypto'
 
@@ -54,6 +55,7 @@ export default function App() {
   const [selectedPhase,     setSelectedPhase]     = useState(null)   // 'planung' | 'bau' | null
   const [contactsOrigin,    setContactsOrigin]    = useState('protocols')
   const [bimReturnView,     setBimReturnView]     = useState('project-dashboard')
+  const [bimPopup,          setBimPopup]          = useState(null)   // { project, viewpoint, title } | null
   const [activeId,          setActiveId]          = useState(null)
   const activeIdRef = useRef(activeId)
   activeIdRef.current = activeId
@@ -417,10 +419,21 @@ export default function App() {
     return res.json()
   }, [])
 
+  const sessionToken = typeof localStorage !== 'undefined' ? localStorage.getItem('kp_session_token') : null
+
   const wrap = (children) => (
     <>
       {children}
       {showAdmin && <AdminPanel serverUser={serverUser} onClose={() => setShowAdmin(false)} />}
+      {bimPopup && (
+        <BimViewerPopup
+          project={bimPopup.project}
+          token={sessionToken}
+          viewpoint={bimPopup.viewpoint}
+          title={bimPopup.title}
+          onClose={() => setBimPopup(null)}
+        />
+      )}
       <WebUpdateBanner />
     </>
   )
@@ -467,6 +480,7 @@ export default function App() {
           onBack={handleBackFromEditor}
           onRefresh={handleRefresh}
           onOpenBim={linkedProject?.bimMeta ? () => { setBimReturnView('editor'); setView('project-bim') } : undefined}
+          onOpenBimIssue={linkedProject?.bimMeta ? (viewpoint, title) => setBimPopup({ project: linkedProject, viewpoint, title }) : undefined}
         />
         <UpdateBanner /><SaveErrorBanner />
       </>
@@ -533,6 +547,7 @@ export default function App() {
           onBack={() => setView('project-dashboard')}
           project={project}
           onOpenBim={project?.bimMeta ? () => { setBimReturnView('project-massnahmen'); setView('project-bim') } : undefined}
+          onOpenBimIssue={project?.bimMeta ? (viewpoint, title) => setBimPopup({ project, viewpoint, title }) : undefined}
         />
         <UpdateBanner /><SaveErrorBanner />
       </>
@@ -558,6 +573,7 @@ export default function App() {
         priority: issue.priority || 'mittel',
         remarks: '',
         bimIssueId: issue.id,
+        bimViewpoint: issue.viewpoint || null,
         releaseHistory: [],
       }
       handleUpdateProtocol(protocolId, { actionItems: [...existing, newItem] })

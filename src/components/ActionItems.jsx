@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { Plus, Trash2, CheckSquare, EyeOff, Eye, Search, X,
-         CheckCircle2, Circle, User, Calendar, Flag, Box } from 'lucide-react'
+         CheckCircle2, Circle, User, Calendar, Flag, Box, Video } from 'lucide-react'
 import { emptyActionItem, ACTION_STATUSES, PRIORITIES, formatDate } from '../utils'
 import FreimeldungBadge from './FreimeldungBadge'
 
@@ -17,7 +17,7 @@ function highlight(text, query) {
   )
 }
 
-export default function ActionItems({ items, onChange, agendaItems = [], projectContacts = [], protocolId = null, canManageRelease = false }) {
+export default function ActionItems({ items, onChange, agendaItems = [], projectContacts = [], protocolId = null, canManageRelease = false, onOpenBimIssue }) {
   const [hideCompleted, setHideCompleted] = useState(false)
   const [search, setSearch] = useState('')
   const contactListId = 'action-contacts-list'
@@ -121,8 +121,20 @@ export default function ActionItems({ items, onChange, agendaItems = [], project
             {(isBim || isCarried || item.protocolItemId || item.releaseRequest || item.releaseHistory?.length > 0) && (
               <div className="flex flex-wrap gap-1 mb-0.5 items-center">
                 {isBim && (
-                  <span className="badge text-xs bg-cyan-100 text-cyan-700 border border-cyan-300 flex items-center gap-0.5">
-                    <Box size={9} /> BIM-Issue
+                  <span className="flex items-center gap-1">
+                    <span className="badge text-xs bg-cyan-100 text-cyan-700 border border-cyan-300 flex items-center gap-0.5">
+                      <Box size={9} /> BIM-Issue
+                    </span>
+                    {item.bimViewpoint && onOpenBimIssue && (
+                      <button
+                        type="button"
+                        title="Im BIM-Viewer anzeigen"
+                        onClick={() => onOpenBimIssue(item.bimViewpoint, item.description)}
+                        className="badge text-xs bg-cyan-600 text-white border border-cyan-500 flex items-center gap-0.5 hover:bg-cyan-700 transition-colors cursor-pointer no-print"
+                      >
+                        <Video size={9} /> Anzeigen
+                      </button>
+                    )}
                   </span>
                 )}
                 {isCarried && <span className="badge-blue text-xs">↩ Übernommen</span>}

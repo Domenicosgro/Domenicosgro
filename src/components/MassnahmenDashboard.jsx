@@ -230,7 +230,7 @@ function EmailModal({ groups, onClose }) {
 }
 
 // ── Hauptkomponente ───────────────────────────────────────────────────────────
-export default function MassnahmenDashboard({ protocols, projects, projectId, projectContacts, serverUser, onOpenProtocol, onUpdateProtocol, onBack, project, onOpenBim }) {
+export default function MassnahmenDashboard({ protocols, projects, projectId, projectContacts, serverUser, onOpenProtocol, onUpdateProtocol, onBack, project, onOpenBim, onOpenBimIssue }) {
   const isScoped = !!projectId
   const scopedName = isScoped ? (projects.find(p => p.id === projectId)?.name || '') : ''
 
@@ -716,7 +716,12 @@ export default function MassnahmenDashboard({ protocols, projects, projectId, pr
                       : ovr ? 'bg-red-50'
                       : idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/40'
                     return (
-                      <tr key={issue.id} className={`${rowBg} border-b border-gray-100 hover:bg-cyan-50/40 transition-colors`}>
+                      <tr
+                        key={issue.id}
+                        className={`${rowBg} border-b border-gray-100 hover:bg-cyan-50/40 transition-colors ${issue.viewpoint && onOpenBimIssue ? 'cursor-pointer' : ''}`}
+                        onClick={() => issue.viewpoint && onOpenBimIssue && onOpenBimIssue(issue.viewpoint, issue.title)}
+                        title={issue.viewpoint && onOpenBimIssue ? 'Im BIM-Viewer anzeigen' : undefined}
+                      >
                         <td className="px-4 py-2.5 text-xs text-gray-500 whitespace-nowrap">
                           {BIM_TYPE_CFG[issue.type] || issue.type}
                         </td>
@@ -749,7 +754,7 @@ export default function MassnahmenDashboard({ protocols, projects, projectId, pr
                           <select
                             className={`select text-xs py-0.5 px-1.5 font-medium border ${sc.badge} bg-transparent`}
                             value={issue.status}
-                            onChange={e => handleBimStatusChange(issue, e.target.value)}
+                            onChange={e => { e.stopPropagation(); handleBimStatusChange(issue, e.target.value) }}
                           >
                             {Object.entries(BIM_STATUS_CFG).map(([v, c]) => (
                               <option key={v} value={v}>{c.label}</option>
