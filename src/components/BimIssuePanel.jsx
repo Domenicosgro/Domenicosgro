@@ -313,20 +313,30 @@ export default function BimIssuePanel({
     const updated = { ...data, status: newStatus, updatedAt: new Date().toISOString() }
     const headers = { 'Content-Type': 'application/json' }
     if (token) headers['Authorization'] = `Bearer ${token}`
-    // Optimistic update
-    setIssues(prev => prev.map(i => i.id === issue.id ? { ...i, status: newStatus } : i))
+    // Optimistic update – inkl. hochgezählter Version (Server zählt bei Erfolg +1)
+    setIssues(prev => prev.map(i => i.id === issue.id ? { ...i, status: newStatus, _version: (_version || 0) + 1 } : i))
     try {
       const res = await fetch(`/api/projects/${project.id}/bim-issues/${issue.id}`, {
         method: 'PATCH',
         headers,
         body: JSON.stringify({ data: updated, version: _version }),
       })
-      if (!res.ok) {
-        // Roll back optimistic update
-        setIssues(prev => prev.map(i => i.id === issue.id ? issue : i))
+      if (res.ok) return
+      if (res.status === 409) {
+        // Versionskonflikt: frische Daten neu laden, damit der nächste Wechsel passt
         const d = await res.json().catch(() => ({}))
-        setPanelError(`Status konnte nicht geändert werden: ${d.error || `Fehler ${res.status}`}`)
+        if (d.serverData) {
+          setIssues(prev => prev.map(i => i.id === issue.id ? d.serverData : i))
+        } else {
+          fetchIssues()
+        }
+        setPanelError('Status wurde zwischenzeitlich anderweitig geändert – Liste aktualisiert, bitte erneut versuchen.')
+        return
       }
+      // Anderer Fehler: Optimistic Update zurückrollen
+      setIssues(prev => prev.map(i => i.id === issue.id ? issue : i))
+      const d = await res.json().catch(() => ({}))
+      setPanelError(`Status konnte nicht geändert werden: ${d.error || `Fehler ${res.status}`}`)
     } catch (e) {
       setIssues(prev => prev.map(i => i.id === issue.id ? issue : i))
       setPanelError(`Status konnte nicht geändert werden: ${e.message}`)

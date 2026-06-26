@@ -267,15 +267,22 @@ export default function MassnahmenDashboard({ protocols, projects, projectId, pr
   const handleBimStatusChange = async (issue, newStatus) => {
     const token = typeof localStorage !== 'undefined' ? localStorage.getItem('kp_session_token') : null
     const headers = { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }
-    setBimIssues(prev => prev.map(i => i.id === issue.id ? { ...i, status: newStatus } : i))
+    const { _version, _updatedAt, ...data } = issue
+    // Optimistic update inkl. hochgezählter Version (Server zählt bei Erfolg +1)
+    setBimIssues(prev => prev.map(i => i.id === issue.id ? { ...i, status: newStatus, _version: (_version || 0) + 1 } : i))
     try {
-      const { _version, _updatedAt, ...data } = issue
       const res = await fetch(`/api/projects/${projectId}/bim-issues/${issue.id}`, {
         method: 'PATCH',
         headers,
-        body: JSON.stringify({ data: { ...data, status: newStatus }, version: _version }),
+        body: JSON.stringify({ data: { ...data, status: newStatus, updatedAt: new Date().toISOString() }, version: _version }),
       })
-      if (!res.ok) setBimIssues(prev => prev.map(i => i.id === issue.id ? issue : i))
+      if (res.ok) return
+      if (res.status === 409) {
+        const d = await res.json().catch(() => ({}))
+        if (d.serverData) setBimIssues(prev => prev.map(i => i.id === issue.id ? d.serverData : i))
+      } else {
+        setBimIssues(prev => prev.map(i => i.id === issue.id ? issue : i))
+      }
     } catch {
       setBimIssues(prev => prev.map(i => i.id === issue.id ? issue : i))
     }
