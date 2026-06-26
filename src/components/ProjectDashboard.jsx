@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { ArrowLeft, FileText, Users, HardHat, Pencil, NotebookPen, ChevronRight, BarChart2, UserCog, BookOpen, Box } from 'lucide-react'
 import ProjectAdminPanel from './ProjectAdminPanel'
 
@@ -40,6 +40,17 @@ export default function ProjectDashboard({
   onUpdateProject, onBack, onOpenProtocols, onOpenNotes, onManageContacts, onOpenMassnahmen, onOpenNotizbuch, onOpenBim, onSaved,
 }) {
   const [showAdminPanel, setShowAdminPanel] = useState(false)
+  const [bimIssues,      setBimIssues]      = useState([])
+
+  useEffect(() => {
+    if (!project.bimMeta) return
+    const token = typeof localStorage !== 'undefined' ? localStorage.getItem('kp_session_token') : null
+    const headers = token ? { Authorization: `Bearer ${token}` } : {}
+    fetch(`/api/projects/${project.id}/bim-issues`, { headers })
+      .then(r => r.ok ? r.json() : [])
+      .then(setBimIssues)
+      .catch(() => {})
+  }, [project.id, project.bimMeta])
 
   // Darf der aktuelle Nutzer dieses Projekt administrieren? (Systemadmin oder Projektadmin)
   const canAdmin = isServer && serverUser && (
@@ -57,8 +68,9 @@ export default function ProjectDashboard({
   const projectNotes  = (notes ?? []).filter(n => n.projectId === project.id)
   const contacts      = project.contacts ?? []
 
-  const allActions  = protos.flatMap(p => p.actionItems ?? [])
-  const openActions = allActions.filter(a => a.status === 'offen' || a.status === 'in_arbeit').length
+  const allActions   = protos.flatMap(p => (p.actionItems ?? []).filter(a => !a.bimIssueId))
+  const openActions  = allActions.filter(a => a.status === 'offen' || a.status === 'in_arbeit').length
+  const openBimIssues = bimIssues.filter(i => i.status === 'offen' || i.status === 'in_arbeit').length
 
   return (
     <div className="app-page">
@@ -154,7 +166,8 @@ export default function ProjectDashboard({
             : 'IFC-Modell hochladen und im Browser betrachten'}
           accent="border-cyan-500"
           onClick={onOpenBim}
-          stat1={project.bimMeta ? { value: 'IFC', label: 'Modell vorhanden' } : undefined}
+          stat1={project.bimMeta ? { value: openBimIssues, label: 'Issues offen' } : undefined}
+          stat2={project.bimMeta && bimIssues.length > 0 ? { value: bimIssues.length, label: 'Issues gesamt' } : undefined}
         />
 
         {/* Administration – nur für Projektadmins und Systemadmins */}

@@ -1,9 +1,27 @@
-import React, { useState, useMemo } from 'react'
+import React, { useState, useMemo, useEffect } from 'react'
 import { ArrowLeft, AlertTriangle, CheckSquare, Filter, X, Lock, BarChart2,
-         Mail, Send, Loader, ChevronDown, ChevronRight, Check } from 'lucide-react'
+         Mail, Send, Loader, ChevronDown, ChevronRight, Check, Box, Eye } from 'lucide-react'
 import { ACTION_STATUSES, PRIORITIES, formatDate, buildProtocolNo, getChainNo,
          statusBadge, priorityBadge } from '../utils'
 import FreimeldungBadge from './FreimeldungBadge'
+
+const BIM_STATUS_CFG = {
+  offen:       { label: 'Offen',       badge: 'bg-red-100 text-red-700 border-red-300' },
+  in_arbeit:   { label: 'In Arbeit',   badge: 'bg-yellow-100 text-yellow-700 border-yellow-300' },
+  erledigt:    { label: 'Erledigt',    badge: 'bg-green-100 text-green-700 border-green-300' },
+  geschlossen: { label: 'Geschlossen', badge: 'bg-gray-100 text-gray-500 border-gray-300' },
+}
+const BIM_TYPE_CFG = {
+  fehler:     'Fehler',
+  anfrage:    'Anfrage',
+  info:       'Info',
+  sicherheit: 'Sicherheit',
+}
+const BIM_PRIORITY_CFG = {
+  hoch:    { label: 'Hoch',    color: 'text-red-600' },
+  mittel:  { label: 'Mittel',  color: 'text-yellow-600' },
+  niedrig: { label: 'Niedrig', color: 'text-gray-400' },
+}
 
 const isServer   = typeof window !== 'undefined' && !!window.__SERVER_MODE__
 const isElectron = typeof window !== 'undefined' && !!window.electronAPI
@@ -212,7 +230,7 @@ function EmailModal({ groups, onClose }) {
 }
 
 // ── Hauptkomponente ───────────────────────────────────────────────────────────
-export default function MassnahmenDashboard({ protocols, projects, projectId, projectContacts, serverUser, onOpenProtocol, onUpdateProtocol, onBack }) {
+export default function MassnahmenDashboard({ protocols, projects, projectId, projectContacts, serverUser, onOpenProtocol, onUpdateProtocol, onBack, project, onOpenBim }) {
   const isScoped = !!projectId
   const scopedName = isScoped ? (projects.find(p => p.id === projectId)?.name || '') : ''
 
@@ -232,6 +250,36 @@ export default function MassnahmenDashboard({ protocols, projects, projectId, pr
   const [onlyOpen,          setOnlyOpen]          = useState(false)
   const [onlyOverdue,       setOnlyOverdue]       = useState(false)
   const [showEmailModal,    setShowEmailModal]    = useState(false)
+  const [bimIssues,         setBimIssues]         = useState([])
+  const [bimStatusFilter,   setBimStatusFilter]   = useState('alle')
+
+  // BIM-Issues laden (nur wenn projektbezogen und BIM-Modell vorhanden)
+  useEffect(() => {
+    if (!isScoped || !project?.bimMeta) return
+    const token = typeof localStorage !== 'undefined' ? localStorage.getItem('kp_session_token') : null
+    const headers = token ? { Authorization: `Bearer ${token}` } : {}
+    fetch(`/api/projects/${projectId}/bim-issues`, { headers })
+      .then(r => r.ok ? r.json() : [])
+      .then(setBimIssues)
+      .catch(() => {})
+  }, [projectId, isScoped, project?.bimMeta])
+
+  const handleBimStatusChange = async (issue, newStatus) => {
+    const token = typeof localStorage !== 'undefined' ? localStorage.getItem('kp_session_token') : null
+    const headers = { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }
+    setBimIssues(prev => prev.map(i => i.id === issue.id ? { ...i, status: newStatus } : i))
+    try {
+      const { _version, _updatedAt, ...data } = issue
+      const res = await fetch(`/api/projects/${projectId}/bim-issues/${issue.id}`, {
+        method: 'PATCH',
+        headers,
+        body: JSON.stringify({ data: { ...data, status: newStatus }, version: _version }),
+      })
+      if (!res.ok) setBimIssues(prev => prev.map(i => i.id === issue.id ? issue : i))
+    } catch {
+      setBimIssues(prev => prev.map(i => i.id === issue.id ? issue : i))
+    }
+  }
 
   // When scoped to a project, only include its protocols
   const scopedProtocols = useMemo(() =>
@@ -239,14 +287,15 @@ export default function MassnahmenDashboard({ protocols, projects, projectId, pr
     [protocols, projectId, isScoped]
   )
 
-  // Flat list: alle Maßnahmen aus (scoped) Protokollen
+  // Flat list: reguläre Maßnahmen (OHNE BIM-Issues) aus (scoped) Protokollen
   const allItems = useMemo(() => {
     const items = []
     for (const protocol of scopedProtocols) {
-      const project    = projects.find(p => p.id === protocol.projectId) ?? null
+      const proj       = projects.find(p => p.id === protocol.projectId) ?? null
       const chainNo    = getChainNo(protocol, protocols)
       const protocolNo = buildProtocolNo(protocol.projectName, protocol.date, chainNo, protocol.meetingType)
       for (const item of (protocol.actionItems ?? [])) {
+        if (item.bimIssueId) continue  // BIM-Issues werden separat angezeigt
         items.push({
           ...item,
           _protocolId:    protocol.id,
@@ -254,7 +303,7 @@ export default function MassnahmenDashboard({ protocols, projects, projectId, pr
           _protocolDate:  protocol.date,
           _projectId:     protocol.projectId,
           _projectName:   protocol.projectName,
-          _projectLocked: project !== null && !project.isUnlocked,
+          _projectLocked: proj !== null && !proj.isUnlocked,
         })
       }
     }
@@ -585,6 +634,127 @@ export default function MassnahmenDashboard({ protocols, projects, projectId, pr
           <div className="px-4 py-2 text-xs text-gray-400 border-t border-gray-100 bg-gray-50/50">
             {visible.length} von {allItems.length} Maßnahmen · Klick auf eine Zeile öffnet das Protokoll
           </div>
+        </div>
+      )}
+
+      {/* BIM-Issues – separater Abschnitt (nur wenn Projekt BIM-Modell hat) */}
+      {isScoped && project?.bimMeta && (
+        <div className="card overflow-hidden">
+          {/* BIM-Abschnitt-Header */}
+          <div className="flex items-center justify-between px-4 py-3 bg-cyan-50 border-b border-cyan-200">
+            <div className="flex items-center gap-2">
+              <Box size={16} className="text-cyan-600" />
+              <span className="font-semibold text-sm text-gray-800">BIM-Issues</span>
+              {bimIssues.filter(i => i.status === 'offen' || i.status === 'in_arbeit').length > 0 && (
+                <span className="badge text-xs bg-cyan-100 text-cyan-700 border border-cyan-300">
+                  {bimIssues.filter(i => i.status === 'offen' || i.status === 'in_arbeit').length} offen
+                </span>
+              )}
+              <span className="text-xs text-gray-500">{bimIssues.length} gesamt</span>
+            </div>
+            <div className="flex items-center gap-2">
+              {/* Status-Filter */}
+              <div className="flex gap-1">
+                {[['alle', 'Alle'], ['offen', 'Offen'], ['in_arbeit', 'In Arbeit'], ['erledigt', 'Erledigt'], ['geschlossen', 'Geschlossen']].map(([v, l]) => (
+                  <button
+                    key={v}
+                    onClick={() => setBimStatusFilter(v)}
+                    className={`text-[10px] px-2 py-0.5 border transition-colors ${
+                      bimStatusFilter === v
+                        ? 'border-brand-500 bg-brand-50 text-brand-700'
+                        : 'border-gray-200 text-gray-500 hover:border-gray-300 hover:text-gray-700'
+                    }`}
+                  >
+                    {l}
+                  </button>
+                ))}
+              </div>
+              {onOpenBim && (
+                <button
+                  onClick={onOpenBim}
+                  className="btn-secondary text-xs flex items-center gap-1"
+                  title="BIM-Viewer öffnen"
+                >
+                  <Eye size={12} /> BIM-Viewer
+                </button>
+              )}
+            </div>
+          </div>
+
+          {bimIssues.length === 0 ? (
+            <div className="p-8 text-center text-sm text-gray-400">
+              Keine BIM-Issues erfasst.
+            </div>
+          ) : (
+            <table className="w-full text-sm border-collapse">
+              <thead>
+                <tr className="border-b border-gray-200 bg-gray-50/80">
+                  <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Typ</th>
+                  <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Titel / Beschreibung</th>
+                  <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Zuständig</th>
+                  <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Frist</th>
+                  <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Priorität</th>
+                  <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {bimIssues
+                  .filter(i => bimStatusFilter === 'alle' || i.status === bimStatusFilter)
+                  .map((issue, idx) => {
+                    const sc  = BIM_STATUS_CFG[issue.status]   || BIM_STATUS_CFG.offen
+                    const pc  = BIM_PRIORITY_CFG[issue.priority] || BIM_PRIORITY_CFG.mittel
+                    const ovr = !!(issue.dueDate && (issue.status === 'offen' || issue.status === 'in_arbeit') && issue.dueDate < todayStr())
+                    const rowBg = issue.status === 'erledigt' || issue.status === 'geschlossen'
+                      ? 'bg-gray-50/60'
+                      : ovr ? 'bg-red-50'
+                      : idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/40'
+                    return (
+                      <tr key={issue.id} className={`${rowBg} border-b border-gray-100 hover:bg-cyan-50/40 transition-colors`}>
+                        <td className="px-4 py-2.5 text-xs text-gray-500 whitespace-nowrap">
+                          {BIM_TYPE_CFG[issue.type] || issue.type}
+                        </td>
+                        <td className="px-4 py-2.5 max-w-xs">
+                          <span className="flex items-center gap-1.5">
+                            <span className="badge text-[10px] bg-cyan-100 text-cyan-700 border border-cyan-300 flex items-center gap-0.5 flex-shrink-0">
+                              <Box size={8} /> BIM
+                            </span>
+                            <span className={`font-medium ${issue.status === 'erledigt' || issue.status === 'geschlossen' ? 'line-through text-gray-400' : 'text-gray-800'}`}>
+                              {issue.title}
+                            </span>
+                          </span>
+                          {issue.description && (
+                            <span className="block text-xs text-gray-400 truncate mt-0.5">{issue.description}</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-2.5 text-xs text-gray-600 whitespace-nowrap">{issue.assignedTo || '–'}</td>
+                        <td className="px-4 py-2.5 text-xs whitespace-nowrap">
+                          {issue.dueDate ? (
+                            <span className={ovr ? 'text-red-600 font-semibold' : 'text-gray-600'}>
+                              {formatDate(issue.dueDate)}
+                              {ovr && <AlertTriangle size={11} className="inline ml-1 text-red-500" />}
+                            </span>
+                          ) : <span className="text-gray-400">–</span>}
+                        </td>
+                        <td className="px-4 py-2.5">
+                          <span className={`text-xs font-medium ${pc.color}`}>{pc.label}</span>
+                        </td>
+                        <td className="px-3 py-2" onClick={e => e.stopPropagation()}>
+                          <select
+                            className={`select text-xs py-0.5 px-1.5 font-medium border ${sc.badge} bg-transparent`}
+                            value={issue.status}
+                            onChange={e => handleBimStatusChange(issue, e.target.value)}
+                          >
+                            {Object.entries(BIM_STATUS_CFG).map(([v, c]) => (
+                              <option key={v} value={v}>{c.label}</option>
+                            ))}
+                          </select>
+                        </td>
+                      </tr>
+                    )
+                  })}
+              </tbody>
+            </table>
+          )}
         </div>
       )}
 

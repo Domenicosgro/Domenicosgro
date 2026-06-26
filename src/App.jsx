@@ -531,6 +531,8 @@ export default function App() {
           onOpenProtocol={openProtocolFromDashboard}
           onUpdateProtocol={handleUpdateProtocol}
           onBack={() => setView('project-dashboard')}
+          project={project}
+          onOpenBim={project?.bimMeta ? () => { setBimReturnView('project-massnahmen'); setView('project-bim') } : undefined}
         />
         <UpdateBanner /><SaveErrorBanner />
       </>
@@ -555,6 +557,7 @@ export default function App() {
         status: 'offen',
         priority: issue.priority || 'mittel',
         remarks: '',
+        bimIssueId: issue.id,
         releaseHistory: [],
       }
       handleUpdateProtocol(protocolId, { actionItems: [...existing, newItem] })
@@ -565,7 +568,12 @@ export default function App() {
         serverUser={serverUser}
         token={typeof localStorage !== 'undefined' ? localStorage.getItem('kp_session_token') : null}
         onBack={() => setView(bimReturnView)}
-        backLabel={bimReturnView === 'protocols' ? 'Protokolle' : bimReturnView === 'editor' ? 'Protokoll' : 'Dashboard'}
+        backLabel={
+        bimReturnView === 'protocols'          ? 'Protokolle' :
+        bimReturnView === 'editor'             ? 'Protokoll' :
+        bimReturnView === 'project-massnahmen' ? 'Maßnahmen' :
+        'Dashboard'
+      }
         onProjectUpdated={handleRefresh}
         protocols={projectProtocols}
         onAddBimIssueToProtocol={handleAddBimIssueToProtocol}
