@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react'
-import { Plus, X, AlertTriangle, MessageSquare, Info, Shield, Trash2, Eye, Edit2, Camera, ChevronDown } from 'lucide-react'
+import { Plus, X, AlertTriangle, MessageSquare, Info, Shield, Trash2, Eye, Edit2, Camera, ArrowRight, AlertCircle } from 'lucide-react'
 import { formatDate } from '../utils'
 
 const TYPE_CFG = {
@@ -22,7 +22,7 @@ const PRIORITY_CFG = {
   niedrig: { label: 'Niedrig', color: 'text-gray-500' },
 }
 
-function IssueForm({ project, issue, viewpoint, onSave, onCancel }) {
+function IssueForm({ project, issue, viewpoint, onSave, onCancel, error }) {
   const contacts = project.contacts || []
   const [form, setForm] = useState({
     title:       issue?.title       || '',
@@ -41,6 +41,12 @@ function IssueForm({ project, issue, viewpoint, onSave, onCancel }) {
         <span className="text-xs font-semibold text-gray-200">{issue ? 'Issue bearbeiten' : 'Neues Issue'}</span>
         <button onClick={onCancel} className="text-gray-500 hover:text-gray-300 transition-colors"><X size={13} /></button>
       </div>
+
+      {error && (
+        <div className="flex items-center gap-1.5 text-xs text-red-400 bg-red-900/20 border border-red-800 px-2 py-1">
+          <AlertCircle size={11} /> {error}
+        </div>
+      )}
 
       {!issue && viewpoint && (
         <div className="flex items-center gap-1.5 text-xs text-brand-400 bg-brand-900/20 border border-brand-800 px-2 py-1">
@@ -115,17 +121,31 @@ function IssueForm({ project, issue, viewpoint, onSave, onCancel }) {
   )
 }
 
-function IssueCard({ issue, onNavigate, onEdit, onDelete, onStatusChange }) {
-  const type    = TYPE_CFG[issue.type]    || TYPE_CFG.info
-  const status  = STATUS_CFG[issue.status] || STATUS_CFG.offen
+function IssueCard({ issue, onNavigate, onEdit, onDelete, onStatusChange, protocols, onAddToProtocol }) {
+  const type     = TYPE_CFG[issue.type]    || TYPE_CFG.info
+  const status   = STATUS_CFG[issue.status] || STATUS_CFG.offen
   const priority = PRIORITY_CFG[issue.priority] || PRIORITY_CFG.mittel
   const TypeIcon = type.Icon
+
+  const [showProtoSelect, setShowProtoSelect] = useState(false)
+  const [addedConfirm,    setAddedConfirm]    = useState(false)
 
   const cycleStatus = () => {
     const order = ['offen', 'in_arbeit', 'erledigt', 'geschlossen']
     const next  = order[(order.indexOf(issue.status) + 1) % order.length]
     onStatusChange(issue, next)
   }
+
+  const handleSelectProtocol = (e) => {
+    const protocolId = e.target.value
+    if (!protocolId) return
+    onAddToProtocol(protocolId, issue)
+    setShowProtoSelect(false)
+    setAddedConfirm(true)
+    setTimeout(() => setAddedConfirm(false), 2500)
+  }
+
+  const canAddToProtocol = protocols && protocols.length > 0 && onAddToProtocol
 
   return (
     <div className="border-b border-gray-800 hover:bg-gray-800/50 transition-colors group">
@@ -157,6 +177,15 @@ function IssueCard({ issue, onNavigate, onEdit, onDelete, onStatusChange }) {
             </div>
           </div>
           <div className="flex items-center gap-1 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+            {canAddToProtocol && (
+              <button
+                onClick={() => setShowProtoSelect(v => !v)}
+                title="Als Protokoll-Aufgabe übernehmen"
+                className="text-gray-500 hover:text-brand-400 transition-colors p-0.5"
+              >
+                <ArrowRight size={12} />
+              </button>
+            )}
             {issue.viewpoint && (
               <button onClick={() => onNavigate(issue)} title="Zu Standpunkt navigieren" className="text-gray-500 hover:text-brand-400 transition-colors p-0.5">
                 <Eye size={12} />
@@ -170,6 +199,28 @@ function IssueCard({ issue, onNavigate, onEdit, onDelete, onStatusChange }) {
             </button>
           </div>
         </div>
+
+        {addedConfirm && (
+          <p className="text-[10px] text-green-400 mt-1.5 ml-5">✓ Als Aufgabe zum Protokoll hinzugefügt</p>
+        )}
+        {showProtoSelect && !addedConfirm && (
+          <div className="mt-2 ml-5">
+            <select
+              autoFocus
+              defaultValue=""
+              onChange={handleSelectProtocol}
+              onBlur={() => setShowProtoSelect(false)}
+              className="w-full bg-gray-800 border border-brand-600 text-white text-[10px] px-1.5 py-1 focus:outline-none"
+            >
+              <option value="" disabled>Protokoll auswählen…</option>
+              {protocols.map(p => (
+                <option key={p.id} value={p.id}>
+                  {p.date ? formatDate(p.date) : 'Ohne Datum'} – {p.meetingType || p.projectName || 'Protokoll'}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
       </div>
     </div>
   )
@@ -177,20 +228,30 @@ function IssueCard({ issue, onNavigate, onEdit, onDelete, onStatusChange }) {
 
 export default function BimIssuePanel({
   project, token, viewerRef, capturedViewpoint, onStartPick, onClearViewpoint,
+  protocols, onAddToProtocol,
 }) {
-  const [issues,      setIssues]      = useState([])
-  const [loading,     setLoading]     = useState(false)
-  const [creating,    setCreating]    = useState(false)
+  const [issues,       setIssues]       = useState([])
+  const [loading,      setLoading]      = useState(false)
+  const [panelError,   setPanelError]   = useState(null)
+  const [formError,    setFormError]    = useState(null)
+  const [creating,     setCreating]     = useState(false)
   const [editingIssue, setEditingIssue] = useState(null)
   const [filterStatus, setFilterStatus] = useState('alle')
 
   const fetchIssues = useCallback(async () => {
     setLoading(true)
+    setPanelError(null)
     try {
       const headers = {}
       if (token) headers['Authorization'] = `Bearer ${token}`
       const res = await fetch(`/api/projects/${project.id}/bim-issues`, { headers })
-      if (res.ok) setIssues(await res.json())
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data.error || `Fehler ${res.status}`)
+      }
+      setIssues(await res.json())
+    } catch (e) {
+      setPanelError(`Issues konnten nicht geladen werden: ${e.message}`)
     } finally {
       setLoading(false)
     }
@@ -198,36 +259,53 @@ export default function BimIssuePanel({
 
   useEffect(() => { fetchIssues() }, [fetchIssues])
 
-  // When a viewpoint is captured from pick mode, open the create form
   useEffect(() => {
     if (capturedViewpoint) setCreating(true)
   }, [capturedViewpoint])
 
   const handleCreate = async (form) => {
+    setFormError(null)
     const headers = { 'Content-Type': 'application/json' }
     if (token) headers['Authorization'] = `Bearer ${token}`
-    await fetch(`/api/projects/${project.id}/bim-issues`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({ ...form, viewpoint: capturedViewpoint }),
-    })
-    setCreating(false)
-    onClearViewpoint()
-    fetchIssues()
+    try {
+      const res = await fetch(`/api/projects/${project.id}/bim-issues`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ ...form, viewpoint: capturedViewpoint }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data.error || `Fehler ${res.status}`)
+      }
+      setCreating(false)
+      onClearViewpoint()
+      fetchIssues()
+    } catch (e) {
+      setFormError(`Erstellen fehlgeschlagen: ${e.message}`)
+    }
   }
 
   const handleUpdate = async (form) => {
+    setFormError(null)
     const { _version, _updatedAt, ...data } = editingIssue
     const updated = { ...data, ...form }
     const headers = { 'Content-Type': 'application/json' }
     if (token) headers['Authorization'] = `Bearer ${token}`
-    await fetch(`/api/projects/${project.id}/bim-issues/${editingIssue.id}`, {
-      method: 'PATCH',
-      headers,
-      body: JSON.stringify({ data: updated, version: _version }),
-    })
-    setEditingIssue(null)
-    fetchIssues()
+    try {
+      const res = await fetch(`/api/projects/${project.id}/bim-issues/${editingIssue.id}`, {
+        method: 'PATCH',
+        headers,
+        body: JSON.stringify({ data: updated, version: _version }),
+      })
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}))
+        throw new Error(d.error || `Fehler ${res.status}`)
+      }
+      setEditingIssue(null)
+      fetchIssues()
+    } catch (e) {
+      setFormError(`Speichern fehlgeschlagen: ${e.message}`)
+    }
   }
 
   const handleStatusChange = async (issue, newStatus) => {
@@ -235,22 +313,43 @@ export default function BimIssuePanel({
     const updated = { ...data, status: newStatus, updatedAt: new Date().toISOString() }
     const headers = { 'Content-Type': 'application/json' }
     if (token) headers['Authorization'] = `Bearer ${token}`
-    await fetch(`/api/projects/${project.id}/bim-issues/${issue.id}`, {
-      method: 'PATCH',
-      headers,
-      body: JSON.stringify({ data: updated, version: _version }),
-    })
-    fetchIssues()
+    // Optimistic update
+    setIssues(prev => prev.map(i => i.id === issue.id ? { ...i, status: newStatus } : i))
+    try {
+      const res = await fetch(`/api/projects/${project.id}/bim-issues/${issue.id}`, {
+        method: 'PATCH',
+        headers,
+        body: JSON.stringify({ data: updated, version: _version }),
+      })
+      if (!res.ok) {
+        // Roll back optimistic update
+        setIssues(prev => prev.map(i => i.id === issue.id ? issue : i))
+        const d = await res.json().catch(() => ({}))
+        setPanelError(`Status konnte nicht geändert werden: ${d.error || `Fehler ${res.status}`}`)
+      }
+    } catch (e) {
+      setIssues(prev => prev.map(i => i.id === issue.id ? issue : i))
+      setPanelError(`Status konnte nicht geändert werden: ${e.message}`)
+    }
   }
 
   const handleDelete = async (issue) => {
     if (!window.confirm(`Issue „${issue.title}" wirklich löschen?`)) return
+    setPanelError(null)
     const headers = {}
     if (token) headers['Authorization'] = `Bearer ${token}`
-    await fetch(`/api/projects/${project.id}/bim-issues/${issue.id}`, {
-      method: 'DELETE', headers,
-    })
-    fetchIssues()
+    try {
+      const res = await fetch(`/api/projects/${project.id}/bim-issues/${issue.id}`, {
+        method: 'DELETE', headers,
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data.error || `Fehler ${res.status}`)
+      }
+      fetchIssues()
+    } catch (e) {
+      setPanelError(`Löschen fehlgeschlagen: ${e.message}`)
+    }
   }
 
   const handleNavigate = (issue) => {
@@ -268,10 +367,20 @@ export default function BimIssuePanel({
 
   const cancelCreate = () => {
     setCreating(false)
+    setFormError(null)
     onClearViewpoint()
   }
 
-  const cancelEdit = () => setEditingIssue(null)
+  const cancelEdit = () => {
+    setEditingIssue(null)
+    setFormError(null)
+  }
+
+  const handleStartCreate = () => {
+    setFormError(null)
+    setCreating(true)
+    setEditingIssue(null)
+  }
 
   const filtered = filterStatus === 'alle'
     ? issues
@@ -291,12 +400,21 @@ export default function BimIssuePanel({
           )}
         </div>
         <button
-          onClick={() => { setCreating(true); setEditingIssue(null) }}
+          onClick={handleStartCreate}
           className="flex items-center gap-1 text-xs px-2 py-1 bg-brand-700/60 hover:bg-brand-700 text-brand-200 border border-brand-600 transition-colors"
         >
           <Plus size={11} /> Neu
         </button>
       </div>
+
+      {/* Fehleranzeige */}
+      {panelError && (
+        <div className="flex items-center gap-1.5 px-3 py-2 text-xs text-red-400 bg-red-900/20 border-b border-red-900/40 flex-shrink-0">
+          <AlertCircle size={11} className="flex-shrink-0" />
+          <span className="flex-1">{panelError}</span>
+          <button onClick={() => setPanelError(null)} className="text-red-600 hover:text-red-400 ml-1"><X size={11} /></button>
+        </div>
+      )}
 
       {/* Status-Filter */}
       <div className="flex gap-1 px-3 py-2 border-b border-gray-800 flex-shrink-0 overflow-x-auto">
@@ -342,15 +460,18 @@ export default function BimIssuePanel({
               viewpoint={editingIssue.viewpoint}
               onSave={handleUpdate}
               onCancel={cancelEdit}
+              error={formError}
             />
           ) : (
             <IssueCard
               key={issue.id}
               issue={issue}
               onNavigate={handleNavigate}
-              onEdit={setEditingIssue}
+              onEdit={(iss) => { setFormError(null); setEditingIssue(iss) }}
               onDelete={handleDelete}
               onStatusChange={handleStatusChange}
+              protocols={protocols}
+              onAddToProtocol={onAddToProtocol}
             />
           )
         ))}
@@ -363,6 +484,7 @@ export default function BimIssuePanel({
           viewpoint={capturedViewpoint}
           onSave={handleCreate}
           onCancel={cancelCreate}
+          error={formError}
         />
       )}
 

@@ -540,6 +540,25 @@ export default function App() {
   if (view === 'project-bim') {
     const project = projectsWithContacts.find(p => p.id === selectedProjectId)
     if (!project) { setView('home'); return null }
+    const projectProtocols = protocols.filter(p => p.projectId === selectedProjectId)
+    const handleAddBimIssueToProtocol = (protocolId, issue) => {
+      const protocol = protocols.find(p => p.id === protocolId)
+      if (!protocol) return
+      const existing = protocol.actionItems || []
+      const maxNo = existing.reduce((m, a) => Math.max(m, a.no || 0), 0)
+      const newItem = {
+        id: uid(),
+        no: maxNo + 1,
+        description: issue.description ? `${issue.title}\n${issue.description}` : issue.title,
+        responsible: issue.assignedTo || '',
+        deadline: issue.dueDate || '',
+        status: 'offen',
+        priority: issue.priority || 'mittel',
+        remarks: '',
+        releaseHistory: [],
+      }
+      handleUpdateProtocol(protocolId, { actionItems: [...existing, newItem] })
+    }
     return (
       <BimView
         project={project}
@@ -548,6 +567,8 @@ export default function App() {
         onBack={() => setView(bimReturnView)}
         backLabel={bimReturnView === 'protocols' ? 'Protokolle' : bimReturnView === 'editor' ? 'Protokoll' : 'Dashboard'}
         onProjectUpdated={handleRefresh}
+        protocols={projectProtocols}
+        onAddBimIssueToProtocol={handleAddBimIssueToProtocol}
       />
     )
   }

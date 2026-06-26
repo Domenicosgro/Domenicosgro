@@ -13,7 +13,7 @@ function formatBytes(bytes) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
-export default function BimView({ project, serverUser, token, onBack, backLabel = 'Dashboard', onProjectUpdated }) {
+export default function BimView({ project, serverUser, token, onBack, backLabel = 'Dashboard', onProjectUpdated, protocols = [], onAddBimIssueToProtocol }) {
   const containerRef = useRef(null)
   const viewerRef    = useRef(null)
   const fileInputRef = useRef(null)
@@ -308,6 +308,8 @@ export default function BimView({ project, serverUser, token, onBack, backLabel 
             capturedViewpoint={capturedViewpoint}
             onStartPick={handleStartPick}
             onClearViewpoint={handleClearViewpoint}
+            protocols={protocols}
+            onAddToProtocol={onAddBimIssueToProtocol}
           />
         </div>
       )}
