@@ -444,15 +444,53 @@ app.post('/api/admin/smtp-test', requireAuth, requireAdmin, async (req, res) => 
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
+app.get('/api/admin/email-settings', requireAuth, requireAdmin, (_req, res) => {
+  try { res.json(getEmailSettings()) }
+  catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.put('/api/admin/email-settings', requireAuth, requireAdmin, writeLimiter, (req, res) => {
+  try {
+    const incoming = req.body || {}
+    // Only allow known top-level keys; merge numeric fields properly
+    const allowed = Object.keys(EMAIL_DEFAULTS)
+    const sanitized = {}
+    for (const type of allowed) {
+      if (!incoming[type]) continue
+      const defaults = EMAIL_DEFAULTS[type]
+      sanitized[type] = {}
+      for (const [field, def] of Object.entries(defaults)) {
+        if (incoming[type][field] === undefined) continue
+        const raw = incoming[type][field]
+        // schedule_day / schedule_hour must be integers within valid ranges
+        if (field === 'schedule_day')  { sanitized[type][field] = Math.min(6,  Math.max(0, parseInt(raw) || 0)); continue }
+        if (field === 'schedule_hour') { sanitized[type][field] = Math.min(23, Math.max(0, parseInt(raw) || 0)); continue }
+        // Text fields: trim, or keep default if empty
+        const val = String(raw).trim()
+        sanitized[type][field] = val === '' ? def : val
+      }
+    }
+    db.appState.set('email_settings', JSON.stringify(sanitized))
+    logEvent('EMAIL_SETTINGS_UPDATED', req)
+    res.json({ ok: true, settings: getEmailSettings() })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
 app.get('/api/admin/synology-status', requireAuth, requireAdmin, (_req, res) => {
   const url = process.env.SYNOLOGY_URL || ''
   res.json({ configured: !!url, url: url || null })
 })
 
+// ── HTML escape (shared across all email builders) ────────────────────────────
+function esc(s) {
+  return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+}
+
 // ── Einladungs-E-Mail bauen ───────────────────────────────────────────────────
 function buildInviteMail({ username, displayName, email, appUrl, isSynology, passwordNote }) {
   const from        = process.env.SMTP_FROM || process.env.GRAPH_SENDER || process.env.SMTP_USER || 'noreply@ghba'
   const shortcutUrl = `${appUrl}/shortcut`
+  const tpl         = getEmailSettings().invite
 
   const logoPath = path.join(__dirname, '../dist/Logo_Komplizen_sky1.png')
   const logoAttachment = fs.existsSync(logoPath)
@@ -487,7 +525,7 @@ function buildInviteMail({ username, displayName, email, appUrl, isSynology, pas
         </td></tr>
         <tr><td style="padding:32px 40px 0 40px;">
           <p style="font-size:22px;font-weight:bold;color:#1e3a5f;margin:0 0 8px 0;">Willkommen, ${displayName}!</p>
-          <p style="margin:0 0 24px 0;color:#6b7280;">Du wurdest eingeladen, GHBA zu nutzen – unser gemeinsames Tool für Besprechungsprotokolle und Projektdokumentation.</p>
+          <p style="margin:0 0 24px 0;color:#6b7280;">${esc(tpl.greeting)}</p>
         </td></tr>
         <tr><td style="padding:0 40px;">
           <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;border:1px solid #e2e8f0;border-left:4px solid #1e3a5f;">
@@ -542,7 +580,7 @@ function buildInviteMail({ username, displayName, email, appUrl, isSynology, pas
           <p style="margin:10px 0 0 0;font-size:12px;color:#6b7280;">Alle Daten liegen sicher auf unserem eigenen Server – kein Cloud-Dienst, keine externen Abhängigkeiten.</p>
         </td></tr>
         <tr><td style="padding:32px 40px;text-align:center;border-top:1px solid #e5e7eb;margin-top:24px;">
-          <p style="margin:0;color:#9ca3af;font-size:12px;">Viel Erfolg und willkommen im Team!</p>
+          <p style="margin:0;color:#9ca3af;font-size:12px;">${esc(tpl.footer)}</p>
         </td></tr>
       </table>
     </td></tr>
@@ -553,7 +591,7 @@ function buildInviteMail({ username, displayName, email, appUrl, isSynology, pas
   const text = [
     `Willkommen ${displayName}!`,
     '',
-    'Du wurdest eingeladen, GHBA zu nutzen.',
+    tpl.greeting,
     '',
     `Adresse:      ${appUrl}`,
     `Benutzername: ${username}`,
@@ -561,7 +599,7 @@ function buildInviteMail({ username, displayName, email, appUrl, isSynology, pas
     '',
     'Desktop-Verknüpfung: ' + shortcutUrl,
     '',
-    'Viel Erfolg und willkommen im Team!',
+    tpl.footer,
   ].join('\n')
 
   return { from, html, text, attachments: logoAttachment }
@@ -587,7 +625,7 @@ app.post('/api/auth/users/:username/invite', requireAuth, requireAdmin, async (r
 
     await mailer.sendMail({
       from, to: user.email,
-      subject: `Willkommen bei GHBA, ${user.display_name || username}!`,
+      subject: applyTpl(getEmailSettings().invite.subject, { name: user.display_name || username }),
       html, text, attachments,
     })
 
@@ -645,7 +683,7 @@ app.post('/api/admin/synology-bulk-invite', requireAuth, requireAdmin, async (re
           })
           await mailer.sendMail({
             from, to: email,
-            subject: `Willkommen bei GHBA, ${displayName || username}!`,
+            subject: applyTpl(getEmailSettings().invite.subject, { name: displayName || username }),
             html, text, attachments,
           })
           invited = true
@@ -690,7 +728,8 @@ app.post('/api/actions/send-email', requireAuth, async (req, res) => {
     const from     = process.env.SMTP_FROM || process.env.GRAPH_SENDER || process.env.SMTP_USER || 'noreply@ghba'
     const today    = new Date().toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })
     const projStr  = projectName || 'Unbekanntes Projekt'
-    const subject  = `Ihre Aufgaben – ${projStr} – Stand ${today}`
+    const taskTpl  = getEmailSettings().task_assignment
+    const subject  = applyTpl(taskTpl.subject, { project: projStr, date: today })
 
     // Absender: eingeloggter Nutzer als Reply-To + Anzeigename im From
     const sender      = req.user !== '__apikey__' && req.user !== '__anonymous__' ? db.users.get(req.user) : null
@@ -733,7 +772,7 @@ app.post('/api/actions/send-email', requireAuth, async (req, res) => {
         </td></tr>
         <tr><td style="padding:28px 36px 16px 36px;">
           <p style="margin:0;font-size:15px;color:#000040;">Guten Tag, <strong>${responsible}</strong>,</p>
-          <p style="margin:10px 0 0 0;color:#4B5563;">nachfolgend finden Sie eine Übersicht Ihrer ${items.length} Aufgabe${items.length !== 1 ? 'n' : ''} aus dem Projekt <strong>${projStr}</strong>. Wir bitten Sie, die Aufgaben fristgerecht zu erfüllen. Der Status wird in der folgenden Projektbesprechung entsprechend aktualisiert.</p>
+          <p style="margin:10px 0 0 0;color:#4B5563;">${esc(applyTpl(taskTpl.intro, { project: projStr, count: String(items.length) }))}</p>
         </td></tr>
         ${releaseUrl ? `<tr><td style="padding:0 36px 8px 36px;">
           <table cellpadding="0" cellspacing="0"><tr><td style="background:#000040;">
@@ -756,7 +795,7 @@ app.post('/api/actions/send-email', requireAuth, async (req, res) => {
           </table>
         </td></tr>
         <tr><td style="padding:20px 36px;border-top:1px solid #E5E7EB;background:#F0F0F0;text-align:center;">
-          <p style="margin:0;color:#9CA3AF;font-size:12px;">GHBA · ${senderName ? `Gesendet von ${senderName}` : 'Automatische Benachrichtigung'} · ${today}</p>
+          <p style="margin:0;color:#9CA3AF;font-size:12px;">${esc(taskTpl.footer)}${senderName ? ` · Gesendet von ${senderName}` : ''} · ${today}</p>
         </td></tr>
       </table>
     </td></tr>
@@ -768,9 +807,7 @@ app.post('/api/actions/send-email', requireAuth, async (req, res) => {
       `Stand: ${today}`, '',
       `Guten Tag, ${responsible},`,
       '',
-      `nachfolgend finden Sie eine Übersicht Ihrer ${items.length} Aufgabe${items.length !== 1 ? 'n' : ''} aus dem Projekt ${projStr}.`,
-      `Wir bitten Sie, die Aufgaben fristgerecht zu erfüllen.`,
-      `Der Status wird in der folgenden Projektbesprechung entsprechend aktualisiert.`,
+      applyTpl(taskTpl.intro, { project: projStr, count: String(items.length) }),
       '',
       ...items.map(item => {
         const dl = item.deadline
@@ -778,7 +815,7 @@ app.post('/api/actions/send-email', requireAuth, async (req, res) => {
         return `• ${item.description || '–'}\n  Protokoll: ${item._protocolNo || '–'} | Frist: ${dl} | Status: ${STATUS_LABELS[item.status] || item.status}`
       }),
       ...(releaseUrl ? ['', 'Aufgaben online freimelden: ' + releaseUrl] : []),
-      '', 'GHBA',
+      '', taskTpl.footer,
     ].join('\n')
 
     await mailer.sendMail({
@@ -1385,6 +1422,50 @@ function fmtDateDe(iso) {
   return `${d}.${m}.${y}`
 }
 
+// ── E-Mail-Einstellungen (Templates + Zeitplanung) ────────────────────────────
+const EMAIL_DEFAULTS = {
+  invite: {
+    subject:  'Willkommen bei GHBA, {name}!',
+    greeting: 'Du wurdest eingeladen, GHBA zu nutzen – unser gemeinsames Tool für Besprechungsprotokolle und Projektdokumentation.',
+    footer:   'Viel Erfolg und willkommen im Team!',
+  },
+  task_assignment: {
+    subject: 'Ihre Aufgaben – {project} – Stand {date}',
+    intro:   'nachfolgend finden Sie eine Übersicht Ihrer Aufgaben aus dem Projekt {project}. Wir bitten Sie, die Aufgaben fristgerecht zu erfüllen. Der Status wird in der folgenden Projektbesprechung entsprechend aktualisiert.',
+    footer:  'GHBA',
+  },
+  release_notification: {
+    subject: 'Neue Freimeldung – {project}',
+    intro:   '{responsible} hat {count} Aufgabe(n) im Projekt {project} freigemeldet. Die Freimeldung erscheint im Protokoll an der jeweiligen Aufgabe als Hinweis „Freimeldung angefordert" und kann dort geprüft und genehmigt werden.',
+    footer:  'GHBA · Aufgabenverwaltung',
+  },
+  weekly_report: {
+    subject:        'Wochenbericht Aufgaben – {project}',
+    releases_intro: 'Folgende Aufgaben wurden in den letzten 7 Tagen genehmigt:',
+    open_intro:     'Folgende Aufgaben sind aktuell noch offen oder in Bearbeitung:',
+    footer:         'GHBA · Automatischer Wochenbericht',
+    schedule_day:   5,    // 0=So, 1=Mo, 2=Di, 3=Mi, 4=Do, 5=Fr, 6=Sa
+    schedule_hour:  10,
+  },
+}
+
+function getEmailSettings() {
+  try {
+    const stored = db.appState.get('email_settings')
+    const overrides = stored ? JSON.parse(stored) : {}
+    const merged = {}
+    for (const [type, defaults] of Object.entries(EMAIL_DEFAULTS)) {
+      merged[type] = { ...defaults, ...(overrides[type] || {}) }
+    }
+    return merged
+  } catch { return JSON.parse(JSON.stringify(EMAIL_DEFAULTS)) }
+}
+
+// Ersetzt {placeholder} im Template durch Variablen
+function applyTpl(tpl, vars = {}) {
+  return String(tpl || '').replace(/\{(\w+)\}/g, (_, k) => (vars[k] !== undefined ? vars[k] : ''))
+}
+
 const RELEASE_STATUS_LABELS = { offen: 'Offen', in_arbeit: 'In Arbeit', erledigt: 'Erledigt', verschoben: 'Verschoben' }
 
 function matchResponsible(itemResponsible, target) {
@@ -1603,6 +1684,11 @@ async function notifyManagersOfRelease(tokenRow, count, appUrl) {
   }
   if (emails.size === 0) return
 
+  const tpl     = getEmailSettings().release_notification
+  const vars    = { responsible: tokenRow.responsible, count: String(count), project: projName }
+  const subject = applyTpl(tpl.subject, vars)
+  const intro   = applyTpl(tpl.intro, vars)
+
   const { from } = systemFrom()
   const today = new Date().toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })
   const html = `<!DOCTYPE html>
@@ -1615,17 +1701,16 @@ async function notifyManagersOfRelease(tokenRow, count, appUrl) {
     <p style="margin:0;font-size:18px;font-weight:bold;color:#fbffe6;font-family:Arial,sans-serif;">Neue Freimeldung</p>
   </td></tr>
   <tr><td style="padding:28px 36px;font-family:Arial,sans-serif;">
-    <p style="margin:0 0 14px 0;color:#374151;"><strong>${tokenRow.responsible}</strong> hat ${count} Aufgabe${count !== 1 ? 'n' : ''} im Projekt <strong>${projName}</strong> freigemeldet.</p>
-    <p style="margin:0 0 14px 0;color:#374151;">Die Freimeldung erscheint im Protokoll an der jeweiligen Aufgabe als Hinweis „Freimeldung angefordert" und kann dort geprüft und genehmigt werden.</p>
+    <p style="margin:0 0 14px 0;color:#374151;">${esc(intro)}</p>
     <p style="margin:0;"><a href="${appUrl}" style="color:#2563eb;font-weight:bold;">Zur Anwendung</a></p>
   </td></tr>
   <tr><td style="padding:16px 36px;border-top:1px solid #e5e7eb;text-align:center;font-family:Arial,sans-serif;">
-    <p style="margin:0;font-size:11px;color:#9ca3af;">GHBA · Aufgabenverwaltung · ${today}</p>
+    <p style="margin:0;font-size:11px;color:#9ca3af;">${esc(tpl.footer)} · ${today}</p>
   </td></tr>
 </table></td></tr></table></body></html>`
-  const text = `${tokenRow.responsible} hat ${count} Aufgabe(n) im Projekt ${projName} freigemeldet.\n\nZur Anwendung: ${appUrl}\n\nGHBA`
+  const text = `${intro}\n\nZur Anwendung: ${appUrl}\n\n${tpl.footer}`
   for (const to of emails) {
-    try { await mailer.sendMail({ from, to, subject: `Neue Freimeldung – ${projName}`, html, text }) }
+    try { await mailer.sendMail({ from, to, subject, html, text }) }
     catch (e) { console.warn('[freimeldung] Mail an', to, 'fehlgeschlagen:', e.message) }
   }
 }
@@ -1931,11 +2016,13 @@ async function sendWeeklyReleaseReports({ appUrl } = {}) {
     }
     if (recipients.size === 0) continue
 
-    const html = buildWeeklyReportHtml(projName, data.releases, data.openTasks)
-    const text = buildWeeklyReportText(projName, data.releases, data.openTasks)
+    const weeklyTpl = getEmailSettings().weekly_report
+    const html = buildWeeklyReportHtml(projName, data.releases, data.openTasks, weeklyTpl)
+    const text = buildWeeklyReportText(projName, data.releases, data.openTasks, weeklyTpl)
     const to   = Array.from(recipients.values()).join(', ')
+    const subject = applyTpl(weeklyTpl.subject, { project: projName })
     try {
-      await mailer.sendMail({ from, to, subject: `Wochenbericht Aufgaben – ${projName}`, html, text })
+      await mailer.sendMail({ from, to, subject, html, text })
       sentProjects++
     } catch (e) { console.warn('[reporting] Versand für', projName, 'fehlgeschlagen:', e.message) }
   }
@@ -1946,7 +2033,8 @@ const PRIORITY_LABEL = { hoch: 'Hoch', mittel: 'Mittel', niedrig: 'Niedrig' }
 const PRIORITY_COLOR = { hoch: '#DC2626', mittel: '#D97706', niedrig: '#6B7280' }
 const STATUS_LABEL   = { offen: 'Offen', in_arbeit: 'In Arbeit' }
 
-function buildWeeklyReportHtml(projName, releases, openTasks) {
+function buildWeeklyReportHtml(projName, releases, openTasks, tpl) {
+  tpl = tpl || getEmailSettings().weekly_report
   const today = new Date().toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })
 
   const releaseRows = releases.map(r => `
@@ -1977,7 +2065,7 @@ function buildWeeklyReportHtml(projName, releases, openTasks) {
   const releasesSection = releases.length ? `
     <tr><td style="padding:20px 36px 8px 36px;">
       <p style="margin:0 0 10px 0;font-size:13px;font-weight:bold;color:#000040;text-transform:uppercase;letter-spacing:1px;font-family:Arial,sans-serif;">Diese Woche freigemeldete Aufgaben</p>
-      <p style="margin:0 0 12px 0;color:#4B5563;font-size:13px;font-family:Arial,sans-serif;">Folgende Aufgaben wurden in den letzten 7 Tagen genehmigt:</p>
+      <p style="margin:0 0 12px 0;color:#4B5563;font-size:13px;font-family:Arial,sans-serif;">${esc(tpl.releases_intro)}</p>
       <table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #E5E7EB;border-collapse:collapse;">
         <thead><tr style="background:#166534;">
           <th style="padding:9px 12px;text-align:left;font-size:11px;text-transform:uppercase;color:#BBF7D0;font-family:Arial,sans-serif;">Nr.</th>
@@ -1992,7 +2080,7 @@ function buildWeeklyReportHtml(projName, releases, openTasks) {
   const openSection = openTasks.length ? `
     <tr><td style="padding:20px 36px 8px 36px;">
       <p style="margin:0 0 10px 0;font-size:13px;font-weight:bold;color:#000040;text-transform:uppercase;letter-spacing:1px;font-family:Arial,sans-serif;">Offene Aufgaben</p>
-      <p style="margin:0 0 12px 0;color:#4B5563;font-size:13px;font-family:Arial,sans-serif;">Folgende Aufgaben sind aktuell noch offen oder in Bearbeitung:</p>
+      <p style="margin:0 0 12px 0;color:#4B5563;font-size:13px;font-family:Arial,sans-serif;">${esc(tpl.open_intro)}</p>
       <table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #E5E7EB;border-collapse:collapse;">
         <thead><tr style="background:#000040;">
           <th style="padding:9px 12px;text-align:left;font-size:11px;text-transform:uppercase;color:#8FBEFF;font-family:Arial,sans-serif;">Nr.</th>
@@ -2020,23 +2108,20 @@ function buildWeeklyReportHtml(projName, releases, openTasks) {
       ${releasesSection}
       ${openSection}
       <tr><td style="padding:20px 36px;border-top:1px solid #E5E7EB;background:#F0F0F0;text-align:center;font-family:Arial,sans-serif;">
-        <p style="margin:0;color:#9CA3AF;font-size:12px;">GHBA · Automatischer Wochenbericht · ${today}</p>
+        <p style="margin:0;color:#9CA3AF;font-size:12px;">${esc(tpl.footer)} · ${today}</p>
       </td></tr>
     </table>
   </td></tr></table>
 </body></html>`
 }
 
-function esc(s) {
-  return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-}
-
-function buildWeeklyReportText(projName, releases, openTasks) {
+function buildWeeklyReportText(projName, releases, openTasks, tpl) {
+  tpl = tpl || getEmailSettings().weekly_report
   const today = new Date().toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })
   const lines = [`Wochenbericht Aufgaben – ${projName}`, `Stand ${today}`, '']
 
   if (releases.length) {
-    lines.push('DIESE WOCHE FREIGEMELDETE AUFGABEN', '-'.repeat(50))
+    lines.push('DIESE WOCHE FREIGEMELDETE AUFGABEN', tpl.releases_intro, '-'.repeat(50))
     releases.forEach(r => lines.push(
       `• ${r.no ? r.no + '. ' : ''}${r.description} (${r.responsible || '–'}) – freigegeben ${fmtDateDe(r.approvedAt)}`
     ))
@@ -2044,7 +2129,7 @@ function buildWeeklyReportText(projName, releases, openTasks) {
   }
 
   if (openTasks.length) {
-    lines.push('OFFENE AUFGABEN', '-'.repeat(50))
+    lines.push('OFFENE AUFGABEN', tpl.open_intro, '-'.repeat(50))
     openTasks.forEach(t => {
       const dl     = t.deadline ? new Date(t.deadline + 'T12:00:00').toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '–'
       const status = STATUS_LABEL[t.status] || t.status
@@ -2055,18 +2140,19 @@ function buildWeeklyReportText(projName, releases, openTasks) {
     lines.push('')
   }
 
-  lines.push('GHBA')
+  lines.push(tpl.footer)
   return lines.join('\n')
 }
 
-// Scheduler: prüft minütlich, ob Freitag 10:00 erreicht ist (einmal pro Woche).
+// Scheduler: prüft minütlich, ob der konfigurierte Wochentag + Uhrzeit erreicht ist.
 function startWeeklyReportScheduler() {
   const KEY = 'weekly_report_last_run'   // YYYY-MM-DD des letzten Versands
   setInterval(() => {
     try {
+      const { schedule_day, schedule_hour } = getEmailSettings().weekly_report
       const now = new Date()
-      if (now.getDay() !== 5) return                 // 5 = Freitag
-      if (now.getHours() < 10) return                // ab 10:00
+      if (now.getDay() !== schedule_day) return
+      if (now.getHours() < schedule_hour) return
       const todayKey = now.toISOString().slice(0, 10)
       if (db.appState.get(KEY) === todayKey) return   // heute schon gelaufen
       db.appState.set(KEY, todayKey)                  // Marker zuerst (verhindert Doppelversand)

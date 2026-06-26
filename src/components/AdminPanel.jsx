@@ -1247,6 +1247,197 @@ function RolloutTab() {
   )
 }
 
+// ── Email templates tab ───────────────────────────────────────────────────────
+const DAY_NAMES = ['Sonntag', 'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag']
+
+function EmailTemplatesTab() {
+  const [settings, setSettings] = useState(null)
+  const [saving,   setSaving]   = useState(false)
+  const [msg,      setMsg]      = useState(null)
+  const [open,     setOpen]     = useState('invite')
+
+  useEffect(() => {
+    fetch('/api/admin/email-settings', { headers: apiHeaders() })
+      .then(r => r.json()).then(setSettings).catch(() => {})
+  }, [])
+
+  function set(type, field, value) {
+    setSettings(prev => ({ ...prev, [type]: { ...prev[type], [field]: value } }))
+  }
+
+  async function handleSave() {
+    setSaving(true); setMsg(null)
+    try {
+      const res  = await fetch('/api/admin/email-settings', {
+        method: 'PUT', headers: apiHeaders(), body: JSON.stringify(settings),
+      })
+      const data = await res.json()
+      if (!res.ok) { setMsg({ type: 'err', text: data.error || 'Fehler beim Speichern.' }); return }
+      setSettings(data.settings)
+      setMsg({ type: 'ok', text: 'Einstellungen gespeichert.' })
+    } catch { setMsg({ type: 'err', text: 'Netzwerkfehler.' }) }
+    finally { setSaving(false) }
+  }
+
+  if (!settings) return <div className="text-sm text-gray-400 py-4">Lade …</div>
+
+  const Section = ({ id, title, children }) => (
+    <div className="border border-gray-200">
+      <button
+        className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium text-gray-800 hover:bg-gray-50"
+        onClick={() => setOpen(v => v === id ? null : id)}
+      >
+        <span>{title}</span>
+        <span className="text-gray-400 text-xs">{open === id ? '▲' : '▼'}</span>
+      </button>
+      {open === id && <div className="px-4 pb-4 pt-2 space-y-3 border-t border-gray-100">{children}</div>}
+    </div>
+  )
+
+  const Field = ({ label, hint, value, onChange, rows = 2 }) => (
+    <div>
+      <label className="block text-xs font-medium text-gray-500 mb-1">{label}</label>
+      {rows === 1
+        ? <input className="input text-sm w-full" value={value} onChange={e => onChange(e.target.value)} />
+        : <textarea className="input text-sm w-full resize-y" rows={rows} value={value} onChange={e => onChange(e.target.value)} />}
+      {hint && <p className="mt-1 text-xs text-gray-400">{hint}</p>}
+    </div>
+  )
+
+  return (
+    <div className="space-y-4 text-sm">
+      <p className="text-gray-600 text-sm">
+        Betreff und Texte der System-E-Mails anpassen. Platzhalter in <code className="text-xs bg-gray-100 px-1">{'{geschweifte Klammern}'}</code> werden automatisch ersetzt.
+      </p>
+
+      <div className="space-y-2">
+        <Section id="invite" title="Einladungs-E-Mail">
+          <Field
+            label="Betreff" rows={1}
+            hint="Platzhalter: {name}"
+            value={settings.invite.subject}
+            onChange={v => set('invite', 'subject', v)}
+          />
+          <Field
+            label="Einleitungstext"
+            hint="Erscheint unter dem 'Willkommen'-Titel."
+            value={settings.invite.greeting}
+            onChange={v => set('invite', 'greeting', v)}
+          />
+          <Field
+            label="Fußzeile"
+            hint="Kurzer Abschlusstext."
+            value={settings.invite.footer}
+            onChange={v => set('invite', 'footer', v)}
+          />
+        </Section>
+
+        <Section id="task_assignment" title="Aufgaben-E-Mail (pro Verantwortlicher)">
+          <Field
+            label="Betreff" rows={1}
+            hint="Platzhalter: {project}, {date}"
+            value={settings.task_assignment.subject}
+            onChange={v => set('task_assignment', 'subject', v)}
+          />
+          <Field
+            label="Einleitungstext"
+            hint="Platzhalter: {project}, {count}"
+            value={settings.task_assignment.intro}
+            onChange={v => set('task_assignment', 'intro', v)}
+          />
+          <Field
+            label="Fußzeile" rows={1}
+            value={settings.task_assignment.footer}
+            onChange={v => set('task_assignment', 'footer', v)}
+          />
+        </Section>
+
+        <Section id="release_notification" title="Freimeldungs-Benachrichtigung (an Admin)">
+          <Field
+            label="Betreff" rows={1}
+            hint="Platzhalter: {project}, {responsible}, {count}"
+            value={settings.release_notification.subject}
+            onChange={v => set('release_notification', 'subject', v)}
+          />
+          <Field
+            label="Text"
+            hint="Platzhalter: {responsible}, {count}, {project}"
+            value={settings.release_notification.intro}
+            onChange={v => set('release_notification', 'intro', v)}
+          />
+          <Field
+            label="Fußzeile" rows={1}
+            value={settings.release_notification.footer}
+            onChange={v => set('release_notification', 'footer', v)}
+          />
+        </Section>
+
+        <Section id="weekly_report" title="Wöchentlicher Aufgaben-Bericht">
+          <Field
+            label="Betreff" rows={1}
+            hint="Platzhalter: {project}"
+            value={settings.weekly_report.subject}
+            onChange={v => set('weekly_report', 'subject', v)}
+          />
+          <Field
+            label="Einleitung – freigemeldete Aufgaben"
+            value={settings.weekly_report.releases_intro}
+            onChange={v => set('weekly_report', 'releases_intro', v)}
+          />
+          <Field
+            label="Einleitung – offene Aufgaben"
+            value={settings.weekly_report.open_intro}
+            onChange={v => set('weekly_report', 'open_intro', v)}
+          />
+          <Field
+            label="Fußzeile" rows={1}
+            value={settings.weekly_report.footer}
+            onChange={v => set('weekly_report', 'footer', v)}
+          />
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1">Versandtag</label>
+              <select className="select w-full"
+                value={settings.weekly_report.schedule_day}
+                onChange={e => set('weekly_report', 'schedule_day', parseInt(e.target.value))}
+              >
+                {DAY_NAMES.map((n, i) => <option key={i} value={i}>{n}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1">Versandzeit (Stunde)</label>
+              <select className="select w-full"
+                value={settings.weekly_report.schedule_hour}
+                onChange={e => set('weekly_report', 'schedule_hour', parseInt(e.target.value))}
+              >
+                {Array.from({ length: 24 }, (_, h) => (
+                  <option key={h} value={h}>{String(h).padStart(2, '0')}:00 Uhr</option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <p className="text-xs text-gray-400">
+            Versand erfolgt {DAY_NAMES[settings.weekly_report.schedule_day]}s ab {String(settings.weekly_report.schedule_hour).padStart(2, '0')}:00 Uhr (Serverzeit).
+            Empfänger sind alle Projektkontakte mit E-Mail-Adresse.
+          </p>
+        </Section>
+      </div>
+
+      <div className="flex items-center gap-3 pt-2">
+        <button className="btn-primary text-sm" onClick={handleSave} disabled={saving}>
+          {saving ? <Loader size={13} className="animate-spin" /> : <Check size={13} />}
+          {saving ? 'Wird gespeichert…' : 'Einstellungen speichern'}
+        </button>
+        {msg && (
+          <span className={`text-xs px-3 py-1.5 border ${msg.type === 'ok' ? 'text-green-700 bg-green-50 border-green-200' : 'text-red-600 bg-red-50 border-red-200'}`}>
+            {msg.text}
+          </span>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 export default function AdminPanel({ serverUser, onClose }) {
   const isAdmin = serverUser?.role === 'admin' || serverUser?.devMode
@@ -1257,8 +1448,9 @@ export default function AdminPanel({ serverUser, onClose }) {
     isAdmin              && { id: 'rollout',  label: 'Rollout',        icon: <UserPlus size={14} /> },
     isAdmin              && { id: 'sessions', label: 'Sitzungen',      icon: <Activity size={14} /> },
     isAdmin              && { id: 'deletions', label: 'Löschanfragen', icon: <AlertTriangle size={14} /> },
-    isAdmin              && { id: 'smtp',     label: 'E-Mail',         icon: <Mail size={14} /> },
-    isAdmin              && { id: 'backup',   label: 'Backup',         icon: <HardDrive size={14} /> },
+    isAdmin              && { id: 'smtp',      label: 'E-Mail',          icon: <Mail size={14} /> },
+    isAdmin              && { id: 'templates', label: 'E-Mail-Vorlagen', icon: <Settings2 size={14} /> },
+    isAdmin              && { id: 'backup',   label: 'Backup',          icon: <HardDrive size={14} /> },
     !serverUser?.devMode && { id: 'password', label: 'Passwort',       icon: <Key size={14} /> },
   ].filter(Boolean)
 
@@ -1296,6 +1488,7 @@ export default function AdminPanel({ serverUser, onClose }) {
           {tab === 'sessions'  && <SessionsTab   serverUser={serverUser} />}
           {tab === 'deletions' && <DeletionRequestsTab />}
           {tab === 'smtp'      && <SmtpTab />}
+          {tab === 'templates' && <EmailTemplatesTab />}
           {tab === 'backup'    && <BackupTab />}
           {tab === 'password'  && <PasswordTab   serverUser={serverUser} />}
         </div>
