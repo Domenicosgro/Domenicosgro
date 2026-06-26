@@ -1037,8 +1037,7 @@ app.get('/api/projects/:id/bim-issues', requireAuth, (req, res) => {
 
 app.post('/api/projects/:id/bim-issues', requireAuth, writeLimiter, (req, res) => {
   try {
-    const { nanoid } = require('nanoid')
-    const id   = nanoid()
+    const id   = require('crypto').randomBytes(12).toString('base64url')
     const now  = new Date().toISOString()
     const data = {
       id,
