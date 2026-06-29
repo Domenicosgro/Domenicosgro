@@ -1,9 +1,12 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react'
-import { ArrowLeft, Upload, Trash2, Box, AlertCircle, Loader, Info, Crosshair } from 'lucide-react'
+import { ArrowLeft, Upload, Trash2, Box, AlertCircle, Loader, Info, Crosshair,
+         Map, Scissors, MoveHorizontal, MoveVertical, Trash } from 'lucide-react'
 import { IfcViewerAPI } from 'web-ifc-viewer'
 import * as THREE from 'three'
 import { formatDate } from '../utils'
 import BimIssuePanel from './BimIssuePanel'
+import BimPlansPanel from './BimPlansPanel'
+import BimPlanViewer from './BimPlanViewer'
 
 const isServer = typeof window !== 'undefined' && !!window.__SERVER_MODE__
 
@@ -16,6 +19,7 @@ function formatBytes(bytes) {
 export default function BimView({ project, serverUser, token, onBack, backLabel = 'Dashboard', onProjectUpdated, protocols = [], onAddBimIssueToProtocol }) {
   const containerRef = useRef(null)
   const viewerRef    = useRef(null)
+  const modelRef     = useRef(null)
   const fileInputRef = useRef(null)
 
   const [loading,           setLoading]           = useState(false)
@@ -25,6 +29,9 @@ export default function BimView({ project, serverUser, token, onBack, backLabel 
   const [modelInfo,         setModelInfo]         = useState(null)
   const [pickMode,          setPickMode]          = useState(false)
   const [capturedViewpoint, setCapturedViewpoint] = useState(null)
+  const [showPlans,         setShowPlans]         = useState(false)
+  const [openPlan,          setOpenPlan]          = useState(null)
+  const [sectionCount,      setSectionCount]      = useState(0)
 
   const bimMeta = project.bimMeta
   const canEdit = !isServer || !serverUser || serverUser.role === 'admin' ||
@@ -68,6 +75,7 @@ export default function BimView({ project, serverUser, token, onBack, backLabel 
         if (cancelled) return
         if (!model) throw ifcError || new Error('IFC-Datei konnte nicht geparst werden (Konsole prüfen)')
 
+        modelRef.current = model
         if (!cancelled) setModelInfo({ loaded: true })
       } catch (e) {
         if (!cancelled) setError(`Modell konnte nicht geladen werden: ${e.message}`)
@@ -81,6 +89,8 @@ export default function BimView({ project, serverUser, token, onBack, backLabel 
     return () => {
       cancelled = true
       viewerRef.current = null
+      modelRef.current  = null
+      setSectionCount(0)
       try { viewer.dispose() } catch (_) {}
     }
   }, [project.id, bimMeta, token])
@@ -129,6 +139,37 @@ export default function BimView({ project, serverUser, token, onBack, backLabel 
   }, [])
 
   const handleClearViewpoint = useCallback(() => setCapturedViewpoint(null), [])
+
+  // ── Schnitte (Clipping-Ebenen) ──────────────────────────────────────────────
+  // axis: 'horizontal' = horizontaler Schnitt, 'x'/'z' = vertikale Schnitte
+  const addSection = useCallback((axis) => {
+    const viewer = viewerRef.current
+    const model  = modelRef.current
+    if (!viewer?.clipper || !model) return
+    try {
+      const box    = new THREE.Box3().setFromObject(model)
+      const center = box.getCenter(new THREE.Vector3())
+      const normal = axis === 'horizontal' ? new THREE.Vector3(0, -1, 0)
+                   : axis === 'x'          ? new THREE.Vector3(-1, 0, 0)
+                   :                         new THREE.Vector3(0, 0, -1)
+      try { viewer.context.getRenderer().localClippingEnabled = true } catch (_) {}
+      viewer.clipper.active = true
+      viewer.clipper.createFromNormalAndCoplanarPoint(normal, center)
+      setSectionCount(c => c + 1)
+    } catch (e) {
+      setError(`Schnitt konnte nicht erstellt werden: ${e.message}`)
+    }
+  }, [])
+
+  const clearSections = useCallback(() => {
+    const viewer = viewerRef.current
+    if (!viewer?.clipper) return
+    try {
+      viewer.clipper.deleteAllPlanes()
+      viewer.clipper.active = false
+    } catch (_) {}
+    setSectionCount(0)
+  }, [])
 
   // IFC hochladen
   const handleUpload = useCallback(async (file) => {
@@ -190,6 +231,17 @@ export default function BimView({ project, serverUser, token, onBack, backLabel 
         </div>
 
         <div className="flex items-center gap-2">
+          {/* 2D-Pläne ein-/ausblenden */}
+          <button
+            className={`flex items-center gap-1.5 text-xs px-3 py-1.5 border transition-colors ${
+              showPlans
+                ? 'bg-brand-700 text-white border-brand-500'
+                : 'bg-gray-700/40 hover:bg-gray-700 text-gray-200 border-gray-600'
+            }`}
+            onClick={() => setShowPlans(v => !v)}
+          >
+            <Map size={13} /> 2D-Pläne
+          </button>
           {bimMeta && (
             <span className="text-xs text-gray-400">
               {bimMeta.filename} · {formatBytes(bimMeta.size)} · hochgeladen {formatDate(bimMeta.uploadedAt?.slice(0,10))} von {bimMeta.uploadedBy}
@@ -221,97 +273,155 @@ export default function BimView({ project, serverUser, token, onBack, backLabel 
       </div>
 
       {/* Inhalt */}
-      {!bimMeta ? (
-        <div className="flex-1 flex items-center justify-center">
-          <div className="text-center max-w-sm">
-            <Box size={48} className="mx-auto text-gray-600 mb-4" />
-            <h2 className="text-lg font-semibold text-gray-300 mb-2">Kein BIM-Modell hinterlegt</h2>
-            <p className="text-sm text-gray-500 mb-6">
-              Lade eine IFC-Datei hoch um das Gebäudemodell direkt im Protokolltool zu betrachten.
-            </p>
-            {canEdit && (
-              <button
-                className="flex items-center gap-2 mx-auto px-5 py-2.5 bg-brand-600 hover:bg-brand-700 text-white text-sm transition-colors"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={uploading}
-              >
-                {uploading
-                  ? <><Loader size={15} className="animate-spin" /> Wird hochgeladen… {progress}%</>
-                  : <><Upload size={15} /> IFC-Datei hochladen</>
-                }
-              </button>
-            )}
-            {error && (
-              <p className="mt-4 text-sm text-red-400 flex items-center gap-2 justify-center">
-                <AlertCircle size={14} /> {error}
-              </p>
-            )}
-          </div>
-        </div>
-      ) : (
-        <div className="flex flex-1 overflow-hidden">
-          {/* 3D-Viewer */}
-          <div className="flex-1 relative overflow-hidden">
-            <div
-              ref={containerRef}
-              className="absolute inset-0"
-              style={{ background: '#1e1e2e', cursor: pickMode ? 'crosshair' : 'default' }}
-            />
+      <div className="flex flex-1 overflow-hidden">
 
-            {/* Pick-Mode Banner */}
-            {pickMode && (
-              <div className="absolute top-3 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2 bg-brand-800/90 border border-brand-600 px-4 py-2 text-sm text-brand-200">
-                <Crosshair size={14} />
-                Auf Modellelement klicken um Standpunkt zu erfassen
-                <button
-                  onClick={() => setPickMode(false)}
-                  className="ml-2 text-brand-400 hover:text-white transition-colors"
-                >✕</button>
-              </div>
-            )}
-
-            {/* Ladeindikator */}
-            {loading && (
-              <div className="absolute inset-0 flex items-center justify-center bg-gray-900/80 z-10">
-                <div className="text-center">
-                  <Loader size={32} className="animate-spin text-brand-400 mx-auto mb-3" />
-                  <p className="text-sm text-gray-300">Modell wird geladen…</p>
-                  <p className="text-xs text-gray-500 mt-1">{formatBytes(bimMeta.size)}</p>
-                </div>
-              </div>
-            )}
-
-            {/* Fehler */}
-            {error && !loading && (
-              <div className="absolute bottom-4 left-4 right-4 bg-red-900/80 border border-red-700 p-3 flex items-start gap-2 z-10">
-                <AlertCircle size={16} className="text-red-400 flex-shrink-0 mt-0.5" />
-                <p className="text-sm text-red-300">{error}</p>
-              </div>
-            )}
-
-            {/* Steuerungshinweis */}
-            {!loading && !error && modelInfo && !pickMode && (
-              <div className="absolute bottom-4 left-4 bg-gray-900/70 border border-gray-700 px-3 py-2 text-xs text-gray-400 z-10">
-                <span className="flex items-center gap-1.5">
-                  <Info size={11} />
-                  Linksklick = drehen · Rechtsklick = verschieben · Scroll = zoomen
-                </span>
-              </div>
-            )}
-          </div>
-
-          {/* Issue-Panel */}
-          <BimIssuePanel
+        {/* 2D-Pläne-Panel (links, ein-/ausblendbar) */}
+        {showPlans && (
+          <BimPlansPanel
             project={project}
             token={token}
-            viewerRef={viewerRef}
-            capturedViewpoint={capturedViewpoint}
-            onStartPick={handleStartPick}
-            onClearViewpoint={handleClearViewpoint}
-            protocols={protocols}
-            onAddToProtocol={onAddBimIssueToProtocol}
+            canEdit={canEdit}
+            onOpenPlan={(plan) => setOpenPlan(plan)}
+            onClose={() => setShowPlans(false)}
           />
-        </div>
+        )}
+
+        {!bimMeta ? (
+          <div className="flex-1 flex items-center justify-center">
+            <div className="text-center max-w-sm">
+              <Box size={48} className="mx-auto text-gray-600 mb-4" />
+              <h2 className="text-lg font-semibold text-gray-300 mb-2">Kein BIM-Modell hinterlegt</h2>
+              <p className="text-sm text-gray-500 mb-6">
+                Lade eine IFC-Datei hoch um das Gebäudemodell direkt im Protokolltool zu betrachten.
+                {!showPlans && ' 2D-Pläne (PDF/Bild) kannst du über „2D-Pläne" oben hinterlegen.'}
+              </p>
+              {canEdit && (
+                <button
+                  className="flex items-center gap-2 mx-auto px-5 py-2.5 bg-brand-600 hover:bg-brand-700 text-white text-sm transition-colors"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={uploading}
+                >
+                  {uploading
+                    ? <><Loader size={15} className="animate-spin" /> Wird hochgeladen… {progress}%</>
+                    : <><Upload size={15} /> IFC-Datei hochladen</>
+                  }
+                </button>
+              )}
+              {error && (
+                <p className="mt-4 text-sm text-red-400 flex items-center gap-2 justify-center">
+                  <AlertCircle size={14} /> {error}
+                </p>
+              )}
+            </div>
+          </div>
+        ) : (
+          <>
+            {/* 3D-Viewer */}
+            <div className="flex-1 relative overflow-hidden">
+              <div
+                ref={containerRef}
+                className="absolute inset-0"
+                style={{ background: '#1e1e2e', cursor: pickMode ? 'crosshair' : 'default' }}
+              />
+
+              {/* Schnitt-Werkzeuge (Clipping-Ebenen) */}
+              {!loading && !error && modelInfo && (
+                <div className="absolute top-3 left-3 z-20 flex flex-col gap-1.5 bg-gray-900/85 border border-gray-700 p-2">
+                  <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-gray-400 mb-0.5">
+                    <Scissors size={11} /> Schnitte
+                    {sectionCount > 0 && <span className="text-brand-400">· {sectionCount}</span>}
+                  </div>
+                  <button
+                    onClick={() => addSection('horizontal')}
+                    title="Horizontaler Schnitt (Draufsicht)"
+                    className="flex items-center gap-1.5 text-xs px-2 py-1 bg-gray-800 hover:bg-gray-700 text-gray-200 border border-gray-600 transition-colors"
+                  ><MoveVertical size={12} /> Horizontal</button>
+                  <button
+                    onClick={() => addSection('x')}
+                    title="Vertikaler Schnitt (Querrichtung)"
+                    className="flex items-center gap-1.5 text-xs px-2 py-1 bg-gray-800 hover:bg-gray-700 text-gray-200 border border-gray-600 transition-colors"
+                  ><MoveHorizontal size={12} /> Vertikal (quer)</button>
+                  <button
+                    onClick={() => addSection('z')}
+                    title="Vertikaler Schnitt (Längsrichtung)"
+                    className="flex items-center gap-1.5 text-xs px-2 py-1 bg-gray-800 hover:bg-gray-700 text-gray-200 border border-gray-600 transition-colors"
+                  ><MoveHorizontal size={12} className="rotate-90" /> Vertikal (längs)</button>
+                  {sectionCount > 0 && (
+                    <button
+                      onClick={clearSections}
+                      title="Alle Schnitte entfernen"
+                      className="flex items-center gap-1.5 text-xs px-2 py-1 bg-red-900/40 hover:bg-red-900/70 text-red-300 border border-red-800 transition-colors"
+                    ><Trash size={12} /> Zurücksetzen</button>
+                  )}
+                </div>
+              )}
+
+              {/* Pick-Mode Banner */}
+              {pickMode && (
+                <div className="absolute top-3 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2 bg-brand-800/90 border border-brand-600 px-4 py-2 text-sm text-brand-200">
+                  <Crosshair size={14} />
+                  Auf Modellelement klicken um Standpunkt zu erfassen
+                  <button
+                    onClick={() => setPickMode(false)}
+                    className="ml-2 text-brand-400 hover:text-white transition-colors"
+                  >✕</button>
+                </div>
+              )}
+
+              {/* Ladeindikator */}
+              {loading && (
+                <div className="absolute inset-0 flex items-center justify-center bg-gray-900/80 z-10">
+                  <div className="text-center">
+                    <Loader size={32} className="animate-spin text-brand-400 mx-auto mb-3" />
+                    <p className="text-sm text-gray-300">Modell wird geladen…</p>
+                    <p className="text-xs text-gray-500 mt-1">{formatBytes(bimMeta.size)}</p>
+                  </div>
+                </div>
+              )}
+
+              {/* Fehler */}
+              {error && !loading && (
+                <div className="absolute bottom-4 left-4 right-4 bg-red-900/80 border border-red-700 p-3 flex items-start gap-2 z-10">
+                  <AlertCircle size={16} className="text-red-400 flex-shrink-0 mt-0.5" />
+                  <p className="text-sm text-red-300">{error}</p>
+                </div>
+              )}
+
+              {/* Steuerungshinweis */}
+              {!loading && !error && modelInfo && !pickMode && (
+                <div className="absolute bottom-4 left-4 bg-gray-900/70 border border-gray-700 px-3 py-2 text-xs text-gray-400 z-10">
+                  <span className="flex items-center gap-1.5">
+                    <Info size={11} />
+                    Linksklick = drehen · Rechtsklick = verschieben · Scroll = zoomen
+                    {sectionCount > 0 && ' · Schnittebene mit der Maus ziehen zum Verschieben'}
+                  </span>
+                </div>
+              )}
+            </div>
+
+            {/* Issue-Panel */}
+            <BimIssuePanel
+              project={project}
+              token={token}
+              viewerRef={viewerRef}
+              capturedViewpoint={capturedViewpoint}
+              onStartPick={handleStartPick}
+              onClearViewpoint={handleClearViewpoint}
+              protocols={protocols}
+              onAddToProtocol={onAddBimIssueToProtocol}
+            />
+          </>
+        )}
+      </div>
+
+      {/* 2D-Plan-Viewer (Popup) */}
+      {openPlan && (
+        <BimPlanViewer
+          projectId={project.id}
+          plan={openPlan}
+          token={token}
+          onClose={() => setOpenPlan(null)}
+        />
       )}
     </div>
   )

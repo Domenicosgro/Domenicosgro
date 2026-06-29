@@ -987,6 +987,10 @@ fs.mkdirSync(BIM_DIR, { recursive: true })
 const LEARNING_DIR = path.join(process.env.DB_PATH || path.join(__dirname, '../data'), 'learning')
 fs.mkdirSync(LEARNING_DIR, { recursive: true })
 
+// ── 2D-Pläne (Grundrisse, Schnitte, Ansichten – PDF/Bild je Projekt) ─────────
+const PLANS_DIR = path.join(process.env.DB_PATH || path.join(__dirname, '../data'), 'plans')
+fs.mkdirSync(PLANS_DIR, { recursive: true })
+
 // POST /api/projects/:id/bim  (Content-Type: application/octet-stream, X-Filename header)
 app.post('/api/projects/:id/bim', requireAuth, writeLimiter,
   express.raw({ type: 'application/octet-stream', limit: '500mb' }),
@@ -1095,6 +1099,138 @@ app.delete('/api/projects/:id/bim', requireAuth, writeLimiter, (req, res) => {
     db.projects.update(req.params.id, updated, _version, req.user)
     broadcast('project', 'update', req.params.id, updated.updatedAt)
     logEvent('BIM_DELETE', req, `project=${req.params.id}`)
+    res.json({ ok: true })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// ── 2D-Pläne: Grundrisse, Schnitte, Ansichten ────────────────────────────────
+// Projektbezogen. Lesen: jeder angemeldete Nutzer. Schreiben: requireAuth (UI
+// gated auf Projekt-/Systemadmin, analog zum BIM-Modell-Upload).
+const planDisplayName = (reqUser) => {
+  if (!reqUser || reqUser === '__anonymous__' || reqUser === '__apikey__') return 'Unbekannt'
+  const u = db.users.get(reqUser)
+  return u?.display_name || reqUser
+}
+
+// GET – alle Pläne eines Projekts (Metadaten)
+app.get('/api/projects/:id/plans', requireAuth, (req, res) => {
+  try {
+    const all = db.bimPlans.list().filter(p => p.projectId === req.params.id)
+    all.sort((a, b) => (a.order ?? 0) - (b.order ?? 0)
+      || (a.createdAt || '').localeCompare(b.createdAt || ''))
+    res.json(all)
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// POST – neuen Plan (Metadaten) anlegen; Datei folgt separat
+app.post('/api/projects/:id/plans', requireAuth, writeLimiter, (req, res) => {
+  try {
+    const id  = require('crypto').randomBytes(12).toString('base64url')
+    const now = new Date().toISOString()
+    const existing = db.bimPlans.list().filter(p => p.projectId === req.params.id)
+    const maxOrder = existing.reduce((m, p) => Math.max(m, p.order ?? 0), 0)
+    const data = {
+      id,
+      projectId:   req.params.id,
+      title:       req.body.title       || 'Neuer Plan',
+      description: req.body.description || '',
+      planType:    req.body.planType    || 'grundriss',  // grundriss|schnitt|ansicht|lageplan|sonstige
+      order:       typeof req.body.order === 'number' ? req.body.order : maxOrder + 1,
+      filename:    '',
+      size:        0,
+      mimeType:    '',
+      hasFile:     false,
+      uploadedAt:  null,
+      uploadedBy:  '',
+      createdBy:   planDisplayName(req.user),
+      createdAt:   now,
+      updatedAt:   now,
+    }
+    db.bimPlans.create(data, req.user)
+    logEvent('PLAN_CREATE', req, `project=${req.params.id} id=${id}`)
+    res.status(201).json(data)
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// POST – Plandatei hochladen (PDF/Bild); Content-Type: application/octet-stream
+app.post('/api/projects/:id/plans/:planId/file', requireAuth, writeLimiter,
+  express.raw({ type: 'application/octet-stream', limit: '200mb' }),
+  (req, res) => {
+    try {
+      const plan = db.bimPlans.get(req.params.planId)
+      if (!plan || plan.projectId !== req.params.id) return res.status(404).json({ error: 'Plan nicht gefunden.' })
+
+      const filename = (req.headers['x-filename'] || 'plan.pdf').replace(/[^a-zA-Z0-9._-]/g, '_')
+      const mimeType = req.headers['x-mimetype'] || 'application/pdf'
+      const filePath = path.join(PLANS_DIR, req.params.planId)
+
+      fs.writeFileSync(filePath, req.body)
+      const stat = fs.statSync(filePath)
+
+      const { _version, _updatedAt, ...pData } = plan
+      const now     = new Date().toISOString()
+      const updated = {
+        ...pData, filename, mimeType, size: stat.size, hasFile: true,
+        uploadedAt: now, uploadedBy: planDisplayName(req.user), updatedAt: now,
+      }
+      db.bimPlans.update(req.params.planId, updated, _version, req.user)
+      logEvent('PLAN_UPLOAD', req, `project=${req.params.id} id=${req.params.planId} file=${filename} size=${stat.size}`)
+      res.status(201).json(updated)
+    } catch (e) { res.status(500).json({ error: e.message }) }
+  }
+)
+
+// GET – Plandatei ausliefern (Range-Support; Auth über Header ODER ?token=,
+// damit <embed>/<img> ohne Header authentifizieren können)
+app.get('/api/projects/:id/plans/:planId/file', (req, res) => {
+  try {
+    const authHeader = req.headers['authorization']
+    const headerTok  = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null
+    const token      = headerTok || req.query.token
+    const authed     = (token && resolveToken(token)) || !db.users.hasAny()
+      || (API_KEY && req.headers['x-api-key'] === API_KEY)
+    if (!authed) return res.status(401).json({ error: 'Nicht angemeldet.' })
+
+    const plan     = db.bimPlans.get(req.params.planId)
+    const filePath = path.join(PLANS_DIR, req.params.planId)
+    if (!plan || plan.projectId !== req.params.id || !fs.existsSync(filePath)) {
+      return res.status(404).json({ error: 'Kein Plan vorhanden.' })
+    }
+    const stat     = fs.statSync(filePath)
+    const mimeType = plan.mimeType || 'application/pdf'
+    res.setHeader('Content-Type',        mimeType)
+    res.setHeader('Content-Length',      stat.size)
+    res.setHeader('Content-Disposition', `inline; filename="${plan.filename || 'plan'}"`)
+    res.setHeader('Cache-Control',       'private, max-age=300')
+    fs.createReadStream(filePath).pipe(res)
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// PATCH – Plan-Metadaten ändern
+app.patch('/api/projects/:id/plans/:planId', requireAuth, writeLimiter, (req, res) => {
+  try {
+    const plan = db.bimPlans.get(req.params.planId)
+    if (!plan || plan.projectId !== req.params.id) return res.status(404).json({ error: 'Plan nicht gefunden.' })
+    const { _version, _updatedAt, ...pData } = plan
+    const allowed = (({ title, description, planType, order }) => ({ title, description, planType, order }))(req.body)
+    const updated = { ...pData, ...Object.fromEntries(Object.entries(allowed).filter(([, v]) => v !== undefined)), updatedAt: new Date().toISOString() }
+    const result  = db.bimPlans.update(req.params.planId, updated, _version, req.user)
+    if (result.notFound) return res.status(404).json({ error: 'Nicht gefunden.' })
+    if (result.conflict) return res.status(409).json({ conflict: true, ...result })
+    logEvent('PLAN_UPDATE', req, `project=${req.params.id} id=${req.params.planId}`)
+    res.json(updated)
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// DELETE – Plan + Datei löschen
+app.delete('/api/projects/:id/plans/:planId', requireAuth, writeLimiter, (req, res) => {
+  try {
+    const plan = db.bimPlans.get(req.params.planId)
+    if (plan && plan.projectId !== req.params.id) return res.status(404).json({ error: 'Plan nicht gefunden.' })
+    const filePath = path.join(PLANS_DIR, req.params.planId)
+    if (fs.existsSync(filePath)) fs.unlinkSync(filePath)
+    db.bimPlans.delete(req.params.planId)
+    logEvent('PLAN_DELETE', req, `project=${req.params.id} id=${req.params.planId}`)
     res.json({ ok: true })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
