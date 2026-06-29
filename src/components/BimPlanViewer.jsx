@@ -1,5 +1,5 @@
-import React, { useState, useCallback } from 'react'
-import { X, Move, Maximize2, FileText, Image as ImageIcon, ExternalLink, ZoomIn, ZoomOut } from 'lucide-react'
+import React, { useState, useCallback, useEffect } from 'react'
+import { X, Move, Maximize2, FileText, Image as ImageIcon, ExternalLink, ZoomIn, ZoomOut, Loader, AlertCircle } from 'lucide-react'
 
 const INIT_W = typeof window !== 'undefined' ? Math.min(1000, Math.round(window.innerWidth  * 0.8)) : 900
 const INIT_H = typeof window !== 'undefined' ? Math.min(720, Math.round(window.innerHeight * 0.82)) : 640
@@ -8,9 +8,39 @@ export default function BimPlanViewer({ projectId, plan, token, onClose }) {
   const [pos,  setPos]  = useState({ x: null, y: null })
   const [size, setSize] = useState({ w: INIT_W, h: INIT_H })
   const [zoom, setZoom] = useState(1)
+  const [blobUrl, setBlobUrl] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [error,   setError]   = useState(null)
 
   const isPdf   = (plan.mimeType || '').includes('pdf')
+  // Direkte URL (nur für „in neuem Tab öffnen" – Top-Level-Navigation, kein CSP-Frame)
   const fileUrl = `/api/projects/${projectId}/plans/${plan.id}/file?token=${encodeURIComponent(token || '')}`
+
+  // Datei mit Auth-Header laden und als Blob-URL anzeigen. Das umgeht sowohl die
+  // CSP-/Plugin-Eigenheiten beim direkten Einbetten als auch fehlende Header beim
+  // PDF-Renderer – derselbe Pfad, der für die Plan-Liste zuverlässig funktioniert.
+  useEffect(() => {
+    let cancelled = false
+    let createdUrl = null
+    setLoading(true); setError(null); setBlobUrl(null)
+    ;(async () => {
+      try {
+        const res = await fetch(fileUrl, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
+        if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `Fehler ${res.status}`)
+        const blob = await res.blob()
+        if (cancelled) return
+        createdUrl = URL.createObjectURL(blob)
+        setBlobUrl(createdUrl)
+        setLoading(false)
+      } catch (e) {
+        if (!cancelled) { setError(e.message); setLoading(false) }
+      }
+    })()
+    return () => {
+      cancelled = true
+      if (createdUrl) URL.revokeObjectURL(createdUrl)
+    }
+  }, [fileUrl, token])
 
   const handleDragStart = useCallback((e) => {
     if (e.button !== 0) return
@@ -86,17 +116,35 @@ export default function BimPlanViewer({ projectId, plan, token, onClose }) {
 
         {/* Inhalt */}
         <div className="flex-1 relative overflow-auto bg-gray-950" style={{ minHeight: 0 }}>
-          {isPdf ? (
-            <iframe title={plan.title} src={fileUrl} className="absolute inset-0 w-full h-full bg-white" />
-          ) : (
-            <div className="min-h-full flex items-center justify-center p-2">
-              <img
-                src={fileUrl}
-                alt={plan.title}
-                style={{ transform: `scale(${zoom})`, transformOrigin: 'center top' }}
-                className="max-w-none transition-transform"
-              />
+          {loading && (
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="text-center">
+                <Loader size={26} className="animate-spin text-brand-400 mx-auto mb-2" />
+                <p className="text-xs text-gray-400">Plan wird geladen…</p>
+              </div>
             </div>
+          )}
+          {error && !loading && (
+            <div className="absolute inset-0 flex items-center justify-center p-4">
+              <div className="text-center">
+                <AlertCircle size={22} className="text-red-400 mx-auto mb-2" />
+                <p className="text-xs text-red-400 max-w-xs">{error}</p>
+              </div>
+            </div>
+          )}
+          {!loading && !error && blobUrl && (
+            isPdf ? (
+              <iframe title={plan.title} src={blobUrl} className="absolute inset-0 w-full h-full bg-white" />
+            ) : (
+              <div className="min-h-full flex items-center justify-center p-2">
+                <img
+                  src={blobUrl}
+                  alt={plan.title}
+                  style={{ transform: `scale(${zoom})`, transformOrigin: 'center top' }}
+                  className="max-w-none transition-transform"
+                />
+              </div>
+            )
           )}
         </div>
 
