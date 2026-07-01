@@ -135,6 +135,15 @@ db.exec(`
     updated_at TEXT    NOT NULL DEFAULT (datetime('now')),
     updated_by TEXT
   );
+
+  CREATE TABLE IF NOT EXISTS plan_reviews (
+    id         TEXT    PRIMARY KEY,
+    project_id TEXT,
+    data       TEXT    NOT NULL,
+    version    INTEGER NOT NULL DEFAULT 1,
+    updated_at TEXT    NOT NULL DEFAULT (datetime('now')),
+    updated_by TEXT
+  );
 `)
 
 // ── Migration from legacy key-value store ─────────────────────────────────────
@@ -411,6 +420,7 @@ module.exports = {
   notebooks:  makeStore('notebooks'),
   bimIssues:  makeStore('bim_issues'),
   bimPlans:   makeStore('bim_plans'),
+  planReviews: makeStore('plan_reviews'),
   learningVideos: makeStore('learning_videos'),
   users,
   sessions,

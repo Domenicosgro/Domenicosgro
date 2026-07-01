@@ -16,7 +16,7 @@ function formatBytes(bytes) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
-export default function BimView({ project, serverUser, token, onBack, backLabel = 'Dashboard', onProjectUpdated, protocols = [], onAddBimIssueToProtocol }) {
+export default function BimView({ project, serverUser, token, onBack, backLabel = 'Dashboard', onProjectUpdated, protocols = [], onAddBimIssueToProtocol, onAddReviewToProtocol }) {
   const containerRef = useRef(null)
   const viewerRef    = useRef(null)
   const modelRef     = useRef(null)
@@ -169,6 +169,29 @@ export default function BimView({ project, serverUser, token, onBack, backLabel 
       viewer.clipper.active = false
     } catch (_) {}
     setSectionCount(0)
+  }, [])
+
+  // ── 3D-Standpunkt für Planprüfung (aktuelle Kamera erfassen / anfahren) ──────
+  const getViewpoint = useCallback(() => {
+    const viewer = viewerRef.current
+    if (!viewer?.context || !modelRef.current) return null
+    try {
+      const camera = viewer.context.getCamera()
+      const pos = camera.position.clone()
+      const tgt = new THREE.Vector3()
+      viewer.context.ifcCamera.cameraControls.getTarget(tgt)
+      return { position: { x: pos.x, y: pos.y, z: pos.z }, target: { x: tgt.x, y: tgt.y, z: tgt.z }, elementId: null, modelId: null }
+    } catch (_) { return null }
+  }, [])
+
+  const navigateToViewpoint = useCallback((viewpoint) => {
+    const viewer = viewerRef.current
+    if (!viewer || !viewpoint?.position) return
+    const { position: p, target: t, elementId, modelId } = viewpoint
+    try {
+      viewer.context.ifcCamera.cameraControls.setLookAt(p.x, p.y, p.z, t.x, t.y, t.z, true)
+      if (elementId != null && modelId != null) viewer.IFC.selector.pickIfcItemsByID(modelId, [elementId], true)
+    } catch (_) {}
   }, [])
 
   // IFC hochladen
@@ -421,6 +444,12 @@ export default function BimView({ project, serverUser, token, onBack, backLabel 
           plan={openPlan}
           token={token}
           onClose={() => setOpenPlan(null)}
+          canEdit={canEdit}
+          projectContacts={project.contacts || []}
+          protocols={protocols}
+          onAddReviewToProtocol={onAddReviewToProtocol}
+          getViewpoint={bimMeta ? getViewpoint : undefined}
+          onShowViewpoint={bimMeta ? navigateToViewpoint : undefined}
         />
       )}
     </div>

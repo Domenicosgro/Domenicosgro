@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { Plus, Trash2, CheckSquare, EyeOff, Eye, Search, X,
-         CheckCircle2, Circle, User, Calendar, Flag, Box, Video } from 'lucide-react'
+         CheckCircle2, Circle, User, Calendar, Flag, Box, Video, ClipboardCheck } from 'lucide-react'
 import { emptyActionItem, ACTION_STATUSES, PRIORITIES, formatDate } from '../utils'
 import FreimeldungBadge from './FreimeldungBadge'
 
@@ -22,9 +22,10 @@ export default function ActionItems({ items, onChange, agendaItems = [], project
   const [search, setSearch] = useState('')
   const contactListId = 'action-contacts-list'
 
-  // Reguläre Maßnahmen vs. BIM-Issues getrennt
-  const regularItems = items.filter(it => !it.bimIssueId)
+  // Reguläre Maßnahmen vs. BIM-Issues vs. Planprüfungen getrennt
+  const regularItems = items.filter(it => !it.bimIssueId && !it.planReviewId)
   const bimItems     = items.filter(it =>  !!it.bimIssueId)
+  const reviewItems  = items.filter(it =>  !it.bimIssueId && !!it.planReviewId)
 
   const add = () => {
     const no = String(items.length + 1)
@@ -53,6 +54,7 @@ export default function ActionItems({ items, onChange, agendaItems = [], project
   const completedCount = regularItems.filter(it => it.status === 'erledigt').length
   const openCount      = regularItems.filter(it => it.status === 'offen' || it.status === 'in_arbeit').length
   const bimOpen        = bimItems.filter(it => it.status === 'offen' || it.status === 'in_arbeit').length
+  const reviewOpen     = reviewItems.filter(it => it.status === 'offen' || it.status === 'in_arbeit').length
 
   const q = search.trim().toLowerCase()
 
@@ -68,7 +70,7 @@ export default function ActionItems({ items, onChange, agendaItems = [], project
     return hideCompleted ? it.status !== 'erledigt' : true
   })
 
-  const bimVisible = bimItems.filter(it => {
+  const filterBySearch = (list) => list.filter(it => {
     if (q) {
       return (
         (it.description || '').toLowerCase().includes(q) ||
@@ -77,21 +79,27 @@ export default function ActionItems({ items, onChange, agendaItems = [], project
     }
     return hideCompleted ? it.status !== 'erledigt' : true
   })
+  const bimVisible    = filterBySearch(bimItems)
+  const reviewVisible = filterBySearch(reviewItems)
 
   const searchHitsCompleted = q && visible.some(it => it.status === 'erledigt')
 
-  const renderItem = (item, isBim = false) => {
+  const renderItem = (item, kind = 'regular') => {
+    const isBim     = kind === 'bim'
+    const isReview  = kind === 'review'
     const done      = item.status === 'erledigt'
     const isOverdue = item.deadline && !done && new Date(item.deadline) < new Date()
     const isCarried = !!item.carriedFromId
 
     const borderColor = done      ? 'border-green-400'
                       : isBim     ? 'border-cyan-400'
+                      : isReview  ? 'border-violet-400'
                       : isOverdue ? 'border-red-400'
                       : isCarried ? 'border-blue-400'
                       : 'border-gray-300'
     const bgColor     = done      ? 'bg-green-50'
                       : isBim     ? 'bg-cyan-50/40'
+                      : isReview  ? 'bg-violet-50/40'
                       : isOverdue ? 'bg-red-50'
                       : isCarried ? 'bg-blue-50'
                       : 'bg-white'
@@ -118,7 +126,7 @@ export default function ActionItems({ items, onChange, agendaItems = [], project
             {done ? '✓' : '○'}
           </span>
           <div className="flex-1 min-w-0 space-y-0.5">
-            {(isBim || isCarried || item.protocolItemId || item.releaseRequest || item.releaseHistory?.length > 0) && (
+            {(isBim || isReview || isCarried || item.protocolItemId || item.releaseRequest || item.releaseHistory?.length > 0) && (
               <div className="flex flex-wrap gap-1 mb-0.5 items-center">
                 {isBim && (
                   <span className="flex items-center gap-1">
@@ -133,6 +141,23 @@ export default function ActionItems({ items, onChange, agendaItems = [], project
                         className="badge text-xs bg-cyan-600 text-white border border-cyan-500 flex items-center gap-0.5 hover:bg-cyan-700 transition-colors cursor-pointer no-print"
                       >
                         <Video size={9} /> Anzeigen
+                      </button>
+                    )}
+                  </span>
+                )}
+                {isReview && (
+                  <span className="flex items-center gap-1">
+                    <span className="badge text-xs bg-violet-100 text-violet-700 border border-violet-300 flex items-center gap-0.5">
+                      <ClipboardCheck size={9} /> Planprüfung
+                    </span>
+                    {item.bimViewpoint && onOpenBimIssue && (
+                      <button
+                        type="button"
+                        title="Im BIM-Viewer anzeigen"
+                        onClick={() => onOpenBimIssue(item.bimViewpoint, item.description)}
+                        className="badge text-xs bg-cyan-600 text-white border border-cyan-500 flex items-center gap-0.5 hover:bg-cyan-700 transition-colors cursor-pointer no-print"
+                      >
+                        <Video size={9} /> 3D
                       </button>
                     )}
                   </span>
@@ -237,7 +262,7 @@ export default function ActionItems({ items, onChange, agendaItems = [], project
           {completedCount > 0 && <span className="badge-green">{completedCount} erledigt</span>}
         </div>
         <div className="flex gap-2 no-print flex-wrap">
-          {(regularItems.some(it => it.status === 'erledigt') || bimItems.some(it => it.status === 'erledigt')) && !q && (
+          {(regularItems.some(it => it.status === 'erledigt') || bimItems.some(it => it.status === 'erledigt') || reviewItems.some(it => it.status === 'erledigt')) && !q && (
             <button className="btn-secondary text-xs" onClick={() => setHideCompleted(v => !v)}>
               {hideCompleted ? <Eye size={14} /> : <EyeOff size={14} />}
               {hideCompleted ? 'Erledigte einblenden' : 'Erledigte ausblenden'}
@@ -280,7 +305,7 @@ export default function ActionItems({ items, onChange, agendaItems = [], project
         </datalist>
       )}
 
-      {regularItems.length === 0 && bimItems.length === 0 && (
+      {regularItems.length === 0 && bimItems.length === 0 && reviewItems.length === 0 && (
         <p className="text-sm text-gray-400 italic">Keine Maßnahmen erfasst.</p>
       )}
 
@@ -293,7 +318,7 @@ export default function ActionItems({ items, onChange, agendaItems = [], project
       {/* Reguläre Maßnahmen */}
       {visible.length > 0 && (
         <div className="space-y-0">
-          {visible.map(item => renderItem(item, false))}
+          {visible.map(item => renderItem(item, 'regular'))}
         </div>
       )}
 
@@ -309,11 +334,33 @@ export default function ActionItems({ items, onChange, agendaItems = [], project
             <span className="text-xs text-gray-400">aus dem Gebäudemodell übernommen</span>
           </div>
           <div className="space-y-0">
-            {bimVisible.map(item => renderItem(item, true))}
+            {bimVisible.map(item => renderItem(item, 'bim'))}
           </div>
           {bimVisible.length === 0 && (
             <p className="text-sm text-gray-400 italic">
               {q ? 'Keine BIM-Issues gefunden.' : 'Alle BIM-Issues erledigt.'}
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* Planprüfungen – separater Abschnitt */}
+      {reviewItems.length > 0 && (
+        <div className={(regularItems.length > 0 || bimItems.length > 0) ? 'pt-4 border-t-2 border-dashed border-violet-200' : ''}>
+          <div className="flex items-center gap-2 mb-3">
+            <ClipboardCheck size={14} className="text-violet-600" />
+            <span className="text-sm font-semibold text-gray-700">Planprüfungen</span>
+            {reviewOpen > 0 && (
+              <span className="badge text-xs bg-violet-100 text-violet-700 border border-violet-300">{reviewOpen} offen</span>
+            )}
+            <span className="text-xs text-gray-400">aus der 2D-Planprüfung übernommen</span>
+          </div>
+          <div className="space-y-0">
+            {reviewVisible.map(item => renderItem(item, 'review'))}
+          </div>
+          {reviewVisible.length === 0 && (
+            <p className="text-sm text-gray-400 italic">
+              {q ? 'Keine Planprüfungen gefunden.' : 'Alle Planprüfungen erledigt.'}
             </p>
           )}
         </div>

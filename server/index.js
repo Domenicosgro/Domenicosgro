@@ -1086,6 +1086,143 @@ app.delete('/api/projects/:id/bim-issues/:issueId', requireAuth, writeLimiter, (
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
+// ── Planprüfung: Prüfvermerke auf 2D-Plänen (mit optionaler 3D-Verknüpfung) ────
+// Projekt- und plangebunden. Prüfberechtigte werden aus den Projektkontakten
+// gewählt. Verknüpfbar mit Protokoll (wie BIM-Issue) und per E-Mail versendbar.
+app.get('/api/projects/:id/plan-reviews', requireAuth, (req, res) => {
+  try {
+    let all = db.planReviews.list().filter(r => r.projectId === req.params.id)
+    if (req.query.planId) all = all.filter(r => r.planId === req.query.planId)
+    all.sort((a, b) => (a.no ?? 0) - (b.no ?? 0) || (a.createdAt || '').localeCompare(b.createdAt || ''))
+    res.json(all)
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.post('/api/projects/:id/plan-reviews', requireAuth, writeLimiter, (req, res) => {
+  try {
+    const id  = require('crypto').randomBytes(12).toString('base64url')
+    const now = new Date().toISOString()
+    const existing = db.planReviews.list().filter(r => r.projectId === req.params.id)
+    const maxNo = existing.reduce((m, r) => Math.max(m, r.no ?? 0), 0)
+    const data = {
+      id,
+      projectId:     req.params.id,
+      planId:        req.body.planId       || null,
+      planTitle:     req.body.planTitle    || '',
+      no:            maxNo + 1,
+      title:         req.body.title        || 'Prüfvermerk',
+      description:   req.body.description  || '',
+      type:          req.body.type         || 'pruefung',   // pruefung|mangel|hinweis|freigabe
+      status:        req.body.status       || 'offen',      // offen|in_pruefung|geprueft|freigegeben|abgelehnt
+      priority:      req.body.priority     || 'mittel',
+      assignedTo:    req.body.assignedTo   || '',           // Prüfberechtigter (aus Projektkontakten)
+      assignedEmail: req.body.assignedEmail || '',
+      dueDate:       req.body.dueDate      || '',
+      position:      req.body.position     || null,          // { x, y } normalisiert (nur Bildpläne)
+      viewpoint:     req.body.viewpoint    || null,          // 3D-Standpunkt (optional)
+      createdBy:     planDisplayName(req.user),
+      createdAt:     now,
+      updatedAt:     now,
+    }
+    db.planReviews.create(data, req.user)
+    broadcast('plan_review', 'create', id, now)
+    logEvent('PLAN_REVIEW_CREATE', req, `project=${req.params.id} id=${id}`)
+    res.status(201).json(data)
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.patch('/api/projects/:id/plan-reviews/:reviewId', requireAuth, writeLimiter, (req, res) => {
+  try {
+    const { data, version } = req.body
+    const updated = { ...data, updatedAt: new Date().toISOString() }
+    const result  = db.planReviews.update(req.params.reviewId, updated, version, req.user)
+    if (result.notFound)  return res.status(404).json({ error: 'Nicht gefunden.' })
+    if (result.conflict)  return res.status(409).json({ conflict: true, ...result })
+    broadcast('plan_review', 'update', req.params.reviewId, updated.updatedAt)
+    res.json({ ok: true })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.delete('/api/projects/:id/plan-reviews/:reviewId', requireAuth, writeLimiter, (req, res) => {
+  try {
+    db.planReviews.delete(req.params.reviewId)
+    broadcast('plan_review', 'delete', req.params.reviewId, new Date().toISOString())
+    logEvent('PLAN_REVIEW_DELETE', req, `project=${req.params.id} id=${req.params.reviewId}`)
+    res.json({ ok: true })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// POST – Prüfvermerk per E-Mail an den Prüfberechtigten senden
+app.post('/api/projects/:id/plan-reviews/:reviewId/send-email', requireAuth, async (req, res) => {
+  try {
+    if (!mailer.mailerStatus().configured) return res.status(400).json({ error: 'E-Mail-Versand nicht konfiguriert.' })
+    const review = db.planReviews.get(req.params.reviewId)
+    if (!review || review.projectId !== req.params.id) return res.status(404).json({ error: 'Prüfvermerk nicht gefunden.' })
+
+    const to = (req.body.to || review.assignedEmail || '').trim()
+    if (!to) return res.status(400).json({ error: 'Keine Empfänger-E-Mail vorhanden.' })
+
+    const project  = db.projects.get(req.params.id)
+    const projStr  = project?.name || 'Projekt'
+    const tpl      = getEmailSettings().plan_review
+    const TYPE_DE  = { pruefung: 'Prüfung', mangel: 'Mangel', hinweis: 'Hinweis', freigabe: 'Freigabe' }
+    const STAT_DE  = { offen: 'Offen', in_pruefung: 'In Prüfung', geprueft: 'Geprüft', freigegeben: 'Freigegeben', abgelehnt: 'Abgelehnt' }
+    const dueStr   = review.dueDate ? new Date(review.dueDate + 'T12:00:00').toLocaleDateString('de-DE') : '–'
+    const vars = {
+      project:   projStr,
+      plan:      review.planTitle || '–',
+      reviewer:  review.assignedTo || '',
+      title:     review.title || '',
+      type:      TYPE_DE[review.type] || review.type,
+      status:    STAT_DE[review.status] || review.status,
+      due:       dueStr,
+    }
+
+    const from        = process.env.SMTP_FROM || process.env.GRAPH_SENDER || process.env.SMTP_USER || 'noreply@ghba'
+    const sender      = req.user !== '__apikey__' && req.user !== '__anonymous__' ? db.users.get(req.user) : null
+    const senderName  = sender?.display_name || null
+    const replyTo     = sender?.email || null
+    const fromAddress = senderName ? `"${senderName} (GHBA)" <${from}>` : from
+    const subject     = applyTpl(tpl.subject, vars)
+    const appUrl      = getAppUrl(req)
+
+    const html = `<!DOCTYPE html><html><body style="font-family:Arial,sans-serif;color:#222;font-size:14px;line-height:1.5">
+      <p>Guten Tag${review.assignedTo ? ' ' + esc(review.assignedTo) : ''},</p>
+      <p>${esc(applyTpl(tpl.intro, vars))}</p>
+      <table style="border-collapse:collapse;margin:12px 0">
+        <tr><td style="padding:2px 10px 2px 0;color:#666">Plan</td><td style="padding:2px 0"><strong>${esc(vars.plan)}</strong></td></tr>
+        <tr><td style="padding:2px 10px 2px 0;color:#666">Prüfvermerk</td><td style="padding:2px 0"><strong>${esc(vars.title)}</strong></td></tr>
+        <tr><td style="padding:2px 10px 2px 0;color:#666">Art</td><td style="padding:2px 0">${esc(vars.type)}</td></tr>
+        <tr><td style="padding:2px 10px 2px 0;color:#666">Status</td><td style="padding:2px 0">${esc(vars.status)}</td></tr>
+        <tr><td style="padding:2px 10px 2px 0;color:#666">Frist</td><td style="padding:2px 0">${esc(vars.due)}</td></tr>
+      </table>
+      ${review.description ? `<p style="white-space:pre-wrap;border-left:3px solid #ccc;padding-left:10px;color:#444">${esc(review.description)}</p>` : ''}
+      <p><a href="${appUrl}" style="color:#2563eb">Zur Anwendung</a></p>
+      <p style="color:#888;margin-top:18px">${esc(tpl.footer)}</p>
+    </body></html>`
+
+    const text = [
+      `Guten Tag${review.assignedTo ? ' ' + review.assignedTo : ''},`, '',
+      applyTpl(tpl.intro, vars), '',
+      `Plan:        ${vars.plan}`,
+      `Prüfvermerk: ${vars.title}`,
+      `Art:         ${vars.type}`,
+      `Status:      ${vars.status}`,
+      `Frist:       ${vars.due}`,
+      review.description ? `\n${review.description}` : '',
+      '', appUrl, '', tpl.footer,
+    ].join('\n')
+
+    await mailer.sendMail({ from: fromAddress, to, subject, html, text, ...(replyTo ? { replyTo } : {}) })
+
+    // Zeitstempel des Versands am Prüfvermerk vermerken
+    const { _version, _updatedAt, ...rData } = review
+    db.planReviews.update(review.id, { ...rData, notifiedAt: new Date().toISOString() }, _version, req.user)
+    logEvent('PLAN_REVIEW_EMAIL', req, `to=${to} id=${review.id} project=${req.params.id}`)
+    res.json({ ok: true })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
 // DELETE /api/projects/:id/bim  → Modell entfernen
 app.delete('/api/projects/:id/bim', requireAuth, writeLimiter, (req, res) => {
   try {
@@ -1748,6 +1885,11 @@ const EMAIL_DEFAULTS = {
     subject: 'Ihre Aufgaben – {project} – Stand {date}',
     intro:   'nachfolgend finden Sie eine Übersicht Ihrer Aufgaben aus dem Projekt {project}. Wir bitten Sie, die Aufgaben fristgerecht zu erfüllen. Der Status wird in der folgenden Projektbesprechung entsprechend aktualisiert.',
     footer:  'GHBA',
+  },
+  plan_review: {
+    subject: 'Planprüfung – {project} – {plan}',
+    intro:   'Ihnen wurde ein Prüfvermerk zur Planprüfung im Projekt {project} zugewiesen. Wir bitten Sie, die Prüfung fristgerecht vorzunehmen.',
+    footer:  'GHBA · Planprüfung',
   },
   release_notification: {
     subject: 'Neue Freimeldung – {project}',

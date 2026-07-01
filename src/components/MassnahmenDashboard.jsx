@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react'
 import { ArrowLeft, AlertTriangle, CheckSquare, Filter, X, Lock, BarChart2,
-         Mail, Send, Loader, ChevronDown, ChevronRight, Check, Box, Eye } from 'lucide-react'
+         Mail, Send, Loader, ChevronDown, ChevronRight, Check, Box, Eye, ClipboardCheck } from 'lucide-react'
 import { ACTION_STATUSES, PRIORITIES, formatDate, buildProtocolNo, getChainNo,
          statusBadge, priorityBadge } from '../utils'
 import FreimeldungBadge from './FreimeldungBadge'
@@ -252,6 +252,7 @@ export default function MassnahmenDashboard({ protocols, projects, projectId, pr
   const [showEmailModal,    setShowEmailModal]    = useState(false)
   const [bimIssues,         setBimIssues]         = useState([])
   const [bimStatusFilter,   setBimStatusFilter]   = useState('alle')
+  const [planReviews,       setPlanReviews]       = useState([])
 
   // BIM-Issues laden (nur wenn projektbezogen und BIM-Modell vorhanden)
   useEffect(() => {
@@ -286,6 +287,37 @@ export default function MassnahmenDashboard({ protocols, projects, projectId, pr
     } catch {
       setBimIssues(prev => prev.map(i => i.id === issue.id ? issue : i))
     }
+  }
+
+  // Planprüfungen laden (projektbezogen, alle Pläne)
+  useEffect(() => {
+    if (!isScoped) return
+    const token = typeof localStorage !== 'undefined' ? localStorage.getItem('kp_session_token') : null
+    const headers = token ? { Authorization: `Bearer ${token}` } : {}
+    fetch(`/api/projects/${projectId}/plan-reviews`, { headers })
+      .then(r => r.ok ? r.json() : [])
+      .then(setPlanReviews)
+      .catch(() => {})
+  }, [projectId, isScoped])
+
+  const handleReviewStatusChange = async (review, newStatus) => {
+    const token = typeof localStorage !== 'undefined' ? localStorage.getItem('kp_session_token') : null
+    const headers = { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }
+    const { _version, _updatedAt, ...data } = review
+    setPlanReviews(prev => prev.map(r => r.id === review.id ? { ...r, status: newStatus, _version: (_version || 0) + 1 } : r))
+    try {
+      const res = await fetch(`/api/projects/${projectId}/plan-reviews/${review.id}`, {
+        method: 'PATCH', headers,
+        body: JSON.stringify({ data: { ...data, status: newStatus }, version: _version }),
+      })
+      if (res.ok) return
+      if (res.status === 409) {
+        const d = await res.json().catch(() => ({}))
+        if (d.serverData) setPlanReviews(prev => prev.map(r => r.id === review.id ? d.serverData : r))
+      } else {
+        setPlanReviews(prev => prev.map(r => r.id === review.id ? review : r))
+      }
+    } catch { setPlanReviews(prev => prev.map(r => r.id === review.id ? review : r)) }
   }
 
   // When scoped to a project, only include its protocols
@@ -769,6 +801,80 @@ export default function MassnahmenDashboard({ protocols, projects, projectId, pr
           )}
         </div>
       )}
+
+      {/* Planprüfung – Reporting-Abschnitt (nur projektbezogen) */}
+      {isScoped && planReviews.length > 0 && (() => {
+        const RSTAT = {
+          offen:       { label: 'Offen',       badge: 'bg-red-100 text-red-700 border-red-300' },
+          in_pruefung: { label: 'In Prüfung',  badge: 'bg-yellow-100 text-yellow-700 border-yellow-300' },
+          geprueft:    { label: 'Geprüft',     badge: 'bg-blue-100 text-blue-700 border-blue-300' },
+          freigegeben: { label: 'Freigegeben', badge: 'bg-green-100 text-green-700 border-green-300' },
+          abgelehnt:   { label: 'Abgelehnt',   badge: 'bg-gray-100 text-gray-500 border-gray-300' },
+        }
+        const RTYPE = { pruefung: 'Prüfung', mangel: 'Mangel', hinweis: 'Hinweis', freigabe: 'Freigabe' }
+        const openReviews = planReviews.filter(r => r.status === 'offen' || r.status === 'in_pruefung').length
+        return (
+          <div className="card overflow-hidden">
+            <div className="flex items-center gap-2 px-4 py-3 bg-violet-50 border-b border-violet-200">
+              <ClipboardCheck size={16} className="text-violet-600" />
+              <span className="font-semibold text-sm text-gray-800">Planprüfung</span>
+              {openReviews > 0 && (
+                <span className="badge text-xs bg-violet-100 text-violet-700 border border-violet-300">{openReviews} offen</span>
+              )}
+              <span className="text-xs text-gray-500">{planReviews.length} Prüfvermerk{planReviews.length !== 1 ? 'e' : ''}</span>
+            </div>
+            <table className="w-full text-sm border-collapse">
+              <thead>
+                <tr className="border-b border-gray-200 bg-gray-50/80">
+                  <th className="text-center px-3 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Nr</th>
+                  <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Plan</th>
+                  <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Prüfvermerk</th>
+                  <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Art</th>
+                  <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Prüfberechtigt</th>
+                  <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Frist</th>
+                  <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {planReviews.map((r, idx) => {
+                  const sc  = RSTAT[r.status] || RSTAT.offen
+                  const ovr = !!(r.dueDate && (r.status === 'offen' || r.status === 'in_pruefung') && r.dueDate < todayStr())
+                  const rowBg = r.status === 'freigegeben' || r.status === 'abgelehnt' ? 'bg-gray-50/60'
+                              : ovr ? 'bg-red-50' : idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/40'
+                  return (
+                    <tr key={r.id} className={`${rowBg} border-b border-gray-100 hover:bg-violet-50/40 transition-colors`}>
+                      <td className="px-3 py-2.5 text-center text-xs font-bold text-violet-700">{r.no}</td>
+                      <td className="px-4 py-2.5 text-xs text-gray-600 max-w-[140px]"><span className="truncate block">{r.planTitle || '–'}</span></td>
+                      <td className="px-4 py-2.5 max-w-xs">
+                        <span className={`font-medium ${r.status === 'freigegeben' || r.status === 'abgelehnt' ? 'text-gray-400' : 'text-gray-800'}`}>{r.title}</span>
+                        {r.description && <span className="block text-xs text-gray-400 truncate mt-0.5">{r.description}</span>}
+                      </td>
+                      <td className="px-4 py-2.5 text-xs text-gray-500 whitespace-nowrap">{RTYPE[r.type] || r.type}</td>
+                      <td className="px-4 py-2.5 text-xs text-gray-600 whitespace-nowrap">{r.assignedTo || '–'}</td>
+                      <td className="px-4 py-2.5 text-xs whitespace-nowrap">
+                        {r.dueDate ? (
+                          <span className={ovr ? 'text-red-600 font-semibold' : 'text-gray-600'}>
+                            {formatDate(r.dueDate)}{ovr && <AlertTriangle size={11} className="inline ml-1 text-red-500" />}
+                          </span>
+                        ) : <span className="text-gray-400">–</span>}
+                      </td>
+                      <td className="px-3 py-2">
+                        <select
+                          className={`select text-xs py-0.5 px-1.5 font-medium border ${sc.badge} bg-transparent`}
+                          value={r.status}
+                          onChange={e => handleReviewStatusChange(r, e.target.value)}
+                        >
+                          {Object.entries(RSTAT).map(([v, c]) => <option key={v} value={v}>{c.label}</option>)}
+                        </select>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        )
+      })()}
 
       {showEmailModal && (
         <EmailModal

@@ -1318,6 +1318,16 @@ const EMAIL_TYPES = [
     ],
   },
   {
+    id: 'plan_review',
+    label: 'Planprüfung',
+    desc: 'Prüfvermerk an Prüfberechtigten',
+    fields: [
+      { key: 'subject', label: 'Betreff', hint: '{project}, {plan}',            rows: 1 },
+      { key: 'intro',   label: 'Einleitungstext', hint: '{project}, {plan}, {reviewer}', rows: 3 },
+      { key: 'footer',  label: 'Fußzeile', hint: null,                          rows: 1 },
+    ],
+  },
+  {
     id: 'weekly_report',
     label: 'Wochenbericht',
     desc: 'Automatisch · Freitags',

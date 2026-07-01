@@ -579,6 +579,27 @@ export default function App() {
       }
       handleUpdateProtocol(protocolId, { actionItems: [...existing, newItem] })
     }
+    const handleAddReviewToProtocol = (protocolId, review) => {
+      const protocol = protocols.find(p => p.id === protocolId)
+      if (!protocol) return
+      const existing = protocol.actionItems || []
+      const maxNo = existing.reduce((m, a) => Math.max(m, a.no || 0), 0)
+      const planPrefix = review.planTitle ? `[${review.planTitle}] ` : ''
+      const newItem = {
+        id: uid(),
+        no: maxNo + 1,
+        description: `${planPrefix}${review.description ? `${review.title}\n${review.description}` : review.title}`,
+        responsible: review.assignedTo || '',
+        deadline: review.dueDate || '',
+        status: 'offen',
+        priority: review.priority || 'mittel',
+        remarks: '',
+        planReviewId: review.id,
+        bimViewpoint: review.viewpoint || null,
+        releaseHistory: [],
+      }
+      handleUpdateProtocol(protocolId, { actionItems: [...existing, newItem] })
+    }
     return (
       <BimView
         project={project}
@@ -594,6 +615,7 @@ export default function App() {
         onProjectUpdated={handleRefresh}
         protocols={projectProtocols}
         onAddBimIssueToProtocol={handleAddBimIssueToProtocol}
+        onAddReviewToProtocol={handleAddReviewToProtocol}
       />
     )
   }
