@@ -152,7 +152,8 @@ function StaffTab({ staff, orgUsers, onChanged, setError }) {
       {/* Aus der eigenen Organisation übernehmen */}
       <div className="card p-4">
         <p className="text-xs font-medium text-gray-500 mb-2">
-          Mitarbeiter aus der eigenen Organisation übernehmen (Benutzerverzeichnis)
+          Alle Personen der eigenen Organisation werden automatisch übernommen –
+          hier Arbeitszeitmodelle pflegen, Nachzügler manuell ergänzen
         </p>
         <div className="flex gap-2 flex-wrap">
           <select className="select flex-1 min-w-[220px]" value={contactPick} onChange={e => setContactPick(e.target.value)}>
@@ -255,6 +256,153 @@ const ABSENCE = [
   { id: 'urlaub', name: 'Urlaub' }, { id: 'krank', name: 'Krank' }, { id: 'buero', name: 'Büro / intern' },
 ]
 
+// ── Zellen-Editor: Mitarbeiter je Projekt × Kalendertag hinterlegen ──────────
+function CellEditor({ cell, staff, teamIds, getTage, setTage, sumFor, onClose }) {
+  const { project, week, monday, dayKey, dayIdx } = cell
+  const date = addDays(monday, dayIdx)
+  const dayLabel = DAYS.find(d => d.key === dayKey)?.label || ''
+
+  useEffect(() => {
+    const h = (e) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', h)
+    return () => window.removeEventListener('keydown', h)
+  }, [onClose])
+
+  const sorted = [...staff].sort((a, b) =>
+    (teamIds.has(a.id) ? 0 : 1) - (teamIds.has(b.id) ? 0 : 1)
+    || a.name.localeCompare(b.name, 'de'))
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+      <div className="bg-white w-full max-w-md max-h-[80vh] flex flex-col border border-gray-200 shadow-2xl" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200">
+          <div className="min-w-0">
+            <p className="font-semibold text-sm text-gray-900 truncate">{project.name}</p>
+            <p className="text-xs text-gray-400">{dayLabel}, {date.toLocaleDateString('de-DE')} · KW {week.split('-W')[1]} · Angaben in Tagen (¼-Schritte)</p>
+          </div>
+          <button className="btn-ghost p-1" onClick={onClose}><X size={15} /></button>
+        </div>
+        <div className="flex-1 overflow-y-auto divide-y divide-gray-50">
+          {sorted.map(member => {
+            const val   = getTage(week, project.id, member.id, dayKey)
+            const cap   = capDays(member, dayKey)
+            const total = sumFor(week, member.id, dayKey)
+            const over  = total > cap
+            return (
+              <div key={member.id} className={`flex items-center gap-3 px-4 py-2 ${val ? 'bg-brand-50/40' : ''}`}>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-gray-800 truncate">
+                    {member.name}
+                    {teamIds.has(member.id) && (
+                      <span className="badge text-[9px] bg-brand-50 text-brand-600 border border-brand-200 ml-1.5">Team</span>
+                    )}
+                  </p>
+                  <p className={`text-[10px] ${over ? 'text-red-600 font-semibold' : 'text-gray-400'}`}>
+                    Tag gesamt: {fmtTage(total) || '0'} / {fmtTage(cap) || '0'}{over ? ' – überbucht!' : ''}
+                  </p>
+                </div>
+                <select
+                  className={`select text-sm py-1 w-16 text-center ${val ? 'border-brand-400 font-semibold' : ''}`}
+                  value={val}
+                  onChange={e => setTage(week, project.id, member.id, dayKey, e.target.value === '' ? '' : parseFloat(e.target.value))}
+                >
+                  {TAGE_OPTIONS.map(o => <option key={o.label} value={o.value}>{o.label}</option>)}
+                </select>
+              </div>
+            )
+          })}
+        </div>
+        <div className="px-4 py-2.5 border-t border-gray-200 flex justify-end">
+          <button className="btn-primary text-sm" onClick={onClose}><Check size={14} /> Fertig</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Auswertung: Parameter wählen, speichern und drucken ─────────────────────
+function ReportModal({ presets, onSavePreset, onDeletePreset, onPrint, onClose }) {
+  const [params, setParams] = useState({
+    showProjekte: true, showAuslastung: true, sort: 'reihenfolge', nurBelegte: true,
+  })
+  const [presetName, setPresetName] = useState('')
+  const set = (patch) => setParams(p => ({ ...p, ...patch }))
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+      <div className="bg-white w-full max-w-md border border-gray-200 shadow-2xl" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200">
+          <h3 className="font-semibold text-gray-900 flex items-center gap-2"><Printer size={16} className="text-brand-600" /> Auswertung</h3>
+          <button className="btn-ghost p-1" onClick={onClose}><X size={16} /></button>
+        </div>
+        <div className="p-5 space-y-4">
+          {/* Gespeicherte Parameter */}
+          {presets.length > 0 && (
+            <div>
+              <p className="text-xs font-medium text-gray-500 mb-1.5">Gespeicherte Auswertungen</p>
+              <div className="space-y-1">
+                {presets.map(p => (
+                  <div key={p.id} className="flex items-center gap-2">
+                    <button className="flex-1 text-left text-sm px-3 py-1.5 border border-gray-200 hover:border-brand-300 hover:bg-brand-50/50 transition-colors"
+                      onClick={() => setParams(p.params)}>{p.name}</button>
+                    <button className="btn-ghost p-1 text-gray-300 hover:text-red-500" onClick={() => onDeletePreset(p.id)}><Trash2 size={13} /></button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div>
+            <p className="text-xs font-medium text-gray-500 mb-1.5">Inhalte</p>
+            <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+              <input type="checkbox" checked={params.showProjekte} onChange={e => set({ showProjekte: e.target.checked })} />
+              Projektübersicht (Tage je Projekt und Woche, mit Mitarbeitern)
+            </label>
+            <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer mt-1">
+              <input type="checkbox" checked={params.showAuslastung} onChange={e => set({ showAuslastung: e.target.checked })} />
+              Personalauslastung (verplant / Kapazität je Woche, Auslastung %)
+            </label>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <p className="text-xs font-medium text-gray-500 mb-1.5">Sortierung der Projekte</p>
+              <select className="select w-full text-sm" value={params.sort} onChange={e => set({ sort: e.target.value })}>
+                <option value="reihenfolge">Wie in der Planung</option>
+                <option value="nummer">Nach Projektnummer</option>
+                <option value="name">Alphabetisch</option>
+              </select>
+            </div>
+            <div className="pt-6">
+              <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                <input type="checkbox" checked={params.nurBelegte} onChange={e => set({ nurBelegte: e.target.checked })} />
+                Nur belegte Projekte
+              </label>
+            </div>
+          </div>
+
+          {/* Parameter speichern */}
+          <div className="flex gap-2 pt-2 border-t border-gray-100">
+            <input className="input text-sm flex-1" placeholder="Als Vorlage speichern unter…"
+              value={presetName} onChange={e => setPresetName(e.target.value)} />
+            <button className="btn-secondary text-sm" disabled={!presetName.trim()}
+              onClick={() => { onSavePreset(presetName.trim(), params); setPresetName('') }}>
+              Speichern
+            </button>
+          </div>
+        </div>
+        <div className="px-5 py-3 border-t border-gray-200 flex justify-end gap-2">
+          <button className="btn-secondary" onClick={onClose}>Abbrechen</button>
+          <button className="btn-primary" disabled={!params.showProjekte && !params.showAuslastung}
+            onClick={() => onPrint(params)}>
+            <Printer size={14} /> Drucken
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Hauptkomponente ─────────────────────────────────────────────────────────
 export default function PersonalplanungView({ projects, onUpdateProject, serverUser, onBack }) {
   const [tab,     setTab]     = useState('plan')
@@ -262,6 +410,7 @@ export default function PersonalplanungView({ projects, onUpdateProject, serverU
   const [plans,   setPlans]   = useState({})     // { [week]: assignments[] }
   const [addedRows, setAddedRows] = useState({}) // { [projectId]: [staffId] } – frisch hinzugefügt, noch ohne Werte
   const [staff,   setStaff]   = useState([])
+  const [staffReady, setStaffReady] = useState(false)
   const [orgUsers, setOrgUsers] = useState([])   // eigene Organisation (Benutzerverzeichnis)
   const [loading, setLoading] = useState(true)
   const [saving,  setSaving]  = useState(false)
@@ -305,7 +454,7 @@ export default function PersonalplanungView({ projects, onUpdateProject, serverU
   const activeProjects = (projects || []).filter(p => !p.isArchived)
 
   const loadStaff = useCallback(async () => {
-    try { setStaff(await staffApi.list()) } catch (e) { setError(e.message) }
+    try { setStaff(await staffApi.list()); setStaffReady(true) } catch (e) { setError(e.message) }
   }, [])
 
   const fetchWeek = async (week) => {
@@ -499,6 +648,156 @@ export default function PersonalplanungView({ projects, onUpdateProject, serverU
     savePlanSettings({ ...planSettings, services: planSettings.services.filter(s => s.id !== svc.id) })
   }
 
+  // Zeilen der Matrix: Projekte (sortiert) + Zusatz-Leistungen + Abwesenheiten
+  const matrixBlocks = useMemo(() => [
+    ...sortedProjects,
+    ...planSettings.services.map(s => ({ ...s, _service: true })),
+    ...ABSENCE,
+  ], [sortedProjects, planSettings.services])
+
+  // Zellen-Editor (Mitarbeiter je Projekt × Tag hinterlegen)
+  const [cellEdit, setCellEdit] = useState(null)   // { project, week, monday, dayKey, dayIdx }
+
+  // ── Auswertung (Parameter + Druck) ─────────────────────────────────────────
+  const [showReport, setShowReport] = useState(false)
+
+  const savePreset = (name, params) =>
+    savePlanSettings({ ...planSettings, reportPresets: [...(planSettings.reportPresets || []), { id: uid(), name, params }] })
+  const deletePreset = (id) =>
+    savePlanSettings({ ...planSettings, reportPresets: (planSettings.reportPresets || []).filter(p => p.id !== id) })
+
+  const buildReportHtml = (params) => {
+    const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    const kwLabel = (w) => `KW ${w.week.split('-W')[1]}`
+    const range = `KW ${weeks[0].week.split('-W')[1]} – KW ${weeks[3].week.split('-W')[1]} (${fmtShort(weeks[0].monday)} – ${fmtShort(addDays(weeks[3].monday, 4))})`
+
+    // Projektblöcke (ohne Abwesenheiten), sortiert nach Parameter
+    let blocks = matrixBlocks.filter(b => !ABSENCE.find(a => a.id === b.id))
+    const weekSum = (b, w) => (plans[w.week] || []).reduce((s, a) =>
+      s + (a.projectId === b.id ? DAYS.reduce((x, d) => x + (a.days?.[d.key] || 0), 0) : 0), 0)
+    const totalOf = (b) => weeks.reduce((s, w) => s + weekSum(b, w), 0)
+    if (params.nurBelegte) blocks = blocks.filter(b => totalOf(b) > 0)
+    if (params.sort === 'nummer') blocks = [...blocks].sort((a, b) =>
+      (parseInt(a.projectData?.nummer, 10) || 99999) - (parseInt(b.projectData?.nummer, 10) || 99999))
+    if (params.sort === 'name') blocks = [...blocks].sort((a, b) => (a.name || '').localeCompare(b.name || '', 'de'))
+
+    const fmtNum = (n) => n % 1 === 0 ? String(n) : String(n).replace('.', ',')
+
+    let projSection = ''
+    if (params.showProjekte) {
+      const rows = blocks.map(b => {
+        const staffTotals = new Map()
+        for (const w of weeks) for (const a of (plans[w.week] || [])) {
+          if (a.projectId !== b.id) continue
+          const t = DAYS.reduce((x, d) => x + (a.days?.[d.key] || 0), 0)
+          if (t > 0) staffTotals.set(a.staffId, (staffTotals.get(a.staffId) || 0) + t)
+        }
+        const staffStr = [...staffTotals.entries()]
+          .sort((x, y) => y[1] - x[1])
+          .map(([id, t]) => `${esc(activeStaff.find(s => s.id === id)?.name || '?')} (${fmtNum(t)})`)
+          .join(', ')
+        return `<tr>
+          <td style="padding:5px 8px;border:0.5pt solid #d1d5db;"><strong>${esc(b.name)}</strong>${b.projectData?.gesellschaft ? ` <span style="color:#6b7280;font-size:8pt;">(${esc(b.projectData.gesellschaft)})</span>` : ''}
+            ${staffStr ? `<br><span style="color:#6b7280;font-size:8pt;">${staffStr}</span>` : ''}</td>
+          ${weeks.map(w => `<td style="padding:5px 8px;border:0.5pt solid #d1d5db;text-align:center;">${weekSum(b, w) > 0 ? fmtNum(weekSum(b, w)) : '–'}</td>`).join('')}
+          <td style="padding:5px 8px;border:0.5pt solid #d1d5db;text-align:center;font-weight:bold;">${fmtNum(totalOf(b))}</td>
+        </tr>`
+      }).join('')
+      projSection = `
+        <h2 style="font-size:12pt;margin:16px 0 6px 0;">Projektübersicht (Tage)</h2>
+        <table style="width:100%;border-collapse:collapse;font-size:9pt;">
+          <thead><tr style="background:#000040;color:#8FBEFF;">
+            <th style="padding:5px 8px;text-align:left;border:0.5pt solid #000040;">Projekt / Leistung · Mitarbeiter</th>
+            ${weeks.map(w => `<th style="padding:5px 8px;border:0.5pt solid #000040;">${kwLabel(w)}</th>`).join('')}
+            <th style="padding:5px 8px;border:0.5pt solid #000040;">Gesamt</th>
+          </tr></thead>
+          <tbody>${rows || '<tr><td colspan="6" style="padding:8px;color:#9ca3af;">Keine Einplanungen.</td></tr>'}</tbody>
+        </table>`
+    }
+
+    let ausSection = ''
+    if (params.showAuslastung) {
+      const rows = activeStaff.map(m => {
+        const capWeek = DAYS.reduce((s, d) => s + capDays(m, d.key), 0)
+        let planned = 0, capacity = 0
+        const cells = weeks.map(w => {
+          const p = (plans[w.week] || []).reduce((s, a) =>
+            s + (a.staffId === m.id ? DAYS.reduce((x, d) => x + (a.days?.[d.key] || 0), 0) : 0), 0)
+          planned += p; capacity += capWeek
+          const over = p > capWeek
+          return `<td style="padding:5px 8px;border:0.5pt solid #d1d5db;text-align:center;${over ? 'color:#dc2626;font-weight:bold;' : ''}">${fmtNum(p)} / ${fmtNum(capWeek)}</td>`
+        }).join('')
+        const pct = capacity > 0 ? Math.round(planned / capacity * 100) : 0
+        return `<tr>
+          <td style="padding:5px 8px;border:0.5pt solid #d1d5db;"><strong>${esc(m.name)}</strong>${m.funktion ? ` <span style="color:#6b7280;font-size:8pt;">${esc(m.funktion)}</span>` : ''}</td>
+          ${cells}
+          <td style="padding:5px 8px;border:0.5pt solid #d1d5db;text-align:center;font-weight:bold;${pct > 100 ? 'color:#dc2626;' : pct >= 90 ? 'color:#16a34a;' : 'color:#d97706;'}">${pct} %</td>
+        </tr>`
+      }).join('')
+      ausSection = `
+        <h2 style="font-size:12pt;margin:16px 0 6px 0;">Personalauslastung (verplant / Kapazität in Tagen)</h2>
+        <table style="width:100%;border-collapse:collapse;font-size:9pt;">
+          <thead><tr style="background:#000040;color:#8FBEFF;">
+            <th style="padding:5px 8px;text-align:left;border:0.5pt solid #000040;">Mitarbeiter</th>
+            ${weeks.map(w => `<th style="padding:5px 8px;border:0.5pt solid #000040;">${kwLabel(w)}</th>`).join('')}
+            <th style="padding:5px 8px;border:0.5pt solid #000040;">Auslastung</th>
+          </tr></thead>
+          <tbody>${rows}</tbody>
+        </table>`
+    }
+
+    return `<!DOCTYPE html><html lang="de"><head><meta charset="utf-8"><title>Personalplanung – Auswertung</title>
+      <style>@page { size: A4; margin: 14mm; } body { font-family: Arial, sans-serif; color: #000; margin: 0; }</style>
+      </head><body>
+      <div style="border-bottom:1pt solid #000;padding-bottom:6px;margin-bottom:4px;">
+        <div style="font-size:8pt;letter-spacing:2px;color:#555;">GHBA</div>
+        <div style="font-size:15pt;font-weight:bold;">Personalplanung – Auswertung</div>
+        <div style="font-size:9pt;color:#555;">${range} · Stand ${new Date().toLocaleDateString('de-DE')}</div>
+      </div>
+      ${projSection}${ausSection}
+      </body></html>`
+  }
+
+  const printReport = (params) => {
+    const html = buildReportHtml(params)
+    const iframe = document.createElement('iframe')
+    Object.assign(iframe.style, { position: 'fixed', right: '0', bottom: '0', width: '0', height: '0', border: '0' })
+    document.body.appendChild(iframe)
+    const doc = iframe.contentWindow.document
+    doc.open(); doc.write(html); doc.close()
+    setTimeout(() => {
+      iframe.contentWindow.focus()
+      iframe.contentWindow.print()
+      setTimeout(() => document.body.removeChild(iframe), 2000)
+    }, 250)
+  }
+
+  // Alle Personen der eigenen Organisation automatisch als Mitarbeiter anlegen
+  const syncedRef = useRef(false)
+  useEffect(() => {
+    if (!isServer || syncedRef.current || !staffReady || orgUsers.length === 0) return
+    syncedRef.current = true
+    const names  = new Set(staff.map(s => s.name))
+    const emails = new Set(staff.map(s => (s.email || '').toLowerCase()).filter(Boolean))
+    const missing = orgUsers.filter(u => {
+      const name  = u.display_name || u.username
+      const email = (u.email || '').toLowerCase()
+      return !names.has(name) && (!email || !emails.has(email))
+    })
+    if (missing.length === 0) return
+    ;(async () => {
+      for (const u of missing) {
+        try {
+          await staffApi.create({
+            name: u.display_name || u.username, email: u.email || '', funktion: '',
+            weeklyHours: 40, dayHours: { mo: 8, di: 8, mi: 8, do: 8, fr: 8 },
+          })
+        } catch {}
+      }
+      loadStaff()
+    })()
+  }, [staffReady, orgUsers])  // eslint-disable-line react-hooks/exhaustive-deps
+
   // 4-Wochen-Plan als PDF herunterladen (z. B. zum Teilen in Teams)
   const [pdfBusy, setPdfBusy] = useState(false)
   const exportPdf = async () => {
@@ -602,7 +901,10 @@ export default function PersonalplanungView({ projects, onUpdateProject, serverU
                 onClick={exportPdf} disabled={pdfBusy || activeStaff.length === 0}>
                 {pdfBusy ? <Loader size={13} className="animate-spin" /> : <FileDown size={13} />} PDF
               </button>
-              <button className="btn-secondary text-xs" onClick={() => window.print()}><Printer size={13} /></button>
+              <button className="btn-secondary text-xs" title="Auswertung mit einstellbaren Parametern drucken"
+                onClick={() => setShowReport(true)} disabled={activeStaff.length === 0}>
+                <Printer size={13} /> Auswertung
+              </button>
             </div>
           </div>
 
@@ -617,133 +919,97 @@ export default function PersonalplanungView({ projects, onUpdateProject, serverU
             </div>
           ) : (
             <>
-              {/* Gesamtübersicht auf Basis der Projektdatenbank (+ Leistungen + Abwesenheiten) */}
-              {[
-                ...sortedProjects,
-                ...planSettings.services.map(s => ({ ...s, _service: true })),
-                ...ABSENCE,
-              ].map((project, blockIdx) => {
-                const isAbsence = !!ABSENCE.find(a => a.id === project.id)
-                const isService = !!project._service
-                const isExtra   = isAbsence || isService
-                const rows = staffIdsFor(project)
-                const teamIds = isExtra ? new Set() : teamStaffIds(project)
-                const pl = isExtra ? [] : (project.team || []).filter(m => m.role === 'Projektleitung').map(m => m.name)
-                const ges  = project.projectData?.gesellschaft || ''
-                const projIdx = sortedProjects.findIndex(p => p.id === project.id)
-                return (
-                  <div key={project.id} className={`card overflow-hidden ${isAbsence ? 'border-l-4 border-l-yellow-300' : isService ? 'border-l-4 border-l-gray-300' : ''}`}>
-                    {/* Projektkopf */}
-                    <div className="flex items-center gap-3 px-4 py-2.5 bg-gray-50/80 border-b border-gray-200 flex-wrap">
-                      {!isExtra && (
-                        <span className="flex flex-col -my-1 no-print">
-                          <button className="text-gray-300 hover:text-brand-600 disabled:opacity-30" title="Nach oben"
-                            disabled={projIdx <= 0} onClick={() => moveProject(project.id, -1)}><ChevronUp size={13} /></button>
-                          <button className="text-gray-300 hover:text-brand-600 disabled:opacity-30" title="Nach unten"
-                            disabled={projIdx === sortedProjects.length - 1} onClick={() => moveProject(project.id, 1)}><ChevronDown size={13} /></button>
-                        </span>
-                      )}
-                      {isService && <Briefcase size={14} className="text-gray-400" />}
-                      <span className="font-semibold text-sm text-night">{project.name || 'Unbenannt'}</span>
-                      {isService && (
-                        <button className="btn-ghost p-1 text-gray-300 hover:text-red-500 no-print" title="Leistung entfernen"
-                          onClick={() => removeService(project)}><Trash2 size={12} /></button>
-                      )}
-                      {!isExtra && (canEditGes(project) ? (
-                        <select
-                          className={`select text-[11px] py-0.5 px-1.5 no-print ${ges ? (ges === 'GmbH' ? 'text-brand-700 border-brand-300' : 'text-violet-700 border-violet-300') : 'text-gray-400'}`}
-                          value={ges}
-                          onChange={e => setGesellschaft(project, e.target.value)}
-                          title="Gesellschaft (Projektdatenbank)"
-                        >
-                          <option value="">Gesellschaft…</option>
-                          <option value="GmbH">GmbH</option>
-                          <option value="PartGmbB">PartGmbB</option>
-                        </select>
-                      ) : ges ? (
-                        <span className={`badge text-[10px] ${ges === 'GmbH' ? 'bg-brand-100 text-brand-700 border border-brand-300' : 'bg-violet-100 text-violet-700 border border-violet-300'}`}>{ges}</span>
-                      ) : null)}
-                      {ges && <span className="hidden print:inline text-xs text-gray-500">({ges})</span>}
-                      {pl.length > 0 && (
-                        <span className="text-[11px] text-gray-400">PL: {pl.join(', ')}</span>
-                      )}
-                      <div className="ml-auto no-print">
-                        <select className="select text-xs py-0.5" value=""
-                          onChange={e => { addStaffRow(project.id, e.target.value); e.target.value = '' }}>
-                          <option value="">+ Mitarbeiter einplanen…</option>
-                          {activeStaff.filter(s => !rows.find(r => r.id === s.id)).map(s => (
-                            <option key={s.id} value={s.id}>{s.name}</option>
-                          ))}
-                        </select>
-                      </div>
-                    </div>
-
-                    {rows.length === 0 ? (
-                      <p className="px-4 py-3 text-xs text-gray-400">Noch niemand eingeplant.</p>
-                    ) : (
-                      <div className="overflow-x-auto">
-                        <table className="border-collapse text-xs min-w-[1080px] w-full">
-                          <thead>
-                            <tr className="bg-gray-50/60">
-                              <th className="text-left px-3 py-1.5 font-semibold text-gray-500 uppercase tracking-wide w-40 border-b border-gray-200">Mitarbeiter</th>
-                              {weeks.map(w => (
-                                <th key={w.week} colSpan={5} className="px-1 py-1.5 text-center font-semibold text-gray-500 border-b border-l border-gray-200">
-                                  KW {w.week.split('-W')[1]} <span className="font-normal text-gray-400">({fmtShort(w.monday)})</span>
-                                </th>
-                              ))}
-                            </tr>
-                            <tr className="bg-gray-50/40">
-                              <th className="border-b border-gray-200" />
-                              {weeks.map(w => DAYS.map((d, i) => (
-                                <th key={`${w.week}-${d.key}`}
-                                  className={`px-0.5 py-1 text-center font-medium text-gray-400 border-b border-gray-200 ${i === 0 ? 'border-l' : ''}`}>
-                                  {d.label.slice(0, 2)}
-                                </th>
-                              )))}
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {rows.map(member => (
-                              <tr key={member.id} className="border-b border-gray-50">
-                                <td className="px-3 py-1">
-                                  <div className="flex items-center gap-1.5">
-                                    <span className="font-medium text-gray-800 truncate">{member.name}</span>
-                                    {teamIds.has(member.id) ? (
-                                      <span className="badge text-[9px] bg-brand-50 text-brand-600 border border-brand-200 flex-shrink-0"
-                                        title="Mitglied des Projektteams (Projektdatenbank)">Team</span>
-                                    ) : (
-                                      <button className="btn-ghost p-0.5 text-gray-300 hover:text-red-500 no-print" title="Aus diesem Projekt entfernen"
-                                        onClick={() => removeStaffRow(project.id, member.id)}><X size={11} /></button>
-                                    )}
-                                  </div>
-                                </td>
-                                {weeks.map(w => DAYS.map((d, i) => {
-                                  const val = getTage(w.week, project.id, member.id, d.key)
-                                  const cap = capDays(member, d.key)
-                                  const total = sumFor(w.week, member.id, d.key)
-                                  const over  = total > cap
-                                  return (
-                                    <td key={`${w.week}-${d.key}`} className={`px-0.5 py-0.5 text-center ${i === 0 ? 'border-l border-gray-100' : ''} ${over && val ? 'bg-red-50' : ''}`}>
-                                      <select
-                                        className={`w-11 text-center text-xs py-0.5 border ${val ? (over ? 'border-red-300 text-red-700' : 'border-gray-200 text-gray-800') : 'border-transparent text-gray-300'} bg-transparent focus:border-brand-400 focus:outline-none`}
-                                        value={val}
-                                        title={cap === 0 ? 'Laut Arbeitszeitmodell frei' : `Verfügbar: ${fmtTage(cap)} Tag`}
-                                        onChange={e => setTage(w.week, project.id, member.id, d.key, e.target.value === '' ? '' : parseFloat(e.target.value))}
-                                      >
-                                        {TAGE_OPTIONS.map(o => <option key={o.label} value={o.value}>{o.label}</option>)}
-                                      </select>
-                                    </td>
-                                  )
-                                }))}
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    )}
-                  </div>
-                )
-              })}
+              {/* Matrix: Projekte links · Kalenderskala rechts (KW-Ebene + Wochentage) */}
+              <div className="card overflow-x-auto">
+                <table className="border-collapse text-xs min-w-[1150px] w-full">
+                  <thead>
+                    <tr className="bg-night text-white">
+                      <th className="text-left px-3 py-2 font-semibold uppercase tracking-wide w-56 sticky left-0 bg-night z-10">Projekt</th>
+                      {weeks.map(w => (
+                        <th key={w.week} colSpan={5} className="px-1 py-2 text-center font-semibold border-l border-white/20">
+                          KW {w.week.split('-W')[1]}
+                          <span className="block font-normal text-[10px] text-sky">
+                            {fmtShort(w.monday)} – {fmtShort(addDays(w.monday, 4))}
+                          </span>
+                        </th>
+                      ))}
+                    </tr>
+                    <tr className="bg-gray-50/80">
+                      <th className="border-b border-gray-200 sticky left-0 bg-gray-50 z-10" />
+                      {weeks.map(w => DAYS.map((d, i) => (
+                        <th key={`${w.week}-${d.key}`}
+                          className={`px-0.5 py-1 text-center font-medium text-gray-400 border-b border-gray-200 ${i === 0 ? 'border-l border-gray-200' : ''}`}>
+                          {d.label.slice(0, 2)}
+                        </th>
+                      )))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {matrixBlocks.map(project => {
+                      const isAbsence = !!ABSENCE.find(a => a.id === project.id)
+                      const isService = !!project._service
+                      const isExtra   = isAbsence || isService
+                      const ges = project.projectData?.gesellschaft || ''
+                      const pl  = isExtra ? [] : (project.team || []).filter(m => m.role === 'Projektleitung').map(m => m.name)
+                      const projIdx = sortedProjects.findIndex(p => p.id === project.id)
+                      return (
+                        <tr key={project.id} className={`border-b border-gray-100 ${isAbsence ? 'bg-yellow-50/40' : isService ? 'bg-gray-50/40' : ''}`}>
+                          {/* Projektspalte */}
+                          <td className={`px-2 py-1.5 sticky left-0 z-10 ${isAbsence ? 'bg-yellow-50' : isService ? 'bg-gray-50' : 'bg-white'}`}>
+                            <div className="flex items-center gap-1">
+                              {!isExtra && (
+                                <span className="flex flex-col no-print flex-shrink-0">
+                                  <button className="text-gray-300 hover:text-brand-600 disabled:opacity-20 leading-none" title="Nach oben"
+                                    disabled={projIdx <= 0} onClick={() => moveProject(project.id, -1)}><ChevronUp size={11} /></button>
+                                  <button className="text-gray-300 hover:text-brand-600 disabled:opacity-20 leading-none" title="Nach unten"
+                                    disabled={projIdx === sortedProjects.length - 1} onClick={() => moveProject(project.id, 1)}><ChevronDown size={11} /></button>
+                                </span>
+                              )}
+                              {isService && <Briefcase size={12} className="text-gray-400 flex-shrink-0" />}
+                              <span className="min-w-0">
+                                <span className="block font-semibold text-gray-800 truncate" title={pl.length ? `PL: ${pl.join(', ')}` : undefined}>
+                                  {project.name || 'Unbenannt'}
+                                </span>
+                                {(ges || pl.length > 0) && (
+                                  <span className="block text-[10px] text-gray-400 truncate">
+                                    {ges}{ges && pl.length > 0 ? ' · ' : ''}{pl.length > 0 ? `PL: ${pl.join(', ')}` : ''}
+                                  </span>
+                                )}
+                              </span>
+                              {isService && (
+                                <button className="btn-ghost p-0.5 text-gray-300 hover:text-red-500 no-print ml-auto flex-shrink-0" title="Leistung entfernen"
+                                  onClick={() => removeService(project)}><Trash2 size={11} /></button>
+                              )}
+                            </div>
+                          </td>
+                          {/* Schnittstellen Projekt × Kalendertag: Summe der ¼-Tage, Klick = Mitarbeiter hinterlegen */}
+                          {weeks.map(w => DAYS.map((d, i) => {
+                            const total = (plans[w.week] || []).reduce((s, a) =>
+                              s + (a.projectId === project.id ? (a.days?.[d.key] || 0) : 0), 0)
+                            const nStaff = (plans[w.week] || []).filter(a => a.projectId === project.id && a.days?.[d.key] > 0).length
+                            return (
+                              <td key={`${w.week}-${d.key}`} className={`p-0 text-center ${i === 0 ? 'border-l border-gray-200' : 'border-l border-gray-50'}`}>
+                                <button
+                                  className={`w-full h-8 text-xs transition-colors ${total > 0
+                                    ? 'font-semibold text-brand-800 bg-brand-50 hover:bg-brand-100'
+                                    : 'text-gray-200 hover:bg-gray-50 hover:text-gray-400'}`}
+                                  title={total > 0 ? `${fmtTage(total)} Tag(e) · ${nStaff} Mitarbeiter – klicken zum Bearbeiten` : 'Mitarbeiter einplanen'}
+                                  onClick={() => setCellEdit({ project, week: w.week, monday: w.monday, dayKey: d.key, dayIdx: i })}
+                                >
+                                  {total > 0 ? fmtTage(total) : '·'}
+                                </button>
+                              </td>
+                            )
+                          }))}
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+                <div className="px-4 py-2 text-xs text-gray-400 border-t border-gray-100">
+                  Zelle anklicken, um Mitarbeiter mit ¼-Tagesschritten zu hinterlegen · Zahl = Summe der geplanten Tage
+                </div>
+              </div>
 
               {/* Weitere Leistung ergänzen (z. B. Kaufmännische Assistenz) */}
               <div className="card p-3 flex gap-2 items-center flex-wrap no-print">
@@ -800,6 +1066,31 @@ export default function PersonalplanungView({ projects, onUpdateProject, serverU
                 </table>
               </div>
             </>
+          )}
+
+          {/* Zellen-Editor */}
+          {cellEdit && (
+            <CellEditor
+              cell={cellEdit}
+              staff={activeStaff}
+              teamIds={(cellEdit.project._service || ABSENCE.find(a => a.id === cellEdit.project.id))
+                ? new Set() : teamStaffIds(cellEdit.project)}
+              getTage={getTage}
+              setTage={setTage}
+              sumFor={sumFor}
+              onClose={() => setCellEdit(null)}
+            />
+          )}
+
+          {/* Auswertung */}
+          {showReport && (
+            <ReportModal
+              presets={planSettings.reportPresets || []}
+              onSavePreset={savePreset}
+              onDeletePreset={deletePreset}
+              onPrint={(params) => { printReport(params); setShowReport(false) }}
+              onClose={() => setShowReport(false)}
+            />
           )}
         </>
       )}
