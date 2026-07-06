@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { ArrowLeft, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Plus, Trash2, Loader, AlertCircle, X,
-         CalendarClock, Printer, Users, UserPlus, Link2, Copy, CheckSquare, Pencil, Check, FileDown, Briefcase } from 'lucide-react'
+         CalendarClock, Printer, Users, UserPlus, Link2, Copy, CheckSquare, Pencil, Check, FileDown, Briefcase, GripVertical } from 'lucide-react'
 import { uid, formatDate } from '../utils'
 import { buildStaffPlanPdf } from '../staffPlanPdf'
 import { downloadPdfBase64 } from '../archivePdf'
@@ -278,7 +278,7 @@ function CellEditor({ cell, staff, teamIds, getTage, setTage, sumFor, onClose })
         <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200">
           <div className="min-w-0">
             <p className="font-semibold text-sm text-gray-900 truncate">{project.name}</p>
-            <p className="text-xs text-gray-400">{dayLabel}, {date.toLocaleDateString('de-DE')} · KW {week.split('-W')[1]} · Angaben in Tagen (¼-Schritte)</p>
+            <p className="text-xs text-gray-400">{dayLabel}, {date.toLocaleDateString('de-DE')} · KW {week.split('-W')[1]} · ¼-Tagesschritte, beliebig viele Mitarbeiter</p>
           </div>
           <button className="btn-ghost p-1" onClick={onClose}><X size={15} /></button>
         </div>
@@ -658,6 +658,19 @@ export default function PersonalplanungView({ projects, onUpdateProject, serverU
   // Zellen-Editor (Mitarbeiter je Projekt × Tag hinterlegen)
   const [cellEdit, setCellEdit] = useState(null)   // { project, week, monday, dayKey, dayIdx }
 
+  // Drag & Drop zum Verschieben der Projektzeilen
+  const [dragId,      setDragId]      = useState(null)
+  const [dragArmedId, setDragArmedId] = useState(null)   // Drag nur über den Griff starten
+  const handleDropOn = (targetId) => {
+    if (!dragId || dragId === targetId) return
+    const ids = sortedProjects.map(p => p.id).filter(id => id !== dragId)
+    const ti = ids.indexOf(targetId)
+    if (ti === -1) return
+    ids.splice(ti, 0, dragId)
+    savePlanSettings({ ...planSettings, projectOrder: ids })
+    setDragId(null)
+  }
+
   // ── Auswertung (Parameter + Druck) ─────────────────────────────────────────
   const [showReport, setShowReport] = useState(false)
 
@@ -953,10 +966,28 @@ export default function PersonalplanungView({ projects, onUpdateProject, serverU
                       const pl  = isExtra ? [] : (project.team || []).filter(m => m.role === 'Projektleitung').map(m => m.name)
                       const projIdx = sortedProjects.findIndex(p => p.id === project.id)
                       return (
-                        <tr key={project.id} className={`border-b border-gray-100 ${isAbsence ? 'bg-yellow-50/40' : isService ? 'bg-gray-50/40' : ''}`}>
+                        <tr
+                          key={project.id}
+                          className={`border-b border-gray-100 ${isAbsence ? 'bg-yellow-50/40' : isService ? 'bg-gray-50/40' : ''} ${dragId === project.id ? 'opacity-40' : ''}`}
+                          draggable={dragArmedId === project.id}
+                          onDragStart={() => setDragId(project.id)}
+                          onDragEnd={() => { setDragId(null); setDragArmedId(null) }}
+                          onDragOver={e => { if (dragId && !isExtra) e.preventDefault() }}
+                          onDrop={() => !isExtra && handleDropOn(project.id)}
+                        >
                           {/* Projektspalte */}
                           <td className={`px-2 py-1.5 sticky left-0 z-10 ${isAbsence ? 'bg-yellow-50' : isService ? 'bg-gray-50' : 'bg-white'}`}>
                             <div className="flex items-center gap-1">
+                              {!isExtra && (
+                                <span
+                                  className="no-print flex-shrink-0 cursor-grab text-gray-300 hover:text-brand-600"
+                                  title="Ziehen zum Verschieben"
+                                  onMouseDown={() => setDragArmedId(project.id)}
+                                  onMouseUp={() => setDragArmedId(null)}
+                                >
+                                  <GripVertical size={13} />
+                                </span>
+                              )}
                               {!isExtra && (
                                 <span className="flex flex-col no-print flex-shrink-0">
                                   <button className="text-gray-300 hover:text-brand-600 disabled:opacity-20 leading-none" title="Nach oben"
@@ -996,7 +1027,12 @@ export default function PersonalplanungView({ projects, onUpdateProject, serverU
                                   title={total > 0 ? `${fmtTage(total)} Tag(e) · ${nStaff} Mitarbeiter – klicken zum Bearbeiten` : 'Mitarbeiter einplanen'}
                                   onClick={() => setCellEdit({ project, week: w.week, monday: w.monday, dayKey: d.key, dayIdx: i })}
                                 >
-                                  {total > 0 ? fmtTage(total) : '·'}
+                                  {total > 0 ? (
+                                    <>
+                                      {fmtTage(total)}
+                                      {nStaff > 1 && <sup className="text-[8px] text-brand-500 ml-px">{nStaff}</sup>}
+                                    </>
+                                  ) : '·'}
                                 </button>
                               </td>
                             )
