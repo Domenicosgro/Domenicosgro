@@ -17,6 +17,9 @@ import LoginScreen           from './components/LoginScreen'
 import AdminPanel            from './components/AdminPanel'
 import BimViewerPopup        from './components/BimViewerPopup'
 import LearningPlatform      from './components/LearningPlatform'
+import BautagebuchView       from './components/BautagebuchView'
+import MaengelView           from './components/MaengelView'
+import PersonalplanungView   from './components/PersonalplanungView'
 import { hashPassword, uid } from './utils'
 import { buildProjectArchivePdf, downloadPdfBase64 } from './archivePdf'
 import { deriveKey, encryptJSON, decryptJSON, newSalt } from './crypto'
@@ -711,6 +714,8 @@ export default function App() {
           onOpenMassnahmen={() => setView('project-massnahmen')}
           onOpenNotizbuch={() => setView('project-notizbuch')}
           onOpenBim={() => { setBimReturnView('project-dashboard'); setView('project-bim') }}
+          onOpenBautagebuch={() => setView('project-bautagebuch')}
+          onOpenMaengel={() => setView('project-maengel')}
           onSaved={isServer ? handleRefresh : undefined}
         />
         <UpdateBanner /><SaveErrorBanner />
@@ -765,6 +770,72 @@ export default function App() {
     )
   }
 
+  if (view === 'personalplanung') {
+    return wrap(
+      <>
+        <PersonalplanungView
+          projects={projectsWithContacts}
+          serverUser={serverUser}
+          onBack={() => setView('home')}
+        />
+        <UpdateBanner /><SaveErrorBanner />
+      </>
+    )
+  }
+
+  if (view === 'project-bautagebuch') {
+    const project = projectsWithContacts.find(p => p.id === selectedProjectId)
+    if (!project) { setView('home'); return null }
+    return wrap(
+      <>
+        <BautagebuchView
+          project={project}
+          serverUser={serverUser}
+          onBack={() => setView('project-dashboard')}
+        />
+        <UpdateBanner /><SaveErrorBanner />
+      </>
+    )
+  }
+
+  if (view === 'project-maengel') {
+    const project = projectsWithContacts.find(p => p.id === selectedProjectId)
+    if (!project) { setView('home'); return null }
+    const projectProtos = protocols.filter(p => p.projectId === selectedProjectId)
+    const handleAddDefectToProtocol = (protocolId, defect) => {
+      const protocol = protocols.find(p => p.id === protocolId)
+      if (!protocol) return
+      const existing = protocol.actionItems || []
+      const maxNo = existing.reduce((m, a) => Math.max(m, a.no || 0), 0)
+      handleUpdateProtocol(protocolId, {
+        actionItems: [...existing, {
+          id: uid(),
+          no: maxNo + 1,
+          description: `[Mangel ${defect.no}] ${defect.title}${defect.location ? ` – ${defect.location}` : ''}`,
+          responsible: defect.responsible || '',
+          deadline: defect.dueDate || '',
+          status: 'offen',
+          priority: defect.priority || 'mittel',
+          remarks: '',
+          defectId: defect.id,
+          releaseHistory: [],
+        }],
+      })
+    }
+    return wrap(
+      <>
+        <MaengelView
+          project={project}
+          protocols={projectProtos}
+          serverUser={serverUser}
+          onBack={() => setView('project-dashboard')}
+          onAddToProtocol={handleAddDefectToProtocol}
+        />
+        <UpdateBanner /><SaveErrorBanner />
+      </>
+    )
+  }
+
   return wrap(
     <>
       <ProjectsHome
@@ -780,6 +851,7 @@ export default function App() {
         onRemovePassword={handleRemoveProjectPassword}
         onOpenContactDatabase={() => setView('contact-database')}
         onOpenLearning={() => setView('learning')}
+        onOpenPersonalplanung={() => setView('personalplanung')}
         onImportProject={handleImportProject}
         onArchiveProject={handleArchiveProject}
         onUnarchiveProject={handleUnarchiveProject}

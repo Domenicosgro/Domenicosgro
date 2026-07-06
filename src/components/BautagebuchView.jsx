@@ -1,0 +1,298 @@
+import React, { useState, useEffect, useCallback, useRef } from 'react'
+import { ArrowLeft, Plus, Camera, Trash2, Pencil, X, Loader, AlertCircle, Printer,
+         Sun, Cloud, CloudRain, Snowflake, BookOpen } from 'lucide-react'
+import { formatDate, uid } from '../utils'
+import { savePhoto, loadPhotoUrl, removePhoto } from '../photoUtils'
+
+const isServer = typeof window !== 'undefined' && !!window.__SERVER_MODE__
+const authHeaders = () => {
+  const t = typeof localStorage !== 'undefined' ? localStorage.getItem('kp_session_token') : null
+  return t ? { Authorization: `Bearer ${t}` } : {}
+}
+
+const WEATHER = [
+  { value: 'sonnig',    label: 'Sonnig',    Icon: Sun },
+  { value: 'bewoelkt',  label: 'Bewölkt',   Icon: Cloud },
+  { value: 'regen',     label: 'Regen',     Icon: CloudRain },
+  { value: 'schnee',    label: 'Schnee/Frost', Icon: Snowflake },
+]
+const weatherLabel = (v) => WEATHER.find(w => w.value === v)?.label || v || '–'
+
+// Foto-Miniatur (lädt asynchron aus dem Anhang-Speicher)
+function PhotoThumb({ photoId, onRemove, size = 'w-20 h-20' }) {
+  const [url, setUrl] = useState(null)
+  useEffect(() => { loadPhotoUrl(photoId).then(setUrl) }, [photoId])
+  return (
+    <div className={`relative ${size} flex-shrink-0 bg-gray-100 border border-gray-200 overflow-hidden group`}>
+      {url
+        ? <img src={url} alt="" className="w-full h-full object-cover cursor-pointer" onClick={() => url && window.open(url, '_blank')} />
+        : <Loader size={14} className="animate-spin text-gray-300 absolute inset-0 m-auto" />}
+      {onRemove && (
+        <button onClick={onRemove}
+          className="absolute top-0 right-0 bg-black/50 text-white p-0.5 opacity-0 group-hover:opacity-100 transition-opacity no-print">
+          <X size={11} />
+        </button>
+      )}
+    </div>
+  )
+}
+
+function EntryForm({ entry, onSave, onCancel }) {
+  const [form, setForm] = useState({
+    date:        entry?.date        || new Date().toISOString().slice(0, 10),
+    weather:     entry?.weather     || 'sonnig',
+    tempMin:     entry?.tempMin     ?? '',
+    tempMax:     entry?.tempMax     ?? '',
+    firms:       entry?.firms       || '',
+    workDone:    entry?.workDone    || '',
+    remarks:     entry?.remarks     || '',
+  })
+  const [photos,    setPhotos]    = useState(entry?.photos || [])
+  const [uploading, setUploading] = useState(false)
+  const [error,     setError]     = useState(null)
+  const fileRef = useRef(null)
+  const set = k => e => setForm(f => ({ ...f, [k]: e.target.value }))
+
+  const addPhotos = async (files) => {
+    setUploading(true)
+    try {
+      for (const file of Array.from(files || [])) {
+        const p = await savePhoto(file)
+        setPhotos(prev => [...prev, p])
+      }
+    } catch (e) { setError(`Foto konnte nicht gespeichert werden: ${e.message}`) }
+    finally { setUploading(false) }
+  }
+
+  return (
+    <div className="card p-4 space-y-3">
+      <div className="flex items-center justify-between">
+        <h3 className="font-semibold text-sm text-gray-900">{entry ? 'Eintrag bearbeiten' : 'Neuer Tagebucheintrag'}</h3>
+        <button className="btn-ghost p-1" onClick={onCancel}><X size={15} /></button>
+      </div>
+      {error && (
+        <p className="text-xs text-red-600 bg-red-50 border border-red-200 px-3 py-1.5 flex items-center gap-1.5">
+          <AlertCircle size={12} /> {error}
+        </p>
+      )}
+
+      <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+        <div>
+          <label className="block text-xs font-medium text-gray-500 mb-1">Datum</label>
+          <input type="date" className="input" value={form.date} onChange={set('date')} />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-gray-500 mb-1">Wetter</label>
+          <select className="select w-full" value={form.weather} onChange={set('weather')}>
+            {WEATHER.map(w => <option key={w.value} value={w.value}>{w.label}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-gray-500 mb-1">Temp. min (°C)</label>
+          <input type="number" className="input" value={form.tempMin} onChange={set('tempMin')} placeholder="z. B. 5" />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-gray-500 mb-1">Temp. max (°C)</label>
+          <input type="number" className="input" value={form.tempMax} onChange={set('tempMax')} placeholder="z. B. 18" />
+        </div>
+      </div>
+
+      <div>
+        <label className="block text-xs font-medium text-gray-500 mb-1">Anwesende Firmen / Personal</label>
+        <textarea className="input resize-y" rows={2} value={form.firms} onChange={set('firms')}
+          placeholder="z. B. Rohbau Müller GmbH (4 AK), Elektro Schmidt (2 AK)…" />
+      </div>
+      <div>
+        <label className="block text-xs font-medium text-gray-500 mb-1">Ausgeführte Arbeiten</label>
+        <textarea className="input resize-y" rows={3} value={form.workDone} onChange={set('workDone')}
+          placeholder="Welche Leistungen wurden heute erbracht?" />
+      </div>
+      <div>
+        <label className="block text-xs font-medium text-gray-500 mb-1">Besondere Vorkommnisse / Bemerkungen</label>
+        <textarea className="input resize-y" rows={2} value={form.remarks} onChange={set('remarks')}
+          placeholder="Behinderungen, Anordnungen, Besucher… (optional)" />
+      </div>
+
+      {/* Fotos */}
+      <div>
+        <label className="block text-xs font-medium text-gray-500 mb-1">Fotos</label>
+        <div className="flex gap-2 flex-wrap items-center">
+          {photos.map((p, i) => (
+            <PhotoThumb key={p.id} photoId={p.id}
+              onRemove={() => { removePhoto(p.id); setPhotos(prev => prev.filter((_, j) => j !== i)) }} />
+          ))}
+          <input ref={fileRef} type="file" accept="image/*" capture="environment" multiple className="hidden"
+            onChange={e => { addPhotos(e.target.files); e.target.value = '' }} />
+          <button className="w-20 h-20 border-2 border-dashed border-gray-300 text-gray-400 hover:border-brand-400 hover:text-brand-500 transition-colors flex flex-col items-center justify-center gap-1"
+            onClick={() => fileRef.current?.click()} disabled={uploading}>
+            {uploading ? <Loader size={16} className="animate-spin" /> : <Camera size={16} />}
+            <span className="text-[10px]">Foto</span>
+          </button>
+        </div>
+      </div>
+
+      <div className="flex gap-2 justify-end pt-1">
+        <button className="btn-secondary" onClick={onCancel}>Abbrechen</button>
+        <button className="btn-primary" onClick={() => onSave({ ...form, photos })}>Speichern</button>
+      </div>
+    </div>
+  )
+}
+
+export default function BautagebuchView({ project, serverUser, onBack }) {
+  const [entries, setEntries] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error,   setError]   = useState(null)
+  const [editing, setEditing] = useState(null)   // entry | 'new' | null
+  const lsKey = `kp_diary_${project.id}`
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    try {
+      if (isServer) {
+        const res = await fetch(`/api/projects/${project.id}/diary`, { headers: authHeaders() })
+        if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `Fehler ${res.status}`)
+        setEntries(await res.json())
+      } else {
+        setEntries(JSON.parse(localStorage.getItem(lsKey) || '[]'))
+      }
+    } catch (e) { setError(`Laden fehlgeschlagen: ${e.message}`) }
+    finally { setLoading(false) }
+  }, [project.id])
+
+  useEffect(() => { load() }, [load])
+
+  const persistLocal = (next) => { localStorage.setItem(lsKey, JSON.stringify(next)); setEntries(next) }
+
+  const save = async (form) => {
+    setError(null)
+    try {
+      if (editing !== 'new' && editing) {
+        // Bearbeiten
+        if (isServer) {
+          const { _version, _updatedAt, ...data } = editing
+          const res = await fetch(`/api/projects/${project.id}/diary/${editing.id}`, {
+            method: 'PATCH', headers: { 'Content-Type': 'application/json', ...authHeaders() },
+            body: JSON.stringify({ data: { ...data, ...form }, version: _version }),
+          })
+          if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `Fehler ${res.status}`)
+        } else {
+          persistLocal(entries.map(e => e.id === editing.id ? { ...e, ...form, updatedAt: new Date().toISOString() } : e))
+        }
+      } else {
+        // Neu
+        if (isServer) {
+          const res = await fetch(`/api/projects/${project.id}/diary`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeaders() },
+            body: JSON.stringify(form),
+          })
+          if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `Fehler ${res.status}`)
+        } else {
+          persistLocal([{ ...form, id: uid(), createdAt: new Date().toISOString() }, ...entries])
+        }
+      }
+      setEditing(null)
+      if (isServer) load()
+    } catch (e) { setError(`Speichern fehlgeschlagen: ${e.message}`) }
+  }
+
+  const remove = async (entry) => {
+    if (!window.confirm(`Eintrag vom ${formatDate(entry.date)} wirklich löschen?`)) return
+    try {
+      for (const p of (entry.photos || [])) removePhoto(p.id)
+      if (isServer) {
+        const res = await fetch(`/api/projects/${project.id}/diary/${entry.id}`, { method: 'DELETE', headers: authHeaders() })
+        if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `Fehler ${res.status}`)
+        load()
+      } else {
+        persistLocal(entries.filter(e => e.id !== entry.id))
+      }
+    } catch (e) { setError(`Löschen fehlgeschlagen: ${e.message}`) }
+  }
+
+  const sorted = [...entries].sort((a, b) => (b.date || '').localeCompare(a.date || ''))
+
+  return (
+    <div className="app-page">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3">
+        <div className="flex items-end gap-3">
+          <button className="btn-secondary no-print" onClick={onBack}><ArrowLeft size={16} /> Dashboard</button>
+          <div>
+            <h1 className="text-2xl font-bold text-night flex items-center gap-2">
+              <BookOpen size={22} className="text-brand-600" /> Bautagebuch
+            </h1>
+            <p className="text-sm text-gray-500 mt-0.5">{project.name} · {entries.length} Eintr{entries.length === 1 ? 'ag' : 'äge'}</p>
+          </div>
+        </div>
+        <div className="flex gap-2 no-print">
+          {sorted.length > 0 && (
+            <button className="btn-secondary" onClick={() => window.print()}><Printer size={15} /> Drucken</button>
+          )}
+          {!editing && (
+            <button className="btn-primary" onClick={() => setEditing('new')}><Plus size={15} /> Eintrag</button>
+          )}
+        </div>
+      </div>
+
+      {error && (
+        <p className="text-sm text-red-700 bg-red-50 border border-red-200 px-4 py-2 flex items-center gap-2">
+          <AlertCircle size={14} /> {error}
+          <button className="ml-auto text-red-400" onClick={() => setError(null)}><X size={13} /></button>
+        </p>
+      )}
+
+      {editing && (
+        <EntryForm entry={editing === 'new' ? null : editing} onSave={save} onCancel={() => setEditing(null)} />
+      )}
+
+      {loading ? (
+        <div className="card p-10 text-center text-gray-400"><Loader size={20} className="animate-spin mx-auto" /></div>
+      ) : sorted.length === 0 && !editing ? (
+        <div className="card p-12 text-center text-gray-400">
+          <BookOpen size={36} className="mx-auto text-gray-300 mb-3" />
+          <p className="text-sm font-medium text-gray-500">Noch keine Tagebucheinträge.</p>
+          <p className="text-xs mt-1">Dokumentiere Wetter, Personal und Baufortschritt – auch mobil mit Foto direkt von der Baustelle.</p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {sorted.map(entry => (
+            <div key={entry.id} className="card p-4 protocol-item">
+              <div className="flex items-start justify-between gap-3 flex-wrap">
+                <div>
+                  <p className="font-semibold text-night">{formatDate(entry.date)}</p>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    {weatherLabel(entry.weather)}
+                    {(entry.tempMin !== '' && entry.tempMin != null) || (entry.tempMax !== '' && entry.tempMax != null)
+                      ? ` · ${entry.tempMin ?? '–'}° bis ${entry.tempMax ?? '–'}°C` : ''}
+                    {entry.createdBy ? ` · ${entry.createdBy}` : ''}
+                  </p>
+                </div>
+                <div className="flex gap-1 no-print">
+                  <button className="btn-ghost p-1.5 text-gray-400 hover:text-brand-600" title="Bearbeiten" onClick={() => setEditing(entry)}><Pencil size={14} /></button>
+                  <button className="btn-ghost p-1.5 text-gray-400 hover:text-red-600" title="Löschen" onClick={() => remove(entry)}><Trash2 size={14} /></button>
+                </div>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2 mt-3 text-sm">
+                {entry.firms && (
+                  <div><p className="text-xs font-medium text-gray-400 uppercase">Firmen / Personal</p><p className="text-gray-700 whitespace-pre-wrap">{entry.firms}</p></div>
+                )}
+                {entry.workDone && (
+                  <div><p className="text-xs font-medium text-gray-400 uppercase">Ausgeführte Arbeiten</p><p className="text-gray-700 whitespace-pre-wrap">{entry.workDone}</p></div>
+                )}
+                {entry.remarks && (
+                  <div className="sm:col-span-2"><p className="text-xs font-medium text-gray-400 uppercase">Bemerkungen</p><p className="text-gray-700 whitespace-pre-wrap">{entry.remarks}</p></div>
+                )}
+              </div>
+              {(entry.photos || []).length > 0 && (
+                <div className="flex gap-2 flex-wrap mt-3">
+                  {entry.photos.map(p => <PhotoThumb key={p.id} photoId={p.id} size="w-24 h-24" />)}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}

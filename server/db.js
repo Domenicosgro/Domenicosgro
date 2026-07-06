@@ -145,6 +145,33 @@ db.exec(`
     updated_by TEXT
   );
 
+  CREATE TABLE IF NOT EXISTS diary_entries (
+    id         TEXT    PRIMARY KEY,
+    project_id TEXT,
+    data       TEXT    NOT NULL,
+    version    INTEGER NOT NULL DEFAULT 1,
+    updated_at TEXT    NOT NULL DEFAULT (datetime('now')),
+    updated_by TEXT
+  );
+
+  CREATE TABLE IF NOT EXISTS defects (
+    id         TEXT    PRIMARY KEY,
+    project_id TEXT,
+    data       TEXT    NOT NULL,
+    version    INTEGER NOT NULL DEFAULT 1,
+    updated_at TEXT    NOT NULL DEFAULT (datetime('now')),
+    updated_by TEXT
+  );
+
+  CREATE TABLE IF NOT EXISTS staff_plan (
+    id         TEXT    PRIMARY KEY,
+    project_id TEXT,
+    data       TEXT    NOT NULL,
+    version    INTEGER NOT NULL DEFAULT 1,
+    updated_at TEXT    NOT NULL DEFAULT (datetime('now')),
+    updated_by TEXT
+  );
+
   CREATE TABLE IF NOT EXISTS notifications (
     id         TEXT PRIMARY KEY,
     username   TEXT NOT NULL,
@@ -453,6 +480,9 @@ module.exports = {
   bimPlans:   makeStore('bim_plans'),
   planReviews: makeStore('plan_reviews'),
   learningVideos: makeStore('learning_videos'),
+  diaryEntries: makeStore('diary_entries'),
+  defects:      makeStore('defects'),
+  staffPlan:    makeStore('staff_plan'),
   users,
   sessions,
   resetRequests,

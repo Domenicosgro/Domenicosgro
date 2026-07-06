@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { ArrowLeft, FileText, Users, HardHat, Pencil, NotebookPen, ChevronRight, BarChart2, UserCog, BookOpen, Box } from 'lucide-react'
+import { ArrowLeft, FileText, Users, HardHat, Pencil, NotebookPen, ChevronRight, BarChart2, UserCog, BookOpen, Box, AlertOctagon } from 'lucide-react'
 import ProjectAdminPanel from './ProjectAdminPanel'
 
 const isServer = typeof window !== 'undefined' && !!window.__SERVER_MODE__
@@ -37,7 +37,8 @@ function DashboardTile({ icon, title, subtitle, accent, onClick, stat1, stat2 })
 
 export default function ProjectDashboard({
   project, protocols, notes, serverUser, globalLogoDataUrl,
-  onUpdateProject, onBack, onOpenProtocols, onOpenNotes, onManageContacts, onOpenMassnahmen, onOpenNotizbuch, onOpenBim, onSaved,
+  onUpdateProject, onBack, onOpenProtocols, onOpenNotes, onManageContacts, onOpenMassnahmen, onOpenNotizbuch, onOpenBim,
+  onOpenBautagebuch, onOpenMaengel, onSaved,
 }) {
   const [showAdminPanel, setShowAdminPanel] = useState(false)
   const [bimIssues,      setBimIssues]      = useState([])
@@ -174,6 +175,28 @@ export default function ProjectDashboard({
           stat1={project.bimMeta ? { value: openBimIssues, label: 'Issues offen' } : undefined}
           stat2={project.bimMeta && bimIssues.length > 0 ? { value: bimIssues.length, label: 'Issues gesamt' } : undefined}
         />
+
+        {/* Bautagebuch */}
+        {onOpenBautagebuch && (
+          <DashboardTile
+            icon={<BookOpen size={20} />}
+            title="Bautagebuch"
+            subtitle="Tägliche Baustellendokumentation: Wetter, Personal, Leistungen, Fotos"
+            accent="border-orange-400"
+            onClick={onOpenBautagebuch}
+          />
+        )}
+
+        {/* Mängelmanagement */}
+        {onOpenMaengel && (
+          <DashboardTile
+            icon={<AlertOctagon size={20} />}
+            title="Mängel"
+            subtitle="Mängel mit Foto erfassen, verfolgen und als Mängelanzeige versenden"
+            accent="border-red-400"
+            onClick={onOpenMaengel}
+          />
+        )}
 
         {/* Administration – nur für Projektadmins und Systemadmins */}
         {canAdmin && (

@@ -1492,6 +1492,74 @@ app.delete('/api/projects/:id/plans/:planId', requireAuth, writeLimiter, (req, r
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
+// ── Generische projektgebundene CRUD-Routen (Bautagebuch, Mängel) ────────────
+function mountProjectStore(route, store, label) {
+  app.get(`/api/projects/:id/${route}`, requireAuth, (req, res) => {
+    try {
+      if (!getAccessibleProject(req, res)) return
+      res.json(store.list().filter(x => x.projectId === req.params.id))
+    } catch (e) { res.status(500).json({ error: e.message }) }
+  })
+  app.post(`/api/projects/:id/${route}`, requireAuth, writeLimiter, (req, res) => {
+    try {
+      if (!getAccessibleProject(req, res)) return
+      const id  = require('crypto').randomBytes(12).toString('base64url')
+      const now = new Date().toISOString()
+      const data = { ...req.body, id, projectId: req.params.id, createdBy: planDisplayName(req.user), createdAt: now, updatedAt: now }
+      store.create(data, req.user)
+      broadcast(label, 'create', id, now)
+      res.status(201).json(data)
+    } catch (e) { res.status(500).json({ error: e.message }) }
+  })
+  app.patch(`/api/projects/:id/${route}/:itemId`, requireAuth, writeLimiter, (req, res) => {
+    try {
+      if (!getAccessibleProject(req, res)) return
+      const { data, version } = req.body
+      const updated = { ...data, updatedAt: new Date().toISOString() }
+      const result  = store.update(req.params.itemId, updated, version, req.user)
+      if (result.notFound) return res.status(404).json({ error: 'Nicht gefunden.' })
+      if (result.conflict) return res.status(409).json({ conflict: true, ...result })
+      broadcast(label, 'update', req.params.itemId, updated.updatedAt)
+      res.json({ ok: true, version: result.version })
+    } catch (e) { res.status(500).json({ error: e.message }) }
+  })
+  app.delete(`/api/projects/:id/${route}/:itemId`, requireAuth, writeLimiter, (req, res) => {
+    try {
+      if (!getAccessibleProject(req, res)) return
+      store.delete(req.params.itemId)
+      broadcast(label, 'delete', req.params.itemId, new Date().toISOString())
+      res.json({ ok: true })
+    } catch (e) { res.status(500).json({ error: e.message }) }
+  })
+}
+mountProjectStore('diary',   db.diaryEntries, 'diary')
+mountProjectStore('defects', db.defects,      'defect')
+
+// ── Personalplanung: ein Dokument je Kalenderwoche (global) ──────────────────
+app.get('/api/staff-plan/:week', requireAuth, (req, res) => {
+  try {
+    const doc = db.staffPlan.get(req.params.week)
+    res.json(doc || { id: req.params.week, rows: [] })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.put('/api/staff-plan/:week', requireAuth, writeLimiter, (req, res) => {
+  try {
+    const week = req.params.week
+    if (!/^\d{4}-W\d{2}$/.test(week)) return res.status(400).json({ error: 'Ungültige Woche.' })
+    const existing = db.staffPlan.get(week)
+    const data = { id: week, rows: Array.isArray(req.body.rows) ? req.body.rows : [], updatedAt: new Date().toISOString() }
+    if (existing) {
+      const result = db.staffPlan.update(week, data, existing._version, req.user)
+      if (result.conflict) return res.status(409).json({ conflict: true, ...result })
+    } else {
+      db.staffPlan.create(data, req.user)
+    }
+    broadcast('staff_plan', 'update', week, data.updatedAt)
+    res.json({ ok: true })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
 // ── Learning-Plattform: Schulungsvideos ──────────────────────────────────────
 // Videos sind global (projektübergreifend) – sie erklären die Bedienung der App.
 // Lesen: jeder angemeldete Nutzer. Verwalten (Upload/Ändern/Löschen): nur Admins.
