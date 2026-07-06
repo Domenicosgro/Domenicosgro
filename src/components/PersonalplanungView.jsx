@@ -4,7 +4,7 @@ import { ArrowLeft, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Plus, Tra
 import { uid, formatDate } from '../utils'
 import { buildStaffPlanPdf } from '../staffPlanPdf'
 import { downloadPdfBase64 } from '../archivePdf'
-import ProjektTeamEditor, { PROJECT_ROLES } from './ProjektTeamEditor'
+import ProjektTeamEditor, { PROJECT_ROLES, TEAM_ANTEILE } from './ProjektTeamEditor'
 
 const isServer = typeof window !== 'undefined' && !!window.__SERVER_MODE__
 const authHeaders = () => {
@@ -232,10 +232,10 @@ function TeamTemplates({ staff, teams, onChange }) {
     if (!confirm('Team-Vorlage wirklich löschen? (Bereits zugewiesene Projektteams bleiben unverändert.)')) return
     onChange(teams.filter(t => t.id !== id))
   }
-  const addMember = (tplId, staffId, role) => {
+  const addMember = (tplId, staffId, role, anteil) => {
     if (!staffId) return
     onChange(teams.map(t => t.id === tplId
-      ? { ...t, members: [...(t.members || []), { staffId, role }] }
+      ? { ...t, members: [...(t.members || []), { staffId, role, anteil }] }
       : t))
   }
   const removeMember = (tplId, idx) =>
@@ -262,7 +262,7 @@ function TeamTemplates({ staff, teams, onChange }) {
               const s = activeStaff.find(x => x.id === m.staffId)
               return (
                 <span key={i} className="flex items-center gap-1 text-xs px-2 py-0.5 bg-gray-50 border border-gray-200">
-                  {s?.name || '?'} <span className="text-gray-400">({m.role})</span>
+                  {s?.name || '?'} <span className="text-gray-400">({m.role}{(m.anteil ?? 1) < 1 ? ` · ${Math.round((m.anteil ?? 1) * 100)} %` : ''})</span>
                   <button className="text-gray-300 hover:text-red-500" onClick={() => removeMember(tpl.id, i)}><X size={10} /></button>
                 </span>
               )
@@ -291,6 +291,7 @@ function TeamTemplates({ staff, teams, onChange }) {
 function TemplateMemberAdd({ staff, onAdd }) {
   const [staffId, setStaffId] = useState('')
   const [role,    setRole]    = useState(PROJECT_ROLES[0])
+  const [anteil,  setAnteil]  = useState(1)
   return (
     <div className="flex gap-2 flex-wrap">
       <select className="select text-xs py-1 flex-1 min-w-[160px]" value={staffId} onChange={e => setStaffId(e.target.value)}>
@@ -300,8 +301,12 @@ function TemplateMemberAdd({ staff, onAdd }) {
       <select className="select text-xs py-1" value={role} onChange={e => setRole(e.target.value)}>
         {PROJECT_ROLES.map(r => <option key={r} value={r}>{r}</option>)}
       </select>
+      <select className="select text-xs py-1" value={anteil} title="Einsatzanteil"
+        onChange={e => setAnteil(parseFloat(e.target.value))}>
+        {TEAM_ANTEILE.map(a => <option key={a.value} value={a.value}>{a.label}</option>)}
+      </select>
       <button className="btn-secondary text-xs" disabled={!staffId}
-        onClick={() => { onAdd(staffId, role); setStaffId('') }}>
+        onClick={() => { onAdd(staffId, role, anteil); setStaffId(''); setAnteil(1) }}>
         <UserPlus size={12} />
       </button>
     </div>
@@ -343,16 +348,18 @@ function CellEditor({ cell, staff, teamIds, getTage, setTage, setTageBulk, sumFo
   const date = addDays(monday, dayIdx)
   const dayLabel = DAYS.find(d => d.key === dayKey)?.label || ''
 
-  // Ganzes Projektteam einplanen: je Mitglied die Restkapazität des Tages
-  // (Arbeitszeitmodell minus bereits anderweitig Verplantes, ¼-gerundet)
+  // Ganzes Projektteam einplanen: je Mitglied Einsatzanteil × Tageskapazität,
+  // begrenzt auf die Restkapazität (bereits anderweitig Verplantes), ¼-gerundet
   const fillTeam = () => {
     const entries = []
     for (const member of staff) {
       if (!teamIds.has(member.id)) continue
+      const anteil = teamIds.get?.(member.id) ?? 1
       const cap    = capDays(member, dayKey)
       const own    = getTage(week, project.id, member.id, dayKey) || 0
       const others = sumFor(week, member.id, dayKey) - own
-      const value  = Math.max(0, Math.floor((cap - others) * 4) / 4)
+      const wunsch = Math.floor(cap * anteil * 4) / 4
+      const value  = Math.max(0, Math.min(wunsch, Math.floor((cap - others) * 4) / 4))
       if (value > 0) entries.push({ staffId: member.id, value })
     }
     if (entries.length > 0) setTageBulk(week, project.id, dayKey, entries)
@@ -390,7 +397,9 @@ function CellEditor({ cell, staff, teamIds, getTage, setTage, setTageBulk, sumFo
                   <p className="text-sm font-medium text-gray-800 truncate">
                     {member.name}
                     {teamIds.has(member.id) && (
-                      <span className="badge text-[9px] bg-brand-50 text-brand-600 border border-brand-200 ml-1.5">Team</span>
+                      <span className="badge text-[9px] bg-brand-50 text-brand-600 border border-brand-200 ml-1.5">
+                        Team{(teamIds.get?.(member.id) ?? 1) < 1 ? ` ${Math.round((teamIds.get(member.id)) * 100)} %` : ''}
+                      </span>
                     )}
                   </p>
                   <p className={`text-[10px] ${over ? 'text-red-600 font-semibold' : 'text-gray-400'}`}>
@@ -416,6 +425,80 @@ function CellEditor({ cell, staff, teamIds, getTage, setTage, setTageBulk, sumFo
             </button>
           ) : <span />}
           <button className="btn-primary text-sm" onClick={onClose}><Check size={14} /> Fertig</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Mitarbeiter-Monitoring: komplette Einsatzübersicht einer Person ─────────
+function StaffDetail({ member, weeks, plans, projName, onClose }) {
+  useEffect(() => {
+    const h = (e) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', h)
+    return () => window.removeEventListener('keydown', h)
+  }, [onClose])
+
+  const capWeek = DAYS.reduce((s, d) => s + capDays(member, d.key), 0)
+  let plannedTotal = 0, capTotal = 0
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+      <div className="bg-white w-full max-w-2xl max-h-[85vh] flex flex-col border border-gray-200 shadow-2xl" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200">
+          <div>
+            <h3 className="font-semibold text-gray-900 flex items-center gap-2"><Users size={16} className="text-brand-600" /> {member.name}</h3>
+            <p className="text-xs text-gray-400 mt-0.5">
+              {member.funktion ? `${member.funktion} · ` : ''}Arbeitszeitmodell: {DAYS.map(d => fmtTage(capDays(member, d.key)) || '0').join(' / ')} Tage (Mo–Fr)
+            </p>
+          </div>
+          <button className="btn-ghost p-1" onClick={onClose}><X size={16} /></button>
+        </div>
+        <div className="flex-1 overflow-y-auto p-5 space-y-4">
+          {weeks.map(w => {
+            const weekPlanned = (plans[w.week] || []).reduce((s, a) =>
+              s + (a.staffId === member.id ? DAYS.reduce((x, d) => x + (a.days?.[d.key] || 0), 0) : 0), 0)
+            plannedTotal += weekPlanned; capTotal += capWeek
+            const pct = capWeek > 0 ? Math.round(weekPlanned / capWeek * 100) : 0
+            return (
+              <div key={w.week}>
+                <div className="flex items-center gap-2 mb-1.5">
+                  <span className="text-sm font-semibold text-gray-800">KW {w.week.split('-W')[1]}</span>
+                  <span className="text-xs text-gray-400">({fmtShort(w.monday)} – {fmtShort(addDays(w.monday, 4))})</span>
+                  <span className={`ml-auto text-xs font-semibold ${pct > 100 ? 'text-red-600' : pct >= 90 ? 'text-green-600' : 'text-amber-600'}`}>
+                    {fmtTage(weekPlanned)} / {fmtTage(capWeek)} Tage · {pct} %
+                  </span>
+                </div>
+                <div className="grid grid-cols-5 gap-1.5">
+                  {DAYS.map((d, i) => {
+                    const items = (plans[w.week] || [])
+                      .filter(a => a.staffId === member.id && a.days?.[d.key] > 0)
+                      .map(a => ({ name: projName(a.projectId) || '?', v: a.days[d.key], pid: a.projectId }))
+                    const cap = capDays(member, d.key)
+                    const total = items.reduce((s, x) => s + x.v, 0)
+                    return (
+                      <div key={d.key} className={`border p-1.5 min-h-[54px] ${total > cap ? 'border-red-300 bg-red-50' : total > 0 ? 'border-gray-200' : 'border-gray-100 bg-gray-50/50'}`}>
+                        <p className="text-[10px] text-gray-400 mb-0.5">{d.label.slice(0, 2)} {fmtShort(addDays(w.monday, i))}</p>
+                        {items.length === 0
+                          ? <p className="text-[10px] text-gray-300">–</p>
+                          : items.map((x, j) => (
+                            <p key={j} className={`text-[10px] leading-tight truncate ${['urlaub', 'krank'].includes(x.pid) ? 'text-amber-700' : 'text-gray-700'}`} title={x.name}>
+                              {x.name} <strong>{fmtTage(x.v)}</strong>
+                            </p>
+                          ))}
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )
+          })}
+          <div className="border-t border-gray-200 pt-3 flex items-center justify-between">
+            <span className="text-sm font-semibold text-gray-800">Gesamt (4 Wochen)</span>
+            <span className={`text-sm font-bold ${plannedTotal > capTotal ? 'text-red-600' : plannedTotal >= capTotal * 0.9 ? 'text-green-600' : 'text-amber-600'}`}>
+              {fmtTage(plannedTotal)} / {fmtTage(capTotal)} Tage · {capTotal > 0 ? Math.round(plannedTotal / capTotal * 100) : 0} % Auslastung
+            </span>
+          </div>
         </div>
       </div>
     </div>
@@ -660,6 +743,18 @@ export default function PersonalplanungView({ projects, onUpdateProject, serverU
       .map(s => s.id))
   }
 
+  // Einsatzanteile des Projektteams (staffId → Anteil 0,25–1)
+  const teamShares = (project) => {
+    const map = new Map()
+    const team = project?.team || []
+    for (const s of activeStaff) {
+      const m = team.find(x => x.name === s.name
+        || (x.email && s.email && x.email.toLowerCase() === s.email.toLowerCase()))
+      if (m) map.set(s.id, m.anteil ?? 1)
+    }
+    return map
+  }
+
   // Mitarbeiter je Projekt: Projektteam + bereits verplante + frisch hinzugefügte
   const staffIdsFor = (project) => {
     const ids = new Set([...teamStaffIds(project), ...(addedRows[project.id] || [])])
@@ -783,6 +878,8 @@ export default function PersonalplanungView({ projects, onUpdateProject, serverU
 
   // Zellen-Editor (Mitarbeiter je Projekt × Tag hinterlegen)
   const [cellEdit, setCellEdit] = useState(null)   // { project, week, monday, dayKey, dayIdx }
+  // Mitarbeiter-Monitoring (Einsatzübersicht einer Person)
+  const [staffDetail, setStaffDetail] = useState(null)
 
   // Drag & Drop zum Verschieben der Projektzeilen
   const [dragId,      setDragId]      = useState(null)
@@ -1281,7 +1378,13 @@ export default function PersonalplanungView({ projects, onUpdateProject, serverU
                   <tbody>
                     {activeStaff.map(member => (
                       <tr key={member.id} className="border-b border-gray-50">
-                        <td className="px-3 py-1 font-medium text-gray-800">{member.name}</td>
+                        <td className="px-3 py-1">
+                          <button className="font-medium text-gray-800 hover:text-brand-700 hover:underline text-left"
+                            title="Einsatzübersicht öffnen (Monitoring)"
+                            onClick={() => setStaffDetail(member)}>
+                            {member.name}
+                          </button>
+                        </td>
                         {weeks.map(w => DAYS.map((d, i) => {
                           const total = sumFor(w.week, member.id, d.key)
                           const cap   = capDays(member, d.key)
@@ -1309,12 +1412,23 @@ export default function PersonalplanungView({ projects, onUpdateProject, serverU
               cell={cellEdit}
               staff={activeStaff}
               teamIds={(cellEdit.project._service || ABSENCE.find(a => a.id === cellEdit.project.id))
-                ? new Set() : teamStaffIds(cellEdit.project)}
+                ? new Map() : teamShares(cellEdit.project)}
               getTage={getTage}
               setTage={setTage}
               setTageBulk={setTageBulk}
               sumFor={sumFor}
               onClose={() => setCellEdit(null)}
+            />
+          )}
+
+          {/* Mitarbeiter-Monitoring */}
+          {staffDetail && (
+            <StaffDetail
+              member={staffDetail}
+              weeks={weeks}
+              plans={plans}
+              projName={projName}
+              onClose={() => setStaffDetail(null)}
             />
           )}
 

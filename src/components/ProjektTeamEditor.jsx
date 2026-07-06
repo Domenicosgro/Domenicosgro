@@ -13,6 +13,14 @@ export const PROJECT_ROLES = [
   'Projektleitung', 'Architekt/in', 'Techn. Mitarbeiter/in', 'Student/in', 'Bauleitung', 'Assistenz',
 ]
 
+// Einsatzanteil eines Mitglieds im Projektteam (steuert u. a. die automatische Team-Einplanung)
+export const TEAM_ANTEILE = [
+  { value: 1,    label: '100 %' },
+  { value: 0.75, label: '75 %' },
+  { value: 0.5,  label: '50 %' },
+  { value: 0.25, label: '25 %' },
+]
+
 /**
  * Projektteam-Zusammenstellung (Mitarbeiter + Rolle), gespeichert am Projekt
  * (project.team). Wird in der Personalplanung UND in der Projektdatenbank
@@ -41,6 +49,7 @@ export default function ProjektTeamEditor({ project, staff: staffProp, onUpdateP
 
   const [memberPick, setMemberPick] = useState('')
   const [rolePick,   setRolePick]   = useState(PROJECT_ROLES[0])
+  const [anteilPick, setAnteilPick] = useState(1)
   const [templatePick, setTemplatePick] = useState('')
 
   // Ganze Team-Vorlage zuweisen (Mitglieder + Rollen; ohne Duplikate mergen)
@@ -52,7 +61,7 @@ export default function ProjektTeamEditor({ project, staff: staffProp, onUpdateP
       .map(m => {
         const s = staff.find(x => x.id === m.staffId)
         return s && !existing.has(s.name)
-          ? { id: uid(), name: s.name, email: s.email || '', role: m.role || PROJECT_ROLES[0] }
+          ? { id: uid(), name: s.name, email: s.email || '', role: m.role || PROJECT_ROLES[0], anteil: m.anteil ?? 1 }
           : null
       })
       .filter(Boolean)
@@ -83,11 +92,14 @@ export default function ProjektTeamEditor({ project, staff: staffProp, onUpdateP
   const addMember = () => {
     const cand = candidates.find(c => c.id === memberPick)
     if (!cand || !project) return
-    onUpdateProject(project.id, { team: [...team, { id: uid(), name: cand.name, email: cand.email || '', role: rolePick }] })
+    onUpdateProject(project.id, { team: [...team, { id: uid(), name: cand.name, email: cand.email || '', role: rolePick, anteil: anteilPick }] })
     setMemberPick('')
+    setAnteilPick(1)
   }
   const setRole = (memberId, role) =>
     onUpdateProject(project.id, { team: team.map(m => m.id === memberId ? { ...m, role } : m) })
+  const setAnteil = (memberId, anteil) =>
+    onUpdateProject(project.id, { team: team.map(m => m.id === memberId ? { ...m, anteil } : m) })
   const removeMember = (memberId) =>
     onUpdateProject(project.id, { team: team.filter(m => m.id !== memberId) })
 
@@ -123,6 +135,13 @@ export default function ProjektTeamEditor({ project, staff: staffProp, onUpdateP
           <label className="block text-xs font-medium text-gray-500 mb-1">Rolle</label>
           <select className="select" value={rolePick} onChange={e => setRolePick(e.target.value)}>
             {PROJECT_ROLES.map(r => <option key={r} value={r}>{r}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-gray-500 mb-1">Anteil</label>
+          <select className="select" value={anteilPick} onChange={e => setAnteilPick(parseFloat(e.target.value))}
+            title="Einsatzanteil im Projektteam">
+            {TEAM_ANTEILE.map(a => <option key={a.value} value={a.value}>{a.label}</option>)}
           </select>
         </div>
         <button className="btn-primary" disabled={!memberPick} onClick={addMember}>
@@ -166,6 +185,11 @@ export default function ProjektTeamEditor({ project, staff: staffProp, onUpdateP
               <select className="select text-xs py-1" value={m.role} onChange={e => setRole(m.id, e.target.value)}>
                 {PROJECT_ROLES.map(r => <option key={r} value={r}>{r}</option>)}
                 {!PROJECT_ROLES.includes(m.role) && <option value={m.role}>{m.role}</option>}
+              </select>
+              <select className={`select text-xs py-1 ${(m.anteil ?? 1) < 1 ? 'text-amber-700 border-amber-300' : ''}`}
+                value={m.anteil ?? 1} title="Einsatzanteil im Projektteam"
+                onChange={e => setAnteil(m.id, parseFloat(e.target.value))}>
+                {TEAM_ANTEILE.map(a => <option key={a.value} value={a.value}>{a.label}</option>)}
               </select>
               <button className="btn-ghost p-1.5 text-gray-400 hover:text-red-600" onClick={() => removeMember(m.id)}>
                 <Trash2 size={14} />
