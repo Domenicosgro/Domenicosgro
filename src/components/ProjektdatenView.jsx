@@ -36,7 +36,7 @@ const emptyData = () => ({
   planungspartner: [],          // [{ id, name, company, email, disziplin }]
 })
 
-export default function ProjektdatenView({ project, allContacts = [], onUpdateProject, onBack }) {
+export default function ProjektdatenView({ project, allContacts = [], onUpdateProject, onBack, readOnly = false, backLabel = 'Dashboard' }) {
   const [data,  setData]  = useState({ ...emptyData(), ...(project.projectData || {}) })
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState(null)
@@ -79,7 +79,7 @@ export default function ProjektdatenView({ project, allContacts = [], onUpdatePr
     <div className="app-page">
       <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3">
         <div className="flex items-end gap-3">
-          <button className="btn-secondary" onClick={onBack}><ArrowLeft size={16} /> Dashboard</button>
+          <button className="btn-secondary" onClick={onBack}><ArrowLeft size={16} /> {backLabel}</button>
           <div>
             <h1 className="text-2xl font-bold text-night flex items-center gap-2">
               <Database size={22} className="text-brand-600" /> Projektdatenbank
@@ -87,9 +87,13 @@ export default function ProjektdatenView({ project, allContacts = [], onUpdatePr
             <p className="text-sm text-gray-500 mt-0.5">{project.name || 'Unbenanntes Projekt'}</p>
           </div>
         </div>
-        <button className="btn-primary" onClick={save}>
-          {saved ? <Check size={15} /> : <Save size={15} />} {saved ? 'Gespeichert' : 'Speichern'}
-        </button>
+        {readOnly ? (
+          <span className="badge-gray text-xs">Nur Lesezugriff – Bearbeitung durch Administratoren</span>
+        ) : (
+          <button className="btn-primary" onClick={save}>
+            {saved ? <Check size={15} /> : <Save size={15} />} {saved ? 'Gespeichert' : 'Speichern'}
+          </button>
+        )}
       </div>
 
       {error && (
@@ -99,6 +103,7 @@ export default function ProjektdatenView({ project, allContacts = [], onUpdatePr
         </p>
       )}
 
+      <fieldset disabled={readOnly} className="contents">
       {/* Projektcodierung */}
       <div className="card p-5 space-y-3">
         <h2 className="section-title">Projektcodierung</h2>
@@ -244,6 +249,7 @@ export default function ProjektdatenView({ project, allContacts = [], onUpdatePr
           </>
         )}
       </div>
+      </fieldset>
     </div>
   )
 }

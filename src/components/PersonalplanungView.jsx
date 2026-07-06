@@ -467,6 +467,11 @@ export default function PersonalplanungView({ projects, onUpdateProject, serverU
   const setGesellschaft = (project, value) =>
     onUpdateProject(project.id, { projectData: { ...(project.projectData || {}), gesellschaft: value } })
 
+  // Projektdatenbank (Gesellschaft) dürfen nur System-/Projektadmins ändern
+  const canEditGes = (project) => !isServer || serverUser?.role === 'admin'
+    || project.projectAdminUser === serverUser?.username
+    || project.projectAdmins?.includes(serverUser?.username)
+
   const managePublish = async (action) => {
     if (action === 'revoke' && !confirm('Veröffentlichung wirklich beenden? Der Team-Link wird ungültig.')) return
     try {
@@ -612,18 +617,20 @@ export default function PersonalplanungView({ projects, onUpdateProject, serverU
                     {/* Projektkopf */}
                     <div className="flex items-center gap-3 px-4 py-2.5 bg-gray-50/80 border-b border-gray-200 flex-wrap">
                       <span className="font-semibold text-sm text-night">{project.name || 'Unbenannt'}</span>
-                      {!isAbsence && (
+                      {!isAbsence && (canEditGes(project) ? (
                         <select
                           className={`select text-[11px] py-0.5 px-1.5 no-print ${ges ? (ges === 'GmbH' ? 'text-brand-700 border-brand-300' : 'text-violet-700 border-violet-300') : 'text-gray-400'}`}
                           value={ges}
                           onChange={e => setGesellschaft(project, e.target.value)}
-                          title="Gesellschaft"
+                          title="Gesellschaft (Projektdatenbank)"
                         >
                           <option value="">Gesellschaft…</option>
                           <option value="GmbH">GmbH</option>
                           <option value="PartGmbB">PartGmbB</option>
                         </select>
-                      )}
+                      ) : ges ? (
+                        <span className={`badge text-[10px] ${ges === 'GmbH' ? 'bg-brand-100 text-brand-700 border border-brand-300' : 'bg-violet-100 text-violet-700 border border-violet-300'}`}>{ges}</span>
+                      ) : null)}
                       {ges && <span className="hidden print:inline text-xs text-gray-500">({ges})</span>}
                       <div className="ml-auto no-print">
                         <select className="select text-xs py-0.5" value=""

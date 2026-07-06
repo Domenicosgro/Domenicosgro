@@ -263,6 +263,7 @@ export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, 
                                        onOpenProjectDashboard, onUnlock, onSetPassword, onRemovePassword,
                                        onOpenContactDatabase, onImportProject, onOpenPersonalplanung,
                                        onOpenLearning, onArchiveProject, onUnarchiveProject,
+                                       onOpenProjektdatenbank,
                                        notes, onOpenProtocol, onOpenProjectNotes,
                                        serverUser, onLogout, onOpenAdmin,
                                        onRequestDeleteProject, onRefresh }) {
@@ -535,6 +536,25 @@ export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, 
                     <div className="text-xs text-gray-400 mt-0.5">Projekte</div>
                   </div>
                 )}
+              </div>
+            </button>
+
+            {/* Projektdatenbank – zentral, Bearbeitung durch Admins */}
+            <button
+              onClick={onOpenProjektdatenbank}
+              className="card w-full text-left flex flex-col aspect-video p-4 hover:border-brand-300 hover:bg-gray-50 transition-colors group border-l-4 border-night"
+            >
+              <div className="flex items-center gap-2 mb-1.5">
+                <span className="text-brand-600 group-hover:text-brand-700 transition-colors flex-shrink-0"><FolderOpen size={20} /></span>
+                <h3 className="font-semibold text-sm text-gray-900 group-hover:text-brand-700 transition-colors truncate">Projektdatenbank</h3>
+              </div>
+              <p className="text-xs text-gray-500 line-clamp-3">Zentrale Projektstammdaten: Codierung, Leistungsphasen, Verträge, Generalplanung</p>
+              <div className="flex gap-4 mt-auto pt-2">
+                <div>
+                  <div className="text-lg font-bold text-night leading-none">{projects.length}</div>
+                  <div className="text-xs text-gray-400 mt-0.5">Projekte</div>
+                </div>
+                <span className="text-xs text-gray-400 italic self-end">Bearbeitung: Admins</span>
               </div>
             </button>
 

@@ -22,6 +22,7 @@ import MaengelView           from './components/MaengelView'
 import PersonalplanungView   from './components/PersonalplanungView'
 import DateiablageView       from './components/DateiablageView'
 import ProjektdatenView      from './components/ProjektdatenView'
+import ProjektdatenbankView  from './components/ProjektdatenbankView'
 import { hashPassword, uid } from './utils'
 import { buildProjectArchivePdf, downloadPdfBase64 } from './archivePdf'
 import { deriveKey, encryptJSON, decryptJSON, newSalt } from './crypto'
@@ -803,6 +804,11 @@ export default function App() {
     )
   }
 
+  // Projektdatenbank bearbeiten dürfen System- und Projektadmins
+  const canEditProjektdaten = (project) => !isServer || serverUser?.role === 'admin'
+    || project.projectAdminUser === serverUser?.username
+    || project.projectAdmins?.includes(serverUser?.username)
+
   if (view === 'project-daten') {
     const project = projectsWithContacts.find(p => p.id === selectedProjectId)
     if (!project) { setView('home'); return null }
@@ -813,6 +819,22 @@ export default function App() {
           allContacts={allContacts}
           onUpdateProject={handleUpdateProject}
           onBack={() => setView('project-dashboard')}
+          readOnly={!canEditProjektdaten(project)}
+        />
+        <UpdateBanner /><SaveErrorBanner />
+      </>
+    )
+  }
+
+  if (view === 'projektdatenbank') {
+    return wrap(
+      <>
+        <ProjektdatenbankView
+          projects={projectsWithContacts}
+          allContacts={allContacts}
+          canEdit={canEditProjektdaten}
+          onUpdateProject={handleUpdateProject}
+          onBack={() => setView('home')}
         />
         <UpdateBanner /><SaveErrorBanner />
       </>
@@ -893,6 +915,7 @@ export default function App() {
         onOpenContactDatabase={() => setView('contact-database')}
         onOpenLearning={() => setView('learning')}
         onOpenPersonalplanung={() => setView('personalplanung')}
+        onOpenProjektdatenbank={() => setView('projektdatenbank')}
         onImportProject={handleImportProject}
         onArchiveProject={handleArchiveProject}
         onUnarchiveProject={handleUnarchiveProject}

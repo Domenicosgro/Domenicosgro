@@ -3983,6 +3983,12 @@ app.patch('/api/projects/:id', requireAuth, writeLimiter, (req, res) => {
       projectAdminUser:   existing.projectAdminUser,
       projectAdmins:      existing.projectAdmins,
     }
+    // Projektdatenbank (projectData) darf nur von System- oder Projektadmins
+    // geändert werden – für alle anderen wird die Server-Kopie wiederhergestellt.
+    const requester = req.user !== '__apikey__' && req.user !== '__anonymous__' ? db.users.get(req.user) : null
+    const mayEditData = req.user === '__apikey__' || !db.users.hasAny()
+      || requester?.role === 'admin' || isProjectAdmin(existing, req.user)
+    if (!mayEditData) safeData.projectData = existing.projectData
     const result = db.projects.update(req.params.id, safeData, version, req.user)
     if (result.notFound) return res.status(404).json({ error: 'Nicht gefunden.' })
     if (result.conflict) return res.status(409).json({
