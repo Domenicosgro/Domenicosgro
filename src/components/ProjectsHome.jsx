@@ -3,10 +3,11 @@ import { Plus, Trash2, Search, ChevronRight, FileText, Users, FolderOpen,
          Calendar, Lock, LockOpen, X, Eye, EyeOff, Star,
          User, Settings, LogOut, Monitor, Download, RotateCcw, Upload, AlertTriangle,
          ShieldCheck, Loader, CalendarClock, Copy, Link2, UserCog, GraduationCap,
-         Archive, ArchiveRestore, FileDown } from 'lucide-react'
+         Archive, ArchiveRestore, FileDown, Smartphone } from 'lucide-react'
 import ProjectAdminPanel from './ProjectAdminPanel'
 import GlobalSearch from './GlobalSearch'
 import NotificationBell from './NotificationBell'
+import QrInstallModal from './QrInstallModal'
 import { formatDate } from '../utils'
 import { useUserSettings } from '../hooks/useUserSettings'
 
@@ -204,6 +205,7 @@ export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, 
   const [archiveError,    setArchiveError]    = useState('')
   const [archiveNotice,   setArchiveNotice]   = useState('')     // "Anfrage gesendet"-Hinweis
   const [showGlobalSearch, setShowGlobalSearch] = useState(false)
+  const [showQrInstall,    setShowQrInstall]    = useState(false)
   const importProjectRef = useRef(null)
 
   // Projekte, für die der aktuelle Benutzer Admin ist
@@ -390,6 +392,12 @@ export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, 
                 </button>
               )}
             </>
+          )}
+          {window.__SERVER_MODE__ && (
+            <button className="btn btn-secondary" title="QR-Code: App auf dem Handy installieren"
+              onClick={() => setShowQrInstall(true)}>
+              <Smartphone size={14} /> Handy-App
+            </button>
           )}
           {window.__SERVER_MODE__ && !installed && installPrompt && (
             <button className="btn btn-secondary" title="App installieren"
@@ -849,6 +857,9 @@ export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, 
           </div>
         </div>
       )}
+
+      {/* QR-Code für Handy-Installation */}
+      {showQrInstall && <QrInstallModal onClose={() => setShowQrInstall(false)} />}
 
       {/* Globale Volltextsuche */}
       {showGlobalSearch && (
