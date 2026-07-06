@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
-import { ArrowLeft, ChevronLeft, ChevronRight, Plus, Trash2, Loader, AlertCircle, X,
-         CalendarClock, Printer, Users, UserPlus, Link2, Copy, CheckSquare, Pencil, Check, FileDown } from 'lucide-react'
+import { ArrowLeft, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Plus, Trash2, Loader, AlertCircle, X,
+         CalendarClock, Printer, Users, UserPlus, Link2, Copy, CheckSquare, Pencil, Check, FileDown, Briefcase } from 'lucide-react'
 import { uid, formatDate } from '../utils'
 import { buildStaffPlanPdf } from '../staffPlanPdf'
 import { downloadPdfBase64 } from '../archivePdf'
@@ -268,7 +268,32 @@ export default function PersonalplanungView({ projects, onUpdateProject, serverU
   const [error,   setError]   = useState(null)
   const [pubUrl,  setPubUrl]  = useState(null)
   const [pubCopied, setPubCopied] = useState(false)
+  const [planSettings, setPlanSettings] = useState({ projectOrder: [], services: [] })
+  const [newService, setNewService] = useState('')
   const saveTimers = useRef({})
+
+  // Einstellungen (Reihenfolge + Zusatz-Leistungen) laden/speichern
+  useEffect(() => {
+    if (isServer) {
+      fetch('/api/staff-plan-settings', { headers: authHeaders() })
+        .then(r => r.ok ? r.json() : {})
+        .then(s => setPlanSettings({ projectOrder: s.projectOrder || [], services: s.services || [] }))
+        .catch(() => {})
+    } else {
+      try { setPlanSettings(JSON.parse(localStorage.getItem('kp_staffplan_settings') || '{"projectOrder":[],"services":[]}')) } catch {}
+    }
+  }, [])
+
+  const savePlanSettings = (next) => {
+    setPlanSettings(next)
+    if (isServer) {
+      fetch('/api/staff-plan-settings', {
+        method: 'PUT', headers: jsonHeaders(), body: JSON.stringify(next),
+      }).catch(() => {})
+    } else {
+      localStorage.setItem('kp_staffplan_settings', JSON.stringify(next))
+    }
+  }
 
   // 4 Wochen ab Startmontag
   const weeks = useMemo(() => Array.from({ length: 4 }, (_, i) => {
@@ -431,8 +456,48 @@ export default function PersonalplanungView({ projects, onUpdateProject, serverU
 
   const projName = (pid) =>
     ABSENCE.find(a => a.id === pid)?.name
+    || planSettings.services.find(s => s.id === pid)?.name
     || (projects || []).find(p => p.id === pid)?.name
     || ''
+
+  // Projektreihenfolge: manuell (planSettings.projectOrder), sonst nach Nummer
+  const sortedProjects = useMemo(() => {
+    const idx = new Map(planSettings.projectOrder.map((id, i) => [id, i]))
+    return [...activeProjects].sort((a, b) => {
+      const ia = idx.has(a.id) ? idx.get(a.id) : Infinity
+      const ib = idx.has(b.id) ? idx.get(b.id) : Infinity
+      if (ia !== ib) return ia - ib
+      return (parseInt(a.projectData?.nummer, 10) || 99999) - (parseInt(b.projectData?.nummer, 10) || 99999)
+        || (a.name || '').localeCompare(b.name || '', 'de')
+    })
+  }, [activeProjects, planSettings.projectOrder])
+
+  const moveProject = (projectId, dir) => {
+    const ids = sortedProjects.map(p => p.id)
+    const i = ids.indexOf(projectId)
+    const j = i + dir
+    if (i === -1 || j < 0 || j >= ids.length) return
+    ;[ids[i], ids[j]] = [ids[j], ids[i]]
+    savePlanSettings({ ...planSettings, projectOrder: ids })
+  }
+
+  // Zusatz-Leistungen (nicht projektgebunden), z. B. Kaufmännische Assistenz
+  const addService = () => {
+    const name = newService.trim()
+    if (!name) return
+    savePlanSettings({ ...planSettings, services: [...planSettings.services, { id: `svc_${uid()}`, name }] })
+    setNewService('')
+  }
+
+  const removeService = (svc) => {
+    if (!confirm(`Leistung „${svc.name}" entfernen? Zugehörige Einplanungen der angezeigten Wochen werden gelöscht.`)) return
+    for (const w of weeks) {
+      const list = plans[w.week] || []
+      const filtered = list.filter(a => a.projectId !== svc.id)
+      if (filtered.length !== list.length) persistWeek(w.week, filtered)
+    }
+    savePlanSettings({ ...planSettings, services: planSettings.services.filter(s => s.id !== svc.id) })
+  }
 
   // 4-Wochen-Plan als PDF herunterladen (z. B. zum Teilen in Teams)
   const [pdfBusy, setPdfBusy] = useState(false)
@@ -552,24 +617,39 @@ export default function PersonalplanungView({ projects, onUpdateProject, serverU
             </div>
           ) : (
             <>
-              {/* Gesamtübersicht auf Basis der Projektdatenbank (+ Abwesenheiten) */}
+              {/* Gesamtübersicht auf Basis der Projektdatenbank (+ Leistungen + Abwesenheiten) */}
               {[
-                ...[...activeProjects].sort((a, b) =>
-                  (parseInt(a.projectData?.nummer, 10) || 99999) - (parseInt(b.projectData?.nummer, 10) || 99999)
-                  || (a.name || '').localeCompare(b.name || '', 'de')),
+                ...sortedProjects,
+                ...planSettings.services.map(s => ({ ...s, _service: true })),
                 ...ABSENCE,
-              ].map(project => {
+              ].map((project, blockIdx) => {
                 const isAbsence = !!ABSENCE.find(a => a.id === project.id)
+                const isService = !!project._service
+                const isExtra   = isAbsence || isService
                 const rows = staffIdsFor(project)
-                const teamIds = isAbsence ? new Set() : teamStaffIds(project)
-                const pl = isAbsence ? [] : (project.team || []).filter(m => m.role === 'Projektleitung').map(m => m.name)
+                const teamIds = isExtra ? new Set() : teamStaffIds(project)
+                const pl = isExtra ? [] : (project.team || []).filter(m => m.role === 'Projektleitung').map(m => m.name)
                 const ges  = project.projectData?.gesellschaft || ''
+                const projIdx = sortedProjects.findIndex(p => p.id === project.id)
                 return (
-                  <div key={project.id} className={`card overflow-hidden ${isAbsence ? 'border-l-4 border-l-yellow-300' : ''}`}>
+                  <div key={project.id} className={`card overflow-hidden ${isAbsence ? 'border-l-4 border-l-yellow-300' : isService ? 'border-l-4 border-l-gray-300' : ''}`}>
                     {/* Projektkopf */}
                     <div className="flex items-center gap-3 px-4 py-2.5 bg-gray-50/80 border-b border-gray-200 flex-wrap">
+                      {!isExtra && (
+                        <span className="flex flex-col -my-1 no-print">
+                          <button className="text-gray-300 hover:text-brand-600 disabled:opacity-30" title="Nach oben"
+                            disabled={projIdx <= 0} onClick={() => moveProject(project.id, -1)}><ChevronUp size={13} /></button>
+                          <button className="text-gray-300 hover:text-brand-600 disabled:opacity-30" title="Nach unten"
+                            disabled={projIdx === sortedProjects.length - 1} onClick={() => moveProject(project.id, 1)}><ChevronDown size={13} /></button>
+                        </span>
+                      )}
+                      {isService && <Briefcase size={14} className="text-gray-400" />}
                       <span className="font-semibold text-sm text-night">{project.name || 'Unbenannt'}</span>
-                      {!isAbsence && (canEditGes(project) ? (
+                      {isService && (
+                        <button className="btn-ghost p-1 text-gray-300 hover:text-red-500 no-print" title="Leistung entfernen"
+                          onClick={() => removeService(project)}><Trash2 size={12} /></button>
+                      )}
+                      {!isExtra && (canEditGes(project) ? (
                         <select
                           className={`select text-[11px] py-0.5 px-1.5 no-print ${ges ? (ges === 'GmbH' ? 'text-brand-700 border-brand-300' : 'text-violet-700 border-violet-300') : 'text-gray-400'}`}
                           value={ges}
@@ -664,6 +744,21 @@ export default function PersonalplanungView({ projects, onUpdateProject, serverU
                   </div>
                 )
               })}
+
+              {/* Weitere Leistung ergänzen (z. B. Kaufmännische Assistenz) */}
+              <div className="card p-3 flex gap-2 items-center flex-wrap no-print">
+                <Briefcase size={15} className="text-gray-400" />
+                <input
+                  className="input py-1.5 text-sm flex-1 min-w-[220px]"
+                  placeholder="Weitere Leistung ergänzen (z. B. Kaufmännische Assistenz, Buchhaltung, Akquise)…"
+                  value={newService}
+                  onChange={e => setNewService(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && addService()}
+                />
+                <button className="btn-secondary text-sm" disabled={!newService.trim()} onClick={addService}>
+                  <Plus size={14} /> Leistung hinzufügen
+                </button>
+              </div>
 
               {/* Auslastungsübersicht je Mitarbeiter */}
               <div className="card overflow-x-auto">

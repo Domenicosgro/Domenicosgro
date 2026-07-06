@@ -1669,10 +1669,14 @@ app.get('/plan/:token', (req, res) => {
 
     const staff    = db.staffMembers.list().filter(s => s.active !== false)
     const projects = db.projects.list()
+    let services = []
+    try { services = JSON.parse(db.appState.get('staff_plan_settings') || '{}').services || [] } catch {}
     const projName = (pid) => {
       if (!pid) return ''
       if (['urlaub', 'krank', 'buero'].includes(pid)) return { urlaub: 'Urlaub', krank: 'Krank', buero: 'Büro' }[pid]
-      return projects.find(p => p.id === pid)?.name || pid
+      return projects.find(p => p.id === pid)?.name
+        || services.find(s => s.id === pid)?.name
+        || pid
     }
     const DAYS = [['mo', 'Mo'], ['di', 'Di'], ['mi', 'Mi'], ['do', 'Do'], ['fr', 'Fr']]
 
@@ -1723,6 +1727,22 @@ app.get('/plan/:token', (req, res) => {
       </div></body></html>`
     res.send(html)
   } catch (e) { res.status(500).send(renderSimplePage('Fehler', `<p>${esc(e.message)}</p>`)) }
+})
+
+// ── Personalplanung: Einstellungen (Projekt-Reihenfolge + Zusatz-Leistungen) ──
+app.get('/api/staff-plan-settings', requireAuth, (_req, res) => {
+  try { res.json(JSON.parse(db.appState.get('staff_plan_settings') || '{}')) }
+  catch { res.json({}) }
+})
+
+app.put('/api/staff-plan-settings', requireAuth, writeLimiter, (req, res) => {
+  try {
+    db.appState.set('staff_plan_settings', JSON.stringify({
+      projectOrder: Array.isArray(req.body.projectOrder) ? req.body.projectOrder : [],
+      services:     Array.isArray(req.body.services)     ? req.body.services     : [],
+    }))
+    res.json({ ok: true })
+  } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
 // ── Personalplanung: ein Dokument je Kalenderwoche (global) ──────────────────
