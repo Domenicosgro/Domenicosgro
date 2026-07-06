@@ -420,7 +420,7 @@ export default function ProtocolItems({ items, onChange, allTasks = [], onTasksC
           return (
             <div key={item.id} className={`protocol-item ${isDragging ? 'opacity-40' : ''}`}>
               <div
-                className={`${s.indent} rounded-lg ${s.borderL} pl-2 pr-3 py-3 space-y-2
+                className={`${s.indent} print-level-${lvl} rounded-lg ${s.borderL} pl-2 pr-3 py-3 space-y-2
                   ${gray ? 'bg-gray-50 opacity-60' : done ? 'bg-green-50' : 'bg-white'}
                   ${dndActive ? 'cursor-grab' : ''}`}
                 draggable={dndActive && !gray}

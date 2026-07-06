@@ -992,13 +992,61 @@ fs.mkdirSync(LEARNING_DIR, { recursive: true })
 const PLANS_DIR = path.join(process.env.DB_PATH || path.join(__dirname, '../data'), 'plans')
 fs.mkdirSync(PLANS_DIR, { recursive: true })
 
+// ── Projekt-Archiv (Gesamtprotokoll-PDF bei Archivierung) ────────────────────
+const ARCHIVE_DIR = path.join(process.env.DB_PATH || path.join(__dirname, '../data'), 'archives')
+fs.mkdirSync(ARCHIVE_DIR, { recursive: true })
+
+// POST – Gesamtprotokoll-PDF ablegen (wird beim Archivieren im Browser erzeugt)
+app.post('/api/projects/:id/archive-pdf', requireAuth, writeLimiter, (req, res) => {
+  try {
+    const project = getAccessibleProject(req, res)
+    if (!project) return
+    const { pdfBase64 } = req.body
+    if (!pdfBase64) return res.status(400).json({ error: 'Kein PDF übergeben.' })
+
+    const buf      = Buffer.from(pdfBase64, 'base64')
+    const filePath = path.join(ARCHIVE_DIR, `${req.params.id}.pdf`)
+    fs.writeFileSync(filePath, buf)
+    logEvent('PROJECT_ARCHIVE_PDF', req, `project=${req.params.id} size=${buf.length}`)
+    res.status(201).json({ ok: true, size: buf.length, createdAt: new Date().toISOString() })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// GET – archiviertes Gesamtprotokoll abrufen (Auth über Header ODER ?token=)
+app.get('/api/projects/:id/archive-pdf', (req, res) => {
+  try {
+    const authHeader = req.headers['authorization']
+    const headerTok  = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null
+    const token      = headerTok || req.query.token
+    const username   = (token && resolveToken(token))
+      || (API_KEY && req.headers['x-api-key'] === API_KEY ? '__apikey__' : null)
+      || (!db.users.hasAny() ? '__anonymous__' : null)
+    if (!username) return res.status(401).json({ error: 'Nicht angemeldet.' })
+
+    const project = db.projects.get(req.params.id)
+    if (!project) return res.status(404).json({ error: 'Projekt nicht gefunden.' })
+    if (db.users.hasAny() && !canAccessProject(project, username)) {
+      return res.status(403).json({ error: 'Kein Zugriff auf dieses Projekt.' })
+    }
+
+    const filePath = path.join(ARCHIVE_DIR, `${req.params.id}.pdf`)
+    if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'Kein Archiv-PDF vorhanden.' })
+    const name    = (project?.name || 'Projekt').replace(/[^a-zA-Z0-9äöüÄÖÜß ._-]/g, '_')
+    const stat    = fs.statSync(filePath)
+    res.setHeader('Content-Type', 'application/pdf')
+    res.setHeader('Content-Length', stat.size)
+    res.setHeader('Content-Disposition', `attachment; filename="Gesamtprotokoll_${name}.pdf"`)
+    fs.createReadStream(filePath).pipe(res)
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
 // POST /api/projects/:id/bim  (Content-Type: application/octet-stream, X-Filename header)
 app.post('/api/projects/:id/bim', requireAuth, writeLimiter,
   express.raw({ type: 'application/octet-stream', limit: '500mb' }),
   (req, res) => {
     try {
-      const project = db.projects.get(req.params.id)
-      if (!project) return res.status(404).json({ error: 'Projekt nicht gefunden.' })
+      const project = getAccessibleProject(req, res)
+      if (!project) return
 
       const filename  = (req.headers['x-filename'] || 'model.ifc').replace(/[^a-zA-Z0-9._-]/g, '_')
       const filePath  = path.join(BIM_DIR, `${req.params.id}.ifc`)
@@ -1025,6 +1073,7 @@ app.post('/api/projects/:id/bim', requireAuth, writeLimiter,
 // GET /api/projects/:id/bim  → IFC-Datei streamen
 app.get('/api/projects/:id/bim', requireAuth, (req, res) => {
   try {
+    if (!getAccessibleProject(req, res)) return
     const filePath = path.join(BIM_DIR, `${req.params.id}.ifc`)
     if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'Kein BIM-Modell vorhanden.' })
     const stat = fs.statSync(filePath)
@@ -1036,9 +1085,24 @@ app.get('/api/projects/:id/bim', requireAuth, (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
+// Projekt laden + Zugriff des angemeldeten Nutzers prüfen. Sendet 404/403
+// selbst und gibt dann null zurück – Aufrufer bricht einfach ab.
+// (canAccessProject/isProjectAdmin sind weiter unten definiert – hoisted.)
+function getAccessibleProject(req, res) {
+  const project = db.projects.get(req.params.id)
+  if (!project) { res.status(404).json({ error: 'Projekt nicht gefunden.' }); return null }
+  if (!canAccessProject(project, req.user)) {
+    logEvent('PROJECT_ACCESS_DENIED', req, `project=${req.params.id}`)
+    res.status(403).json({ error: 'Kein Zugriff auf dieses Projekt.' })
+    return null
+  }
+  return project
+}
+
 // ── BIM Issues ────────────────────────────────────────────────────────────────
 app.get('/api/projects/:id/bim-issues', requireAuth, (req, res) => {
   try {
+    if (!getAccessibleProject(req, res)) return
     const all = db.bimIssues.list()
     res.json(all.filter(i => i.projectId === req.params.id))
   } catch (e) { res.status(500).json({ error: e.message }) }
@@ -1046,6 +1110,7 @@ app.get('/api/projects/:id/bim-issues', requireAuth, (req, res) => {
 
 app.post('/api/projects/:id/bim-issues', requireAuth, writeLimiter, (req, res) => {
   try {
+    if (!getAccessibleProject(req, res)) return
     const id   = require('crypto').randomBytes(12).toString('base64url')
     const now  = new Date().toISOString()
     const data = {
@@ -1070,6 +1135,7 @@ app.post('/api/projects/:id/bim-issues', requireAuth, writeLimiter, (req, res) =
 
 app.patch('/api/projects/:id/bim-issues/:issueId', requireAuth, writeLimiter, (req, res) => {
   try {
+    if (!getAccessibleProject(req, res)) return
     const { data, version } = req.body
     const updated = { ...data, updatedAt: new Date().toISOString() }
     const result  = db.bimIssues.update(req.params.issueId, updated, version, req.user?.username)
@@ -1081,6 +1147,7 @@ app.patch('/api/projects/:id/bim-issues/:issueId', requireAuth, writeLimiter, (r
 
 app.delete('/api/projects/:id/bim-issues/:issueId', requireAuth, writeLimiter, (req, res) => {
   try {
+    if (!getAccessibleProject(req, res)) return
     db.bimIssues.delete(req.params.issueId)
     res.json({ ok: true })
   } catch (e) { res.status(500).json({ error: e.message }) }
@@ -1091,6 +1158,7 @@ app.delete('/api/projects/:id/bim-issues/:issueId', requireAuth, writeLimiter, (
 // gewählt. Verknüpfbar mit Protokoll (wie BIM-Issue) und per E-Mail versendbar.
 app.get('/api/projects/:id/plan-reviews', requireAuth, (req, res) => {
   try {
+    if (!getAccessibleProject(req, res)) return
     let all = db.planReviews.list().filter(r => r.projectId === req.params.id)
     if (req.query.planId) all = all.filter(r => r.planId === req.query.planId)
     all.sort((a, b) => (a.no ?? 0) - (b.no ?? 0) || (a.createdAt || '').localeCompare(b.createdAt || ''))
@@ -1100,6 +1168,7 @@ app.get('/api/projects/:id/plan-reviews', requireAuth, (req, res) => {
 
 app.post('/api/projects/:id/plan-reviews', requireAuth, writeLimiter, (req, res) => {
   try {
+    if (!getAccessibleProject(req, res)) return
     const id  = require('crypto').randomBytes(12).toString('base64url')
     const now = new Date().toISOString()
     const existing = db.planReviews.list().filter(r => r.projectId === req.params.id)
@@ -1133,6 +1202,7 @@ app.post('/api/projects/:id/plan-reviews', requireAuth, writeLimiter, (req, res)
 
 app.patch('/api/projects/:id/plan-reviews/:reviewId', requireAuth, writeLimiter, (req, res) => {
   try {
+    if (!getAccessibleProject(req, res)) return
     const { data, version } = req.body
     const updated = { ...data, updatedAt: new Date().toISOString() }
     const result  = db.planReviews.update(req.params.reviewId, updated, version, req.user)
@@ -1145,6 +1215,7 @@ app.patch('/api/projects/:id/plan-reviews/:reviewId', requireAuth, writeLimiter,
 
 app.delete('/api/projects/:id/plan-reviews/:reviewId', requireAuth, writeLimiter, (req, res) => {
   try {
+    if (!getAccessibleProject(req, res)) return
     db.planReviews.delete(req.params.reviewId)
     broadcast('plan_review', 'delete', req.params.reviewId, new Date().toISOString())
     logEvent('PLAN_REVIEW_DELETE', req, `project=${req.params.id} id=${req.params.reviewId}`)
@@ -1155,6 +1226,7 @@ app.delete('/api/projects/:id/plan-reviews/:reviewId', requireAuth, writeLimiter
 // POST – Prüfvermerk per E-Mail an den Prüfberechtigten senden
 app.post('/api/projects/:id/plan-reviews/:reviewId/send-email', requireAuth, async (req, res) => {
   try {
+    if (!getAccessibleProject(req, res)) return
     if (!mailer.mailerStatus().configured) return res.status(400).json({ error: 'E-Mail-Versand nicht konfiguriert.' })
     const review = db.planReviews.get(req.params.reviewId)
     if (!review || review.projectId !== req.params.id) return res.status(404).json({ error: 'Prüfvermerk nicht gefunden.' })
@@ -1226,8 +1298,8 @@ app.post('/api/projects/:id/plan-reviews/:reviewId/send-email', requireAuth, asy
 // DELETE /api/projects/:id/bim  → Modell entfernen
 app.delete('/api/projects/:id/bim', requireAuth, writeLimiter, (req, res) => {
   try {
-    const project = db.projects.get(req.params.id)
-    if (!project) return res.status(404).json({ error: 'Projekt nicht gefunden.' })
+    const project = getAccessibleProject(req, res)
+    if (!project) return
 
     const filePath = path.join(BIM_DIR, `${req.params.id}.ifc`)
     if (fs.existsSync(filePath)) fs.unlinkSync(filePath)
@@ -1253,6 +1325,7 @@ const planDisplayName = (reqUser) => {
 // GET – alle Pläne eines Projekts (Metadaten)
 app.get('/api/projects/:id/plans', requireAuth, (req, res) => {
   try {
+    if (!getAccessibleProject(req, res)) return
     const all = db.bimPlans.list().filter(p => p.projectId === req.params.id)
     all.sort((a, b) => (a.order ?? 0) - (b.order ?? 0)
       || (a.createdAt || '').localeCompare(b.createdAt || ''))
@@ -1263,6 +1336,7 @@ app.get('/api/projects/:id/plans', requireAuth, (req, res) => {
 // POST – neuen Plan (Metadaten) anlegen; Datei folgt separat
 app.post('/api/projects/:id/plans', requireAuth, writeLimiter, (req, res) => {
   try {
+    if (!getAccessibleProject(req, res)) return
     const id  = require('crypto').randomBytes(12).toString('base64url')
     const now = new Date().toISOString()
     const existing = db.bimPlans.list().filter(p => p.projectId === req.params.id)
@@ -1295,6 +1369,7 @@ app.post('/api/projects/:id/plans/:planId/file', requireAuth, writeLimiter,
   express.raw({ type: 'application/octet-stream', limit: '200mb' }),
   (req, res) => {
     try {
+      if (!getAccessibleProject(req, res)) return
       const plan = db.bimPlans.get(req.params.planId)
       if (!plan || plan.projectId !== req.params.id) return res.status(404).json({ error: 'Plan nicht gefunden.' })
 
@@ -1325,9 +1400,16 @@ app.get('/api/projects/:id/plans/:planId/file', (req, res) => {
     const authHeader = req.headers['authorization']
     const headerTok  = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null
     const token      = headerTok || req.query.token
-    const authed     = (token && resolveToken(token)) || !db.users.hasAny()
-      || (API_KEY && req.headers['x-api-key'] === API_KEY)
-    if (!authed) return res.status(401).json({ error: 'Nicht angemeldet.' })
+    const username   = (token && resolveToken(token))
+      || (API_KEY && req.headers['x-api-key'] === API_KEY ? '__apikey__' : null)
+      || (!db.users.hasAny() ? '__anonymous__' : null)
+    if (!username) return res.status(401).json({ error: 'Nicht angemeldet.' })
+
+    const project = db.projects.get(req.params.id)
+    if (!project) return res.status(404).json({ error: 'Projekt nicht gefunden.' })
+    if (db.users.hasAny() && !canAccessProject(project, username)) {
+      return res.status(403).json({ error: 'Kein Zugriff auf dieses Projekt.' })
+    }
 
     const plan     = db.bimPlans.get(req.params.planId)
     const filePath = path.join(PLANS_DIR, req.params.planId)
@@ -1347,6 +1429,7 @@ app.get('/api/projects/:id/plans/:planId/file', (req, res) => {
 // PATCH – Plan-Metadaten ändern
 app.patch('/api/projects/:id/plans/:planId', requireAuth, writeLimiter, (req, res) => {
   try {
+    if (!getAccessibleProject(req, res)) return
     const plan = db.bimPlans.get(req.params.planId)
     if (!plan || plan.projectId !== req.params.id) return res.status(404).json({ error: 'Plan nicht gefunden.' })
     const { _version, _updatedAt, ...pData } = plan
@@ -1363,6 +1446,7 @@ app.patch('/api/projects/:id/plans/:planId', requireAuth, writeLimiter, (req, re
 // DELETE – Plan + Datei löschen
 app.delete('/api/projects/:id/plans/:planId', requireAuth, writeLimiter, (req, res) => {
   try {
+    if (!getAccessibleProject(req, res)) return
     const plan = db.bimPlans.get(req.params.planId)
     if (plan && plan.projectId !== req.params.id) return res.status(404).json({ error: 'Plan nicht gefunden.' })
     const filePath = path.join(PLANS_DIR, req.params.planId)

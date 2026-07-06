@@ -106,7 +106,7 @@ export default function ActionItems({ items, onChange, agendaItems = [], project
 
     return (
       <div key={item.id}
-        className={`border-l-4 ${borderColor} ${bgColor} pl-3 pr-3 py-2.5 space-y-1.5 transition-all border-b border-gray-100 ${done ? 'opacity-75' : ''}`}
+        className={`print-action-item print-action-${kind} border-l-4 ${borderColor} ${bgColor} pl-3 pr-3 py-2.5 space-y-1.5 transition-all border-b border-gray-100 ${done ? 'opacity-75' : ''}`}
       >
         {/* Row 1: number + done toggle + description + delete */}
         <div className="flex items-start gap-2">

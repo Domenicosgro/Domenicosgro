@@ -2,7 +2,8 @@ import React, { useState, useRef, useEffect } from 'react'
 import { Plus, Trash2, Search, ChevronRight, FileText, Users, FolderOpen,
          Calendar, Lock, LockOpen, X, Eye, EyeOff, Star,
          User, Settings, LogOut, Monitor, Download, RotateCcw, Upload, AlertTriangle,
-         ShieldCheck, Loader, CalendarClock, Copy, Link2, UserCog, GraduationCap } from 'lucide-react'
+         ShieldCheck, Loader, CalendarClock, Copy, Link2, UserCog, GraduationCap,
+         Archive, ArchiveRestore, FileDown } from 'lucide-react'
 import ProjectAdminPanel from './ProjectAdminPanel'
 import { formatDate } from '../utils'
 import { useUserSettings } from '../hooks/useUserSettings'
@@ -183,7 +184,7 @@ function PasswordModal({ mode, projectName, onConfirm, onCancel }) {
 export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, onDelete, onOpenProject,
                                        onOpenProjectDashboard, onUnlock, onSetPassword, onRemovePassword,
                                        onOpenContactDatabase, onImportProject, onOpenPersonalplanung,
-                                       onOpenLearning,
+                                       onOpenLearning, onArchiveProject, onUnarchiveProject,
                                        serverUser, onLogout, onOpenAdmin,
                                        onRequestDeleteProject, onRefresh }) {
   const [search,          setSearch]          = useState('')
@@ -195,6 +196,9 @@ export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, 
   const [deleteRequest,   setDeleteRequest]   = useState(null)   // { project, protocolCount }
   const [accessProject,   setAccessProject]   = useState(null)   // project for access modal
   const [adminTilePicker, setAdminTilePicker] = useState(false)  // project picker for admin tile
+  const [showArchive,     setShowArchive]     = useState(false)  // Archiv-Abschnitt aufgeklappt
+  const [archivingId,     setArchivingId]     = useState(null)   // Projekt-ID während PDF-Erzeugung
+  const [archiveError,    setArchiveError]    = useState('')
   const importProjectRef = useRef(null)
 
   // Projekte, für die der aktuelle Benutzer Admin ist
@@ -240,10 +244,13 @@ export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, 
   // ID of the project whose name input should be auto-focused after creation
   const focusIdRef = useRef(null)
 
-  const hasFavorites = projects.some(p => isFavorite(p.id))
+  const activeProjects   = projects.filter(p => !p.isArchived)
+  const archivedProjects = projects.filter(p => !!p.isArchived)
+
+  const hasFavorites = activeProjects.some(p => isFavorite(p.id))
 
   const q = search.trim().toLowerCase()
-  const baseFiltered = projects
+  const baseFiltered = activeProjects
     .filter(p => !q || (p.name || '').toLowerCase().includes(q))
 
   // Favorites-only mode: only show when there are favorites AND showAll=false
@@ -258,6 +265,31 @@ export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, 
   const unassigned    = protocols.filter(p => !p.projectId)
   const protocolsFor  = (id) => protocols.filter(p => p.projectId === id)
   const lastDate      = (arr) => arr.length ? arr.map(p => p.date).sort().reverse()[0] : null
+
+  // Archivieren darf: lokal jeder, im Server-Modus System-/Projektadmin
+  const canArchive = (project) => !isServer || serverUser?.role === 'admin'
+    || project.projectAdminUser === serverUser?.username
+    || project.projectAdmins?.includes(serverUser?.username)
+
+  const handleArchiveClick = async (project, protoCount) => {
+    if (!onArchiveProject || archivingId) return
+    const msg = `Projekt „${project.name || 'Unbenannt'}" archivieren?\n\n`
+      + (protoCount > 0
+          ? `Ein Gesamtprotokoll mit ${protoCount} Protokoll${protoCount !== 1 ? 'en' : ''} wird automatisch als PDF erstellt.\n`
+          : '')
+      + 'Das Projekt bleibt im Archiv jederzeit zugänglich und kann wiederhergestellt werden.'
+    if (!confirm(msg)) return
+    setArchivingId(project.id)
+    setArchiveError('')
+    try {
+      await onArchiveProject(project.id)
+      setShowArchive(true)
+    } catch (e) {
+      setArchiveError(`Archivierung fehlgeschlagen: ${e.message}`)
+    } finally {
+      setArchivingId(null)
+    }
+  }
 
   const handleCreate = () => {
     const id = onCreate()
@@ -595,6 +627,18 @@ export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, 
                       <UserCog size={14} />
                     </button>
                   )}
+                  {canArchive(project) && (
+                    <button
+                      className="btn-ghost p-1.5 text-gray-400 hover:text-brand-600"
+                      title="Projekt archivieren (Gesamtprotokoll-PDF wird erstellt)"
+                      disabled={archivingId === project.id}
+                      onClick={() => handleArchiveClick(project, protos.length)}
+                    >
+                      {archivingId === project.id
+                        ? <Loader size={14} className="animate-spin text-brand-600" />
+                        : <Archive size={14} />}
+                    </button>
+                  )}
                   <button
                     className="btn-ghost p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50"
                     title="Projekt löschen"
@@ -634,6 +678,79 @@ export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, 
           <p className="text-sm text-gray-400 text-center py-4 sm:col-span-2 lg:col-span-3">Kein Projekt gefunden.</p>
         )}
       </div>
+
+      {/* Archivierungs-Fehler */}
+      {archiveError && (
+        <div className="flex items-center gap-2 text-sm text-red-700 bg-red-50 border border-red-200 px-4 py-2.5">
+          <AlertTriangle size={15} className="flex-shrink-0" />
+          <span className="flex-1">{archiveError}</span>
+          <button className="text-red-400 hover:text-red-600" onClick={() => setArchiveError('')}><X size={14} /></button>
+        </div>
+      )}
+
+      {/* Archiv – abgeschlossene, archivierte Projekte */}
+      {archivedProjects.length > 0 && (
+        <div>
+          <button
+            className="flex items-center gap-2 text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3 hover:text-gray-700 transition-colors"
+            onClick={() => setShowArchive(v => !v)}
+          >
+            <Archive size={14} />
+            Archiv ({archivedProjects.length})
+            <ChevronRight size={14} className={`transition-transform ${showArchive ? 'rotate-90' : ''}`} />
+          </button>
+          {showArchive && (
+            <div className="space-y-2">
+              {archivedProjects.map(project => {
+                const protos = protocolsFor(project.id)
+                return (
+                  <div key={project.id} className="card p-4 flex items-center gap-3 border-l-4 border-gray-300 bg-gray-50/60">
+                    <Archive size={16} className="text-gray-400 flex-shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-gray-700 truncate">{project.name || 'Unbenanntes Projekt'}</p>
+                      <p className="text-xs text-gray-400 mt-0.5">
+                        Archiviert {project.archivedAt ? formatDate(project.archivedAt.slice(0, 10)) : ''}
+                        {' · '}{protos.length} Protokoll{protos.length !== 1 ? 'e' : ''}
+                        {project.archivePdf && !project.archivePdf.local && ' · Gesamtprotokoll-PDF hinterlegt'}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-1 flex-shrink-0">
+                      {isServer && project.archivePdf && !project.archivePdf.local && (
+                        <a
+                          className="btn-ghost p-1.5 text-gray-400 hover:text-brand-600"
+                          title="Gesamtprotokoll-PDF herunterladen"
+                          href={`/api/projects/${project.id}/archive-pdf?token=${encodeURIComponent(localStorage.getItem('kp_session_token') || '')}`}
+                          onClick={e => e.stopPropagation()}
+                        >
+                          <FileDown size={15} />
+                        </a>
+                      )}
+                      <button
+                        className="btn-ghost p-1.5 text-gray-400 hover:text-brand-600"
+                        title="Projekt öffnen (lesender Zugriff jederzeit möglich)"
+                        onClick={() => handleCardClick(project)}
+                      >
+                        <ChevronRight size={15} />
+                      </button>
+                      {canArchive(project) && onUnarchiveProject && (
+                        <button
+                          className="btn-ghost p-1.5 text-gray-400 hover:text-green-600"
+                          title="Aus dem Archiv wiederherstellen"
+                          onClick={() => {
+                            if (confirm(`Projekt „${project.name || 'Unbenannt'}" wiederherstellen?`)) onUnarchiveProject(project.id)
+                          }}
+                        >
+                          <ArchiveRestore size={15} />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Unassigned protocols */}
       {unassigned.length > 0 && (

@@ -82,7 +82,12 @@ export default function ProjectDashboard({
             <ArrowLeft size={16} /> Projekte
           </button>
           <div>
-            <h1 className="text-2xl font-bold text-night">{(project.name || 'Unbenanntes Projekt')} · Dashboard</h1>
+            <h1 className="text-2xl font-bold text-night flex items-center gap-2 flex-wrap">
+              {(project.name || 'Unbenanntes Projekt')} · Dashboard
+              {project.isArchived && (
+                <span className="badge-gray text-xs font-medium align-middle">Archiviert</span>
+              )}
+            </h1>
             <p className="text-sm text-gray-500 mt-0.5">
               {protos.length} Protokoll{protos.length !== 1 ? 'e' : ''}
               {projectNotes.length > 0 && ` · ${projectNotes.length} Notiz${projectNotes.length !== 1 ? 'en' : ''}`}

@@ -18,6 +18,7 @@ import AdminPanel            from './components/AdminPanel'
 import BimViewerPopup        from './components/BimViewerPopup'
 import LearningPlatform      from './components/LearningPlatform'
 import { hashPassword, uid } from './utils'
+import { buildProjectArchivePdf, downloadPdfBase64 } from './archivePdf'
 import { deriveKey, encryptJSON, decryptJSON, newSalt } from './crypto'
 
 const isElectron = typeof window !== 'undefined' && !!window.electronAPI
@@ -422,6 +423,45 @@ export default function App() {
 
   const sessionToken = typeof localStorage !== 'undefined' ? localStorage.getItem('kp_session_token') : null
 
+  // ── Projekt archivieren: Gesamtprotokoll-PDF erzeugen, ablegen, markieren ──
+  const handleArchiveProject = useCallback(async (projectId) => {
+    const project = projectsWithContacts.find(p => p.id === projectId)
+    if (!project) throw new Error('Projekt nicht gefunden.')
+    const projectProtos = protocols.filter(p => p.projectId === projectId)
+
+    let archivePdf = null
+    if (projectProtos.length > 0) {
+      const pdfBase64 = await buildProjectArchivePdf(
+        project, projectProtos, protocols,
+        project.logo || logoDataUrl, project.clientLogo || ''
+      )
+      if (pdfBase64) {
+        if (isServer) {
+          const headers = { 'Content-Type': 'application/json' }
+          if (sessionToken) headers['Authorization'] = `Bearer ${sessionToken}`
+          const res = await fetch(`/api/projects/${projectId}/archive-pdf`, {
+            method: 'POST', headers, body: JSON.stringify({ pdfBase64 }),
+          })
+          if (!res.ok) {
+            const d = await res.json().catch(() => ({}))
+            throw new Error(d.error || 'Archiv-PDF konnte nicht abgelegt werden.')
+          }
+          const meta = await res.json()
+          archivePdf = { size: meta.size, createdAt: meta.createdAt, protocolCount: projectProtos.length }
+        } else {
+          // Lokal-/Electron-Modus: PDF direkt herunterladen
+          downloadPdfBase64(pdfBase64, `Gesamtprotokoll_${(project.name || 'Projekt').replace(/[/\\:*?"<>|]/g, '-')}.pdf`)
+          archivePdf = { createdAt: new Date().toISOString(), protocolCount: projectProtos.length, local: true }
+        }
+      }
+    }
+    updateProject(projectId, { isArchived: true, archivedAt: new Date().toISOString(), archivePdf })
+  }, [projectsWithContacts, protocols, logoDataUrl, sessionToken, updateProject])
+
+  const handleUnarchiveProject = useCallback((projectId) => {
+    updateProject(projectId, { isArchived: false, archivedAt: null })
+  }, [updateProject])
+
   const wrap = (children) => (
     <>
       {children}
@@ -724,6 +764,8 @@ export default function App() {
         onOpenContactDatabase={() => setView('contact-database')}
         onOpenLearning={() => setView('learning')}
         onImportProject={handleImportProject}
+        onArchiveProject={handleArchiveProject}
+        onUnarchiveProject={handleUnarchiveProject}
         serverUser={serverUser}
         onLogout={isServer ? handleLogout : null}
         onOpenAdmin={isServer ? () => setShowAdmin(true) : null}

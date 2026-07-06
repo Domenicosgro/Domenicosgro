@@ -203,7 +203,29 @@
     border-left-width: 2px !important;
     border-left-style: solid !important;
     border-left-color: #000 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
   }
+
+  /* Ebenen im Druck dezent staffeln: Unterpunkte hellblau, Unterunterpunkte hellgrau */
+  .protocol-item > div.print-level-2 {
+    background-color: #eaf2fa !important;   /* light blue */
+    border-left-color: #8fb4d9 !important;
+  }
+  .protocol-item > div.print-level-3 {
+    background-color: #f3f4f6 !important;   /* light grey */
+    border-left-color: #b8bcc2 !important;
+  }
+
+  /* Maßnahmen & Issues im Druck dezent absetzen */
+  .print-action-item {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    border-left-width: 2px !important;
+  }
+  .print-action-regular { background-color: #fbf8f1 !important; border-left-color: #cdb98a !important; }  /* dezent warm */
+  .print-action-bim     { background-color: #edf7f8 !important; border-left-color: #8ec4cc !important; }  /* dezent cyan */
+  .print-action-review  { background-color: #f3f0f9 !important; border-left-color: #ab9dcf !important; }  /* dezent violett */
 
   input, textarea, select {
     border: none !important;

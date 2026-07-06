@@ -42,7 +42,8 @@ function buildPrintHtml(chain, allProtocols, logoDataUrl, today, clientLogoDataU
       const pl   = lvl === 2 ? '8mm' : lvl === 3 ? '16mm' : '0'
       const done = item.status === 'erledigt'
       const gray = done && item.carriedGray
-      return `<tr style="${gray ? 'color:#bbb;' : ''}">
+      const rowBg = lvl === 2 ? 'background:#eaf2fa;' : lvl === 3 ? 'background:#f3f4f6;' : ''
+      return `<tr style="${gray ? 'color:#bbb;' : ''}${rowBg}">
         <td style="padding:1mm 2mm 1mm ${pl};font-weight:${lvl === 1 ? 'bold' : 'normal'};white-space:nowrap;width:14mm;vertical-align:top;border-bottom:0.3pt solid #eee;">${esc(item.no || String(i + 1))}</td>
         <td style="padding:1mm 2mm;vertical-align:top;white-space:nowrap;width:20mm;border-bottom:0.3pt solid #eee;">${item.createdAt ? formatDate(item.createdAt.slice(0, 10)) : '–'}</td>
         <td style="padding:1mm 2mm;vertical-align:top;font-weight:${lvl === 1 ? 'bold' : 'normal'};border-bottom:0.3pt solid #eee;${done ? 'text-decoration:line-through;' : ''}">${esc(item.topic || '–')}</td>
@@ -89,7 +90,7 @@ function buildPrintHtml(chain, allProtocols, logoDataUrl, today, clientLogoDataU
 <title>Gesamtprotokoll – ${esc(project?.projectName ?? '')}</title>
 <style>
   @page { size: A4; margin: 12mm 12mm 16mm 12mm; }
-  * { box-sizing: border-box; }
+  * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   body { font-family: Arial, sans-serif; font-size: 8pt; color: #000; margin: 0; background: #fff; }
 </style></head><body>
 <div style="display:flex;align-items:flex-end;justify-content:space-between;border-bottom:1pt solid #000;padding-bottom:4mm;margin-bottom:8mm;">
