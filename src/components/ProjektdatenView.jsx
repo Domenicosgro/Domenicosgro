@@ -37,7 +37,21 @@ const emptyData = () => ({
 })
 
 export default function ProjektdatenView({ project, allContacts = [], onUpdateProject, onBack, readOnly = false, backLabel = 'Dashboard' }) {
-  const [data,  setData]  = useState({ ...emptyData(), ...(project.projectData || {}) })
+  // Bestehende (noch uncodierte) Projekte: vorhandenen Namen vorbelegen –
+  // entspricht er bereits dem Schema, wird er in Nummer/Kürzel/Bezeichnung zerlegt.
+  const initialData = () => {
+    const base = { ...emptyData(), ...(project.projectData || {}) }
+    if (!base.nummer && !base.kuerzel && !base.bezeichnung && project.name) {
+      const m = project.name.match(/^(\d{3,4})\s+([A-Za-zÄÖÜäöüß]{3,4})\s+(.+)$/)
+      if (m) {
+        base.nummer = m[1]; base.kuerzel = m[2].toUpperCase(); base.bezeichnung = m[3].trim()
+      } else {
+        base.bezeichnung = project.name
+      }
+    }
+    return base
+  }
+  const [data,  setData]  = useState(initialData)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState(null)
   const [partnerPick, setPartnerPick] = useState('')
