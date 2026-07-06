@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { ArrowLeft, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Plus, Trash2, Loader, AlertCircle, X,
-         CalendarClock, Printer, Users, UserPlus, Link2, Copy, CheckSquare, Pencil, Check, FileDown, Briefcase, GripVertical } from 'lucide-react'
+         CalendarClock, Printer, Users, UserPlus, Link2, Copy, CheckSquare, Pencil, Check, FileDown, Briefcase, GripVertical, Eye, EyeOff } from 'lucide-react'
 import { uid, formatDate } from '../utils'
 import { buildStaffPlanPdf } from '../staffPlanPdf'
 import { downloadPdfBase64 } from '../archivePdf'
@@ -246,12 +246,12 @@ export const capDays = (member, dayKey) =>
   Math.round(((member?.dayHours?.[dayKey] || 0) / 8) * 4) / 4
 const TAGE_OPTIONS = [
   { value: '',    label: '–' },
-  { value: 0.25,  label: '¼' },
-  { value: 0.5,   label: '½' },
-  { value: 0.75,  label: '¾' },
-  { value: 1,     label: '1' },
+  { value: 0.25,  label: '0,25' },
+  { value: 0.5,   label: '0,5' },
+  { value: 0.75,  label: '0,75' },
+  { value: 1,     label: '1,0' },
 ]
-const fmtTage = (t) => ({ 0.25: '¼', 0.5: '½', 0.75: '¾', 1: '1' }[t] ?? String(t))
+const fmtTage = (t) => (t === '' || t == null) ? '' : String(t).replace('.', ',')
 const ABSENCE = [
   { id: 'urlaub', name: 'Urlaub' }, { id: 'krank', name: 'Krank' }, { id: 'buero', name: 'Büro / intern' },
 ]
@@ -648,12 +648,24 @@ export default function PersonalplanungView({ projects, onUpdateProject, serverU
     savePlanSettings({ ...planSettings, services: planSettings.services.filter(s => s.id !== svc.id) })
   }
 
-  // Zeilen der Matrix: Projekte (sortiert) + Zusatz-Leistungen + Abwesenheiten
+  // Projekte ausblenden (planSettings.hiddenProjects)
+  const hiddenIds = planSettings.hiddenProjects || []
+  const hideProject   = (id) => savePlanSettings({ ...planSettings, hiddenProjects: [...hiddenIds, id] })
+  const unhideProject = (id) => savePlanSettings({ ...planSettings, hiddenProjects: hiddenIds.filter(x => x !== id) })
+  const hiddenProjects = activeProjects.filter(p => hiddenIds.includes(p.id))
+
+  // Kompakte Beschriftung: Nummer + Kürzel genügen, wenn die Codierung eingehalten ist
+  const shortLabel = (p) => {
+    const d = p.projectData || {}
+    return (d.nummer && d.kuerzel) ? `${d.nummer} ${d.kuerzel}` : (p.name || 'Unbenannt')
+  }
+
+  // Zeilen der Matrix: Projekte (sortiert, ohne ausgeblendete) + Zusatz-Leistungen + Abwesenheiten
   const matrixBlocks = useMemo(() => [
-    ...sortedProjects,
+    ...sortedProjects.filter(p => !hiddenIds.includes(p.id)),
     ...planSettings.services.map(s => ({ ...s, _service: true })),
     ...ABSENCE,
-  ], [sortedProjects, planSettings.services])
+  ], [sortedProjects, planSettings.services, planSettings.hiddenProjects])
 
   // Zellen-Editor (Mitarbeiter je Projekt × Tag hinterlegen)
   const [cellEdit, setCellEdit] = useState(null)   // { project, week, monday, dayKey, dayIdx }
@@ -661,6 +673,47 @@ export default function PersonalplanungView({ projects, onUpdateProject, serverU
   // Drag & Drop zum Verschieben der Projektzeilen
   const [dragId,      setDragId]      = useState(null)
   const [dragArmedId, setDragArmedId] = useState(null)   // Drag nur über den Griff starten
+
+  // Zellen per Ziehen kopieren (wie Excel-Ausfüllen, innerhalb der Projektzeile)
+  const [fill, setFill] = useState(null)   // { project, srcCol, curCol }  col = wocheIdx*5 + tagIdx
+  const colWeekDay = (col) => ({ week: weeks[Math.floor(col / 5)].week, dayKey: DAYS[col % 5].key })
+
+  const applyFill = useCallback((f) => {
+    const { project, srcCol, curCol } = f
+    const lo = Math.min(srcCol, curCol), hi = Math.max(srcCol, curCol)
+    const src = colWeekDay(srcCol)
+    const srcVals = (plans[src.week] || [])
+      .filter(a => a.projectId === project.id && a.days?.[src.dayKey] > 0)
+      .map(a => ({ staffId: a.staffId, v: a.days[src.dayKey] }))
+
+    const nextByWeek = {}
+    const listFor = (wk) => nextByWeek[wk] ?? (nextByWeek[wk] = (plans[wk] || []).map(a => ({ ...a, days: { ...a.days } })))
+    for (let c = lo; c <= hi; c++) {
+      if (c === srcCol) continue
+      const { week: wk, dayKey: dk } = colWeekDay(c)
+      const list = listFor(wk)
+      // Vorhandene Werte dieses Projekts am Zieltag ersetzen
+      for (const a of list) if (a.projectId === project.id && a.days) delete a.days[dk]
+      for (const { staffId, v } of srcVals) {
+        let a = list.find(x => x.projectId === project.id && x.staffId === staffId)
+        if (!a) { a = { projectId: project.id, staffId, days: {} }; list.push(a) }
+        a.days[dk] = v
+      }
+    }
+    for (const wk of Object.keys(nextByWeek)) {
+      persistWeek(wk, nextByWeek[wk].filter(a => Object.values(a.days || {}).some(v => v > 0)))
+    }
+  }, [plans, weeks, persistWeek])
+
+  useEffect(() => {
+    if (!fill) return
+    const up = () => {
+      if (fill.curCol !== fill.srcCol) applyFill(fill)
+      setFill(null)
+    }
+    window.addEventListener('mouseup', up)
+    return () => window.removeEventListener('mouseup', up)
+  }, [fill, applyFill])
   const handleDropOn = (targetId) => {
     if (!dragId || dragId === targetId) return
     const ids = sortedProjects.map(p => p.id).filter(id => id !== dragId)
@@ -998,8 +1051,9 @@ export default function PersonalplanungView({ projects, onUpdateProject, serverU
                               )}
                               {isService && <Briefcase size={12} className="text-gray-400 flex-shrink-0" />}
                               <span className="min-w-0">
-                                <span className="block font-semibold text-gray-800 truncate" title={pl.length ? `PL: ${pl.join(', ')}` : undefined}>
-                                  {project.name || 'Unbenannt'}
+                                <span className="block font-semibold text-gray-800 truncate"
+                                  title={`${project.name || 'Unbenannt'}${pl.length ? ` · PL: ${pl.join(', ')}` : ''}`}>
+                                  {isExtra ? (project.name || 'Unbenannt') : shortLabel(project)}
                                 </span>
                                 {(ges || pl.length > 0) && (
                                   <span className="block text-[10px] text-gray-400 truncate">
@@ -1007,24 +1061,38 @@ export default function PersonalplanungView({ projects, onUpdateProject, serverU
                                   </span>
                                 )}
                               </span>
+                              {!isExtra && (
+                                <button className="btn-ghost p-0.5 text-gray-300 hover:text-gray-600 no-print ml-auto flex-shrink-0" title="Projekt ausblenden"
+                                  onClick={() => hideProject(project.id)}><EyeOff size={11} /></button>
+                              )}
                               {isService && (
                                 <button className="btn-ghost p-0.5 text-gray-300 hover:text-red-500 no-print ml-auto flex-shrink-0" title="Leistung entfernen"
                                   onClick={() => removeService(project)}><Trash2 size={11} /></button>
                               )}
                             </div>
                           </td>
-                          {/* Schnittstellen Projekt × Kalendertag: Summe der ¼-Tage, Klick = Mitarbeiter hinterlegen */}
-                          {weeks.map(w => DAYS.map((d, i) => {
+                          {/* Schnittstellen Projekt × Kalendertag: Summe der ¼-Tage, Klick = Mitarbeiter hinterlegen, Ziehen = Kopieren */}
+                          {weeks.map((w, wi) => DAYS.map((d, i) => {
                             const total = (plans[w.week] || []).reduce((s, a) =>
                               s + (a.projectId === project.id ? (a.days?.[d.key] || 0) : 0), 0)
                             const nStaff = (plans[w.week] || []).filter(a => a.projectId === project.id && a.days?.[d.key] > 0).length
+                            const col = wi * 5 + i
+                            const inFill = fill && fill.project.id === project.id
+                              && col >= Math.min(fill.srcCol, fill.curCol) && col <= Math.max(fill.srcCol, fill.curCol)
                             return (
                               <td key={`${w.week}-${d.key}`} className={`p-0 text-center ${i === 0 ? 'border-l border-gray-200' : 'border-l border-gray-50'}`}>
                                 <button
-                                  className={`w-full h-8 text-xs transition-colors ${total > 0
-                                    ? 'font-semibold text-brand-800 bg-brand-50 hover:bg-brand-100'
-                                    : 'text-gray-200 hover:bg-gray-50 hover:text-gray-400'}`}
-                                  title={total > 0 ? `${fmtTage(total)} Tag(e) · ${nStaff} Mitarbeiter – klicken zum Bearbeiten` : 'Mitarbeiter einplanen'}
+                                  className={`w-full h-8 text-xs transition-colors ${
+                                    inFill ? 'bg-brand-200 text-brand-900 ring-1 ring-inset ring-brand-400'
+                                    : total > 0
+                                      ? 'font-semibold text-brand-800 bg-brand-50 hover:bg-brand-100'
+                                      : 'text-gray-200 hover:bg-gray-50 hover:text-gray-400'}`}
+                                  style={{ cursor: fill ? 'crosshair' : 'pointer' }}
+                                  title={total > 0
+                                    ? `${fmtTage(total)} Tag(e) · ${nStaff} Mitarbeiter – klicken zum Bearbeiten, ziehen zum Kopieren`
+                                    : 'Klicken: Mitarbeiter einplanen · Ziehen: Zelle kopieren'}
+                                  onMouseDown={e => { e.preventDefault(); setFill({ project, srcCol: col, curCol: col }) }}
+                                  onMouseEnter={() => fill && fill.project.id === project.id && setFill(f => ({ ...f, curCol: col }))}
                                   onClick={() => setCellEdit({ project, week: w.week, monday: w.monday, dayKey: d.key, dayIdx: i })}
                                 >
                                   {total > 0 ? (
@@ -1042,8 +1110,21 @@ export default function PersonalplanungView({ projects, onUpdateProject, serverU
                     })}
                   </tbody>
                 </table>
-                <div className="px-4 py-2 text-xs text-gray-400 border-t border-gray-100">
-                  Zelle anklicken, um Mitarbeiter mit ¼-Tagesschritten zu hinterlegen · Zahl = Summe der geplanten Tage
+                <div className="px-4 py-2 text-xs text-gray-400 border-t border-gray-100 flex items-center gap-3 flex-wrap">
+                  <span>Zelle anklicken = Mitarbeiter hinterlegen (0,25er-Schritte) · Zelle ziehen = kopieren · Zahl = Summe der Tage</span>
+                  {hiddenProjects.length > 0 && (
+                    <span className="flex items-center gap-1.5 flex-wrap no-print ml-auto">
+                      <span className="text-gray-500">Ausgeblendet:</span>
+                      {hiddenProjects.map(p => (
+                        <button key={p.id}
+                          className="flex items-center gap-1 px-2 py-0.5 border border-gray-200 text-gray-500 hover:border-brand-300 hover:text-brand-700 transition-colors"
+                          title={`${p.name} wieder einblenden`}
+                          onClick={() => unhideProject(p.id)}>
+                          <Eye size={10} /> {shortLabel(p)}
+                        </button>
+                      ))}
+                    </span>
+                  )}
                 </div>
               </div>
 

@@ -12,7 +12,7 @@ const DAYS = [
   { key: 'mo', label: 'Montag' }, { key: 'di', label: 'Dienstag' }, { key: 'mi', label: 'Mittwoch' },
   { key: 'do', label: 'Donnerstag' }, { key: 'fr', label: 'Freitag' },
 ]
-const fmtTage = (t) => ({ 0.25: '1/4', 0.5: '1/2', 0.75: '3/4', 1: '1' }[t] ?? String(t))
+const fmtTage = (t) => String(t).replace('.', ',')
 
 function truncate(font, text, size, maxWidth) {
   if (!text) return ''

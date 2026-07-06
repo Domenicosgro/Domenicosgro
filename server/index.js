@@ -1680,7 +1680,7 @@ app.get('/plan/:token', (req, res) => {
     }
     const DAYS = [['mo', 'Mo'], ['di', 'Di'], ['mi', 'Mi'], ['do', 'Do'], ['fr', 'Fr']]
 
-    const fmtTage = (t) => ({ 0.25: '¼', 0.5: '½', 0.75: '¾', 1: '1' }[t] ?? t)
+    const fmtTage = (t) => String(t).replace('.', ',')
     const weekTable = (monday) => {
       const week = isoWeekOf(monday)
       const plan = db.staffPlan.get(week) || {}
