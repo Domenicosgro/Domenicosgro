@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { ArrowLeft, Plus, Camera, Trash2, Pencil, X, Loader, AlertCircle, Printer,
-         Sun, Cloud, CloudRain, Snowflake, BookOpen } from 'lucide-react'
+         Sun, Cloud, CloudRain, Snowflake, BookOpen, CloudOff, RefreshCw } from 'lucide-react'
 import { formatDate, uid } from '../utils'
-import { savePhoto, loadPhotoUrl, removePhoto } from '../photoUtils'
+import { compressToBase64, savePhotoBase64, loadPhotoUrl, removePhoto } from '../photoUtils'
+import { outboxAdd, outboxList, outboxRemove } from '../offlineStore'
 
 const isServer = typeof window !== 'undefined' && !!window.__SERVER_MODE__
 const authHeaders = () => {
@@ -47,7 +48,8 @@ function EntryForm({ entry, onSave, onCancel }) {
     workDone:    entry?.workDone    || '',
     remarks:     entry?.remarks     || '',
   })
-  const [photos,    setPhotos]    = useState(entry?.photos || [])
+  const [photos,    setPhotos]    = useState(entry?.photos || [])   // bereits abgelegte Fotos {id,name}
+  const [newPhotos, setNewPhotos] = useState([])                    // frisch aufgenommene {base64,name} – Ablage erst beim Speichern
   const [uploading, setUploading] = useState(false)
   const [error,     setError]     = useState(null)
   const fileRef = useRef(null)
@@ -57,10 +59,10 @@ function EntryForm({ entry, onSave, onCancel }) {
     setUploading(true)
     try {
       for (const file of Array.from(files || [])) {
-        const p = await savePhoto(file)
-        setPhotos(prev => [...prev, p])
+        const base64 = await compressToBase64(file)
+        setNewPhotos(prev => [...prev, { base64, name: file.name || 'foto.jpg' }])
       }
-    } catch (e) { setError(`Foto konnte nicht gespeichert werden: ${e.message}`) }
+    } catch (e) { setError(`Foto konnte nicht verarbeitet werden: ${e.message}`) }
     finally { setUploading(false) }
   }
 
@@ -121,6 +123,15 @@ function EntryForm({ entry, onSave, onCancel }) {
             <PhotoThumb key={p.id} photoId={p.id}
               onRemove={() => { removePhoto(p.id); setPhotos(prev => prev.filter((_, j) => j !== i)) }} />
           ))}
+          {newPhotos.map((p, i) => (
+            <div key={i} className="relative w-20 h-20 flex-shrink-0 bg-gray-100 border border-gray-200 overflow-hidden group">
+              <img src={`data:image/jpeg;base64,${p.base64}`} alt="" className="w-full h-full object-cover" />
+              <button onClick={() => setNewPhotos(prev => prev.filter((_, j) => j !== i))}
+                className="absolute top-0 right-0 bg-black/50 text-white p-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                <X size={11} />
+              </button>
+            </div>
+          ))}
           <input ref={fileRef} type="file" accept="image/*" capture="environment" multiple className="hidden"
             onChange={e => { addPhotos(e.target.files); e.target.value = '' }} />
           <button className="w-20 h-20 border-2 border-dashed border-gray-300 text-gray-400 hover:border-brand-400 hover:text-brand-500 transition-colors flex flex-col items-center justify-center gap-1"
@@ -133,7 +144,7 @@ function EntryForm({ entry, onSave, onCancel }) {
 
       <div className="flex gap-2 justify-end pt-1">
         <button className="btn-secondary" onClick={onCancel}>Abbrechen</button>
-        <button className="btn-primary" onClick={() => onSave({ ...form, photos })}>Speichern</button>
+        <button className="btn-primary" onClick={() => onSave({ ...form, photos }, newPhotos)}>Speichern</button>
       </div>
     </div>
   )
@@ -141,10 +152,17 @@ function EntryForm({ entry, onSave, onCancel }) {
 
 export default function BautagebuchView({ project, serverUser, onBack }) {
   const [entries, setEntries] = useState([])
+  const [pending, setPending] = useState([])    // Offline-Warteschlange
   const [loading, setLoading] = useState(true)
   const [error,   setError]   = useState(null)
+  const [notice,  setNotice]  = useState(null)
+  const [syncing, setSyncing] = useState(false)
   const [editing, setEditing] = useState(null)   // entry | 'new' | null
   const lsKey = `kp_diary_${project.id}`
+
+  const loadPending = useCallback(async () => {
+    try { setPending(await outboxList('diary', project.id)) } catch {}
+  }, [project.id])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -156,39 +174,117 @@ export default function BautagebuchView({ project, serverUser, onBack }) {
       } else {
         setEntries(JSON.parse(localStorage.getItem(lsKey) || '[]'))
       }
-    } catch (e) { setError(`Laden fehlgeschlagen: ${e.message}`) }
+    } catch (e) {
+      // Offline: Service Worker liefert i.d.R. den letzten Stand aus dem Cache;
+      // schlägt auch das fehl, bleibt die Liste leer – Erfassen geht trotzdem.
+      setNotice('Offline – letzter bekannter Stand. Neue Einträge werden zwischengespeichert.')
+    }
     finally { setLoading(false) }
   }, [project.id])
 
-  useEffect(() => { load() }, [load])
+  useEffect(() => { load(); loadPending() }, [load, loadPending])
+
+  // Automatischer Sync-Versuch, sobald der Browser wieder online meldet
+  useEffect(() => {
+    const h = () => syncOutbox()
+    window.addEventListener('online', h)
+    return () => window.removeEventListener('online', h)
+  })
 
   const persistLocal = (next) => { localStorage.setItem(lsKey, JSON.stringify(next)); setEntries(next) }
 
-  const save = async (form) => {
+  // Warteschlange an den Server übertragen (Fotos ablegen → Eintrag POSTen)
+  const syncOutbox = useCallback(async () => {
+    if (!isServer || syncing) return
+    const items = await outboxList('diary', project.id)
+    if (items.length === 0) return
+    setSyncing(true)
+    setError(null)
+    let synced = 0
+    try {
+      for (const item of items) {
+        const photos = []
+        for (const p of (item.pendingPhotos || [])) {
+          photos.push(await savePhotoBase64(p.base64, p.name))
+        }
+        const res = await fetch(`/api/projects/${project.id}/diary`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeaders() },
+          body: JSON.stringify({ ...item.form, photos }),
+        })
+        if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `Fehler ${res.status}`)
+        await outboxRemove(item.id)
+        synced++
+      }
+      setNotice(`${synced} Eintr${synced === 1 ? 'ag' : 'äge'} synchronisiert.`)
+      load()
+    } catch (e) {
+      setError(synced > 0
+        ? `${synced} synchronisiert, dann abgebrochen: ${e.message}`
+        : `Synchronisierung nicht möglich: ${e.message}`)
+    } finally {
+      setSyncing(false)
+      loadPending()
+    }
+  }, [project.id, syncing, load, loadPending])
+
+  // Beim Öffnen automatisch versuchen, Wartendes zu übertragen
+  useEffect(() => {
+    if (isServer && navigator.onLine) {
+      outboxList('diary', project.id).then(items => { if (items.length > 0) syncOutbox() }).catch(() => {})
+    }
+  }, [project.id])  // eslint-disable-line react-hooks/exhaustive-deps
+
+  const queueOffline = async (form, newPhotos) => {
+    await outboxAdd({
+      id: uid(), kind: 'diary', projectId: project.id,
+      form, pendingPhotos: newPhotos,
+      queuedAt: new Date().toISOString(),
+    })
+    setNotice('Offline gespeichert – wird synchronisiert, sobald der Server wieder erreichbar ist.')
+    loadPending()
+  }
+
+  const save = async (form, newPhotos = []) => {
     setError(null)
     try {
       if (editing !== 'new' && editing) {
-        // Bearbeiten
+        // Bearbeiten (nur online)
+        const savedNew = []
+        for (const p of newPhotos) savedNew.push(await savePhotoBase64(p.base64, p.name))
+        const merged = { ...form, photos: [...(form.photos || []), ...savedNew] }
         if (isServer) {
           const { _version, _updatedAt, ...data } = editing
           const res = await fetch(`/api/projects/${project.id}/diary/${editing.id}`, {
             method: 'PATCH', headers: { 'Content-Type': 'application/json', ...authHeaders() },
-            body: JSON.stringify({ data: { ...data, ...form }, version: _version }),
+            body: JSON.stringify({ data: { ...data, ...merged }, version: _version }),
           })
           if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `Fehler ${res.status}`)
         } else {
-          persistLocal(entries.map(e => e.id === editing.id ? { ...e, ...form, updatedAt: new Date().toISOString() } : e))
+          persistLocal(entries.map(e => e.id === editing.id ? { ...e, ...merged, updatedAt: new Date().toISOString() } : e))
         }
       } else {
         // Neu
         if (isServer) {
-          const res = await fetch(`/api/projects/${project.id}/diary`, {
-            method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeaders() },
-            body: JSON.stringify(form),
-          })
-          if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `Fehler ${res.status}`)
+          if (!navigator.onLine) { await queueOffline(form, newPhotos); setEditing(null); return }
+          try {
+            const savedNew = []
+            for (const p of newPhotos) savedNew.push(await savePhotoBase64(p.base64, p.name))
+            const res = await fetch(`/api/projects/${project.id}/diary`, {
+              method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeaders() },
+              body: JSON.stringify({ ...form, photos: [...(form.photos || []), ...savedNew] }),
+            })
+            if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `Fehler ${res.status}`)
+          } catch (e) {
+            // Netzwerkfehler (Server nicht erreichbar) → in die Warteschlange
+            if (e instanceof TypeError || /fetch|network/i.test(e.message)) {
+              await queueOffline(form, newPhotos); setEditing(null); return
+            }
+            throw e
+          }
         } else {
-          persistLocal([{ ...form, id: uid(), createdAt: new Date().toISOString() }, ...entries])
+          const savedNew = []
+          for (const p of newPhotos) savedNew.push(await savePhotoBase64(p.base64, p.name))
+          persistLocal([{ ...form, photos: [...(form.photos || []), ...savedNew], id: uid(), createdAt: new Date().toISOString() }, ...entries])
         }
       }
       setEditing(null)
@@ -241,14 +337,64 @@ export default function BautagebuchView({ project, serverUser, onBack }) {
           <button className="ml-auto text-red-400" onClick={() => setError(null)}><X size={13} /></button>
         </p>
       )}
+      {notice && (
+        <p className="text-sm text-brand-700 bg-brand-50 border border-brand-200 px-4 py-2 flex items-center gap-2">
+          <CloudOff size={14} /> {notice}
+          <button className="ml-auto text-brand-400" onClick={() => setNotice(null)}><X size={13} /></button>
+        </p>
+      )}
+
+      {/* Offline-Warteschlange */}
+      {pending.length > 0 && (
+        <div className="flex items-center gap-3 bg-amber-50 border border-amber-200 px-4 py-2.5 no-print">
+          <CloudOff size={15} className="text-amber-600 flex-shrink-0" />
+          <span className="text-sm text-amber-800 flex-1">
+            {pending.length} Eintr{pending.length === 1 ? 'ag wartet' : 'äge warten'} auf Synchronisierung mit dem Server.
+          </span>
+          <button className="btn-secondary text-xs" onClick={syncOutbox} disabled={syncing}>
+            {syncing ? <Loader size={13} className="animate-spin" /> : <RefreshCw size={13} />}
+            {syncing ? 'Synchronisiert…' : 'Jetzt synchronisieren'}
+          </button>
+        </div>
+      )}
 
       {editing && (
         <EntryForm entry={editing === 'new' ? null : editing} onSave={save} onCancel={() => setEditing(null)} />
       )}
 
+      {/* Wartende (offline erfasste) Einträge */}
+      {pending.map(item => (
+        <div key={item.id} className="card p-4 border-l-4 border-l-amber-400 bg-amber-50/40">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="font-semibold text-night flex items-center gap-2">
+                {formatDate(item.form.date)}
+                <span className="badge text-[10px] bg-amber-100 text-amber-700 border border-amber-300 flex items-center gap-1">
+                  <CloudOff size={9} /> wartet auf Synchronisierung
+                </span>
+              </p>
+              {item.form.workDone && <p className="text-sm text-gray-600 mt-1 whitespace-pre-wrap">{item.form.workDone}</p>}
+              {(item.pendingPhotos || []).length > 0 && (
+                <div className="flex gap-2 flex-wrap mt-2">
+                  {item.pendingPhotos.map((p, i) => (
+                    <img key={i} src={`data:image/jpeg;base64,${p.base64}`} alt="" className="w-16 h-16 object-cover border border-gray-200" />
+                  ))}
+                </div>
+              )}
+            </div>
+            <button className="btn-ghost p-1.5 text-gray-400 hover:text-red-600 no-print" title="Wartenden Eintrag verwerfen"
+              onClick={async () => {
+                if (confirm('Diesen noch nicht synchronisierten Eintrag verwerfen?')) { await outboxRemove(item.id); loadPending() }
+              }}>
+              <Trash2 size={14} />
+            </button>
+          </div>
+        </div>
+      ))}
+
       {loading ? (
         <div className="card p-10 text-center text-gray-400"><Loader size={20} className="animate-spin mx-auto" /></div>
-      ) : sorted.length === 0 && !editing ? (
+      ) : sorted.length === 0 && pending.length === 0 && !editing ? (
         <div className="card p-12 text-center text-gray-400">
           <BookOpen size={36} className="mx-auto text-gray-300 mb-3" />
           <p className="text-sm font-medium text-gray-500">Noch keine Tagebucheinträge.</p>
