@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { ArrowLeft, FileText, Users, HardHat, Pencil, NotebookPen, ChevronRight, BarChart2, UserCog, BookOpen, Box, AlertOctagon, HardDrive } from 'lucide-react'
+import { ArrowLeft, FileText, Users, HardHat, Pencil, NotebookPen, ChevronRight, BarChart2, UserCog, BookOpen, Box, AlertOctagon, HardDrive, Database } from 'lucide-react'
 import ProjectAdminPanel from './ProjectAdminPanel'
 
 const isServer = typeof window !== 'undefined' && !!window.__SERVER_MODE__
@@ -38,7 +38,7 @@ function DashboardTile({ icon, title, subtitle, accent, onClick, stat1, stat2 })
 export default function ProjectDashboard({
   project, protocols, notes, serverUser, globalLogoDataUrl,
   onUpdateProject, onBack, onOpenProtocols, onOpenNotes, onManageContacts, onOpenMassnahmen, onOpenNotizbuch, onOpenBim,
-  onOpenBautagebuch, onOpenMaengel, onOpenDateiablage, onSaved,
+  onOpenBautagebuch, onOpenMaengel, onOpenDateiablage, onOpenProjektdaten, onSaved,
 }) {
   const [showAdminPanel, setShowAdminPanel] = useState(false)
   const [bimIssues,      setBimIssues]      = useState([])
@@ -175,6 +175,25 @@ export default function ProjectDashboard({
           stat1={project.bimMeta ? { value: openBimIssues, label: 'Issues offen' } : undefined}
           stat2={project.bimMeta && bimIssues.length > 0 ? { value: bimIssues.length, label: 'Issues gesamt' } : undefined}
         />
+
+        {/* Projektdatenbank */}
+        {onOpenProjektdaten && (
+          <DashboardTile
+            icon={<Database size={20} />}
+            title="Projektdaten"
+            subtitle={project.projectData?.vertrag
+              ? `${project.projectData.vertrag}${project.projectData.isGeneralplanung ? ' · Generalplanung' : ''}`
+              : 'Codierung, Leistungsphasen, Vertragsverhältnis, Generalplanung'}
+            accent="border-brand-500"
+            onClick={onOpenProjektdaten}
+            stat1={project.projectData?.lph
+              ? { value: Object.values(project.projectData.lph).filter(l => l.beauftragt).length, label: 'LPH beauftragt' }
+              : undefined}
+            stat2={project.projectData?.isGeneralplanung
+              ? { value: (project.projectData.planungspartner || []).length, label: 'Planungspartner' }
+              : undefined}
+          />
+        )}
 
         {/* Bautagebuch */}
         {onOpenBautagebuch && (

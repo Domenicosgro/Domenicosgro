@@ -79,19 +79,26 @@ const staffApi = {
 }
 
 // ── Mitarbeiter-Verwaltung (Stammdaten + Arbeitszeitmodell) ─────────────────
-function StaffTab({ staff, allContacts, onChanged, setError }) {
+// Quelle ist ausschließlich die eigene Organisation (App-Benutzerverzeichnis),
+// nicht die projektübergreifende Kontaktdatenbank (dort stehen auch Externe).
+function StaffTab({ staff, orgUsers, onChanged, setError }) {
   const [adding,   setAdding]   = useState(false)
   const [editing,  setEditing]  = useState(null)
   const [contactPick, setContactPick] = useState('')
 
   const existingEmails = new Set(staff.map(s => (s.email || '').toLowerCase()).filter(Boolean))
-  const availableContacts = allContacts.filter(c => c.name && !existingEmails.has((c.email || '').toLowerCase()))
+  const existingNames  = new Set(staff.map(s => s.name))
+  const availableUsers = orgUsers.filter(u => {
+    const name  = u.display_name || u.username
+    const email = (u.email || '').toLowerCase()
+    return !existingNames.has(name) && (!email || !existingEmails.has(email))
+  })
 
   const addFromContact = async () => {
-    const c = availableContacts.find(x => (x.id || x.name) === contactPick)
-    if (!c) return
+    const u = availableUsers.find(x => x.username === contactPick)
+    if (!u) return
     try {
-      await staffApi.create({ name: c.name, email: c.email || '', funktion: c.company || '', weeklyHours: 40, dayHours: { mo: 8, di: 8, mi: 8, do: 8, fr: 8 } })
+      await staffApi.create({ name: u.display_name || u.username, email: u.email || '', funktion: '', weeklyHours: 40, dayHours: { mo: 8, di: 8, mi: 8, do: 8, fr: 8 } })
       setContactPick(''); onChanged()
     } catch (e) { setError(e.message) }
   }
@@ -145,15 +152,17 @@ function StaffTab({ staff, allContacts, onChanged, setError }) {
 
   return (
     <div className="space-y-4">
-      {/* Aus Kontaktdatenbank übernehmen */}
+      {/* Aus der eigenen Organisation übernehmen */}
       <div className="card p-4">
-        <p className="text-xs font-medium text-gray-500 mb-2">Mitarbeiter aus der Kontaktdatenbank übernehmen</p>
+        <p className="text-xs font-medium text-gray-500 mb-2">
+          Mitarbeiter aus der eigenen Organisation übernehmen (Benutzerverzeichnis)
+        </p>
         <div className="flex gap-2 flex-wrap">
           <select className="select flex-1 min-w-[220px]" value={contactPick} onChange={e => setContactPick(e.target.value)}>
-            <option value="">– Kontakt auswählen –</option>
-            {availableContacts.map(c => (
-              <option key={c.id || c.name} value={c.id || c.name}>
-                {c.name}{c.company ? ` (${c.company})` : ''}{c.email ? ` · ${c.email}` : ''}
+            <option value="">– Mitarbeiter auswählen –</option>
+            {availableUsers.map(u => (
+              <option key={u.username} value={u.username}>
+                {u.display_name || u.username}{u.email ? ` · ${u.email}` : ''}
               </option>
             ))}
           </select>
@@ -164,6 +173,9 @@ function StaffTab({ staff, allContacts, onChanged, setError }) {
             <Plus size={14} /> Manuell anlegen
           </button>
         </div>
+        {orgUsers.length === 0 && (
+          <p className="text-xs text-gray-400 mt-2">Kein Benutzerverzeichnis verfügbar – Mitarbeiter manuell anlegen.</p>
+        )}
       </div>
 
       {adding && <StaffForm />}
@@ -208,7 +220,9 @@ function StaffTab({ staff, allContacts, onChanged, setError }) {
 }
 
 // ── Projektteams mit Rollenvergabe (am Projekt gespeichert) ─────────────────
-function TeamsTab({ projects, staff, allContacts, onUpdateProject, setError }) {
+// Teammitglieder kommen aus der eigenen Organisation (Mitarbeiter-Stammdaten);
+// externe Planungspartner werden in der Projektdatenbank gepflegt.
+function TeamsTab({ projects, staff, onUpdateProject, setError }) {
   const activeProjects = projects.filter(p => !p.isArchived)
   const [projectId, setProjectId] = useState(activeProjects[0]?.id || '')
   const project = activeProjects.find(p => p.id === projectId)
@@ -219,13 +233,9 @@ function TeamsTab({ projects, staff, allContacts, onUpdateProject, setError }) {
 
   const candidates = useMemo(() => {
     const seen = new Set(team.map(t => t.name))
-    const fromStaff = staff.filter(s => s.active !== false && !seen.has(s.name))
+    return staff.filter(s => s.active !== false && !seen.has(s.name))
       .map(s => ({ key: `s:${s.id}`, name: s.name, email: s.email }))
-    const staffNames = new Set(staff.map(s => s.name))
-    const fromContacts = allContacts.filter(c => c.name && !seen.has(c.name) && !staffNames.has(c.name))
-      .map(c => ({ key: `c:${c.id || c.name}`, name: c.name, email: c.email || '' }))
-    return [...fromStaff, ...fromContacts]
-  }, [staff, allContacts, team])
+  }, [staff, team])
 
   const addMember = () => {
     const cand = candidates.find(c => c.key === memberPick)
@@ -250,7 +260,7 @@ function TeamsTab({ projects, staff, allContacts, onUpdateProject, setError }) {
         {project && (
           <div className="flex gap-2 flex-wrap items-end">
             <div className="flex-1 min-w-[200px]">
-              <label className="block text-xs font-medium text-gray-500 mb-1">Teammitglied (Mitarbeiter / Kontaktdatenbank)</label>
+              <label className="block text-xs font-medium text-gray-500 mb-1">Teammitglied (eigene Organisation)</label>
               <select className="select w-full" value={memberPick} onChange={e => setMemberPick(e.target.value)}>
                 <option value="">– auswählen –</option>
                 {candidates.map(c => <option key={c.key} value={c.key}>{c.name}{c.email ? ` · ${c.email}` : ''}</option>)}
@@ -296,11 +306,12 @@ function TeamsTab({ projects, staff, allContacts, onUpdateProject, setError }) {
 }
 
 // ── Hauptkomponente ─────────────────────────────────────────────────────────
-export default function PersonalplanungView({ projects, allContacts = [], onUpdateProject, serverUser, onBack }) {
+export default function PersonalplanungView({ projects, onUpdateProject, serverUser, onBack }) {
   const [tab,     setTab]     = useState('plan')
   const [monday,  setMonday]  = useState(() => mondayOf(new Date()))
   const [rows,    setRows]    = useState([])
   const [staff,   setStaff]   = useState([])
+  const [orgUsers, setOrgUsers] = useState([])   // eigene Organisation (Benutzerverzeichnis)
   const [loading, setLoading] = useState(true)
   const [saving,  setSaving]  = useState(false)
   const [error,   setError]   = useState(null)
@@ -333,6 +344,13 @@ export default function PersonalplanungView({ projects, allContacts = [], onUpda
 
   useEffect(() => { loadStaff() }, [loadStaff])
   useEffect(() => { loadPlan() }, [loadPlan])
+  useEffect(() => {
+    if (!isServer) return
+    fetch('/api/users', { headers: authHeaders() })
+      .then(r => r.ok ? r.json() : [])
+      .then(list => setOrgUsers(Array.isArray(list) ? list : []))
+      .catch(() => {})
+  }, [])
   useEffect(() => {
     if (!isServer) return
     fetch('/api/staff-plan-token', { headers: authHeaders() })
@@ -484,11 +502,11 @@ export default function PersonalplanungView({ projects, allContacts = [], onUpda
       </div>
 
       {tab === 'staff' && (
-        <StaffTab staff={staff} allContacts={allContacts} onChanged={loadStaff} setError={setError} />
+        <StaffTab staff={staff} orgUsers={orgUsers} onChanged={loadStaff} setError={setError} />
       )}
 
       {tab === 'teams' && (
-        <TeamsTab projects={projects} staff={staff} allContacts={allContacts} onUpdateProject={onUpdateProject} setError={setError} />
+        <TeamsTab projects={projects} staff={staff} onUpdateProject={onUpdateProject} setError={setError} />
       )}
 
       {tab === 'plan' && (

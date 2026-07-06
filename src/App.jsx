@@ -21,6 +21,7 @@ import BautagebuchView       from './components/BautagebuchView'
 import MaengelView           from './components/MaengelView'
 import PersonalplanungView   from './components/PersonalplanungView'
 import DateiablageView       from './components/DateiablageView'
+import ProjektdatenView      from './components/ProjektdatenView'
 import { hashPassword, uid } from './utils'
 import { buildProjectArchivePdf, downloadPdfBase64 } from './archivePdf'
 import { deriveKey, encryptJSON, decryptJSON, newSalt } from './crypto'
@@ -718,6 +719,7 @@ export default function App() {
           onOpenBautagebuch={() => setView('project-bautagebuch')}
           onOpenMaengel={() => setView('project-maengel')}
           onOpenDateiablage={isServer ? () => setView('project-dateiablage') : undefined}
+          onOpenProjektdaten={() => setView('project-daten')}
           onSaved={isServer ? handleRefresh : undefined}
         />
         <UpdateBanner /><SaveErrorBanner />
@@ -777,7 +779,6 @@ export default function App() {
       <>
         <PersonalplanungView
           projects={projectsWithContacts}
-          allContacts={allContacts}
           onUpdateProject={handleUpdateProject}
           serverUser={serverUser}
           onBack={() => setView('home')}
@@ -795,6 +796,22 @@ export default function App() {
         <BautagebuchView
           project={project}
           serverUser={serverUser}
+          onBack={() => setView('project-dashboard')}
+        />
+        <UpdateBanner /><SaveErrorBanner />
+      </>
+    )
+  }
+
+  if (view === 'project-daten') {
+    const project = projectsWithContacts.find(p => p.id === selectedProjectId)
+    if (!project) { setView('home'); return null }
+    return wrap(
+      <>
+        <ProjektdatenView
+          project={project}
+          allContacts={allContacts}
+          onUpdateProject={handleUpdateProject}
           onBack={() => setView('project-dashboard')}
         />
         <UpdateBanner /><SaveErrorBanner />
