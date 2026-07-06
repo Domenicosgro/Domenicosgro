@@ -362,11 +362,21 @@ export default function PersonalplanungView({ projects, onUpdateProject, serverU
     persistWeek(week, next)
   }
 
-  // Mitarbeiter, die für ein Projekt eingeplant sind (über alle 4 Wochen) + frisch hinzugefügte
-  const staffIdsFor = (projectId) => {
-    const ids = new Set(addedRows[projectId] || [])
+  // Projektteam (aus der Projektdatenbank) → Mitarbeiter-Stammdaten zuordnen.
+  // Das Team ist die Basis: seine Mitglieder erscheinen automatisch als Zeilen.
+  const teamStaffIds = (project) => {
+    const team = project?.team || []
+    return new Set(activeStaff
+      .filter(s => team.some(m => m.name === s.name
+        || (m.email && s.email && m.email.toLowerCase() === s.email.toLowerCase())))
+      .map(s => s.id))
+  }
+
+  // Mitarbeiter je Projekt: Projektteam + bereits verplante + frisch hinzugefügte
+  const staffIdsFor = (project) => {
+    const ids = new Set([...teamStaffIds(project), ...(addedRows[project.id] || [])])
     for (const w of weeks) for (const a of (plans[w.week] || [])) {
-      if (a.projectId === projectId) ids.add(a.staffId)
+      if (a.projectId === project.id) ids.add(a.staffId)
     }
     return activeStaff.filter(s => ids.has(s.id))
   }
@@ -542,10 +552,17 @@ export default function PersonalplanungView({ projects, onUpdateProject, serverU
             </div>
           ) : (
             <>
-              {/* Gesamtübersicht: ein Block je Projekt (+ Abwesenheiten) */}
-              {[...activeProjects, ...ABSENCE].map(project => {
+              {/* Gesamtübersicht auf Basis der Projektdatenbank (+ Abwesenheiten) */}
+              {[
+                ...[...activeProjects].sort((a, b) =>
+                  (parseInt(a.projectData?.nummer, 10) || 99999) - (parseInt(b.projectData?.nummer, 10) || 99999)
+                  || (a.name || '').localeCompare(b.name || '', 'de')),
+                ...ABSENCE,
+              ].map(project => {
                 const isAbsence = !!ABSENCE.find(a => a.id === project.id)
-                const rows = staffIdsFor(project.id)
+                const rows = staffIdsFor(project)
+                const teamIds = isAbsence ? new Set() : teamStaffIds(project)
+                const pl = isAbsence ? [] : (project.team || []).filter(m => m.role === 'Projektleitung').map(m => m.name)
                 const ges  = project.projectData?.gesellschaft || ''
                 return (
                   <div key={project.id} className={`card overflow-hidden ${isAbsence ? 'border-l-4 border-l-yellow-300' : ''}`}>
@@ -567,6 +584,9 @@ export default function PersonalplanungView({ projects, onUpdateProject, serverU
                         <span className={`badge text-[10px] ${ges === 'GmbH' ? 'bg-brand-100 text-brand-700 border border-brand-300' : 'bg-violet-100 text-violet-700 border border-violet-300'}`}>{ges}</span>
                       ) : null)}
                       {ges && <span className="hidden print:inline text-xs text-gray-500">({ges})</span>}
+                      {pl.length > 0 && (
+                        <span className="text-[11px] text-gray-400">PL: {pl.join(', ')}</span>
+                      )}
                       <div className="ml-auto no-print">
                         <select className="select text-xs py-0.5" value=""
                           onChange={e => { addStaffRow(project.id, e.target.value); e.target.value = '' }}>
@@ -608,8 +628,13 @@ export default function PersonalplanungView({ projects, onUpdateProject, serverU
                                 <td className="px-3 py-1">
                                   <div className="flex items-center gap-1.5">
                                     <span className="font-medium text-gray-800 truncate">{member.name}</span>
-                                    <button className="btn-ghost p-0.5 text-gray-300 hover:text-red-500 no-print" title="Aus diesem Projekt entfernen"
-                                      onClick={() => removeStaffRow(project.id, member.id)}><X size={11} /></button>
+                                    {teamIds.has(member.id) ? (
+                                      <span className="badge text-[9px] bg-brand-50 text-brand-600 border border-brand-200 flex-shrink-0"
+                                        title="Mitglied des Projektteams (Projektdatenbank)">Team</span>
+                                    ) : (
+                                      <button className="btn-ghost p-0.5 text-gray-300 hover:text-red-500 no-print" title="Aus diesem Projekt entfernen"
+                                        onClick={() => removeStaffRow(project.id, member.id)}><X size={11} /></button>
+                                    )}
                                   </div>
                                 </td>
                                 {weeks.map(w => DAYS.map((d, i) => {
