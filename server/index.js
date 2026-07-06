@@ -1737,9 +1737,13 @@ app.get('/api/staff-plan-settings', requireAuth, (_req, res) => {
 
 app.put('/api/staff-plan-settings', requireAuth, writeLimiter, (req, res) => {
   try {
+    const arr = (v) => Array.isArray(v) ? v : []
     db.appState.set('staff_plan_settings', JSON.stringify({
-      projectOrder: Array.isArray(req.body.projectOrder) ? req.body.projectOrder : [],
-      services:     Array.isArray(req.body.services)     ? req.body.services     : [],
+      projectOrder:   arr(req.body.projectOrder),
+      services:       arr(req.body.services),
+      hiddenProjects: arr(req.body.hiddenProjects),
+      reportPresets:  arr(req.body.reportPresets),
+      teams:          arr(req.body.teams),        // Team-Vorlagen [{id, name, members:[{staffId, role}]}]
     }))
     res.json({ ok: true })
   } catch (e) { res.status(500).json({ error: e.message }) }

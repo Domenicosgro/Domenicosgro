@@ -4,7 +4,7 @@ import { ArrowLeft, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Plus, Tra
 import { uid, formatDate } from '../utils'
 import { buildStaffPlanPdf } from '../staffPlanPdf'
 import { downloadPdfBase64 } from '../archivePdf'
-import ProjektTeamEditor from './ProjektTeamEditor'
+import ProjektTeamEditor, { PROJECT_ROLES } from './ProjektTeamEditor'
 
 const isServer = typeof window !== 'undefined' && !!window.__SERVER_MODE__
 const authHeaders = () => {
@@ -217,26 +217,107 @@ function StaffTab({ staff, orgUsers, onChanged, setError }) {
   )
 }
 
-// ── Projektteams mit Rollenvergabe (gemeinsamer Editor, am Projekt gespeichert)
-// Dieselbe Zusammenstellung ist auch in der Projektdatenbank pflegbar.
-function TeamsTab({ projects, staff, onUpdateProject }) {
-  const activeProjects = projects.filter(p => !p.isArchived)
-  const [projectId, setProjectId] = useState(activeProjects[0]?.id || '')
-  const project = activeProjects.find(p => p.id === projectId)
+// ── Team-Vorlagen konfigurieren (global, wiederverwendbar) ───────────────────
+function TeamTemplates({ staff, teams, onChange }) {
+  const [newName, setNewName] = useState('')
+  const activeStaff = staff.filter(s => s.active !== false)
+
+  const addTemplate = () => {
+    const name = newName.trim()
+    if (!name) return
+    onChange([...teams, { id: uid(), name, members: [] }])
+    setNewName('')
+  }
+  const removeTemplate = (id) => {
+    if (!confirm('Team-Vorlage wirklich löschen? (Bereits zugewiesene Projektteams bleiben unverändert.)')) return
+    onChange(teams.filter(t => t.id !== id))
+  }
+  const addMember = (tplId, staffId, role) => {
+    if (!staffId) return
+    onChange(teams.map(t => t.id === tplId
+      ? { ...t, members: [...(t.members || []), { staffId, role }] }
+      : t))
+  }
+  const removeMember = (tplId, idx) =>
+    onChange(teams.map(t => t.id === tplId
+      ? { ...t, members: t.members.filter((_, i) => i !== idx) }
+      : t))
 
   return (
-    <div className="space-y-4">
-      <div className="card p-4">
-        <label className="block text-xs font-medium text-gray-500 mb-1">Projekt</label>
-        <select className="select w-full max-w-md" value={projectId} onChange={e => setProjectId(e.target.value)}>
-          {activeProjects.map(p => <option key={p.id} value={p.id}>{p.name || 'Unbenannt'}</option>)}
-        </select>
-      </div>
-      {project && (
-        <div className="card p-4">
-          <ProjektTeamEditor project={project} staff={staff} onUpdateProject={onUpdateProject} />
+    <div className="card p-4 space-y-3">
+      <p className="text-sm font-semibold text-gray-800 flex items-center gap-2"><Users size={15} className="text-brand-600" /> Team-Vorlagen</p>
+      <p className="text-xs text-gray-400 -mt-2">
+        Wiederverwendbare Teams konfigurieren und Projekten mit einem Klick komplett zuweisen.
+      </p>
+
+      {teams.map(tpl => (
+        <div key={tpl.id} className="border border-gray-100 p-3 space-y-2">
+          <div className="flex items-center gap-2">
+            <span className="font-medium text-sm text-gray-800 flex-1">{tpl.name}</span>
+            <button className="btn-ghost p-1 text-gray-300 hover:text-red-500" title="Vorlage löschen"
+              onClick={() => removeTemplate(tpl.id)}><Trash2 size={13} /></button>
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {(tpl.members || []).map((m, i) => {
+              const s = activeStaff.find(x => x.id === m.staffId)
+              return (
+                <span key={i} className="flex items-center gap-1 text-xs px-2 py-0.5 bg-gray-50 border border-gray-200">
+                  {s?.name || '?'} <span className="text-gray-400">({m.role})</span>
+                  <button className="text-gray-300 hover:text-red-500" onClick={() => removeMember(tpl.id, i)}><X size={10} /></button>
+                </span>
+              )
+            })}
+            {(tpl.members || []).length === 0 && <span className="text-xs text-gray-400 italic">Noch keine Mitglieder</span>}
+          </div>
+          <TemplateMemberAdd
+            staff={activeStaff.filter(s => !(tpl.members || []).some(m => m.staffId === s.id))}
+            onAdd={(staffId, role) => addMember(tpl.id, staffId, role)}
+          />
         </div>
-      )}
+      ))}
+
+      <div className="flex gap-2">
+        <input className="input text-sm flex-1" placeholder="Neue Team-Vorlage (z. B. Team Hochbau A)…"
+          value={newName} onChange={e => setNewName(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && addTemplate()} />
+        <button className="btn-secondary text-sm" disabled={!newName.trim()} onClick={addTemplate}>
+          <Plus size={14} /> Vorlage anlegen
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function TemplateMemberAdd({ staff, onAdd }) {
+  const [staffId, setStaffId] = useState('')
+  const [role,    setRole]    = useState(PROJECT_ROLES[0])
+  return (
+    <div className="flex gap-2 flex-wrap">
+      <select className="select text-xs py-1 flex-1 min-w-[160px]" value={staffId} onChange={e => setStaffId(e.target.value)}>
+        <option value="">+ Mitglied…</option>
+        {staff.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+      </select>
+      <select className="select text-xs py-1" value={role} onChange={e => setRole(e.target.value)}>
+        {PROJECT_ROLES.map(r => <option key={r} value={r}>{r}</option>)}
+      </select>
+      <button className="btn-secondary text-xs" disabled={!staffId}
+        onClick={() => { onAdd(staffId, role); setStaffId('') }}>
+        <UserPlus size={12} />
+      </button>
+    </div>
+  )
+}
+
+// ── Projektteams-Bereich: nur Team-Vorlagen konfigurieren.
+// Die Zuweisung an ein Projekt erfolgt in der Projektdatenbank
+// (Karte "Projektteam & Projektleitung" – dort auch als ganze Vorlage).
+function TeamsTab({ staff, teams, onTeamsChange }) {
+  return (
+    <div className="space-y-4">
+      <TeamTemplates staff={staff} teams={teams} onChange={onTeamsChange} />
+      <p className="text-xs text-gray-400 px-1">
+        Die Zuweisung eines Teams an ein Projekt erfolgt in der <strong>Projektdatenbank</strong> (Projektteam &amp; Projektleitung) – dort per Klick als ganze Vorlage.
+      </p>
     </div>
   )
 }
@@ -257,10 +338,25 @@ const ABSENCE = [
 ]
 
 // ── Zellen-Editor: Mitarbeiter je Projekt × Kalendertag hinterlegen ──────────
-function CellEditor({ cell, staff, teamIds, getTage, setTage, sumFor, onClose }) {
+function CellEditor({ cell, staff, teamIds, getTage, setTage, setTageBulk, sumFor, onClose }) {
   const { project, week, monday, dayKey, dayIdx } = cell
   const date = addDays(monday, dayIdx)
   const dayLabel = DAYS.find(d => d.key === dayKey)?.label || ''
+
+  // Ganzes Projektteam einplanen: je Mitglied die Restkapazität des Tages
+  // (Arbeitszeitmodell minus bereits anderweitig Verplantes, ¼-gerundet)
+  const fillTeam = () => {
+    const entries = []
+    for (const member of staff) {
+      if (!teamIds.has(member.id)) continue
+      const cap    = capDays(member, dayKey)
+      const own    = getTage(week, project.id, member.id, dayKey) || 0
+      const others = sumFor(week, member.id, dayKey) - own
+      const value  = Math.max(0, Math.floor((cap - others) * 4) / 4)
+      if (value > 0) entries.push({ staffId: member.id, value })
+    }
+    if (entries.length > 0) setTageBulk(week, project.id, dayKey, entries)
+  }
 
   useEffect(() => {
     const h = (e) => { if (e.key === 'Escape') onClose() }
@@ -312,7 +408,13 @@ function CellEditor({ cell, staff, teamIds, getTage, setTage, sumFor, onClose })
             )
           })}
         </div>
-        <div className="px-4 py-2.5 border-t border-gray-200 flex justify-end">
+        <div className="px-4 py-2.5 border-t border-gray-200 flex items-center justify-between gap-2">
+          {teamIds.size > 0 ? (
+            <button className="btn-secondary text-xs" title="Alle Teammitglieder mit ihrer Restkapazität dieses Tages einplanen"
+              onClick={fillTeam}>
+              <Users size={13} /> Projektteam einplanen
+            </button>
+          ) : <span />}
           <button className="btn-primary text-sm" onClick={onClose}><Check size={14} /> Fertig</button>
         </div>
       </div>
@@ -534,6 +636,18 @@ export default function PersonalplanungView({ projects, onUpdateProject, serverU
         : list.filter((_, i) => i !== idx)
     }
     persistWeek(week, next)
+  }
+
+  // Mehrere Mitarbeiter auf einmal setzen (Team-Einplanung) – ein Schreibvorgang
+  const setTageBulk = (week, projectId, dayKey, entries) => {
+    let list = (plans[week] || []).map(a => ({ ...a, days: { ...a.days } }))
+    for (const { staffId, value } of entries) {
+      let a = list.find(x => x.projectId === projectId && x.staffId === staffId)
+      if (!a) { a = { projectId, staffId, days: {} }; list.push(a) }
+      if (value) a.days[dayKey] = value
+      else delete a.days[dayKey]
+    }
+    persistWeek(week, list.filter(a => Object.values(a.days || {}).some(v => v > 0)))
   }
 
   // Projektteam (aus der Projektdatenbank) → Mitarbeiter-Stammdaten zuordnen.
@@ -946,7 +1060,11 @@ export default function PersonalplanungView({ projects, onUpdateProject, serverU
       )}
 
       {tab === 'teams' && (
-        <TeamsTab projects={projects} staff={staff} onUpdateProject={onUpdateProject} setError={setError} />
+        <TeamsTab
+          staff={staff}
+          teams={planSettings.teams || []}
+          onTeamsChange={(teams) => savePlanSettings({ ...planSettings, teams })}
+        />
       )}
 
       {tab === 'plan' && (
@@ -1194,6 +1312,7 @@ export default function PersonalplanungView({ projects, onUpdateProject, serverU
                 ? new Set() : teamStaffIds(cellEdit.project)}
               getTage={getTage}
               setTage={setTage}
+              setTageBulk={setTageBulk}
               sumFor={sumFor}
               onClose={() => setCellEdit(null)}
             />

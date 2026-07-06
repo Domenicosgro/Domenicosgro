@@ -18,13 +18,47 @@ export const PROJECT_ROLES = [
  * (project.team). Wird in der Personalplanung UND in der Projektdatenbank
  * genutzt. Mitarbeiter kommen aus den Stammdaten der eigenen Organisation.
  */
-export default function ProjektTeamEditor({ project, staff: staffProp, onUpdateProject }) {
+export default function ProjektTeamEditor({ project, staff: staffProp, onUpdateProject, teamTemplates: tplProp }) {
   const [staffLoaded, setStaffLoaded] = useState(staffProp || null)
+  const [tplLoaded,   setTplLoaded]   = useState(null)
   const staff = staffProp || staffLoaded || []
+  const teamTemplates = tplProp ?? tplLoaded ?? []
   const team  = project?.team || []
+
+  // Team-Vorlagen selbst laden, wenn nicht übergeben (Projektdatenbank-Kontext)
+  useEffect(() => {
+    if (tplProp !== undefined) return
+    if (isServer) {
+      fetch('/api/staff-plan-settings', { headers: authHeaders() })
+        .then(r => r.ok ? r.json() : {})
+        .then(s => setTplLoaded(s.teams || []))
+        .catch(() => setTplLoaded([]))
+    } else {
+      try { setTplLoaded(JSON.parse(localStorage.getItem('kp_staffplan_settings') || '{}').teams || []) }
+      catch { setTplLoaded([]) }
+    }
+  }, [tplProp])
 
   const [memberPick, setMemberPick] = useState('')
   const [rolePick,   setRolePick]   = useState(PROJECT_ROLES[0])
+  const [templatePick, setTemplatePick] = useState('')
+
+  // Ganze Team-Vorlage zuweisen (Mitglieder + Rollen; ohne Duplikate mergen)
+  const assignTemplate = () => {
+    const tpl = teamTemplates.find(t => t.id === templatePick)
+    if (!tpl || !project) return
+    const existing = new Set(team.map(m => m.name))
+    const added = (tpl.members || [])
+      .map(m => {
+        const s = staff.find(x => x.id === m.staffId)
+        return s && !existing.has(s.name)
+          ? { id: uid(), name: s.name, email: s.email || '', role: m.role || PROJECT_ROLES[0] }
+          : null
+      })
+      .filter(Boolean)
+    if (added.length > 0) onUpdateProject(project.id, { team: [...team, ...added] })
+    setTemplatePick('')
+  }
 
   // Mitarbeiter selbst laden, wenn nicht übergeben (Projektdatenbank-Kontext)
   useEffect(() => {
@@ -59,6 +93,24 @@ export default function ProjektTeamEditor({ project, staff: staffProp, onUpdateP
 
   return (
     <div className="space-y-3">
+      {/* Ganzes Team zuweisen (konfigurierte Vorlagen) */}
+      {teamTemplates.length > 0 && (
+        <div className="flex gap-2 flex-wrap items-end bg-brand-50/50 border border-brand-100 p-2.5">
+          <div className="flex-1 min-w-[200px]">
+            <label className="block text-xs font-medium text-gray-500 mb-1">Ganzes Team zuweisen (Vorlage)</label>
+            <select className="select w-full" value={templatePick} onChange={e => setTemplatePick(e.target.value)}>
+              <option value="">– Team-Vorlage wählen –</option>
+              {teamTemplates.map(t => (
+                <option key={t.id} value={t.id}>{t.name} ({(t.members || []).length} Mitglieder)</option>
+              ))}
+            </select>
+          </div>
+          <button className="btn-primary" disabled={!templatePick} onClick={assignTemplate}>
+            <Users size={14} /> Team zuweisen
+          </button>
+        </div>
+      )}
+
       <div className="flex gap-2 flex-wrap items-end">
         <div className="flex-1 min-w-[200px]">
           <label className="block text-xs font-medium text-gray-500 mb-1">Teammitglied (eigene Organisation)</label>
