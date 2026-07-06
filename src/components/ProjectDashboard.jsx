@@ -9,7 +9,7 @@ function DashboardTile({ icon, title, subtitle, accent, onClick, stat1, stat2 })
   return (
     <button
       onClick={onClick}
-      className={`card w-full text-left flex flex-col aspect-video p-4 hover:border-brand-300 hover:bg-gray-50 transition-colors group ${accent ? 'border-l-4 ' + accent : ''}`}
+      className={`card w-full text-left flex flex-col min-h-[120px] p-4 hover:border-brand-300 hover:bg-gray-50 transition-colors group ${accent ? 'border-l-4 ' + accent : ''}`}
     >
       <div className="flex items-center gap-2 mb-1.5">
         <span className="text-brand-600 group-hover:text-brand-700 transition-colors flex-shrink-0">{icon}</span>

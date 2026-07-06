@@ -518,7 +518,7 @@ export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
             <button
               onClick={onOpenContactDatabase}
-              className="card w-full text-left flex flex-col aspect-video p-4 hover:border-brand-300 hover:bg-gray-50 transition-colors group border-l-4 border-brand-500"
+              className="card w-full text-left flex flex-col min-h-[110px] p-4 hover:border-brand-300 hover:bg-gray-50 transition-colors group border-l-4 border-brand-500"
             >
               <div className="flex items-center gap-2 mb-1.5">
                 <span className="text-brand-600 group-hover:text-brand-700 transition-colors flex-shrink-0"><Users size={20} /></span>
@@ -542,7 +542,7 @@ export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, 
             {/* Projektdatenbank – zentral, Bearbeitung durch Admins */}
             <button
               onClick={onOpenProjektdatenbank}
-              className="card w-full text-left flex flex-col aspect-video p-4 hover:border-brand-300 hover:bg-gray-50 transition-colors group border-l-4 border-night"
+              className="card w-full text-left flex flex-col min-h-[110px] p-4 hover:border-brand-300 hover:bg-gray-50 transition-colors group border-l-4 border-night"
             >
               <div className="flex items-center gap-2 mb-1.5">
                 <span className="text-brand-600 group-hover:text-brand-700 transition-colors flex-shrink-0"><FolderOpen size={20} /></span>
@@ -561,7 +561,7 @@ export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, 
             {/* Personalplanung / Projekttermine – Inhalt folgt */}
             <button
               onClick={onOpenPersonalplanung}
-              className="card w-full text-left flex flex-col aspect-video p-4 hover:border-brand-300 hover:bg-gray-50 transition-colors group border-l-4 border-purple-400"
+              className="card w-full text-left flex flex-col min-h-[110px] p-4 hover:border-brand-300 hover:bg-gray-50 transition-colors group border-l-4 border-purple-400"
             >
               <div className="flex items-center gap-2 mb-1.5">
                 <span className="text-brand-600 group-hover:text-brand-700 transition-colors flex-shrink-0"><CalendarClock size={20} /></span>
@@ -576,7 +576,7 @@ export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, 
             {/* Learning-Plattform – Schulungsvideos */}
             <button
               onClick={onOpenLearning}
-              className="card w-full text-left flex flex-col aspect-video p-4 hover:border-brand-300 hover:bg-gray-50 transition-colors group border-l-4 border-blue-400"
+              className="card w-full text-left flex flex-col min-h-[110px] p-4 hover:border-brand-300 hover:bg-gray-50 transition-colors group border-l-4 border-blue-400"
             >
               <div className="flex items-center gap-2 mb-1.5">
                 <span className="text-brand-600 group-hover:text-brand-700 transition-colors flex-shrink-0"><GraduationCap size={20} /></span>
@@ -592,7 +592,7 @@ export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, 
             {adminProjects.length > 0 && (
               <button
                 onClick={handleAdminTileClick}
-                className="card w-full text-left flex flex-col aspect-video p-4 hover:border-brand-300 hover:bg-gray-50 transition-colors group border-l-4 border-brand-600"
+                className="card w-full text-left flex flex-col min-h-[110px] p-4 hover:border-brand-300 hover:bg-gray-50 transition-colors group border-l-4 border-brand-600"
               >
                 <div className="flex items-center gap-2 mb-1.5">
                   <span className="text-brand-600 group-hover:text-brand-700 transition-colors flex-shrink-0"><UserCog size={20} /></span>
@@ -687,7 +687,7 @@ export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, 
 
           return (
             <div key={project.id}
-              className={`card flex flex-col aspect-video p-4 hover:border-sky hover:bg-gray-50 transition-colors cursor-pointer group border-l-4 ${isLocked ? 'border-amber-400' : 'border-night'}`}
+              className={`card flex flex-col min-h-[170px] p-4 hover:border-sky hover:bg-gray-50 transition-colors cursor-pointer group border-l-4 ${isLocked ? 'border-amber-400' : 'border-night'}`}
               onClick={() => handleCardClick(project)}
             >
               {/* Titel + Ampel + Lock-Badge */}
