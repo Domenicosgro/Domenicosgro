@@ -217,6 +217,14 @@
     border-left-color: #b8bcc2 !important;
   }
 
+  /* Texte/Eingabefelder/Editoren innerhalb der farbigen Flächen transparent –
+     sonst liegen sie auf eigenem weißem Hintergrund und decken die Farbe ab */
+  .protocol-item > div.print-level-2 *,
+  .protocol-item > div.print-level-3 *,
+  .print-action-item * {
+    background-color: transparent !important;
+  }
+
   /* Maßnahmen & Issues im Druck dezent absetzen */
   .print-action-item {
     -webkit-print-color-adjust: exact !important;
