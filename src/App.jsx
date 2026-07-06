@@ -776,6 +776,8 @@ export default function App() {
   }
 
   if (view === 'personalplanung') {
+    // Personalplanung obliegt dem Software-Admin
+    if (isServer && serverUser?.role !== 'admin') { setView('home'); return null }
     return wrap(
       <>
         <PersonalplanungView

@@ -553,7 +553,8 @@ export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, 
               </div>
             </button>
 
-            {/* Personalplanung / Projekttermine – Inhalt folgt */}
+            {/* Personalplanung – obliegt dem Admin (Mitarbeiter sehen den Team-Link) */}
+            {(!isServer || serverUser?.role === 'admin') && (
             <button
               onClick={onOpenPersonalplanung}
               className="card w-full text-left flex flex-col min-h-[110px] p-4 hover:border-brand-300 hover:bg-gray-50 transition-colors group border-l-4 border-purple-400"
@@ -564,9 +565,10 @@ export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, 
               </div>
               <p className="text-xs text-gray-500 line-clamp-3">Wocheneinsatz je Mitarbeiter über alle Projekte planen</p>
               <div className="flex gap-4 mt-auto pt-2">
-                <span className="text-xs text-gray-400 italic">Wochenmatrix öffnen</span>
+                <span className="text-xs text-gray-400 italic">Wochenmatrix öffnen · nur Admin</span>
               </div>
             </button>
+            )}
 
             {/* Learning-Plattform – Schulungsvideos */}
             <button

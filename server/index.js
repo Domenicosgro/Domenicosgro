@@ -1594,7 +1594,7 @@ app.get('/api/staff', requireAuth, (req, res) => {
   catch (e) { res.status(500).json({ error: e.message }) }
 })
 
-app.post('/api/staff', requireAuth, writeLimiter, (req, res) => {
+app.post('/api/staff', requireAuth, requireAdmin, writeLimiter, (req, res) => {
   try {
     const id  = require('crypto').randomBytes(12).toString('base64url')
     const now = new Date().toISOString()
@@ -1613,7 +1613,7 @@ app.post('/api/staff', requireAuth, writeLimiter, (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
-app.patch('/api/staff/:id', requireAuth, writeLimiter, (req, res) => {
+app.patch('/api/staff/:id', requireAuth, requireAdmin, writeLimiter, (req, res) => {
   try {
     const { data, version } = req.body
     const updated = { ...data, updatedAt: new Date().toISOString() }
@@ -1624,13 +1624,13 @@ app.patch('/api/staff/:id', requireAuth, writeLimiter, (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
-app.delete('/api/staff/:id', requireAuth, writeLimiter, (req, res) => {
+app.delete('/api/staff/:id', requireAuth, requireAdmin, writeLimiter, (req, res) => {
   try { db.staffMembers.delete(req.params.id); res.json({ ok: true }) }
   catch (e) { res.status(500).json({ error: e.message }) }
 })
 
 // ── Personalplan veröffentlichen (login-freier Team-Link) ─────────────────────
-app.post('/api/staff-plan-token', requireAuth, writeLimiter, (req, res) => {
+app.post('/api/staff-plan-token', requireAuth, requireAdmin, writeLimiter, (req, res) => {
   try {
     const revoke = req.body?.action === 'revoke'
     const token  = revoke ? '' : auth.generateToken()
@@ -1735,7 +1735,7 @@ app.get('/api/staff-plan-settings', requireAuth, (_req, res) => {
   catch { res.json({}) }
 })
 
-app.put('/api/staff-plan-settings', requireAuth, writeLimiter, (req, res) => {
+app.put('/api/staff-plan-settings', requireAuth, requireAdmin, writeLimiter, (req, res) => {
   try {
     const arr = (v) => Array.isArray(v) ? v : []
     db.appState.set('staff_plan_settings', JSON.stringify({
@@ -1757,7 +1757,7 @@ app.get('/api/staff-plan/:week', requireAuth, (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
-app.put('/api/staff-plan/:week', requireAuth, writeLimiter, (req, res) => {
+app.put('/api/staff-plan/:week', requireAuth, requireAdmin, writeLimiter, (req, res) => {
   try {
     const week = req.params.week
     if (!/^\d{4}-W\d{2}$/.test(week)) return res.status(400).json({ error: 'Ungültige Woche.' })
