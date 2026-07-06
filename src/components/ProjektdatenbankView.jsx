@@ -24,8 +24,8 @@ export default function ProjektdatenbankView({ projects, allContacts, canEdit, o
     )
   }
 
-  const active   = projects.filter(p => !p.isArchived)
-  const archived = projects.filter(p => !!p.isArchived)
+  // Automatisch alle angelegten Projekte; archivierte fallen automatisch heraus
+  const active = projects.filter(p => !p.isArchived)
 
   const Row = ({ project }) => {
     const d = project.projectData || {}
@@ -82,7 +82,7 @@ export default function ProjektdatenbankView({ projects, allContacts, canEdit, o
             <Database size={22} className="text-brand-600" /> Projektdatenbank
           </h1>
           <p className="text-sm text-gray-500 mt-0.5">
-            Zentrale Projektstammdaten · {projects.length} Projekt{projects.length !== 1 ? 'e' : ''} · Bearbeitung durch Administratoren
+            Zentrale Projektstammdaten · {active.length} aktive{active.length === 1 ? 's' : ''} Projekt{active.length !== 1 ? 'e' : ''} · Bearbeitung durch Administratoren
           </p>
         </div>
       </div>
@@ -93,14 +93,6 @@ export default function ProjektdatenbankView({ projects, allContacts, canEdit, o
           {active.map(p => <Row key={p.id} project={p} />)}
           {active.length === 0 && (
             <p className="px-4 py-8 text-center text-sm text-gray-400">Keine aktiven Projekte.</p>
-          )}
-          {archived.length > 0 && (
-            <>
-              <div className="px-4 py-1.5 bg-gray-50 text-[11px] font-semibold text-gray-400 uppercase tracking-wide border-b border-gray-100">
-                Archiv
-              </div>
-              {archived.map(p => <Row key={p.id} project={p} />)}
-            </>
           )}
         </div>
       </div>

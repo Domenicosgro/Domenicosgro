@@ -546,7 +546,7 @@ export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, 
               <p className="text-xs text-gray-500 line-clamp-3">Zentrale Projektstammdaten: Codierung, Leistungsphasen, Verträge, Generalplanung</p>
               <div className="flex gap-4 mt-auto pt-2">
                 <div>
-                  <div className="text-lg font-bold text-night leading-none">{projects.length}</div>
+                  <div className="text-lg font-bold text-night leading-none">{activeProjects.length}</div>
                   <div className="text-xs text-gray-400 mt-0.5">Projekte</div>
                 </div>
                 <span className="text-xs text-gray-400 italic self-end">Bearbeitung: Admins</span>
