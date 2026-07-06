@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { ArrowLeft, ChevronLeft, ChevronRight, Plus, Trash2, Loader, AlertCircle, X,
-         CalendarClock, Printer, Users, UserPlus, Link2, Copy, CheckSquare, Pencil, Check } from 'lucide-react'
+         CalendarClock, Printer, Users, UserPlus, Link2, Copy, CheckSquare, Pencil, Check, FileDown } from 'lucide-react'
 import { uid, formatDate } from '../utils'
+import { buildStaffPlanPdf } from '../staffPlanPdf'
+import { downloadPdfBase64 } from '../archivePdf'
 
 const isServer = typeof window !== 'undefined' && !!window.__SERVER_MODE__
 const authHeaders = () => {
@@ -407,6 +409,21 @@ export default function PersonalplanungView({ projects, allContacts = [], onUpda
     return activeProjects.find(p => p.id === pid)?.name || ''
   }
 
+  // Wochenplan als PDF herunterladen (z. B. zum Teilen in Teams)
+  const [pdfBusy, setPdfBusy] = useState(false)
+  const exportPdf = async () => {
+    setPdfBusy(true)
+    try {
+      const base64 = await buildStaffPlanPdf({ week, monday, staff: activeStaff, rows, projName })
+      const kw = week.split('-W')[1]
+      downloadPdfBase64(base64, `Personalplan_KW${kw}_${week.slice(0, 4)}.pdf`)
+    } catch (e) {
+      setError(`PDF konnte nicht erstellt werden: ${e.message}`)
+    } finally {
+      setPdfBusy(false)
+    }
+  }
+
   return (
     <div className="app-page">
       {/* Header */}
@@ -486,6 +503,10 @@ export default function PersonalplanungView({ projects, allContacts = [], onUpda
             </span>
             <div className="ml-auto flex gap-2">
               <button className="btn-secondary text-xs" onClick={copyPrevWeek}>Vorwoche übernehmen</button>
+              <button className="btn-secondary text-xs" title="Wochenplan als PDF (z. B. für Teams)"
+                onClick={exportPdf} disabled={pdfBusy || activeStaff.length === 0}>
+                {pdfBusy ? <Loader size={13} className="animate-spin" /> : <FileDown size={13} />} PDF
+              </button>
               <button className="btn-secondary text-xs" onClick={() => window.print()}><Printer size={13} /></button>
             </div>
           </div>
