@@ -20,6 +20,7 @@ import LearningPlatform      from './components/LearningPlatform'
 import BautagebuchView       from './components/BautagebuchView'
 import MaengelView           from './components/MaengelView'
 import PersonalplanungView   from './components/PersonalplanungView'
+import DateiablageView       from './components/DateiablageView'
 import { hashPassword, uid } from './utils'
 import { buildProjectArchivePdf, downloadPdfBase64 } from './archivePdf'
 import { deriveKey, encryptJSON, decryptJSON, newSalt } from './crypto'
@@ -716,6 +717,7 @@ export default function App() {
           onOpenBim={() => { setBimReturnView('project-dashboard'); setView('project-bim') }}
           onOpenBautagebuch={() => setView('project-bautagebuch')}
           onOpenMaengel={() => setView('project-maengel')}
+          onOpenDateiablage={isServer ? () => setView('project-dateiablage') : undefined}
           onSaved={isServer ? handleRefresh : undefined}
         />
         <UpdateBanner /><SaveErrorBanner />
@@ -791,6 +793,26 @@ export default function App() {
         <BautagebuchView
           project={project}
           serverUser={serverUser}
+          onBack={() => setView('project-dashboard')}
+        />
+        <UpdateBanner /><SaveErrorBanner />
+      </>
+    )
+  }
+
+  if (view === 'project-dateiablage') {
+    const project = projectsWithContacts.find(p => p.id === selectedProjectId)
+    if (!project) { setView('home'); return null }
+    const canAdminFiles = !isServer || serverUser?.role === 'admin'
+      || project.projectAdminUser === serverUser?.username
+      || project.projectAdmins?.includes(serverUser?.username)
+    return wrap(
+      <>
+        <DateiablageView
+          project={project}
+          serverUser={serverUser}
+          canAdmin={canAdminFiles}
+          onUpdateProject={handleUpdateProject}
           onBack={() => setView('project-dashboard')}
         />
         <UpdateBanner /><SaveErrorBanner />

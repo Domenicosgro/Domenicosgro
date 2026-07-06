@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { ArrowLeft, FileText, Users, HardHat, Pencil, NotebookPen, ChevronRight, BarChart2, UserCog, BookOpen, Box, AlertOctagon } from 'lucide-react'
+import { ArrowLeft, FileText, Users, HardHat, Pencil, NotebookPen, ChevronRight, BarChart2, UserCog, BookOpen, Box, AlertOctagon, HardDrive } from 'lucide-react'
 import ProjectAdminPanel from './ProjectAdminPanel'
 
 const isServer = typeof window !== 'undefined' && !!window.__SERVER_MODE__
@@ -38,7 +38,7 @@ function DashboardTile({ icon, title, subtitle, accent, onClick, stat1, stat2 })
 export default function ProjectDashboard({
   project, protocols, notes, serverUser, globalLogoDataUrl,
   onUpdateProject, onBack, onOpenProtocols, onOpenNotes, onManageContacts, onOpenMassnahmen, onOpenNotizbuch, onOpenBim,
-  onOpenBautagebuch, onOpenMaengel, onSaved,
+  onOpenBautagebuch, onOpenMaengel, onOpenDateiablage, onSaved,
 }) {
   const [showAdminPanel, setShowAdminPanel] = useState(false)
   const [bimIssues,      setBimIssues]      = useState([])
@@ -195,6 +195,19 @@ export default function ProjectDashboard({
             subtitle="Mängel mit Foto erfassen, verfolgen und als Mängelanzeige versenden"
             accent="border-red-400"
             onClick={onOpenMaengel}
+          />
+        )}
+
+        {/* Dateiablage (Synology) – nur Server-Modus */}
+        {onOpenDateiablage && (
+          <DashboardTile
+            icon={<HardDrive size={20} />}
+            title="Dateiablage"
+            subtitle={project.fsPath
+              ? `NAS-Projektordner: ${project.fsPath}`
+              : 'NAS-Projektordner durchsuchen und Dateien herunterladen'}
+            accent="border-gray-400"
+            onClick={onOpenDateiablage}
           />
         )}
 

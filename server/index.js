@@ -1535,6 +1535,59 @@ function mountProjectStore(route, store, label) {
 mountProjectStore('diary',   db.diaryEntries, 'diary')
 mountProjectStore('defects', db.defects,      'defect')
 
+// ── Dateiablage: Synology File Station je Projekt (project.fsPath) ───────────
+const fileStation = require('./fileStation')
+
+function resolveFsPath(project, reqPath, res) {
+  if (!fileStation.isConfigured()) {
+    res.status(400).json({ error: 'Dateiablage nicht konfiguriert – SYNOLOGY_FS_USER/SYNOLOGY_FS_PASS in der docker-compose.yml setzen.' })
+    return null
+  }
+  const root = String(project.fsPath || '').replace(/\/+$/, '')
+  if (!root || !root.startsWith('/')) {
+    res.status(400).json({ error: 'Kein Projektordner hinterlegt. Pfad (z. B. /projekte/1234_Beispiel) in der Dateiablage konfigurieren.' })
+    return null
+  }
+  const p = String(reqPath || root)
+  // Ausbruch aus dem Projektordner verhindern
+  if (p !== root && !p.startsWith(root + '/') || p.includes('..')) {
+    res.status(403).json({ error: 'Pfad außerhalb des Projektordners.' })
+    return null
+  }
+  return { root, path: p }
+}
+
+app.get('/api/projects/:id/files', requireAuth, async (req, res) => {
+  try {
+    const project = getAccessibleProject(req, res)
+    if (!project) return
+    const fs2 = resolveFsPath(project, req.query.path, res)
+    if (!fs2) return
+    const files = await fileStation.listFolder(fs2.path)
+    res.json({ root: fs2.root, path: fs2.path, files })
+  } catch (e) { res.status(502).json({ error: e.message }) }
+})
+
+app.get('/api/projects/:id/files/download', requireAuth, async (req, res) => {
+  try {
+    const project = getAccessibleProject(req, res)
+    if (!project) return
+    const fs2 = resolveFsPath(project, req.query.path, res)
+    if (!fs2) return
+    if (fs2.path === fs2.root) return res.status(400).json({ error: 'Keine Datei angegeben.' })
+    const upstream = await fileStation.downloadFile(fs2.path)
+    const filename = fs2.path.split('/').pop() || 'datei'
+    res.setHeader('Content-Type', upstream.headers.get('content-type') || 'application/octet-stream')
+    const len = upstream.headers.get('content-length')
+    if (len) res.setHeader('Content-Length', len)
+    res.setHeader('Content-Disposition', `attachment; filename="${filename.replace(/[^a-zA-Z0-9äöüÄÖÜß ._-]/g, '_')}"`)
+    require('stream').Readable.fromWeb(upstream.body).pipe(res)
+    logEvent('FS_DOWNLOAD', req, `project=${req.params.id} path=${fs2.path}`)
+  } catch (e) {
+    if (!res.headersSent) res.status(502).json({ error: e.message })
+  }
+})
+
 // ── Personalplanung: ein Dokument je Kalenderwoche (global) ──────────────────
 app.get('/api/staff-plan/:week', requireAuth, (req, res) => {
   try {
