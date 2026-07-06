@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react'
-import { ArrowLeft, Save, Check, AlertCircle, X, Database, UserPlus, Trash2, Handshake } from 'lucide-react'
+import { ArrowLeft, Save, Check, AlertCircle, X, Database, UserPlus, Trash2, Handshake, Users } from 'lucide-react'
 import { uid } from '../utils'
+import ProjektTeamEditor from './ProjektTeamEditor'
 
 export const LPH = [
   { nr: 1, label: 'Grundlagenermittlung' },
@@ -225,6 +226,16 @@ export default function ProjektdatenView({ project, allContacts = [], onUpdatePr
           <input className="input py-1 text-sm w-40 text-right" placeholder="z. B. 250.000 €"
             value={data.pauschalGesamt} onChange={e => set({ pauschalGesamt: e.target.value })} />
         </div>
+      </div>
+
+      {/* Projektteam & Projektleitung */}
+      <div className="card p-5 space-y-3">
+        <h2 className="section-title"><Users size={16} /> Projektteam &amp; Projektleitung</h2>
+        <p className="text-xs text-gray-400 -mt-1">
+          In der Regel 2 × Projektleitung plus Architekt/innen, Studierende und technische Mitarbeiter.
+          Änderungen werden sofort gespeichert; dieselbe Zusammenstellung ist auch in der Personalplanung sichtbar.
+        </p>
+        <ProjektTeamEditor project={project} onUpdateProject={onUpdateProject} />
       </div>
 
       {/* Generalplanung + Planungspartner */}

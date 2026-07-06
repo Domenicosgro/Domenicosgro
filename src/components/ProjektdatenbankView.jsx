@@ -38,9 +38,16 @@ export default function ProjektdatenbankView({ projects, allContacts, canEdit, o
       >
         <span className="font-mono text-sm text-gray-700">{d.nummer || '–'}</span>
         <span className="font-mono text-sm text-gray-700 uppercase">{d.kuerzel || '–'}</span>
-        <span className="text-sm font-medium text-gray-900 truncate">
-          {d.bezeichnung || project.name || 'Unbenannt'}
-          {project.isArchived && <span className="badge-gray text-[10px] ml-2">Archiviert</span>}
+        <span className="min-w-0">
+          <span className="block text-sm font-medium text-gray-900 truncate">
+            {d.bezeichnung || project.name || 'Unbenannt'}
+            {project.isArchived && <span className="badge-gray text-[10px] ml-2">Archiviert</span>}
+          </span>
+          {(project.team || []).some(m => m.role === 'Projektleitung') && (
+            <span className="block text-[11px] text-gray-400 truncate">
+              PL: {(project.team || []).filter(m => m.role === 'Projektleitung').map(m => m.name).join(', ')}
+            </span>
+          )}
         </span>
         <span className="text-xs">
           {d.gesellschaft

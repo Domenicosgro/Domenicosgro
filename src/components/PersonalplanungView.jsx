@@ -4,6 +4,7 @@ import { ArrowLeft, ChevronLeft, ChevronRight, Plus, Trash2, Loader, AlertCircle
 import { uid, formatDate } from '../utils'
 import { buildStaffPlanPdf } from '../staffPlanPdf'
 import { downloadPdfBase64 } from '../archivePdf'
+import ProjektTeamEditor from './ProjektTeamEditor'
 
 const isServer = typeof window !== 'undefined' && !!window.__SERVER_MODE__
 const authHeaders = () => {
@@ -18,10 +19,6 @@ const DAYS = [
 ]
 const SPECIAL = [
   { value: 'urlaub', label: 'Urlaub' }, { value: 'krank', label: 'Krank' }, { value: 'buero', label: 'Büro' },
-]
-const PROJECT_ROLES = [
-  'Projektleitung', 'Stellv. Projektleitung', 'Bauleitung', 'Objektplanung',
-  'Fachplanung', 'Ausschreibung / Vergabe', 'Assistenz',
 ]
 
 // ISO-Kalenderwoche + Datumshelfer
@@ -219,86 +216,24 @@ function StaffTab({ staff, orgUsers, onChanged, setError }) {
   )
 }
 
-// ── Projektteams mit Rollenvergabe (am Projekt gespeichert) ─────────────────
-// Teammitglieder kommen aus der eigenen Organisation (Mitarbeiter-Stammdaten);
-// externe Planungspartner werden in der Projektdatenbank gepflegt.
-function TeamsTab({ projects, staff, onUpdateProject, setError }) {
+// ── Projektteams mit Rollenvergabe (gemeinsamer Editor, am Projekt gespeichert)
+// Dieselbe Zusammenstellung ist auch in der Projektdatenbank pflegbar.
+function TeamsTab({ projects, staff, onUpdateProject }) {
   const activeProjects = projects.filter(p => !p.isArchived)
   const [projectId, setProjectId] = useState(activeProjects[0]?.id || '')
   const project = activeProjects.find(p => p.id === projectId)
-  const team = project?.team || []
-
-  const [memberPick, setMemberPick] = useState('')
-  const [rolePick,   setRolePick]   = useState(PROJECT_ROLES[0])
-
-  const candidates = useMemo(() => {
-    const seen = new Set(team.map(t => t.name))
-    return staff.filter(s => s.active !== false && !seen.has(s.name))
-      .map(s => ({ key: `s:${s.id}`, name: s.name, email: s.email }))
-  }, [staff, team])
-
-  const addMember = () => {
-    const cand = candidates.find(c => c.key === memberPick)
-    if (!cand || !project) return
-    onUpdateProject(project.id, { team: [...team, { id: uid(), name: cand.name, email: cand.email, role: rolePick }] })
-    setMemberPick('')
-  }
-  const setRole = (memberId, role) =>
-    onUpdateProject(project.id, { team: team.map(m => m.id === memberId ? { ...m, role } : m) })
-  const removeMember = (memberId) =>
-    onUpdateProject(project.id, { team: team.filter(m => m.id !== memberId) })
 
   return (
     <div className="space-y-4">
-      <div className="card p-4 space-y-3">
-        <div>
-          <label className="block text-xs font-medium text-gray-500 mb-1">Projekt</label>
-          <select className="select w-full max-w-md" value={projectId} onChange={e => setProjectId(e.target.value)}>
-            {activeProjects.map(p => <option key={p.id} value={p.id}>{p.name || 'Unbenannt'}</option>)}
-          </select>
-        </div>
-        {project && (
-          <div className="flex gap-2 flex-wrap items-end">
-            <div className="flex-1 min-w-[200px]">
-              <label className="block text-xs font-medium text-gray-500 mb-1">Teammitglied (eigene Organisation)</label>
-              <select className="select w-full" value={memberPick} onChange={e => setMemberPick(e.target.value)}>
-                <option value="">– auswählen –</option>
-                {candidates.map(c => <option key={c.key} value={c.key}>{c.name}{c.email ? ` · ${c.email}` : ''}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1">Rolle im Projektteam</label>
-              <select className="select" value={rolePick} onChange={e => setRolePick(e.target.value)}>
-                {PROJECT_ROLES.map(r => <option key={r} value={r}>{r}</option>)}
-              </select>
-            </div>
-            <button className="btn-primary" disabled={!memberPick} onClick={addMember}>
-              <UserPlus size={14} /> Zuordnen
-            </button>
-          </div>
-        )}
+      <div className="card p-4">
+        <label className="block text-xs font-medium text-gray-500 mb-1">Projekt</label>
+        <select className="select w-full max-w-md" value={projectId} onChange={e => setProjectId(e.target.value)}>
+          {activeProjects.map(p => <option key={p.id} value={p.id}>{p.name || 'Unbenannt'}</option>)}
+        </select>
       </div>
-
       {project && (
-        <div className="card divide-y divide-gray-100">
-          {team.length === 0 && (
-            <p className="p-8 text-center text-sm text-gray-400">Noch kein Projektteam für „{project.name}" zusammengestellt.</p>
-          )}
-          {team.map(m => (
-            <div key={m.id} className="flex items-center gap-3 px-4 py-2.5">
-              <Users size={15} className="text-brand-500 flex-shrink-0" />
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-gray-800 truncate">{m.name}</p>
-                {m.email && <p className="text-xs text-gray-400 truncate">{m.email}</p>}
-              </div>
-              <select className="select text-xs py-1" value={m.role}
-                onChange={e => setRole(m.id, e.target.value)}>
-                {PROJECT_ROLES.map(r => <option key={r} value={r}>{r}</option>)}
-                {!PROJECT_ROLES.includes(m.role) && <option value={m.role}>{m.role}</option>}
-              </select>
-              <button className="btn-ghost p-1.5 text-gray-400 hover:text-red-600" onClick={() => removeMember(m.id)}><Trash2 size={14} /></button>
-            </div>
-          ))}
+        <div className="card p-4">
+          <ProjektTeamEditor project={project} staff={staff} onUpdateProject={onUpdateProject} />
         </div>
       )}
     </div>
