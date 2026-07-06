@@ -1878,22 +1878,182 @@ app.post('/api/delete-reject/:token', (req, res) => {
     `<div class="ok" style="background:#f0f7ff;border-color:#bfdbfe;border-left-color:#2563eb;color:#1e40af;">✓ Löschanfrage für „${dr.target_name}" wurde abgelehnt. Das Projekt bleibt erhalten.</div>`))
 })
 
-// GET /api/admin/deletion-requests – list pending (AdminPanel)
+// ── Archivierungsanfragen (Genehmigung durch Software-Admin) ──────────────────
+
+// Projekt serverseitig als archiviert markieren (nach Admin-Genehmigung).
+// Das Gesamtprotokoll-PDF wurde bereits beim Stellen der Anfrage vom Browser
+// erzeugt und unter /data/archives abgelegt.
+function applyProjectArchive(projectId, resolvedBy) {
+  const project = db.projects.get(projectId)
+  if (!project) return false
+  const { _version, _updatedAt, ...pData } = project
+  const now = new Date().toISOString()
+  const pdfPath = path.join(ARCHIVE_DIR, `${projectId}.pdf`)
+  const archivePdf = fs.existsSync(pdfPath)
+    ? {
+        size: fs.statSync(pdfPath).size,
+        createdAt: now,
+        protocolCount: db.protocols.list().filter(p => p.projectId === projectId).length,
+      }
+    : null
+  const updated = { ...pData, isArchived: true, archivedAt: now, archivePdf, updatedAt: now }
+  db.projects.update(projectId, updated, _version, resolvedBy)
+  broadcast('project', 'update', projectId, now)
+  return true
+}
+
+// POST /api/projects/:id/request-archive – Archivierungsanfrage stellen
+app.post('/api/projects/:id/request-archive', requireAuth, async (req, res) => {
+  try {
+    const project = getAccessibleProject(req, res)
+    if (!project) return
+    const { id } = req.params
+
+    const requesterUser = db.users.get(req.user)
+    const requesterName = requesterUser?.display_name || req.user
+    const protocolCount = db.protocols.list().filter(p => p.projectId === id).length
+
+    const existing = db.deletionRequests.getByTarget(id, 'archive')
+    if (existing) return res.json({ ok: true, alreadyPending: true })
+
+    const token    = auth.generateToken()
+    const reqId    = serverUid()
+    const projName = project.name || 'Unbenanntes Projekt'
+    db.deletionRequests.create({
+      id: reqId, targetId: id, targetName: projName,
+      protocolCount, requestedBy: req.user, requestedByName: requesterName,
+      token, requestType: 'archive',
+    })
+    logEvent('ARCHIVE_REQUESTED', req, `project=${id} name="${projName}" by=${req.user}`)
+
+    // Admins per E-Mail informieren (Genehmigen/Ablehnen per Link)
+    if (mailer.mailerStatus().configured) {
+      const admins = db.users.list().filter(u => u.role === 'admin' && u.email)
+      if (admins.length > 0) {
+        const appUrl     = getAppUrl(req)
+        const approveUrl = `${appUrl}/api/archive-approve/${token}`
+        const rejectUrl  = `${appUrl}/api/archive-reject/${token}`
+        const from = process.env.SMTP_FROM || process.env.GRAPH_SENDER || process.env.SMTP_USER || 'noreply@ghba'
+        const html = `<!DOCTYPE html><html><body style="font-family:Arial,sans-serif;color:#222;font-size:14px;line-height:1.5">
+          <p><strong>${esc(requesterName)}</strong> bittet um Freigabe der Archivierung des Projekts
+          <strong>„${esc(projName)}"</strong> (${protocolCount} Protokoll${protocolCount !== 1 ? 'e' : ''}).</p>
+          <p>Das Gesamtprotokoll wurde bereits als PDF abgelegt. Das Projekt bleibt nach der Archivierung jederzeit zugänglich.</p>
+          <p>
+            <a href="${approveUrl}" style="display:inline-block;background:#16a34a;color:#fff;padding:8px 16px;text-decoration:none;margin-right:8px">Archivierung genehmigen</a>
+            <a href="${rejectUrl}" style="display:inline-block;background:#6b7280;color:#fff;padding:8px 16px;text-decoration:none">Ablehnen</a>
+          </p>
+          <p style="color:#888;margin-top:18px">GHBA · Projektverwaltung</p>
+        </body></html>`
+        const text = `${requesterName} bittet um Freigabe der Archivierung des Projekts "${projName}" (${protocolCount} Protokolle).\n\nGenehmigen: ${approveUrl}\nAblehnen:  ${rejectUrl}\n\nGHBA`
+        for (const admin of admins) {
+          try {
+            await mailer.sendMail({ from, to: admin.email, subject: `Archivierungsanfrage: Projekt „${projName}"`, html, text })
+          } catch (e) { console.warn('[archive-request] Mail an', admin.email, 'fehlgeschlagen:', e.message) }
+        }
+      }
+    }
+    res.json({ ok: true })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// GET/POST /api/archive-approve/:token – Genehmigung per E-Mail-Link
+app.get('/api/archive-approve/:token', (req, res) => {
+  const dr = db.deletionRequests.getByToken(req.params.token)
+  if (!dr || dr.request_type !== 'archive') return res.send(renderSimplePage('Ungültige Anfrage',
+    '<p style="color:#6b7280;">Dieser Link ist ungültig oder wurde bereits verwendet.</p>'))
+  if (dr.status !== 'pending') {
+    const label = dr.status === 'approved' ? 'bereits genehmigt' : 'bereits abgelehnt'
+    return res.send(renderSimplePage('Anfrage bereits bearbeitet',
+      `<div class="info-neutral">Diese Archivierungsanfrage wurde ${label}.</div>`))
+  }
+  const dateStr = new Date(dr.requested_at).toLocaleString('de-DE')
+  const body = `
+    <div class="info">
+      <strong>${dr.target_name}</strong>
+      <p>Angefragt von: ${dr.requested_by_name} · ${dateStr}</p>
+      <p>${dr.protocol_count} Protokoll${dr.protocol_count !== 1 ? 'e' : ''} · Gesamtprotokoll-PDF liegt bereit.</p>
+    </div>
+    <p style="font-size:13px;color:#374151;margin-bottom:16px;">Das Projekt wird ins Archiv verschoben, bleibt aber jederzeit zugänglich und kann wiederhergestellt werden.</p>
+    <form method="POST">
+      <div class="actions">
+        <button type="submit" class="btn-del" style="background:#16a34a;">Archivierung genehmigen</button>
+        <a href="/api/archive-reject/${dr.token}" class="btn-sec">Ablehnen</a>
+      </div>
+    </form>`
+  res.send(renderSimplePage('Archivierungsanfrage genehmigen', body))
+})
+
+app.post('/api/archive-approve/:token', (req, res) => {
+  const dr = db.deletionRequests.getByToken(req.params.token)
+  if (!dr || dr.request_type !== 'archive' || dr.status !== 'pending')
+    return res.send(renderSimplePage('Ungültige Anfrage',
+      '<p style="color:#6b7280;">Dieser Link ist ungültig oder wurde bereits verwendet.</p>'))
+  applyProjectArchive(dr.target_id, 'email-link')
+  db.deletionRequests.resolve(dr.id, 'approved', 'email-link')
+  logEvent('ARCHIVE_APPROVED', req, `project=${dr.target_id} by=email-token`)
+  res.send(renderSimplePage('Projekt archiviert',
+    `<div class="ok">✓ Projekt „${dr.target_name}" wurde archiviert.</div>
+     <p style="margin-top:12px;font-size:13px;color:#6b7280;">Das Projekt ist im Archiv-Bereich weiterhin zugänglich.</p>`))
+})
+
+app.get('/api/archive-reject/:token', (req, res) => {
+  const dr = db.deletionRequests.getByToken(req.params.token)
+  if (!dr || dr.request_type !== 'archive') return res.send(renderSimplePage('Ungültige Anfrage',
+    '<p style="color:#6b7280;">Dieser Link ist ungültig oder wurde bereits verwendet.</p>'))
+  if (dr.status !== 'pending') {
+    const label = dr.status === 'approved' ? 'bereits genehmigt' : 'bereits abgelehnt'
+    return res.send(renderSimplePage('Anfrage bereits bearbeitet',
+      `<div class="info-neutral">Diese Archivierungsanfrage wurde ${label}.</div>`))
+  }
+  const body = `
+    <div class="info">
+      <strong>${dr.target_name}</strong>
+      <p>Angefragt von: ${dr.requested_by_name}</p>
+    </div>
+    <p style="font-size:13px;color:#374151;margin-bottom:16px;">Die Archivierungsanfrage wird abgelehnt. Das Projekt bleibt aktiv.</p>
+    <form method="POST">
+      <div class="actions">
+        <button type="submit" class="btn-del" style="background:#6b7280;">Ablehnen bestätigen</button>
+        <a href="/api/archive-approve/${dr.token}" class="btn-sec">Zurück (Genehmigen)</a>
+      </div>
+    </form>`
+  res.send(renderSimplePage('Archivierungsanfrage ablehnen', body))
+})
+
+app.post('/api/archive-reject/:token', (req, res) => {
+  const dr = db.deletionRequests.getByToken(req.params.token)
+  if (!dr || dr.request_type !== 'archive' || dr.status !== 'pending')
+    return res.send(renderSimplePage('Ungültige Anfrage',
+      '<p style="color:#6b7280;">Dieser Link ist ungültig oder wurde bereits verwendet.</p>'))
+  db.deletionRequests.resolve(dr.id, 'rejected', 'email-link')
+  logEvent('ARCHIVE_REJECTED', req, `project=${dr.target_id} by=email-token`)
+  res.send(renderSimplePage('Anfrage abgelehnt',
+    `<div class="ok" style="background:#f0f7ff;border-color:#bfdbfe;border-left-color:#2563eb;color:#1e40af;">✓ Archivierungsanfrage für „${dr.target_name}" wurde abgelehnt. Das Projekt bleibt aktiv.</div>`))
+})
+
+// GET /api/admin/deletion-requests – list pending (AdminPanel; Lösch- UND Archivierungsanfragen)
 app.get('/api/admin/deletion-requests', requireAuth, requireAdmin, (_req, res) => {
   try { res.json(db.deletionRequests.list()) }
   catch (e) { res.status(500).json({ error: e.message }) }
 })
 
 // POST /api/admin/deletion-requests/:id/approve – direct admin approve
+// Verzweigt nach request_type: 'delete' löscht das Projekt, 'archive' archiviert es.
 app.post('/api/admin/deletion-requests/:id/approve', requireAuth, requireAdmin, (req, res) => {
   try {
     const dr = db.deletionRequests.list().find(r => r.id === req.params.id)
     if (!dr) return res.status(404).json({ error: 'Anfrage nicht gefunden.' })
     if (dr.status !== 'pending') return res.status(400).json({ error: 'Anfrage bereits bearbeitet.' })
-    db.projects.delete(dr.target_id)
-    db.deletionRequests.resolve(dr.id, 'approved', req.user)
-    broadcast('project', 'delete', dr.target_id, new Date().toISOString())
-    logEvent('DELETE_APPROVED', req, `project=${dr.target_id} by=${req.user}`)
+    if (dr.request_type === 'archive') {
+      applyProjectArchive(dr.target_id, req.user)
+      db.deletionRequests.resolve(dr.id, 'approved', req.user)
+      logEvent('ARCHIVE_APPROVED', req, `project=${dr.target_id} by=${req.user}`)
+    } else {
+      db.projects.delete(dr.target_id)
+      db.deletionRequests.resolve(dr.id, 'approved', req.user)
+      broadcast('project', 'delete', dr.target_id, new Date().toISOString())
+      logEvent('DELETE_APPROVED', req, `project=${dr.target_id} by=${req.user}`)
+    }
     res.json({ ok: true })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
@@ -1905,7 +2065,7 @@ app.post('/api/admin/deletion-requests/:id/reject', requireAuth, requireAdmin, (
     if (!dr) return res.status(404).json({ error: 'Anfrage nicht gefunden.' })
     if (dr.status !== 'pending') return res.status(400).json({ error: 'Anfrage bereits bearbeitet.' })
     db.deletionRequests.resolve(dr.id, 'rejected', req.user)
-    logEvent('DELETE_REJECTED', req, `project=${dr.target_id} by=${req.user}`)
+    logEvent(dr.request_type === 'archive' ? 'ARCHIVE_REJECTED' : 'DELETE_REJECTED', req, `project=${dr.target_id} by=${req.user}`)
     res.json({ ok: true })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })

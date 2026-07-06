@@ -423,7 +423,9 @@ export default function App() {
 
   const sessionToken = typeof localStorage !== 'undefined' ? localStorage.getItem('kp_session_token') : null
 
-  // ── Projekt archivieren: Gesamtprotokoll-PDF erzeugen, ablegen, markieren ──
+  // ── Projekt archivieren: Gesamtprotokoll-PDF erzeugen und ablegen.
+  // Server-Modus: System-Admin archiviert direkt; alle anderen stellen eine
+  // Archivierungsanfrage, die der Software-Admin genehmigen muss.
   const handleArchiveProject = useCallback(async (projectId) => {
     const project = projectsWithContacts.find(p => p.id === projectId)
     if (!project) throw new Error('Projekt nicht gefunden.')
@@ -455,8 +457,23 @@ export default function App() {
         }
       }
     }
+
+    if (isServer && serverUser?.role !== 'admin') {
+      // Zustimmung des Software-Admins erforderlich → Anfrage stellen
+      const headers = { 'Content-Type': 'application/json' }
+      if (sessionToken) headers['Authorization'] = `Bearer ${sessionToken}`
+      const res = await fetch(`/api/projects/${projectId}/request-archive`, { method: 'POST', headers })
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}))
+        throw new Error(d.error || 'Archivierungsanfrage konnte nicht gestellt werden.')
+      }
+      const data = await res.json()
+      return { requested: true, alreadyPending: !!data.alreadyPending }
+    }
+
     updateProject(projectId, { isArchived: true, archivedAt: new Date().toISOString(), archivePdf })
-  }, [projectsWithContacts, protocols, logoDataUrl, sessionToken, updateProject])
+    return { archived: true }
+  }, [projectsWithContacts, protocols, logoDataUrl, sessionToken, serverUser, updateProject])
 
   const handleUnarchiveProject = useCallback((projectId) => {
     updateProject(projectId, { isArchived: false, archivedAt: null })

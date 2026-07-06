@@ -283,6 +283,8 @@ try { db.exec("ALTER TABLE users ADD COLUMN password_note TEXT NOT NULL DEFAULT 
 try { db.exec("ALTER TABLE users ADD COLUMN email TEXT NOT NULL DEFAULT ''") } catch {}
 // source: 'local' (lokaler App-Account) | 'synology' (via Synology DSM Auth)
 try { db.exec("ALTER TABLE users ADD COLUMN source TEXT NOT NULL DEFAULT 'local'") } catch {}
+// request_type: 'delete' (Projekt löschen) | 'archive' (Projekt archivieren)
+try { db.exec("ALTER TABLE deletion_requests ADD COLUMN request_type TEXT NOT NULL DEFAULT 'delete'") } catch {}
 
 // ── Users ─────────────────────────────────────────────────────────────────────
 const _uHasAny      = db.prepare('SELECT 1 FROM users LIMIT 1')
@@ -367,17 +369,17 @@ const resetRequests = {
 }
 
 // ── Deletion requests ─────────────────────────────────────────────────────────
-const _drInsert   = db.prepare(`INSERT INTO deletion_requests (id, target_id, target_name, protocol_count, requested_by, requested_by_name, token) VALUES (@id, @targetId, @targetName, @protocolCount, @requestedBy, @requestedByName, @token)`)
+const _drInsert   = db.prepare(`INSERT INTO deletion_requests (id, target_id, target_name, protocol_count, requested_by, requested_by_name, token, request_type) VALUES (@id, @targetId, @targetName, @protocolCount, @requestedBy, @requestedByName, @token, @requestType)`)
 const _drByToken  = db.prepare('SELECT * FROM deletion_requests WHERE token = ?')
-const _drByTarget = db.prepare("SELECT * FROM deletion_requests WHERE target_id = ? AND status = 'pending' ORDER BY requested_at DESC LIMIT 1")
+const _drByTarget = db.prepare("SELECT * FROM deletion_requests WHERE target_id = ? AND request_type = ? AND status = 'pending' ORDER BY requested_at DESC LIMIT 1")
 const _drList     = db.prepare("SELECT * FROM deletion_requests WHERE status = 'pending' ORDER BY requested_at ASC")
 const _drResolve  = db.prepare("UPDATE deletion_requests SET status = @status, resolved_at = datetime('now'), resolved_by = @resolvedBy WHERE id = @id")
 const _drDel      = db.prepare('DELETE FROM deletion_requests WHERE id = ?')
 
 const deletionRequests = {
-  create(data)                    { _drInsert.run(data) },
+  create(data)                    { _drInsert.run({ requestType: 'delete', ...data }) },
   getByToken(token)               { return _drByToken.get(token) || null },
-  getByTarget(targetId)           { return _drByTarget.get(targetId) || null },
+  getByTarget(targetId, type = 'delete') { return _drByTarget.get(targetId, type) || null },
   list()                          { return _drList.all() },
   resolve(id, status, resolvedBy) { _drResolve.run({ id, status, resolvedBy }) },
   delete(id)                      { return _drDel.run(id).changes > 0 },

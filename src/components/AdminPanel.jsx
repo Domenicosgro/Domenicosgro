@@ -845,10 +845,14 @@ function DeletionRequestsTab() {
     setActionLoading(id + action)
     setMsg(null)
     try {
+      const req  = requests.find(r => r.id === id)
       const res  = await fetch(`/api/admin/deletion-requests/${id}/${action}`, { method: 'POST', headers: apiHeaders() })
       const data = await res.json()
       if (!res.ok) { setMsg({ type: 'err', text: data.error }); return }
-      setMsg({ type: 'ok', text: action === 'approve' ? 'Projekt gelöscht.' : 'Anfrage abgelehnt.' })
+      const isArchive = req?.request_type === 'archive'
+      setMsg({ type: 'ok', text: action === 'approve'
+        ? (isArchive ? 'Projekt archiviert.' : 'Projekt gelöscht.')
+        : 'Anfrage abgelehnt.' })
       await load()
     } catch { setMsg({ type: 'err', text: 'Netzwerkfehler.' }) }
     finally { setActionLoading(null) }
@@ -863,7 +867,7 @@ function DeletionRequestsTab() {
   return (
     <div className="space-y-4">
       <p className="text-sm text-gray-600">
-        Benutzer ohne Admin-Rechte können Projekte nicht direkt löschen. Hier erscheinen ihre Löschanfragen zur Genehmigung.
+        Benutzer ohne Admin-Rechte benötigen für das Löschen und Archivieren von Projekten die Freigabe eines Administrators. Hier erscheinen ihre Anfragen zur Genehmigung.
       </p>
 
       {msg && (
@@ -874,49 +878,106 @@ function DeletionRequestsTab() {
 
       {requests.length === 0 ? (
         <div className="text-sm text-gray-400 text-center py-8 border border-gray-100">
-          Keine ausstehenden Löschanfragen.
+          Keine ausstehenden Anfragen.
         </div>
       ) : (
         <div className="space-y-3">
           {requests.map(r => (
-            <div key={r.id} className="border border-amber-200 bg-amber-50 p-4">
-              <div className="flex items-start gap-3">
-                <AlertTriangle size={16} className="text-amber-500 flex-shrink-0 mt-0.5" />
-                <div className="flex-1 min-w-0">
-                  <p className="font-semibold text-gray-900 truncate">{r.target_name}</p>
-                  <p className="text-xs text-gray-500 mt-0.5">
-                    Angefragt von <strong>{r.requested_by_name}</strong> ·{' '}
-                    {new Date(r.requested_at).toLocaleString('de-DE')}
-                  </p>
-                  {r.protocol_count > 0 && (
-                    <p className="text-xs text-amber-700 mt-1">
-                      {r.protocol_count} Protokoll{r.protocol_count !== 1 ? 'e werden' : ' wird'} vom Projekt getrennt, aber nicht gelöscht.
-                    </p>
-                  )}
-                  <div className="flex gap-2 mt-3">
-                    <button
-                      className="btn-danger text-xs"
-                      onClick={() => handleAction(r.id, 'approve')}
-                      disabled={!!actionLoading}
-                    >
-                      {actionLoading === r.id + 'approve' ? <Loader size={12} className="animate-spin" /> : <Trash2 size={12} />}
-                      Löschen genehmigen
-                    </button>
-                    <button
-                      className="btn-secondary text-xs"
-                      onClick={() => handleAction(r.id, 'reject')}
-                      disabled={!!actionLoading}
-                    >
-                      {actionLoading === r.id + 'reject' ? <Loader size={12} className="animate-spin" /> : null}
-                      Ablehnen
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
+            <AdminRequestCard key={r.id} request={r} actionLoading={actionLoading} onAction={handleAction} />
           ))}
         </div>
       )}
+    </div>
+  )
+}
+
+// Einzelne Anfrage-Karte (Löschung oder Archivierung) – im Tab UND im Popup genutzt
+function AdminRequestCard({ request: r, actionLoading, onAction }) {
+  const isArchive = r.request_type === 'archive'
+  return (
+    <div className={`border p-4 ${isArchive ? 'border-brand-200 bg-brand-50/60' : 'border-amber-200 bg-amber-50'}`}>
+      <div className="flex items-start gap-3">
+        {isArchive
+          ? <ArchiveIconInline />
+          : <AlertTriangle size={16} className="text-amber-500 flex-shrink-0 mt-0.5" />}
+        <div className="flex-1 min-w-0">
+          <p className="font-semibold text-gray-900 truncate flex items-center gap-2">
+            {r.target_name}
+            <span className={`badge text-[10px] font-medium ${isArchive ? 'bg-brand-100 text-brand-700 border border-brand-300' : 'bg-red-100 text-red-700 border border-red-300'}`}>
+              {isArchive ? 'Archivierung' : 'Löschung'}
+            </span>
+          </p>
+          <p className="text-xs text-gray-500 mt-0.5">
+            Angefragt von <strong>{r.requested_by_name}</strong> ·{' '}
+            {new Date(r.requested_at).toLocaleString('de-DE')}
+          </p>
+          {isArchive ? (
+            <p className="text-xs text-brand-700 mt-1">
+              {r.protocol_count} Protokoll{r.protocol_count !== 1 ? 'e' : ''} · Gesamtprotokoll-PDF liegt bereit. Das Projekt bleibt im Archiv zugänglich.
+            </p>
+          ) : r.protocol_count > 0 && (
+            <p className="text-xs text-amber-700 mt-1">
+              {r.protocol_count} Protokoll{r.protocol_count !== 1 ? 'e werden' : ' wird'} vom Projekt getrennt, aber nicht gelöscht.
+            </p>
+          )}
+          <div className="flex gap-2 mt-3">
+            <button
+              className={`text-xs ${isArchive ? 'btn-primary' : 'btn-danger'}`}
+              onClick={() => onAction(r.id, 'approve')}
+              disabled={!!actionLoading}
+            >
+              {actionLoading === r.id + 'approve' ? <Loader size={12} className="animate-spin" /> : (isArchive ? null : <Trash2 size={12} />)}
+              {isArchive ? 'Archivierung genehmigen' : 'Löschen genehmigen'}
+            </button>
+            <button
+              className="btn-secondary text-xs"
+              onClick={() => onAction(r.id, 'reject')}
+              disabled={!!actionLoading}
+            >
+              {actionLoading === r.id + 'reject' ? <Loader size={12} className="animate-spin" /> : null}
+              Ablehnen
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function ArchiveIconInline() {
+  // lucide "Archive" nachgebildet, um keinen weiteren Import zu erzwingen
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+      strokeLinecap="round" strokeLinejoin="round" className="text-brand-500 flex-shrink-0 mt-0.5">
+      <rect width="20" height="5" x="2" y="3" rx="1" /><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8" /><path d="M10 12h4" />
+    </svg>
+  )
+}
+
+// Popup beim Öffnen des Admin-Bereichs: alle offenen Anfragen auf einen Blick
+function PendingRequestsPopup({ requests, actionLoading, onAction, onClose }) {
+  return (
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 p-4">
+      <div className="bg-white w-full max-w-lg max-h-[85vh] flex flex-col border border-gray-200 shadow-2xl">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200">
+          <h3 className="font-semibold text-gray-900 flex items-center gap-2">
+            <AlertTriangle size={16} className="text-amber-500" />
+            Offene Anfragen ({requests.length})
+          </h3>
+          <button className="btn-ghost p-1" onClick={onClose}><X size={16} /></button>
+        </div>
+        <div className="flex-1 overflow-y-auto p-5 space-y-3">
+          <p className="text-xs text-gray-500">
+            Diese Anfragen warten auf deine Freigabe. Du kannst sie hier direkt bearbeiten oder später im Tab „Anfragen".
+          </p>
+          {requests.map(r => (
+            <AdminRequestCard key={r.id} request={r} actionLoading={actionLoading} onAction={onAction} />
+          ))}
+        </div>
+        <div className="px-5 py-3 border-t border-gray-200 flex justify-end">
+          <button className="btn-secondary text-sm" onClick={onClose}>Später bearbeiten</button>
+        </div>
+      </div>
     </div>
   )
 }
@@ -1524,11 +1585,43 @@ export default function AdminPanel({ serverUser, onClose }) {
   const isAdmin = serverUser?.role === 'admin' || serverUser?.devMode
   const [tab, setTab] = useState(isAdmin ? 'users' : 'password')
 
+  // Offene Anfragen (Löschung/Archivierung) beim Öffnen des Admin-Bereichs
+  // laden und – falls vorhanden – als Popup anzeigen.
+  const [pendingRequests,   setPendingRequests]   = useState([])
+  const [showRequestsPopup, setShowRequestsPopup] = useState(false)
+  const [popupActionLoading, setPopupActionLoading] = useState(null)
+
+  useEffect(() => {
+    if (!isAdmin) return
+    fetch('/api/admin/deletion-requests', { headers: apiHeaders() })
+      .then(r => r.ok ? r.json() : [])
+      .then(list => {
+        if (Array.isArray(list) && list.length > 0) {
+          setPendingRequests(list)
+          setShowRequestsPopup(true)
+        }
+      })
+      .catch(() => {})
+  }, [isAdmin])
+
+  const handlePopupAction = async (id, action) => {
+    setPopupActionLoading(id + action)
+    try {
+      const res = await fetch(`/api/admin/deletion-requests/${id}/${action}`, { method: 'POST', headers: apiHeaders() })
+      if (res.ok) {
+        const remaining = pendingRequests.filter(r => r.id !== id)
+        setPendingRequests(remaining)
+        if (remaining.length === 0) setShowRequestsPopup(false)
+      }
+    } catch {}
+    finally { setPopupActionLoading(null) }
+  }
+
   const tabs = [
     isAdmin              && { id: 'users',    label: 'Benutzer',      icon: <Users size={14} /> },
     isAdmin              && { id: 'rollout',  label: 'Rollout',        icon: <UserPlus size={14} /> },
     isAdmin              && { id: 'sessions', label: 'Sitzungen',      icon: <Activity size={14} /> },
-    isAdmin              && { id: 'deletions', label: 'Löschanfragen', icon: <AlertTriangle size={14} /> },
+    isAdmin              && { id: 'deletions', label: 'Anfragen', icon: <AlertTriangle size={14} /> },
     isAdmin              && { id: 'smtp',      label: 'E-Mail',          icon: <Mail size={14} /> },
     isAdmin              && { id: 'templates', label: 'E-Mail-Vorlagen', icon: <Settings2 size={14} /> },
     isAdmin              && { id: 'backup',   label: 'Backup',          icon: <HardDrive size={14} /> },
@@ -1574,6 +1667,16 @@ export default function AdminPanel({ serverUser, onClose }) {
           {tab === 'password'  && <PasswordTab   serverUser={serverUser} />}
         </div>
       </div>
+
+      {/* Popup: offene Anfragen beim Öffnen des Admin-Bereichs */}
+      {showRequestsPopup && pendingRequests.length > 0 && (
+        <PendingRequestsPopup
+          requests={pendingRequests}
+          actionLoading={popupActionLoading}
+          onAction={handlePopupAction}
+          onClose={() => setShowRequestsPopup(false)}
+        />
+      )}
     </div>
   )
 }

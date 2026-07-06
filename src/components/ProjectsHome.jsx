@@ -199,6 +199,7 @@ export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, 
   const [showArchive,     setShowArchive]     = useState(false)  // Archiv-Abschnitt aufgeklappt
   const [archivingId,     setArchivingId]     = useState(null)   // Projekt-ID während PDF-Erzeugung
   const [archiveError,    setArchiveError]    = useState('')
+  const [archiveNotice,   setArchiveNotice]   = useState('')     // "Anfrage gesendet"-Hinweis
   const importProjectRef = useRef(null)
 
   // Projekte, für die der aktuelle Benutzer Admin ist
@@ -273,17 +274,26 @@ export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, 
 
   const handleArchiveClick = async (project, protoCount) => {
     if (!onArchiveProject || archivingId) return
+    const needsApproval = isServer && serverUser?.role !== 'admin'
     const msg = `Projekt „${project.name || 'Unbenannt'}" archivieren?\n\n`
       + (protoCount > 0
           ? `Ein Gesamtprotokoll mit ${protoCount} Protokoll${protoCount !== 1 ? 'en' : ''} wird automatisch als PDF erstellt.\n`
           : '')
-      + 'Das Projekt bleibt im Archiv jederzeit zugänglich und kann wiederhergestellt werden.'
+      + (needsApproval
+          ? 'Der Software-Administrator muss der Archivierung zustimmen – es wird eine Anfrage gestellt.'
+          : 'Das Projekt bleibt im Archiv jederzeit zugänglich und kann wiederhergestellt werden.')
     if (!confirm(msg)) return
     setArchivingId(project.id)
     setArchiveError('')
     try {
-      await onArchiveProject(project.id)
-      setShowArchive(true)
+      const result = await onArchiveProject(project.id)
+      if (result?.requested) {
+        setArchiveNotice(result.alreadyPending
+          ? `Für „${project.name || 'Unbenannt'}" liegt bereits eine Archivierungsanfrage beim Administrator vor.`
+          : `Archivierungsanfrage für „${project.name || 'Unbenannt'}" wurde an den Administrator gesendet.`)
+      } else {
+        setShowArchive(true)
+      }
     } catch (e) {
       setArchiveError(`Archivierung fehlgeschlagen: ${e.message}`)
     } finally {
@@ -678,6 +688,15 @@ export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, 
           <p className="text-sm text-gray-400 text-center py-4 sm:col-span-2 lg:col-span-3">Kein Projekt gefunden.</p>
         )}
       </div>
+
+      {/* Archivierungsanfrage gesendet */}
+      {archiveNotice && (
+        <div className="flex items-center gap-2 text-sm text-brand-700 bg-brand-50 border border-brand-200 px-4 py-2.5">
+          <Archive size={15} className="flex-shrink-0" />
+          <span className="flex-1">{archiveNotice}</span>
+          <button className="text-brand-400 hover:text-brand-600" onClick={() => setArchiveNotice('')}><X size={14} /></button>
+        </div>
+      )}
 
       {/* Archivierungs-Fehler */}
       {archiveError && (
