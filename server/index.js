@@ -1588,6 +1588,139 @@ app.get('/api/projects/:id/files/download', requireAuth, async (req, res) => {
   }
 })
 
+// ── Personalplanung: Mitarbeiter-Stammdaten (Arbeitszeitmodelle) ──────────────
+app.get('/api/staff', requireAuth, (req, res) => {
+  try { res.json(db.staffMembers.list()) }
+  catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.post('/api/staff', requireAuth, writeLimiter, (req, res) => {
+  try {
+    const id  = require('crypto').randomBytes(12).toString('base64url')
+    const now = new Date().toISOString()
+    const data = {
+      id,
+      name:        req.body.name        || 'Neuer Mitarbeiter',
+      email:       req.body.email       || '',
+      funktion:    req.body.funktion    || '',
+      weeklyHours: typeof req.body.weeklyHours === 'number' ? req.body.weeklyHours : 40,
+      dayHours:    req.body.dayHours    || { mo: 8, di: 8, mi: 8, do: 8, fr: 8 },
+      active:      req.body.active !== false,
+      createdAt:   now, updatedAt: now,
+    }
+    db.staffMembers.create(data, req.user)
+    res.status(201).json(data)
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.patch('/api/staff/:id', requireAuth, writeLimiter, (req, res) => {
+  try {
+    const { data, version } = req.body
+    const updated = { ...data, updatedAt: new Date().toISOString() }
+    const result  = db.staffMembers.update(req.params.id, updated, version, req.user)
+    if (result.notFound) return res.status(404).json({ error: 'Nicht gefunden.' })
+    if (result.conflict) return res.status(409).json({ conflict: true, ...result })
+    res.json({ ok: true, version: result.version })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.delete('/api/staff/:id', requireAuth, writeLimiter, (req, res) => {
+  try { db.staffMembers.delete(req.params.id); res.json({ ok: true }) }
+  catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// ── Personalplan veröffentlichen (login-freier Team-Link) ─────────────────────
+app.post('/api/staff-plan-token', requireAuth, writeLimiter, (req, res) => {
+  try {
+    const revoke = req.body?.action === 'revoke'
+    const token  = revoke ? '' : auth.generateToken()
+    db.appState.set('staff_plan_token', token)
+    logEvent(revoke ? 'STAFFPLAN_UNPUBLISHED' : 'STAFFPLAN_PUBLISHED', req, '')
+    res.json({ ok: true, url: token ? `${getAppUrl(req)}/plan/${token}` : null })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.get('/api/staff-plan-token', requireAuth, (req, res) => {
+  try {
+    const token = db.appState.get('staff_plan_token') || ''
+    res.json({ url: token ? `${getAppUrl(req)}/plan/${token}` : null })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// Öffentliche Team-Ansicht: aktuelle + nächste Woche
+app.get('/plan/:token', (req, res) => {
+  try {
+    const token = db.appState.get('staff_plan_token') || ''
+    if (!token || req.params.token !== token) {
+      return res.status(404).send(renderSimplePage('Nicht verfügbar',
+        '<p style="color:#6b7280;">Dieser Link ist ungültig oder wurde deaktiviert.</p>'))
+    }
+    // ISO-Woche + Montag berechnen
+    const isoWeekOf = (date) => {
+      const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()))
+      const dayNum = d.getUTCDay() || 7
+      d.setUTCDate(d.getUTCDate() + 4 - dayNum)
+      const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1))
+      return `${d.getUTCFullYear()}-W${String(Math.ceil((((d - yearStart) / 86400000) + 1) / 7)).padStart(2, '0')}`
+    }
+    const mondayOf = (date) => { const d = new Date(date); const day = d.getDay() || 7; d.setDate(d.getDate() - day + 1); return d }
+    const addDays  = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x }
+    const fmtShort = (d) => d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' })
+
+    const staff    = db.staffMembers.list().filter(s => s.active !== false)
+    const projects = db.projects.list()
+    const projName = (pid) => {
+      if (!pid) return ''
+      if (['urlaub', 'krank', 'buero'].includes(pid)) return { urlaub: 'Urlaub', krank: 'Krank', buero: 'Büro' }[pid]
+      return projects.find(p => p.id === pid)?.name || pid
+    }
+    const DAYS = [['mo', 'Mo'], ['di', 'Di'], ['mi', 'Mi'], ['do', 'Do'], ['fr', 'Fr']]
+
+    const weekTable = (monday) => {
+      const week = isoWeekOf(monday)
+      const plan = db.staffPlan.get(week) || { rows: [] }
+      const rowFor = (staffId) => (plan.rows || []).find(r => r.staffId === staffId)
+      const bodyRows = staff.map(s => {
+        const row = rowFor(s.id)
+        const cells = DAYS.map(([key]) => {
+          const cell = row?.days?.[key]
+          if (!cell || !cell.p) return '<td style="padding:6px 8px;border:0.5px solid #e5e7eb;color:#d1d5db;">–</td>'
+          const special = ['urlaub', 'krank'].includes(cell.p)
+          return `<td style="padding:6px 8px;border:0.5px solid #e5e7eb;${special ? 'background:#fef9c3;' : ''}">
+            ${esc(projName(cell.p))}${cell.h ? ` <span style="color:#9ca3af;font-size:11px;">${cell.h}h</span>` : ''}</td>`
+        }).join('')
+        return `<tr><td style="padding:6px 8px;border:0.5px solid #e5e7eb;font-weight:bold;white-space:nowrap;">${esc(s.name)}</td>${cells}</tr>`
+      }).join('')
+      const heads = DAYS.map(([, label], i) =>
+        `<th style="padding:6px 8px;border:0.5px solid #d1d5db;background:#000040;color:#8FBEFF;font-size:11px;text-transform:uppercase;">${label} ${fmtShort(addDays(monday, i))}</th>`).join('')
+      return `
+        <h2 style="font-size:15px;margin:24px 0 8px 0;">KW ${week.split('-W')[1]} (${fmtShort(monday)} – ${fmtShort(addDays(monday, 4))})</h2>
+        <table style="width:100%;border-collapse:collapse;font-size:13px;">
+          <thead><tr><th style="padding:6px 8px;border:0.5px solid #d1d5db;background:#000040;color:#8FBEFF;font-size:11px;text-transform:uppercase;text-align:left;">Mitarbeiter</th>${heads}</tr></thead>
+          <tbody>${bodyRows || '<tr><td colspan="6" style="padding:12px;color:#9ca3af;">Keine Planung hinterlegt.</td></tr>'}</tbody>
+        </table>`
+    }
+
+    const thisMonday = mondayOf(new Date())
+    const html = `<!DOCTYPE html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+      <title>Personalplanung – GHBA</title></head>
+      <body style="font-family:Arial,sans-serif;margin:0;background:#F0F0F0;color:#1F2937;">
+      <div style="max-width:860px;margin:0 auto;padding:24px 16px;">
+        <div style="background:#000040;padding:20px 24px;">
+          <p style="margin:0;color:#8FBEFF;font-size:11px;letter-spacing:2px;text-transform:uppercase;">GHBA</p>
+          <p style="margin:4px 0 0 0;color:#FBFFE6;font-size:19px;font-weight:bold;">Personalplanung</p>
+          <p style="margin:4px 0 0 0;color:#8FBEFF;font-size:12px;">Stand ${new Date().toLocaleString('de-DE')}</p>
+        </div>
+        <div style="background:#fff;padding:8px 24px 24px 24px;border:1px solid #e5e7eb;border-top:none;">
+          ${weekTable(thisMonday)}
+          ${weekTable(addDays(thisMonday, 7))}
+          <p style="color:#9ca3af;font-size:11px;margin-top:20px;">Diese Seite ist immer aktuell – einfach neu laden. Änderungen erfolgen im Protokolltool.</p>
+        </div>
+      </div></body></html>`
+    res.send(html)
+  } catch (e) { res.status(500).send(renderSimplePage('Fehler', `<p>${esc(e.message)}</p>`)) }
+})
+
 // ── Personalplanung: ein Dokument je Kalenderwoche (global) ──────────────────
 app.get('/api/staff-plan/:week', requireAuth, (req, res) => {
   try {

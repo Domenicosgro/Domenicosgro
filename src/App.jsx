@@ -777,6 +777,8 @@ export default function App() {
       <>
         <PersonalplanungView
           projects={projectsWithContacts}
+          allContacts={allContacts}
+          onUpdateProject={handleUpdateProject}
           serverUser={serverUser}
           onBack={() => setView('home')}
         />

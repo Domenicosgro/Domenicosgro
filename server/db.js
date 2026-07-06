@@ -163,6 +163,15 @@ db.exec(`
     updated_by TEXT
   );
 
+  CREATE TABLE IF NOT EXISTS staff_members (
+    id         TEXT    PRIMARY KEY,
+    project_id TEXT,
+    data       TEXT    NOT NULL,
+    version    INTEGER NOT NULL DEFAULT 1,
+    updated_at TEXT    NOT NULL DEFAULT (datetime('now')),
+    updated_by TEXT
+  );
+
   CREATE TABLE IF NOT EXISTS staff_plan (
     id         TEXT    PRIMARY KEY,
     project_id TEXT,
@@ -483,6 +492,7 @@ module.exports = {
   diaryEntries: makeStore('diary_entries'),
   defects:      makeStore('defects'),
   staffPlan:    makeStore('staff_plan'),
+  staffMembers: makeStore('staff_members'),
   users,
   sessions,
   resetRequests,
