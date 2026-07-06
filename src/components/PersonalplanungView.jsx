@@ -606,15 +606,22 @@ export default function PersonalplanungView({ projects, onUpdateProject, serverU
   const [newService, setNewService] = useState('')
   const saveTimers = useRef({})
 
-  // Einstellungen (Reihenfolge + Zusatz-Leistungen) laden/speichern
+  // Einstellungen laden/speichern (Reihenfolge, Leistungen, Teams, Ausblendungen, Auswertungs-Vorlagen)
+  const withDefaults = (s) => ({
+    projectOrder:   s.projectOrder   || [],
+    services:       s.services       || [],
+    hiddenProjects: s.hiddenProjects || [],
+    reportPresets:  s.reportPresets  || [],
+    teams:          s.teams          || [],
+  })
   useEffect(() => {
     if (isServer) {
       fetch('/api/staff-plan-settings', { headers: authHeaders() })
         .then(r => r.ok ? r.json() : {})
-        .then(s => setPlanSettings({ projectOrder: s.projectOrder || [], services: s.services || [] }))
+        .then(s => setPlanSettings(withDefaults(s)))
         .catch(() => {})
     } else {
-      try { setPlanSettings(JSON.parse(localStorage.getItem('kp_staffplan_settings') || '{"projectOrder":[],"services":[]}')) } catch {}
+      try { setPlanSettings(withDefaults(JSON.parse(localStorage.getItem('kp_staffplan_settings') || '{}'))) } catch {}
     }
   }, [])
 
