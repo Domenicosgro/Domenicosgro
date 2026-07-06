@@ -50,9 +50,12 @@ export default function ProjektTeamEditor({ project, staff: staffProp, onUpdateP
   const [memberPick, setMemberPick] = useState('')
   const [rolePick,   setRolePick]   = useState(PROJECT_ROLES[0])
   const [anteilPick, setAnteilPick] = useState(1)
-  const [templatePick, setTemplatePick] = useState('')
+  const [templatePick,   setTemplatePick]   = useState('')
+  const [templateAnteil, setTemplateAnteil] = useState(1)
 
-  // Ganze Team-Vorlage zuweisen (Mitglieder + Rollen; ohne Duplikate mergen)
+  // Ganze Team-Vorlage zuweisen (Mitglieder + Rollen; ohne Duplikate mergen).
+  // Der Team-Anteil (0,25er-Schritte) wird mit dem Mitglieder-Anteil aus der
+  // Vorlage verrechnet: effektiver Anteil = Mitglied × Team, ¼-gerundet.
   const assignTemplate = () => {
     const tpl = teamTemplates.find(t => t.id === templatePick)
     if (!tpl || !project) return
@@ -60,13 +63,14 @@ export default function ProjektTeamEditor({ project, staff: staffProp, onUpdateP
     const added = (tpl.members || [])
       .map(m => {
         const s = staff.find(x => x.id === m.staffId)
-        return s && !existing.has(s.name)
-          ? { id: uid(), name: s.name, email: s.email || '', role: m.role || PROJECT_ROLES[0], anteil: m.anteil ?? 1 }
-          : null
+        if (!s || existing.has(s.name)) return null
+        const eff = Math.max(0.25, Math.round((m.anteil ?? 1) * templateAnteil * 4) / 4)
+        return { id: uid(), name: s.name, email: s.email || '', role: m.role || PROJECT_ROLES[0], anteil: eff }
       })
       .filter(Boolean)
     if (added.length > 0) onUpdateProject(project.id, { team: [...team, ...added] })
     setTemplatePick('')
+    setTemplateAnteil(1)
   }
 
   // Mitarbeiter selbst laden, wenn nicht übergeben (Projektdatenbank-Kontext)
@@ -115,6 +119,14 @@ export default function ProjektTeamEditor({ project, staff: staffProp, onUpdateP
               {teamTemplates.map(t => (
                 <option key={t.id} value={t.id}>{t.name} ({(t.members || []).length} Mitglieder)</option>
               ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">Team-Anteil</label>
+            <select className="select" value={templateAnteil}
+              title="Anteil, mit dem das Team diesem Projekt zugeordnet wird (wird mit den Mitglieder-Anteilen verrechnet)"
+              onChange={e => setTemplateAnteil(parseFloat(e.target.value))}>
+              {TEAM_ANTEILE.map(a => <option key={a.value} value={a.value}>{a.label}</option>)}
             </select>
           </div>
           <button className="btn-primary" disabled={!templatePick} onClick={assignTemplate}>
