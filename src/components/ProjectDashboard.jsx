@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { ArrowLeft, FileText, Users, HardHat, Pencil, NotebookPen, ChevronRight, BarChart2, UserCog, BookOpen, Box, AlertOctagon, HardDrive, Database } from 'lucide-react'
 import ProjectAdminPanel from './ProjectAdminPanel'
+import { lphRange } from './ProjektdatenView'
 
 const isServer = typeof window !== 'undefined' && !!window.__SERVER_MODE__
 
@@ -186,8 +187,8 @@ export default function ProjectDashboard({
               : 'Codierung, Leistungsphasen, Vertragsverhältnis, Generalplanung'}
             accent="border-brand-500"
             onClick={onOpenProjektdaten}
-            stat1={project.projectData?.lph
-              ? { value: Object.values(project.projectData.lph).filter(l => l.beauftragt).length, label: 'LPH beauftragt' }
+            stat1={lphRange(project.projectData?.lph)
+              ? { value: lphRange(project.projectData?.lph), label: 'LPH beauftragt' }
               : undefined}
             stat2={project.projectData?.isGeneralplanung
               ? { value: (project.projectData.planungspartner || []).length, label: 'Planungspartner' }

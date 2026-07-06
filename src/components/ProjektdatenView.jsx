@@ -14,9 +14,27 @@ export const LPH = [
   { nr: 9, label: 'Objektbetreuung' },
 ]
 export const VERTRAG_TYPES = [
-  'Direktauftrag Auftraggeber', 'Generalplanervertrag', 'Subplanervertrag',
+  'Objektplanung', 'Generalplanervertrag', 'Subplanervertrag',
   'ARGE', 'Rahmenvertrag', 'Sonstiges',
 ]
+
+// Beauftragte Leistungsphasen als kompakter Bereich, z. B. "1–8" oder "1–3, 5"
+export function lphRange(lph) {
+  const nums = Object.entries(lph || {})
+    .filter(([, v]) => v?.beauftragt)
+    .map(([k]) => parseInt(k, 10))
+    .sort((a, b) => a - b)
+  if (nums.length === 0) return ''
+  const parts = []
+  let start = nums[0], prev = nums[0]
+  for (const n of nums.slice(1)) {
+    if (n === prev + 1) { prev = n; continue }
+    parts.push(start === prev ? `${start}` : `${start}–${prev}`)
+    start = prev = n
+  }
+  parts.push(start === prev ? `${start}` : `${start}–${prev}`)
+  return parts.join(', ')
+}
 export const DISZIPLINEN = [
   'Tragwerksplanung', 'TGA – HLS', 'TGA – Elektro', 'Brandschutz',
   'Bauphysik / Akustik', 'Freianlagen', 'Vermessung', 'Baugrund', 'Sonstige',
@@ -163,6 +181,9 @@ export default function ProjektdatenView({ project, allContacts = [], onUpdatePr
         <div className="grid grid-cols-1 sm:grid-cols-[1fr_1fr_160px] gap-3">
           <select className="select" value={data.vertrag} onChange={e => set({ vertrag: e.target.value })}>
             {VERTRAG_TYPES.map(v => <option key={v} value={v}>{v}</option>)}
+            {data.vertrag && !VERTRAG_TYPES.includes(data.vertrag) && (
+              <option value={data.vertrag}>{data.vertrag}</option>
+            )}
           </select>
           <input className="input" placeholder="Ergänzung (z. B. Vertragspartner, AZ, Datum)"
             value={data.vertragNotiz} onChange={e => set({ vertragNotiz: e.target.value })} />

@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { ArrowLeft, Database, ChevronRight, Lock } from 'lucide-react'
-import ProjektdatenView, { LPH } from './ProjektdatenView'
+import ProjektdatenView, { lphRange } from './ProjektdatenView'
 
 /**
  * Zentrale Projektdatenbank: Übersicht aller Projekte mit Codierung,
@@ -29,7 +29,7 @@ export default function ProjektdatenbankView({ projects, allContacts, canEdit, o
 
   const Row = ({ project }) => {
     const d = project.projectData || {}
-    const lphCount = d.lph ? Object.values(d.lph).filter(l => l.beauftragt).length : 0
+    const lph = lphRange(d.lph)
     const editable = canEdit(project)
     return (
       <button
@@ -48,7 +48,7 @@ export default function ProjektdatenbankView({ projects, allContacts, canEdit, o
             : <span className="text-gray-300">–</span>}
         </span>
         <span className="text-xs text-gray-500 truncate">{d.vertrag || '–'}</span>
-        <span className="text-xs text-gray-500">{lphCount > 0 ? `${lphCount} LPH` : '–'}</span>
+        <span className="text-xs text-gray-500 whitespace-nowrap">{lph ? `LPH ${lph}` : '–'}</span>
         <span className="text-xs text-gray-500">
           {d.isGeneralplanung ? `GP · ${(d.planungspartner || []).length} Partner` : '–'}
         </span>
