@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { Plus, Trash2, Search, ChevronRight, FileText, Users, FolderOpen,
          Calendar, Lock, LockOpen, X, Eye, EyeOff, Star,
-         User, Settings, LogOut, Monitor, Download, RotateCcw, Upload, AlertTriangle,
+         User, Settings, LogOut, Download, RotateCcw, Upload, AlertTriangle,
          ShieldCheck, Loader, CalendarClock, Copy, Link2, UserCog, GraduationCap,
          Archive, ArchiveRestore, FileDown, Smartphone } from 'lucide-react'
 import ProjectAdminPanel from './ProjectAdminPanel'
@@ -485,11 +485,6 @@ export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, 
               onClick={() => installPrompt.prompt()}>
               <Download size={14} /> App installieren
             </button>
-          )}
-          {window.__SERVER_MODE__ && !installPrompt && !installed && (
-            <a className="btn btn-secondary" href="/shortcut" download title="Desktop-Verknüpfung">
-              <Monitor size={14} /> Verknüpfung
-            </a>
           )}
           {installed && <span className="text-xs text-green-600 font-medium px-2">✓ App installiert</span>}
           <button className="btn-ghost p-2 text-gray-400" title="Seite neu laden"
