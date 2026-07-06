@@ -144,6 +144,16 @@ db.exec(`
     updated_at TEXT    NOT NULL DEFAULT (datetime('now')),
     updated_by TEXT
   );
+
+  CREATE TABLE IF NOT EXISTS notifications (
+    id         TEXT PRIMARY KEY,
+    username   TEXT NOT NULL,
+    type       TEXT NOT NULL DEFAULT 'info',
+    text       TEXT NOT NULL,
+    project_id TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    read_at    TEXT
+  );
 `)
 
 // ── Migration from legacy key-value store ─────────────────────────────────────
@@ -406,6 +416,25 @@ const releaseTokens = {
   revoke(token)                           { return _rtRevoke.run(token).changes > 0 },
 }
 
+// ── Benachrichtigungen (In-App-Glocke je Benutzer) ────────────────────────────
+const _nInsert  = db.prepare('INSERT INTO notifications (id, username, type, text, project_id) VALUES (@id, @username, @type, @text, @projectId)')
+const _nList    = db.prepare('SELECT * FROM notifications WHERE username = ? ORDER BY created_at DESC LIMIT ?')
+const _nUnread  = db.prepare('SELECT COUNT(*) AS c FROM notifications WHERE username = ? AND read_at IS NULL')
+const _nReadAll = db.prepare("UPDATE notifications SET read_at = datetime('now') WHERE username = ? AND read_at IS NULL")
+const _nReadOne = db.prepare("UPDATE notifications SET read_at = datetime('now') WHERE id = ? AND username = ?")
+const _nPrune   = db.prepare("DELETE FROM notifications WHERE created_at < datetime('now', '-90 days')")
+
+const notifications = {
+  create({ id, username, type = 'info', text, projectId = null }) {
+    _nInsert.run({ id, username, type, text, projectId })
+  },
+  listFor(username, limit = 30) { return _nList.all(username, limit) },
+  unreadCount(username)         { return _nUnread.get(username)?.c ?? 0 },
+  markAllRead(username)         { _nReadAll.run(username) },
+  markRead(id, username)        { _nReadOne.run(id, username) },
+  prune()                       { return _nPrune.run().changes },
+}
+
 // ── App-State (kleiner Key-Value-Speicher, z.B. Reporting-Zeitstempel) ─────────
 const _asGet = db.prepare('SELECT value FROM app_state WHERE key = ?')
 const _asSet = db.prepare("INSERT INTO app_state (key, value, updated_at) VALUES (@key, @value, datetime('now')) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')")
@@ -429,5 +458,6 @@ module.exports = {
   resetRequests,
   deletionRequests,
   releaseTokens,
+  notifications,
   appState,
 }

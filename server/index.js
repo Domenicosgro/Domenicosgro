@@ -1085,6 +1085,41 @@ app.get('/api/projects/:id/bim', requireAuth, (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
+// ── In-App-Benachrichtigungen ────────────────────────────────────────────────
+function notifyUsers(usernames, type, text, projectId = null) {
+  const seen = new Set()
+  for (const u of usernames) {
+    if (!u || u === '__apikey__' || u === '__anonymous__' || seen.has(u)) continue
+    seen.add(u)
+    if (!db.users.get(u)) continue
+    try { db.notifications.create({ id: serverUid(), username: u, type, text, projectId }) }
+    catch (e) { console.warn('[notify]', e.message) }
+  }
+}
+function adminUsernames() {
+  return db.users.list().filter(u => u.role === 'admin').map(u => u.username)
+}
+function projectManagerUsernames(project) {
+  return [...adminUsernames(), project?.projectAdminUser, ...(project?.projectAdmins ?? [])].filter(Boolean)
+}
+
+app.get('/api/notifications', requireAuth, (req, res) => {
+  try {
+    if (req.user === '__apikey__' || req.user === '__anonymous__') return res.json({ unread: 0, items: [] })
+    res.json({
+      unread: db.notifications.unreadCount(req.user),
+      items:  db.notifications.listFor(req.user),
+    })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.post('/api/notifications/read', requireAuth, (req, res) => {
+  try {
+    if (req.user !== '__apikey__' && req.user !== '__anonymous__') db.notifications.markAllRead(req.user)
+    res.json({ ok: true })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
 // Projekt laden + Zugriff des angemeldeten Nutzers prüfen. Sendet 404/403
 // selbst und gibt dann null zurück – Aufrufer bricht einfach ab.
 // (canAccessProject/isProjectAdmin sind weiter unten definiert – hoisted.)
@@ -1715,6 +1750,7 @@ app.post('/api/projects/:id/request-delete', requireAuth, async (req, res) => {
       token,
     })
     logEvent('DELETE_REQUESTED', req, `project=${id} name="${projName}" by=${req.user}`)
+    notifyUsers(adminUsernames(), 'request', `Löschanfrage: „${projName}" von ${requesterName}`, id)
 
     // Send email to all admins
     if (mailer.mailerStatus().configured) {
@@ -1925,6 +1961,7 @@ app.post('/api/projects/:id/request-archive', requireAuth, async (req, res) => {
       token, requestType: 'archive',
     })
     logEvent('ARCHIVE_REQUESTED', req, `project=${id} name="${projName}" by=${req.user}`)
+    notifyUsers(adminUsernames(), 'request', `Archivierungsanfrage: „${projName}" von ${requesterName}`, id)
 
     // Admins per E-Mail informieren (Genehmigen/Ablehnen per Link)
     if (mailer.mailerStatus().configured) {
@@ -2054,6 +2091,9 @@ app.post('/api/admin/deletion-requests/:id/approve', requireAuth, requireAdmin, 
       broadcast('project', 'delete', dr.target_id, new Date().toISOString())
       logEvent('DELETE_APPROVED', req, `project=${dr.target_id} by=${req.user}`)
     }
+    notifyUsers([dr.requested_by], 'decision',
+      `${dr.request_type === 'archive' ? 'Archivierungsanfrage' : 'Löschanfrage'} für „${dr.target_name}" wurde genehmigt.`,
+      dr.target_id)
     res.json({ ok: true })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
@@ -2066,6 +2106,9 @@ app.post('/api/admin/deletion-requests/:id/reject', requireAuth, requireAdmin, (
     if (dr.status !== 'pending') return res.status(400).json({ error: 'Anfrage bereits bearbeitet.' })
     db.deletionRequests.resolve(dr.id, 'rejected', req.user)
     logEvent(dr.request_type === 'archive' ? 'ARCHIVE_REJECTED' : 'DELETE_REJECTED', req, `project=${dr.target_id} by=${req.user}`)
+    notifyUsers([dr.requested_by], 'decision',
+      `${dr.request_type === 'archive' ? 'Archivierungsanfrage' : 'Löschanfrage'} für „${dr.target_name}" wurde abgelehnt.`,
+      dr.target_id)
     res.json({ ok: true })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
@@ -2375,6 +2418,13 @@ app.post('/api/freimeldung/:token', async (req, res) => {
     if (accepted > 0 && mailer.mailerStatus().configured) {
       notifyManagersOfRelease(row, accepted, getAppUrl(req)).catch(e =>
         console.warn('[freimeldung] Benachrichtigung fehlgeschlagen:', e.message))
+    }
+    // In-App-Glocke für Projekt-/Systemadmins
+    if (accepted > 0) {
+      const proj = db.projects.get(row.project_id)
+      notifyUsers(projectManagerUsernames(proj), 'release',
+        `Freimeldung eingegangen: ${row.responsible} – ${accepted} Aufgabe${accepted !== 1 ? 'n' : ''} (${proj?.name || 'Projekt'})`,
+        row.project_id)
     }
 
     logEvent('RELEASE_REQUESTED', req, `token=${row.token} responsible=${row.responsible} accepted=${accepted}`)
@@ -3129,6 +3179,113 @@ function buildProjectStatusText(projName, data, tpl, sections) {
   lines.push(tpl.footer)
   return lines.join('\n')
 }
+
+// ── Bauherren-Portal: öffentliche Projektstatus-Seite per Magic-Link ──────────
+// Sammelt den Status EINES Projekts (externe Sicht, ohne interne Abschnitte).
+function collectProjectStatus(projectId) {
+  const todayStr = new Date().toISOString().slice(0, 10)
+  const sinceMs  = Date.now() - 7 * 24 * 60 * 60 * 1000
+  const data = {
+    releases: [], openTasks: [], overdueTasks: [], pendingReleases: [], meetings: [],
+    planReviewsOpen: [], planReviewsDecided: [], bimIssuesOpen: [], bimIssuesNew: [],
+    newDocs: [], newNotes: [],
+  }
+  for (const proto of db.protocols.list()) {
+    if (proto.projectId !== projectId) continue
+    if (proto.nextMeeting && proto.nextMeeting >= todayStr) {
+      data.meetings.push({ date: proto.nextMeeting, time: proto.nextMeetingTime || '', type: proto.meetingType || 'Besprechung', location: proto.location || '' })
+    }
+    for (const a of (proto.actionItems ?? [])) {
+      for (const h of (a.releaseHistory ?? [])) {
+        if (h.event === 'genehmigt' && h.at && new Date(h.at).getTime() >= sinceMs) {
+          data.releases.push({ no: a.no || '', description: a.description || '', responsible: a.responsible || '', approvedAt: h.at })
+        }
+      }
+      if (a.status === 'offen' || a.status === 'in_arbeit') {
+        const t = {
+          no: a.no || '', description: a.description || '', responsible: a.responsible || '',
+          deadline: a.deadline || '', priority: a.priority || 'mittel', status: a.status,
+          overdue: !!(a.deadline && a.deadline < todayStr),
+        }
+        if (t.overdue) data.overdueTasks.push(t); else data.openTasks.push(t)
+      }
+    }
+  }
+  const seen = new Set()
+  data.meetings = data.meetings
+    .filter(m => { const k = `${m.date}|${m.time}|${m.type}`; if (seen.has(k)) return false; seen.add(k); return true })
+    .sort((a, b) => a.date.localeCompare(b.date))
+  for (const r of db.planReviews.list()) {
+    if (r.projectId !== projectId) continue
+    if (r.status === 'offen' || r.status === 'in_pruefung') {
+      data.planReviewsOpen.push({ no: r.no, title: r.title, plan: r.planTitle || '–', assignedTo: r.assignedTo || '', dueDate: r.dueDate || '', overdue: !!(r.dueDate && r.dueDate < todayStr), status: r.status })
+    } else if ((r.status === 'freigegeben' || r.status === 'abgelehnt') && r.updatedAt && new Date(r.updatedAt).getTime() >= sinceMs) {
+      data.planReviewsDecided.push({ no: r.no, title: r.title, plan: r.planTitle || '–', status: r.status, at: r.updatedAt })
+    }
+  }
+  for (const i of db.bimIssues.list()) {
+    if (i.projectId !== projectId) continue
+    if (i.status === 'offen' || i.status === 'in_arbeit') {
+      data.bimIssuesOpen.push({ title: i.title, assignedTo: i.assignedTo || '', dueDate: i.dueDate || '', priority: i.priority || 'mittel', status: i.status, isNew: !!(i.createdAt && new Date(i.createdAt).getTime() >= sinceMs) })
+    }
+  }
+  for (const p of db.bimPlans.list()) {
+    if (p.projectId !== projectId || !p.uploadedAt) continue
+    if (new Date(p.uploadedAt).getTime() >= sinceMs) data.newDocs.push({ title: p.title, kind: p.planType || 'Plan', by: p.uploadedBy || '' })
+  }
+  const overdueCount = data.overdueTasks.length + data.planReviewsOpen.filter(r => r.overdue).length
+  const openCount    = data.openTasks.length + data.planReviewsOpen.length + data.bimIssuesOpen.length
+  data.ampel = overdueCount > 0 ? 'rot' : openCount > 0 ? 'gelb' : 'gruen'
+  data.overdueCount = overdueCount
+  data.openCount    = openCount
+  return data
+}
+
+// POST – Portal-Link erzeugen/erneuern/widerrufen (Projekt-/Systemadmin)
+app.post('/api/projects/:id/portal-token', requireAuth, writeLimiter, (req, res) => {
+  try {
+    const project = getAccessibleProject(req, res)
+    if (!project) return
+    const username = req.user
+    const user = db.users.get(username)
+    const mayManage = username === '__apikey__' || user?.role === 'admin' || isProjectAdmin(project, username) || !db.users.hasAny()
+    if (!mayManage) return res.status(403).json({ error: 'Nur Projekt-/Systemadmins.' })
+
+    const { _version, _updatedAt, ...pData } = project
+    const revoke = req.body?.action === 'revoke'
+    const token  = revoke ? null : auth.generateToken()
+    db.projects.update(req.params.id, { ...pData, portalToken: token, updatedAt: new Date().toISOString() }, _version, username)
+    broadcast('project', 'update', req.params.id, new Date().toISOString())
+    logEvent(revoke ? 'PORTAL_REVOKED' : 'PORTAL_CREATED', req, `project=${req.params.id}`)
+    res.json({ ok: true, url: token ? `${getAppUrl(req)}/portal/${token}` : null })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// GET – öffentliche Statusseite (login-frei, externe Sicht)
+app.get('/portal/:token', (req, res) => {
+  try {
+    const project = db.projects.list().find(p => p.portalToken && p.portalToken === req.params.token)
+    if (!project || project.isArchived) {
+      return res.status(404).send(renderSimplePage('Nicht verfügbar',
+        '<p style="color:#6b7280;">Dieser Link ist ungültig oder wurde deaktiviert.</p>'))
+    }
+    const data = collectProjectStatus(project.id)
+    const tpl  = getEmailSettings().weekly_report
+    const sections = {
+      meetings: data.meetings.length > 0,
+      overdue:  data.overdueTasks.length > 0,
+      releases: data.releases.length > 0,
+      open:     data.openTasks.length > 0,
+      pending:  false,   // intern
+      reviews:  data.planReviewsOpen.length > 0 || data.planReviewsDecided.length > 0,
+      issues:   data.bimIssuesOpen.length > 0,
+      docs:     data.newDocs.length > 0,
+      notes:    false,   // intern
+    }
+    logEvent('PORTAL_VIEW', req, `project=${project.id}`)
+    res.send(buildProjectStatusHtml(project.name || 'Projekt', data, tpl, sections))
+  } catch (e) { res.status(500).send(renderSimplePage('Fehler', `<p>${esc(e.message)}</p>`)) }
+})
 
 // Scheduler: prüft minütlich, ob der konfigurierte Wochentag + Uhrzeit erreicht ist.
 // Feuert auch beim Start nach, wenn der heutige Versand noch aussteht.

@@ -5,6 +5,8 @@ import { Plus, Trash2, Search, ChevronRight, FileText, Users, FolderOpen,
          ShieldCheck, Loader, CalendarClock, Copy, Link2, UserCog, GraduationCap,
          Archive, ArchiveRestore, FileDown } from 'lucide-react'
 import ProjectAdminPanel from './ProjectAdminPanel'
+import GlobalSearch from './GlobalSearch'
+import NotificationBell from './NotificationBell'
 import { formatDate } from '../utils'
 import { useUserSettings } from '../hooks/useUserSettings'
 
@@ -185,6 +187,7 @@ export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, 
                                        onOpenProjectDashboard, onUnlock, onSetPassword, onRemovePassword,
                                        onOpenContactDatabase, onImportProject, onOpenPersonalplanung,
                                        onOpenLearning, onArchiveProject, onUnarchiveProject,
+                                       notes, onOpenProtocol, onOpenProjectNotes,
                                        serverUser, onLogout, onOpenAdmin,
                                        onRequestDeleteProject, onRefresh }) {
   const [search,          setSearch]          = useState('')
@@ -200,6 +203,7 @@ export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, 
   const [archivingId,     setArchivingId]     = useState(null)   // Projekt-ID während PDF-Erzeugung
   const [archiveError,    setArchiveError]    = useState('')
   const [archiveNotice,   setArchiveNotice]   = useState('')     // "Anfrage gesendet"-Hinweis
+  const [showGlobalSearch, setShowGlobalSearch] = useState(false)
   const importProjectRef = useRef(null)
 
   // Projekte, für die der aktuelle Benutzer Admin ist
@@ -374,6 +378,7 @@ export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, 
                 <User size={13} className="text-gray-400" />
                 <span className="font-medium">{serverUser.displayName || serverUser.username}</span>
               </div>
+              <NotificationBell />
               {onOpenAdmin && serverUser.role === 'admin' && (
                 <button className="btn btn-ghost p-1.5" onClick={onOpenAdmin} title="Server-Einstellungen">
                   <Settings size={14} className="text-gray-500" />
@@ -513,6 +518,13 @@ export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, 
             <input className="input pl-9" placeholder="Projekte durchsuchen…"
               value={search} onChange={e => setSearch(e.target.value)} />
           </div>
+          <button
+            className="btn-secondary shrink-0"
+            title="Volltextsuche über Protokolle, Aufgaben, Notizen und Kontakte"
+            onClick={() => setShowGlobalSearch(true)}
+          >
+            <Search size={14} /> Alles durchsuchen
+          </button>
           {hasFavorites && (
             <button
               className={`btn-secondary shrink-0 ${!showAll ? 'bg-night text-light border-night hover:bg-night/90' : ''}`}
@@ -554,13 +566,28 @@ export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, 
           const isSession = project.isUnlocked
           const isFav     = isFavorite(project.id)
 
+          // Cockpit-Ampel: überfällige/offene Aufgaben + nächster Termin
+          const todayISO   = new Date().toISOString().slice(0, 10)
+          const actions    = protos.flatMap(p => p.actionItems ?? [])
+          const openTasks  = actions.filter(a => a.status === 'offen' || a.status === 'in_arbeit')
+          const overdueCnt = openTasks.filter(a => a.deadline && a.deadline < todayISO).length
+          const nextMeet   = protos.map(p => p.nextMeeting).filter(d => d && d >= todayISO).sort()[0]
+          const ampel      = overdueCnt > 0 ? 'bg-red-500' : openTasks.length > 0 ? 'bg-amber-400' : 'bg-green-500'
+          const ampelTitle = overdueCnt > 0 ? `${overdueCnt} Aufgabe${overdueCnt !== 1 ? 'n' : ''} überfällig`
+                           : openTasks.length > 0 ? `${openTasks.length} Aufgabe${openTasks.length !== 1 ? 'n' : ''} offen`
+                           : 'Alles im Plan'
+
           return (
             <div key={project.id}
               className={`card flex flex-col aspect-video p-4 hover:border-sky hover:bg-gray-50 transition-colors cursor-pointer group border-l-4 ${isLocked ? 'border-amber-400' : 'border-night'}`}
               onClick={() => handleCardClick(project)}
             >
-              {/* Titel + Lock-Badge */}
+              {/* Titel + Ampel + Lock-Badge */}
               <div className="flex items-start gap-2">
+                <span
+                  className={`flex-shrink-0 mt-1.5 w-2.5 h-2.5 rounded-full ${ampel}`}
+                  title={ampelTitle}
+                />
                 <input
                   className="font-semibold text-base text-gray-900 bg-transparent border-none outline-none w-full focus:bg-white focus:border focus:border-sky focus:rounded px-1 -ml-1 truncate"
                   value={project.name}
@@ -598,10 +625,16 @@ export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, 
                     : `${(project.contacts ?? []).length} Kontakt${(project.contacts ?? []).length !== 1 ? 'e' : ''}`
                   }
                 </span>
-                {last && (
+                {(overdueCnt > 0 || openTasks.length > 0) && (
+                  <span className="flex items-center gap-1 flex-wrap">
+                    {overdueCnt > 0 && <span className="badge-red">{overdueCnt} überfällig</span>}
+                    {openTasks.length - overdueCnt > 0 && <span className="badge-yellow">{openTasks.length - overdueCnt} Aufgaben offen</span>}
+                  </span>
+                )}
+                {(nextMeet || last) && (
                   <span className="flex items-center gap-1">
                     <Calendar size={11} className="flex-shrink-0" />
-                    Zuletzt: {formatDate(last)}
+                    {nextMeet ? <>Nächster Termin: <strong className="text-gray-700">{formatDate(nextMeet)}</strong></> : <>Zuletzt: {formatDate(last)}</>}
                   </span>
                 )}
                 {project.isAccessControlled && (
@@ -815,6 +848,19 @@ export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, 
             </div>
           </div>
         </div>
+      )}
+
+      {/* Globale Volltextsuche */}
+      {showGlobalSearch && (
+        <GlobalSearch
+          projects={projects}
+          protocols={protocols}
+          notes={notes ?? []}
+          onOpenProject={(id) => onOpenProjectDashboard(id)}
+          onOpenProtocol={(id) => onOpenProtocol && onOpenProtocol(id)}
+          onOpenNotes={(projectId) => onOpenProjectNotes && onOpenProjectNotes(projectId)}
+          onClose={() => setShowGlobalSearch(false)}
+        />
       )}
 
       {/* Zugangsverwaltungs-Modal */}

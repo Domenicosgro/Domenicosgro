@@ -783,6 +783,9 @@ export default function App() {
         onImportProject={handleImportProject}
         onArchiveProject={handleArchiveProject}
         onUnarchiveProject={handleUnarchiveProject}
+        notes={notes}
+        onOpenProtocol={openProtocolFromDashboard}
+        onOpenProjectNotes={(projectId) => { setSelectedProjectId(projectId); setView('notes') }}
         serverUser={serverUser}
         onLogout={isServer ? handleLogout : null}
         onOpenAdmin={isServer ? () => setShowAdmin(true) : null}

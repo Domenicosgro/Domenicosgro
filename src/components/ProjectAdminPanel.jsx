@@ -23,8 +23,35 @@ export default function ProjectAdminPanel({ project, serverUser, onClose, onSave
   const [tokens,             setTokens]             = useState([])
   const [error,              setError]              = useState('')
   const [copied,             setCopied]             = useState('')
+  const [portalUrl,          setPortalUrl]          = useState(
+    project.portalToken ? `${window.location.origin}/portal/${project.portalToken}` : null)
+  const [portalBusy,         setPortalBusy]         = useState(false)
+  const [portalCopied,       setPortalCopied]       = useState(false)
+  const [portalError,        setPortalError]        = useState('')
 
   const creator = project.projectAdminUser
+
+  // Bauherren-Portal-Link erstellen/widerrufen
+  const managePortal = async (action) => {
+    if (action === 'revoke' && !confirm('Portal-Link wirklich widerrufen? Der Auftraggeber verliert den Zugriff auf die Statusseite.')) return
+    setPortalBusy(true)
+    setPortalError('')
+    try {
+      const res = await fetch(`/api/projects/${project.id}/portal-token`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...apiHeaders() },
+        body: JSON.stringify({ action }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error || `Fehler ${res.status}`)
+      setPortalUrl(data.url || null)
+      if (onSaved) onSaved()
+    } catch (e) {
+      setPortalError(e.message)
+    } finally {
+      setPortalBusy(false)
+    }
+  }
 
   const loadTokens = () =>
     fetch(`/api/projects/${project.id}/release-tokens`, { headers: apiHeaders() })
@@ -212,6 +239,35 @@ export default function ProjectAdminPanel({ project, serverUser, onClose, onSave
               </div>
             </div>
           )}
+
+          {/* Bauherren-Portal */}
+          <div>
+            <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2 flex items-center gap-1.5">
+              <Link2 size={13} className="text-brand-600" /> Bauherren-Portal
+            </p>
+            <p className="text-xs text-gray-500 mb-2">
+              Login-freie, stets aktuelle Statusseite für Auftraggeber (Termine, Aufgabenstand,
+              Planprüfung – ohne interne Inhalte). Link kann jederzeit widerrufen werden.
+            </p>
+            {portalUrl ? (
+              <div className="flex items-center gap-2 border border-gray-200 px-3 py-2">
+                <span className="text-xs text-gray-600 truncate flex-1">{portalUrl}</span>
+                <button className="btn-ghost p-1 text-gray-400 hover:text-brand-600" title="Link kopieren"
+                  onClick={() => { navigator.clipboard?.writeText(portalUrl); setPortalCopied(true); setTimeout(() => setPortalCopied(false), 2000) }}>
+                  {portalCopied ? <span className="text-xs text-green-600">kopiert</span> : <Copy size={14} />}
+                </button>
+                <button className="btn-ghost p-1 text-red-400 hover:text-red-600" title="Portal-Link widerrufen"
+                  onClick={() => managePortal('revoke')}>
+                  <Trash2 size={14} />
+                </button>
+              </div>
+            ) : (
+              <button className="btn-secondary text-xs" onClick={() => managePortal('create')} disabled={portalBusy}>
+                <Link2 size={13} /> {portalBusy ? 'Wird erstellt…' : 'Portal-Link erstellen'}
+              </button>
+            )}
+            {portalError && <p className="text-xs text-red-600 mt-1">{portalError}</p>}
+          </div>
 
           {/* Logos */}
           {onUpdateProject && (
