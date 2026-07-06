@@ -1676,18 +1676,20 @@ app.get('/plan/:token', (req, res) => {
     }
     const DAYS = [['mo', 'Mo'], ['di', 'Di'], ['mi', 'Mi'], ['do', 'Do'], ['fr', 'Fr']]
 
+    const fmtTage = (t) => ({ 0.25: '¼', 0.5: '½', 0.75: '¾', 1: '1' }[t] ?? t)
     const weekTable = (monday) => {
       const week = isoWeekOf(monday)
-      const plan = db.staffPlan.get(week) || { rows: [] }
-      const rowFor = (staffId) => (plan.rows || []).find(r => r.staffId === staffId)
+      const plan = db.staffPlan.get(week) || {}
+      const assignments = plan.assignments || []
       const bodyRows = staff.map(s => {
-        const row = rowFor(s.id)
+        const mine = assignments.filter(a => a.staffId === s.id)
         const cells = DAYS.map(([key]) => {
-          const cell = row?.days?.[key]
-          if (!cell || !cell.p) return '<td style="padding:6px 8px;border:0.5px solid #e5e7eb;color:#d1d5db;">–</td>'
-          const special = ['urlaub', 'krank'].includes(cell.p)
-          return `<td style="padding:6px 8px;border:0.5px solid #e5e7eb;${special ? 'background:#fef9c3;' : ''}">
-            ${esc(projName(cell.p))}${cell.h ? ` <span style="color:#9ca3af;font-size:11px;">${cell.h}h</span>` : ''}</td>`
+          const parts = mine
+            .filter(a => a.days?.[key] > 0)
+            .map(a => `${esc(projName(a.projectId))} <span style="color:#9ca3af;font-size:11px;">${fmtTage(a.days[key])}</span>`)
+          if (parts.length === 0) return '<td style="padding:6px 8px;border:0.5px solid #e5e7eb;color:#d1d5db;">–</td>'
+          const special = mine.some(a => ['urlaub', 'krank'].includes(a.projectId) && a.days?.[key] > 0)
+          return `<td style="padding:6px 8px;border:0.5px solid #e5e7eb;${special ? 'background:#fef9c3;' : ''}">${parts.join('<br>')}</td>`
         }).join('')
         return `<tr><td style="padding:6px 8px;border:0.5px solid #e5e7eb;font-weight:bold;white-space:nowrap;">${esc(s.name)}</td>${cells}</tr>`
       }).join('')
@@ -1714,7 +1716,9 @@ app.get('/plan/:token', (req, res) => {
         <div style="background:#fff;padding:8px 24px 24px 24px;border:1px solid #e5e7eb;border-top:none;">
           ${weekTable(thisMonday)}
           ${weekTable(addDays(thisMonday, 7))}
-          <p style="color:#9ca3af;font-size:11px;margin-top:20px;">Diese Seite ist immer aktuell – einfach neu laden. Änderungen erfolgen im Protokolltool.</p>
+          ${weekTable(addDays(thisMonday, 14))}
+          ${weekTable(addDays(thisMonday, 21))}
+          <p style="color:#9ca3af;font-size:11px;margin-top:20px;">Werte in Tagen (¼-Schritte). Diese Seite ist immer aktuell – einfach neu laden. Änderungen erfolgen im Protokolltool.</p>
         </div>
       </div></body></html>`
     res.send(html)
@@ -1734,7 +1738,13 @@ app.put('/api/staff-plan/:week', requireAuth, writeLimiter, (req, res) => {
     const week = req.params.week
     if (!/^\d{4}-W\d{2}$/.test(week)) return res.status(400).json({ error: 'Ungültige Woche.' })
     const existing = db.staffPlan.get(week)
-    const data = { id: week, rows: Array.isArray(req.body.rows) ? req.body.rows : [], updatedAt: new Date().toISOString() }
+    const data = {
+      id: week,
+      // assignments: [{ projectId, staffId, days: { mo: 0.25|0.5|0.75|1, … } }]
+      assignments: Array.isArray(req.body.assignments) ? req.body.assignments : [],
+      rows: Array.isArray(req.body.rows) ? req.body.rows : [],   // Altformat (Kompatibilität)
+      updatedAt: new Date().toISOString(),
+    }
     if (existing) {
       const result = db.staffPlan.update(week, data, existing._version, req.user)
       if (result.conflict) return res.status(409).json({ conflict: true, ...result })

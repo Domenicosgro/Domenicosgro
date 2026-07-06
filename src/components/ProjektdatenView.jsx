@@ -138,15 +138,23 @@ export default function ProjektdatenView({ project, allContacts = [], onUpdatePr
         )}
       </div>
 
-      {/* Vertragsverhältnis */}
+      {/* Vertragsverhältnis + Gesellschaft */}
       <div className="card p-5 space-y-3">
         <h2 className="section-title"><Handshake size={16} /> Vertragsverhältnis</h2>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-[1fr_1fr_160px] gap-3">
           <select className="select" value={data.vertrag} onChange={e => set({ vertrag: e.target.value })}>
             {VERTRAG_TYPES.map(v => <option key={v} value={v}>{v}</option>)}
           </select>
           <input className="input" placeholder="Ergänzung (z. B. Vertragspartner, AZ, Datum)"
             value={data.vertragNotiz} onChange={e => set({ vertragNotiz: e.target.value })} />
+          <div>
+            <select className="select w-full" value={data.gesellschaft || ''}
+              onChange={e => set({ gesellschaft: e.target.value })} title="Ausführende Gesellschaft">
+              <option value="">Gesellschaft…</option>
+              <option value="GmbH">GmbH</option>
+              <option value="PartGmbB">PartGmbB</option>
+            </select>
+          </div>
         </div>
       </div>
 

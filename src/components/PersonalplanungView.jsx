@@ -305,11 +305,27 @@ function TeamsTab({ projects, staff, onUpdateProject, setError }) {
   )
 }
 
+// Verfügbare Tage je Mitarbeiter/Wochentag aus dem Arbeitszeitmodell (¼-Schritte, 8h = 1 Tag)
+export const capDays = (member, dayKey) =>
+  Math.round(((member?.dayHours?.[dayKey] || 0) / 8) * 4) / 4
+const TAGE_OPTIONS = [
+  { value: '',    label: '–' },
+  { value: 0.25,  label: '¼' },
+  { value: 0.5,   label: '½' },
+  { value: 0.75,  label: '¾' },
+  { value: 1,     label: '1' },
+]
+const fmtTage = (t) => ({ 0.25: '¼', 0.5: '½', 0.75: '¾', 1: '1' }[t] ?? String(t))
+const ABSENCE = [
+  { id: 'urlaub', name: 'Urlaub' }, { id: 'krank', name: 'Krank' }, { id: 'buero', name: 'Büro / intern' },
+]
+
 // ── Hauptkomponente ─────────────────────────────────────────────────────────
 export default function PersonalplanungView({ projects, onUpdateProject, serverUser, onBack }) {
   const [tab,     setTab]     = useState('plan')
-  const [monday,  setMonday]  = useState(() => mondayOf(new Date()))
-  const [rows,    setRows]    = useState([])
+  const [startMonday, setStartMonday] = useState(() => mondayOf(new Date()))
+  const [plans,   setPlans]   = useState({})     // { [week]: assignments[] }
+  const [addedRows, setAddedRows] = useState({}) // { [projectId]: [staffId] } – frisch hinzugefügt, noch ohne Werte
   const [staff,   setStaff]   = useState([])
   const [orgUsers, setOrgUsers] = useState([])   // eigene Organisation (Benutzerverzeichnis)
   const [loading, setLoading] = useState(true)
@@ -317,9 +333,13 @@ export default function PersonalplanungView({ projects, onUpdateProject, serverU
   const [error,   setError]   = useState(null)
   const [pubUrl,  setPubUrl]  = useState(null)
   const [pubCopied, setPubCopied] = useState(false)
-  const saveTimer = useRef(null)
-  const week  = isoWeek(monday)
-  const lsKey = `kp_staffplan_${week}`
+  const saveTimers = useRef({})
+
+  // 4 Wochen ab Startmontag
+  const weeks = useMemo(() => Array.from({ length: 4 }, (_, i) => {
+    const mon = addDays(startMonday, i * 7)
+    return { monday: mon, week: isoWeek(mon) }
+  }), [startMonday])
 
   const activeStaff = staff.filter(s => s.active !== false)
   const activeProjects = (projects || []).filter(p => !p.isArchived)
@@ -328,22 +348,28 @@ export default function PersonalplanungView({ projects, onUpdateProject, serverU
     try { setStaff(await staffApi.list()) } catch (e) { setError(e.message) }
   }, [])
 
-  const loadPlan = useCallback(async () => {
+  const fetchWeek = async (week) => {
+    if (isServer) {
+      const res = await fetch(`/api/staff-plan/${week}`, { headers: authHeaders() })
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `Fehler ${res.status}`)
+      return (await res.json()).assignments || []
+    }
+    return JSON.parse(localStorage.getItem(`kp_staffplan2_${week}`) || '[]')
+  }
+
+  const loadPlans = useCallback(async () => {
     setLoading(true)
     try {
-      if (isServer) {
-        const res = await fetch(`/api/staff-plan/${week}`, { headers: authHeaders() })
-        if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `Fehler ${res.status}`)
-        setRows((await res.json()).rows || [])
-      } else {
-        setRows(JSON.parse(localStorage.getItem(lsKey) || '[]'))
-      }
+      const results = await Promise.all(weeks.map(w => fetchWeek(w.week)))
+      const next = {}
+      weeks.forEach((w, i) => { next[w.week] = results[i] })
+      setPlans(next)
     } catch (e) { setError(`Laden fehlgeschlagen: ${e.message}`) }
     finally { setLoading(false) }
-  }, [week])
+  }, [weeks])
 
   useEffect(() => { loadStaff() }, [loadStaff])
-  useEffect(() => { loadPlan() }, [loadPlan])
+  useEffect(() => { loadPlans() }, [loadPlans])
   useEffect(() => {
     if (!isServer) return
     fetch('/api/users', { headers: authHeaders() })
@@ -359,55 +385,87 @@ export default function PersonalplanungView({ projects, onUpdateProject, serverU
       .catch(() => {})
   }, [])
 
-  const persist = useCallback((nextRows) => {
-    setRows(nextRows)
-    if (saveTimer.current) clearTimeout(saveTimer.current)
-    saveTimer.current = setTimeout(async () => {
+  // Woche speichern (debounced je Woche)
+  const persistWeek = useCallback((week, assignments) => {
+    setPlans(prev => ({ ...prev, [week]: assignments }))
+    if (saveTimers.current[week]) clearTimeout(saveTimers.current[week])
+    saveTimers.current[week] = setTimeout(async () => {
       try {
         if (isServer) {
           setSaving(true)
           const res = await fetch(`/api/staff-plan/${week}`, {
-            method: 'PUT', headers: jsonHeaders(), body: JSON.stringify({ rows: nextRows }),
+            method: 'PUT', headers: jsonHeaders(), body: JSON.stringify({ assignments }),
           })
           if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `Fehler ${res.status}`)
         } else {
-          localStorage.setItem(lsKey, JSON.stringify(nextRows))
+          localStorage.setItem(`kp_staffplan2_${week}`, JSON.stringify(assignments))
         }
       } catch (e) { setError(`Speichern fehlgeschlagen: ${e.message}`) }
       finally { setSaving(false) }
     }, 600)
-  }, [week, lsKey])
+  }, [])
 
-  // Zelle setzen: Projekt (p) und Stunden (h)
-  const rowFor = (staffId) => rows.find(r => r.staffId === staffId)
-  const setCell = (member, dayKey, patch) => {
-    const defH = member.dayHours?.[dayKey] ?? 8
-    const next = (() => {
-      const existing = rowFor(member.id)
-      const cur = existing?.days?.[dayKey] || {}
-      const cell = { ...cur, ...patch }
-      if (patch.p !== undefined && patch.h === undefined) cell.h = cell.p ? (cur.h || defH) : undefined
-      const days = { ...(existing?.days || {}), [dayKey]: cell.p ? cell : undefined }
-      if (existing) return rows.map(r => r.staffId === member.id ? { ...r, days } : r)
-      return [...rows, { staffId: member.id, days }]
-    })()
-    persist(next)
+  // Zuweisung in Tagen (¼-Schritte) setzen
+  const getTage = (week, projectId, staffId, dayKey) =>
+    (plans[week] || []).find(a => a.projectId === projectId && a.staffId === staffId)?.days?.[dayKey] ?? ''
+
+  const setTage = (week, projectId, staffId, dayKey, value) => {
+    const list = plans[week] || []
+    const idx = list.findIndex(a => a.projectId === projectId && a.staffId === staffId)
+    let next
+    if (idx === -1) {
+      if (!value) return
+      next = [...list, { projectId, staffId, days: { [dayKey]: value } }]
+    } else {
+      const days = { ...list[idx].days }
+      if (value) days[dayKey] = value
+      else delete days[dayKey]
+      next = Object.keys(days).length > 0
+        ? list.map((a, i) => i === idx ? { ...a, days } : a)
+        : list.filter((_, i) => i !== idx)
+    }
+    persistWeek(week, next)
   }
 
+  // Mitarbeiter, die für ein Projekt eingeplant sind (über alle 4 Wochen) + frisch hinzugefügte
+  const staffIdsFor = (projectId) => {
+    const ids = new Set(addedRows[projectId] || [])
+    for (const w of weeks) for (const a of (plans[w.week] || [])) {
+      if (a.projectId === projectId) ids.add(a.staffId)
+    }
+    return activeStaff.filter(s => ids.has(s.id))
+  }
+
+  const addStaffRow = (projectId, staffId) => {
+    if (!staffId) return
+    setAddedRows(prev => ({ ...prev, [projectId]: [...(prev[projectId] || []), staffId] }))
+  }
+
+  const removeStaffRow = (projectId, staffId) => {
+    for (const w of weeks) {
+      const list = plans[w.week] || []
+      const filtered = list.filter(a => !(a.projectId === projectId && a.staffId === staffId))
+      if (filtered.length !== list.length) persistWeek(w.week, filtered)
+    }
+    setAddedRows(prev => ({ ...prev, [projectId]: (prev[projectId] || []).filter(id => id !== staffId) }))
+  }
+
+  // Auslastung: Summe je Mitarbeiter/Woche/Tag über alle Projekte + Abwesenheiten
+  const sumFor = (week, staffId, dayKey) =>
+    (plans[week] || []).reduce((s, a) => s + (a.staffId === staffId ? (a.days?.[dayKey] || 0) : 0), 0)
+
+  // Vorwoche in die erste sichtbare Woche kopieren
   const copyPrevWeek = async () => {
     try {
-      const prevWeek = isoWeek(addDays(monday, -7))
-      let prevRows = []
-      if (isServer) {
-        const res = await fetch(`/api/staff-plan/${prevWeek}`, { headers: authHeaders() })
-        if (res.ok) prevRows = (await res.json()).rows || []
-      } else {
-        prevRows = JSON.parse(localStorage.getItem(`kp_staffplan_${prevWeek}`) || '[]')
-      }
-      if (prevRows.length === 0) { setError('Vorwoche ist leer.'); return }
-      persist(prevRows)
+      const prevWeek = isoWeek(addDays(startMonday, -7))
+      const prev = await fetchWeek(prevWeek)
+      if (prev.length === 0) { setError('Vorwoche ist leer.'); return }
+      persistWeek(weeks[0].week, prev)
     } catch (e) { setError(e.message) }
   }
+
+  const setGesellschaft = (project, value) =>
+    onUpdateProject(project.id, { projectData: { ...(project.projectData || {}), gesellschaft: value } })
 
   const managePublish = async (action) => {
     if (action === 'revoke' && !confirm('Veröffentlichung wirklich beenden? Der Team-Link wird ungültig.')) return
@@ -421,20 +479,22 @@ export default function PersonalplanungView({ projects, onUpdateProject, serverU
     } catch (e) { setError(e.message) }
   }
 
-  const projName = (pid) => {
-    const sp = SPECIAL.find(s => s.value === pid)
-    if (sp) return sp.label
-    return activeProjects.find(p => p.id === pid)?.name || ''
-  }
+  const projName = (pid) =>
+    ABSENCE.find(a => a.id === pid)?.name
+    || (projects || []).find(p => p.id === pid)?.name
+    || ''
 
-  // Wochenplan als PDF herunterladen (z. B. zum Teilen in Teams)
+  // 4-Wochen-Plan als PDF herunterladen (z. B. zum Teilen in Teams)
   const [pdfBusy, setPdfBusy] = useState(false)
   const exportPdf = async () => {
     setPdfBusy(true)
     try {
-      const base64 = await buildStaffPlanPdf({ week, monday, staff: activeStaff, rows, projName })
-      const kw = week.split('-W')[1]
-      downloadPdfBase64(base64, `Personalplan_KW${kw}_${week.slice(0, 4)}.pdf`)
+      const base64 = await buildStaffPlanPdf({
+        weeks: weeks.map(w => ({ week: w.week, monday: w.monday, assignments: plans[w.week] || [] })),
+        staff: activeStaff, projName,
+      })
+      const kw = weeks[0].week.split('-W')[1]
+      downloadPdfBase64(base64, `Personalplan_ab_KW${kw}_${weeks[0].week.slice(0, 4)}.pdf`)
     } catch (e) {
       setError(`PDF konnte nicht erstellt werden: ${e.message}`)
     } finally {
@@ -511,17 +571,19 @@ export default function PersonalplanungView({ projects, onUpdateProject, serverU
 
       {tab === 'plan' && (
         <>
-          {/* Wochennavigation */}
+          {/* Zeitraum-Navigation (4 Wochen) */}
           <div className="flex items-center gap-2 flex-wrap no-print">
-            <button className="btn-secondary text-sm" onClick={() => setMonday(m => addDays(m, -7))}><ChevronLeft size={14} /> Vorwoche</button>
-            <button className="btn-secondary text-sm" onClick={() => setMonday(mondayOf(new Date()))}>Heute</button>
-            <button className="btn-secondary text-sm" onClick={() => setMonday(m => addDays(m, 7))}>Folgewoche <ChevronRight size={14} /></button>
+            <button className="btn-secondary text-sm" onClick={() => setStartMonday(m => addDays(m, -7))}><ChevronLeft size={14} /> Woche</button>
+            <button className="btn-secondary text-sm" onClick={() => setStartMonday(mondayOf(new Date()))}>Heute</button>
+            <button className="btn-secondary text-sm" onClick={() => setStartMonday(m => addDays(m, 7))}>Woche <ChevronRight size={14} /></button>
             <span className="text-sm font-semibold text-gray-700 ml-2">
-              KW {week.split('-W')[1]} ({fmtShort(monday)} – {fmtShort(addDays(monday, 4))})
+              KW {weeks[0].week.split('-W')[1]} – KW {weeks[3].week.split('-W')[1]}
+              <span className="font-normal text-gray-400 ml-1">({fmtShort(weeks[0].monday)} – {fmtShort(addDays(weeks[3].monday, 4))})</span>
             </span>
             <div className="ml-auto flex gap-2">
-              <button className="btn-secondary text-xs" onClick={copyPrevWeek}>Vorwoche übernehmen</button>
-              <button className="btn-secondary text-xs" title="Wochenplan als PDF (z. B. für Teams)"
+              <button className="btn-secondary text-xs" title={`Vorwoche in KW ${weeks[0].week.split('-W')[1]} übernehmen`}
+                onClick={copyPrevWeek}>Vorwoche übernehmen</button>
+              <button className="btn-secondary text-xs" title="4-Wochen-Plan als PDF (z. B. für Teams)"
                 onClick={exportPdf} disabled={pdfBusy || activeStaff.length === 0}>
                 {pdfBusy ? <Loader size={13} className="animate-spin" /> : <FileDown size={13} />} PDF
               </button>
@@ -535,72 +597,147 @@ export default function PersonalplanungView({ projects, onUpdateProject, serverU
             <div className="card p-12 text-center text-gray-400">
               <Users size={32} className="mx-auto text-gray-300 mb-3" />
               <p className="text-sm font-medium text-gray-500">Noch keine Mitarbeiter angelegt.</p>
-              <p className="text-xs mt-1">Lege sie im Bereich „Mitarbeiter" an – direkt aus der Kontaktdatenbank.</p>
+              <p className="text-xs mt-1">Lege sie im Bereich „Mitarbeiter" an (eigene Organisation).</p>
               <button className="btn-secondary mt-4 mx-auto" onClick={() => setTab('staff')}>Zu den Mitarbeitern</button>
             </div>
           ) : (
-            <div className="card overflow-x-auto">
-              <table className="w-full text-sm border-collapse min-w-[860px]">
-                <thead>
-                  <tr className="border-b border-gray-200 bg-gray-50/80">
-                    <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide w-44">Mitarbeiter</th>
-                    {DAYS.map((d, i) => (
-                      <th key={d.key} className="text-left px-2 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                        {d.label}<span className="block font-normal normal-case text-gray-400">{fmtShort(addDays(monday, i))}</span>
-                      </th>
-                    ))}
-                    <th className="text-right px-3 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide w-24">Ist / Soll</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {activeStaff.map((member, idx) => {
-                    const row  = rowFor(member.id)
-                    const ist  = DAYS.reduce((sum, d) => sum + (row?.days?.[d.key]?.p ? (row.days[d.key].h || 0) : 0), 0)
-                    const soll = DAYS.reduce((sum, d) => sum + (member.dayHours?.[d.key] || 0), 0)
-                    const balColor = ist > soll ? 'text-red-600' : ist === soll && soll > 0 ? 'text-green-600' : 'text-amber-600'
-                    return (
-                      <tr key={member.id} className={`border-b border-gray-100 align-top ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/40'}`}>
-                        <td className="px-4 py-2">
-                          <p className="font-medium text-gray-800 text-sm">{member.name}</p>
-                          {member.funktion && <p className="text-[11px] text-gray-400">{member.funktion}</p>}
-                        </td>
-                        {DAYS.map(d => {
-                          const cell = row?.days?.[d.key] || {}
-                          const isSpecial = ['urlaub', 'krank'].includes(cell.p)
+            <>
+              {/* Gesamtübersicht: ein Block je Projekt (+ Abwesenheiten) */}
+              {[...activeProjects, ...ABSENCE].map(project => {
+                const isAbsence = !!ABSENCE.find(a => a.id === project.id)
+                const rows = staffIdsFor(project.id)
+                const ges  = project.projectData?.gesellschaft || ''
+                return (
+                  <div key={project.id} className={`card overflow-hidden ${isAbsence ? 'border-l-4 border-l-yellow-300' : ''}`}>
+                    {/* Projektkopf */}
+                    <div className="flex items-center gap-3 px-4 py-2.5 bg-gray-50/80 border-b border-gray-200 flex-wrap">
+                      <span className="font-semibold text-sm text-night">{project.name || 'Unbenannt'}</span>
+                      {!isAbsence && (
+                        <select
+                          className={`select text-[11px] py-0.5 px-1.5 no-print ${ges ? (ges === 'GmbH' ? 'text-brand-700 border-brand-300' : 'text-violet-700 border-violet-300') : 'text-gray-400'}`}
+                          value={ges}
+                          onChange={e => setGesellschaft(project, e.target.value)}
+                          title="Gesellschaft"
+                        >
+                          <option value="">Gesellschaft…</option>
+                          <option value="GmbH">GmbH</option>
+                          <option value="PartGmbB">PartGmbB</option>
+                        </select>
+                      )}
+                      {ges && <span className="hidden print:inline text-xs text-gray-500">({ges})</span>}
+                      <div className="ml-auto no-print">
+                        <select className="select text-xs py-0.5" value=""
+                          onChange={e => { addStaffRow(project.id, e.target.value); e.target.value = '' }}>
+                          <option value="">+ Mitarbeiter einplanen…</option>
+                          {activeStaff.filter(s => !rows.find(r => r.id === s.id)).map(s => (
+                            <option key={s.id} value={s.id}>{s.name}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+
+                    {rows.length === 0 ? (
+                      <p className="px-4 py-3 text-xs text-gray-400">Noch niemand eingeplant.</p>
+                    ) : (
+                      <div className="overflow-x-auto">
+                        <table className="border-collapse text-xs min-w-[1080px] w-full">
+                          <thead>
+                            <tr className="bg-gray-50/60">
+                              <th className="text-left px-3 py-1.5 font-semibold text-gray-500 uppercase tracking-wide w-40 border-b border-gray-200">Mitarbeiter</th>
+                              {weeks.map(w => (
+                                <th key={w.week} colSpan={5} className="px-1 py-1.5 text-center font-semibold text-gray-500 border-b border-l border-gray-200">
+                                  KW {w.week.split('-W')[1]} <span className="font-normal text-gray-400">({fmtShort(w.monday)})</span>
+                                </th>
+                              ))}
+                            </tr>
+                            <tr className="bg-gray-50/40">
+                              <th className="border-b border-gray-200" />
+                              {weeks.map(w => DAYS.map((d, i) => (
+                                <th key={`${w.week}-${d.key}`}
+                                  className={`px-0.5 py-1 text-center font-medium text-gray-400 border-b border-gray-200 ${i === 0 ? 'border-l' : ''}`}>
+                                  {d.label.slice(0, 2)}
+                                </th>
+                              )))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {rows.map(member => (
+                              <tr key={member.id} className="border-b border-gray-50">
+                                <td className="px-3 py-1">
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="font-medium text-gray-800 truncate">{member.name}</span>
+                                    <button className="btn-ghost p-0.5 text-gray-300 hover:text-red-500 no-print" title="Aus diesem Projekt entfernen"
+                                      onClick={() => removeStaffRow(project.id, member.id)}><X size={11} /></button>
+                                  </div>
+                                </td>
+                                {weeks.map(w => DAYS.map((d, i) => {
+                                  const val = getTage(w.week, project.id, member.id, d.key)
+                                  const cap = capDays(member, d.key)
+                                  const total = sumFor(w.week, member.id, d.key)
+                                  const over  = total > cap
+                                  return (
+                                    <td key={`${w.week}-${d.key}`} className={`px-0.5 py-0.5 text-center ${i === 0 ? 'border-l border-gray-100' : ''} ${over && val ? 'bg-red-50' : ''}`}>
+                                      <select
+                                        className={`w-11 text-center text-xs py-0.5 border ${val ? (over ? 'border-red-300 text-red-700' : 'border-gray-200 text-gray-800') : 'border-transparent text-gray-300'} bg-transparent focus:border-brand-400 focus:outline-none`}
+                                        value={val}
+                                        title={cap === 0 ? 'Laut Arbeitszeitmodell frei' : `Verfügbar: ${fmtTage(cap)} Tag`}
+                                        onChange={e => setTage(w.week, project.id, member.id, d.key, e.target.value === '' ? '' : parseFloat(e.target.value))}
+                                      >
+                                        {TAGE_OPTIONS.map(o => <option key={o.label} value={o.value}>{o.label}</option>)}
+                                      </select>
+                                    </td>
+                                  )
+                                }))}
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+
+              {/* Auslastungsübersicht je Mitarbeiter */}
+              <div className="card overflow-x-auto">
+                <div className="px-4 py-2.5 bg-gray-50/80 border-b border-gray-200">
+                  <span className="font-semibold text-sm text-night">Auslastung (Summe aller Projekte, in Tagen)</span>
+                  <span className="text-xs text-gray-400 ml-2">rot = über Arbeitszeitmodell · grün = voll ausgelastet</span>
+                </div>
+                <table className="border-collapse text-xs min-w-[1080px] w-full">
+                  <thead>
+                    <tr className="bg-gray-50/60">
+                      <th className="text-left px-3 py-1.5 font-semibold text-gray-500 uppercase tracking-wide w-40 border-b border-gray-200">Mitarbeiter</th>
+                      {weeks.map(w => (
+                        <th key={w.week} colSpan={5} className="px-1 py-1.5 text-center font-semibold text-gray-500 border-b border-l border-gray-200">
+                          KW {w.week.split('-W')[1]}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {activeStaff.map(member => (
+                      <tr key={member.id} className="border-b border-gray-50">
+                        <td className="px-3 py-1 font-medium text-gray-800">{member.name}</td>
+                        {weeks.map(w => DAYS.map((d, i) => {
+                          const total = sumFor(w.week, member.id, d.key)
+                          const cap   = capDays(member, d.key)
+                          const cls = total > cap ? 'bg-red-100 text-red-700 font-semibold'
+                                    : total === cap && cap > 0 ? 'bg-green-50 text-green-700'
+                                    : total > 0 ? 'bg-amber-50 text-amber-700'
+                                    : 'text-gray-300'
                           return (
-                            <td key={d.key} className={`px-1.5 py-1.5 ${isSpecial ? 'bg-yellow-50' : ''}`}>
-                              <select
-                                className="select w-full py-1 text-xs mb-1"
-                                value={cell.p || ''}
-                                onChange={e => setCell(member, d.key, { p: e.target.value || undefined })}
-                              >
-                                <option value="">–</option>
-                                {activeProjects.map(p => <option key={p.id} value={p.id}>{p.name || 'Unbenannt'}</option>)}
-                                {SPECIAL.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
-                              </select>
-                              {cell.p && !isSpecial && (
-                                <input type="number" min="0" max="12" step="0.5"
-                                  className="input w-full py-0.5 text-xs text-center"
-                                  value={cell.h ?? ''}
-                                  onChange={e => setCell(member, d.key, { h: e.target.value === '' ? 0 : parseFloat(e.target.value) })}
-                                  title="Stunden"
-                                />
-                              )}
+                            <td key={`${w.week}-${d.key}`} className={`px-0.5 py-1 text-center ${i === 0 ? 'border-l border-gray-100' : ''} ${cls}`}>
+                              {total > 0 ? fmtTage(total) : '–'}
                             </td>
                           )
-                        })}
-                        <td className={`px-3 py-2 text-right text-sm font-semibold whitespace-nowrap ${balColor}`}>
-                          {ist} / {soll}
-                        </td>
+                        }))}
                       </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-              <div className="px-4 py-2 text-xs text-gray-400 border-t border-gray-100">
-                Stunden werden beim Zuweisen mit dem Arbeitszeitmodell vorbelegt · Ist/Soll: grün = ausgelastet, gelb = frei, rot = überbucht
+                    ))}
+                  </tbody>
+                </table>
               </div>
-            </div>
+            </>
           )}
         </>
       )}
