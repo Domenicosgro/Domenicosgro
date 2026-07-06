@@ -1390,14 +1390,26 @@ const EMAIL_TYPES = [
   },
   {
     id: 'weekly_report',
-    label: 'Wochenbericht',
-    desc: 'Automatisch · Freitags',
+    label: 'Projektstatus',
+    desc: 'Automatischer Statusbericht je Projekt',
     schedule: true,
     fields: [
       { key: 'subject',        label: 'Betreff',                       hint: '{project}', rows: 1 },
       { key: 'releases_intro', label: 'Abschnitt: Freigemeldete Aufgaben', hint: null,   rows: 2 },
       { key: 'open_intro',     label: 'Abschnitt: Offene Aufgaben',    hint: null,        rows: 2 },
       { key: 'footer',         label: 'Fußzeile',                      hint: null,        rows: 1 },
+    ],
+    toggles: [
+      { key: 'section_meetings',     label: 'Nächste Besprechungstermine' },
+      { key: 'section_overdue',      label: 'Überfällige Aufgaben (eigener Abschnitt)' },
+      { key: 'section_releases',     label: 'Freigemeldete Aufgaben (letzte 7 Tage)' },
+      { key: 'section_open',         label: 'Offene Aufgaben' },
+      { key: 'section_pending',      label: 'Ausstehende Freimeldungen', internal: true },
+      { key: 'section_plan_reviews', label: 'Planprüfung' },
+      { key: 'section_bim_issues',   label: 'BIM-Issues' },
+      { key: 'section_documents',    label: 'Neue Dokumente (Pläne / BIM-Modell)' },
+      { key: 'section_notes',        label: 'Neue Akten-/Telefonnotizen', internal: true },
+      { key: 'send_external',        label: 'Gekürzte Version an Projektkontakte senden', divider: true },
     ],
   },
 ]
@@ -1523,6 +1535,31 @@ function EmailTemplatesTab() {
               </div>
             ))}
 
+            {/* Abschnitts-Schalter (Projektstatus) */}
+            {typeDef.toggles && (
+              <div className="pt-2 border-t border-gray-100 space-y-1.5">
+                <p className="text-xs font-medium text-gray-500 mb-1">Enthaltene Abschnitte</p>
+                {typeDef.toggles.map(t => (
+                  <React.Fragment key={t.key}>
+                    {t.divider && <div className="border-t border-gray-100 my-2" />}
+                    <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={typeData[t.key] !== false}
+                        onChange={e => set(active, t.key, e.target.checked)}
+                      />
+                      {t.label}
+                      {t.internal && <span className="badge-gray text-[10px]">nur interne Version</span>}
+                    </label>
+                  </React.Fragment>
+                ))}
+                <p className="text-xs text-gray-400 pt-1">
+                  Interne Vollversion geht an System- und Projektadministratoren. Die gekürzte externe
+                  Version (ohne intern markierte Abschnitte) geht an die Projektkontakte.
+                </p>
+              </div>
+            )}
+
             {typeDef.schedule && (
               <div className="pt-2 border-t border-gray-100 space-y-3">
                 <p className="text-xs font-medium text-gray-500">Versandzeitplan</p>
@@ -1550,14 +1587,14 @@ function EmailTemplatesTab() {
                 </div>
                 <p className="text-xs text-gray-400">
                   Automatischer Versand {DAY_NAMES[typeData.schedule_day ?? 5]}s ab {String(typeData.schedule_hour ?? 10).padStart(2, '0')}:00 Uhr (Serverzeit).
-                  System-Admins erhalten immer eine Kopie; zusätzlich alle Projektkontakte mit E-Mail-Adresse.
+                  Vollversion an System- und Projektadmins; gekürzte Version an Projektkontakte (falls aktiviert).
                 </p>
                 <div className="pt-1 border-t border-gray-100 space-y-2">
                   <p className="text-xs font-medium text-gray-500">Manuell auslösen</p>
                   <div className="flex items-center gap-3 flex-wrap">
                     <button className="btn-secondary text-xs py-1.5 px-3" onClick={handleTestReport} disabled={testRunning}>
                       {testRunning ? <Loader size={12} className="animate-spin" /> : <Send size={12} />}
-                      {testRunning ? 'Wird gesendet…' : 'Wochenbericht jetzt versenden'}
+                      {testRunning ? 'Wird gesendet…' : 'Projektstatus jetzt versenden'}
                     </button>
                     {testResult && (
                       <span className={`text-xs px-2 py-1 border max-w-xs ${

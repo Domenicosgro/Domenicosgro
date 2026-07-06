@@ -2141,12 +2141,23 @@ const EMAIL_DEFAULTS = {
     footer:  'GHBA · Aufgabenverwaltung',
   },
   weekly_report: {
-    subject:        'Wochenbericht Aufgaben – {project}',
+    subject:        'Projektstatus – {project}',
     releases_intro: 'Folgende Aufgaben wurden in den letzten 7 Tagen genehmigt:',
     open_intro:     'Folgende Aufgaben sind aktuell noch offen oder in Bearbeitung:',
-    footer:         'GHBA · Automatischer Wochenbericht',
+    footer:         'GHBA · Projektstatus',
     schedule_day:   5,    // 0=So, 1=Mo, 2=Di, 3=Mi, 4=Do, 5=Fr, 6=Sa
     schedule_hour:  10,
+    // Abschnitte des Projektstatus (im Admin-Bereich schaltbar)
+    section_meetings:     true,   // Nächste Besprechungstermine
+    section_overdue:      true,   // Überfällige Aufgaben (eigener Abschnitt)
+    section_releases:     true,   // Diese Woche freigemeldete Aufgaben
+    section_open:         true,   // Offene Aufgaben
+    section_pending:      true,   // Ausstehende Freimeldungen (nur intern)
+    section_plan_reviews: true,   // Planprüfung
+    section_bim_issues:   true,   // BIM-Issues
+    section_documents:    true,   // Neue Dokumente (Pläne/BIM)
+    section_notes:        true,   // Neue Akten-/Telefonnotizen (nur intern)
+    send_external:        true,   // gekürzte Version an Projektkontakte senden
   },
 }
 
@@ -2669,9 +2680,13 @@ async function sendWeeklyReleaseReports({ appUrl } = {}) {
   }
   const sinceMs  = Date.now() - 7 * 24 * 60 * 60 * 1000
   const todayStr = new Date().toISOString().slice(0, 10)
-  const protocols = db.protocols.list()
+  const protocols   = db.protocols.list()
+  const allReviews  = db.planReviews.list()
+  const allIssues   = db.bimIssues.list()
+  const allPlans    = db.bimPlans.list()
+  const allNotes    = db.notes.list()
 
-  // System-Admins mit E-Mail – erhalten immer eine Kopie
+  // System-Admins mit E-Mail – erhalten immer die interne Vollversion
   const adminRecipients = new Map()
   for (const u of db.users.list()) {
     if (u.role === 'admin' && u.email) {
@@ -2680,14 +2695,31 @@ async function sendWeeklyReleaseReports({ appUrl } = {}) {
   }
 
   // Daten je Projekt sammeln
-  const byProject = new Map()  // projectId → { releases: [], openTasks: [] }
+  const emptyData = () => ({
+    releases: [], openTasks: [], overdueTasks: [], pendingReleases: [], meetings: [],
+    planReviewsOpen: [], planReviewsDecided: [], bimIssuesOpen: [], bimIssuesNew: [],
+    newDocs: [], newNotes: [],
+  })
+  const byProject = new Map()
+  const dataFor = (projectId) => {
+    if (!byProject.has(projectId)) byProject.set(projectId, emptyData())
+    return byProject.get(projectId)
+  }
+
   for (const proto of protocols) {
     if (!proto.projectId) continue
-    if (!byProject.has(proto.projectId)) byProject.set(proto.projectId, { releases: [], openTasks: [] })
-    const data     = byProject.get(proto.projectId)
+    const data     = dataFor(proto.projectId)
     const protoRef = proto.date
       ? new Date(proto.date + 'T12:00:00').toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })
       : ''
+
+    // Nächste Besprechungstermine (heute oder später)
+    if (proto.nextMeeting && proto.nextMeeting >= todayStr) {
+      data.meetings.push({
+        date: proto.nextMeeting, time: proto.nextMeetingTime || '',
+        type: proto.meetingType || 'Besprechung', location: proto.location || '',
+      })
+    }
 
     for (const a of (proto.actionItems ?? [])) {
       // Freigemeldete Aufgaben dieser Woche (genehmigt)
@@ -2699,62 +2731,183 @@ async function sendWeeklyReleaseReports({ appUrl } = {}) {
           responsible: a.responsible || '', approvedAt: h.at,
         })
       }
+      // Ausstehende Freimeldung (angefordert, noch nicht entschieden)
+      if (a.releaseRequest) {
+        data.pendingReleases.push({
+          no: a.no || '', description: a.description || '',
+          responsible: a.responsible || '', requestedAt: a.releaseRequest.at || '',
+        })
+      }
       // Offene und in Bearbeitung befindliche Aufgaben
       if (a.status === 'offen' || a.status === 'in_arbeit') {
-        data.openTasks.push({
+        const task = {
           no: a.no || '', description: a.description || '',
           responsible: a.responsible || '', deadline: a.deadline || '',
           priority: a.priority || 'mittel', status: a.status,
           overdue: !!(a.deadline && a.deadline < todayStr),
           protoRef,
-        })
+        }
+        if (task.overdue) data.overdueTasks.push(task)
+        else data.openTasks.push(task)
       }
     }
   }
 
+  // Termine deduplizieren + sortieren
+  for (const data of byProject.values()) {
+    const seen = new Set()
+    data.meetings = data.meetings
+      .filter(m => { const k = `${m.date}|${m.time}|${m.type}`; if (seen.has(k)) return false; seen.add(k); return true })
+      .sort((a, b) => a.date.localeCompare(b.date) || a.time.localeCompare(b.time))
+  }
+
+  // Planprüfung
+  for (const r of allReviews) {
+    if (!r.projectId) continue
+    const data = dataFor(r.projectId)
+    if (r.status === 'offen' || r.status === 'in_pruefung') {
+      data.planReviewsOpen.push({
+        no: r.no, title: r.title, plan: r.planTitle || '–', assignedTo: r.assignedTo || '',
+        dueDate: r.dueDate || '', overdue: !!(r.dueDate && r.dueDate < todayStr),
+        status: r.status,
+      })
+    } else if ((r.status === 'freigegeben' || r.status === 'abgelehnt')
+        && r.updatedAt && new Date(r.updatedAt).getTime() >= sinceMs) {
+      data.planReviewsDecided.push({
+        no: r.no, title: r.title, plan: r.planTitle || '–', status: r.status, at: r.updatedAt,
+      })
+    }
+  }
+
+  // BIM-Issues
+  for (const i of allIssues) {
+    if (!i.projectId) continue
+    const data = dataFor(i.projectId)
+    if (i.status === 'offen' || i.status === 'in_arbeit') {
+      data.bimIssuesOpen.push({
+        title: i.title, assignedTo: i.assignedTo || '', dueDate: i.dueDate || '',
+        priority: i.priority || 'mittel', status: i.status,
+        isNew: !!(i.createdAt && new Date(i.createdAt).getTime() >= sinceMs),
+      })
+    }
+  }
+
+  // Neue Dokumente (2D-Pläne + BIM-Modell dieser Woche)
+  for (const p of allPlans) {
+    if (!p.projectId || !p.uploadedAt) continue
+    if (new Date(p.uploadedAt).getTime() < sinceMs) continue
+    dataFor(p.projectId).newDocs.push({ title: p.title, kind: p.planType || 'Plan', by: p.uploadedBy || '' })
+  }
+
+  // Neue Akten-/Telefonnotizen (nur interne Version)
+  for (const n of allNotes) {
+    if (!n.projectId || !n.createdAt) continue
+    if (new Date(n.createdAt).getTime() < sinceMs) continue
+    dataFor(n.projectId).newNotes.push({ subject: n.subject || n.title || 'Notiz', type: n.type || 'Notiz' })
+  }
+
   const { from } = systemFrom()
   const weeklyTpl = getEmailSettings().weekly_report
+  const on = (key) => weeklyTpl[key] !== false   // Abschnitt aktiviert? (Default: an)
   let sentProjects = 0
   const skippedProjects = []
 
   for (const [projectId, data] of byProject) {
-    if (!data.releases.length && !data.openTasks.length) {
-      const p = db.projects.get(projectId)
-      if (p) {
-        console.log(`[reporting] ${p.name || projectId}: keine offenen Aufgaben/Freimeldungen – übersprungen`)
-        skippedProjects.push({ id: projectId, name: p.name, reason: 'no-tasks' })
-      }
-      continue
-    }
     const project = db.projects.get(projectId)
     if (!project) continue
+    if (project.isArchived) continue   // archivierte Projekte nicht berichten
     const projName = project.name || 'Projekt'
 
-    // Empfänger: alle Projektkontakte + System-Admins (erhalten immer eine Kopie)
-    const recipients = new Map(adminRecipients)
+    // BIM-Modell-Upload dieser Woche ergänzen
+    if (project.bimMeta?.uploadedAt && new Date(project.bimMeta.uploadedAt).getTime() >= sinceMs) {
+      data.newDocs.push({ title: project.bimMeta.filename || 'BIM-Modell', kind: 'BIM-Modell', by: project.bimMeta.uploadedBy || '' })
+    }
+
+    // Ampel-Status
+    const overdueCount = data.overdueTasks.length + data.planReviewsOpen.filter(r => r.overdue).length
+    const openCount    = data.openTasks.length + data.pendingReleases.length
+      + data.planReviewsOpen.length + data.bimIssuesOpen.length
+    data.ampel = overdueCount > 0 ? 'rot' : openCount > 0 ? 'gelb' : 'gruen'
+    data.overdueCount = overdueCount
+    data.openCount    = openCount
+
+    // Sichtbare Abschnitte je Variante (nach Admin-Konfiguration)
+    const internalSections = {
+      meetings: on('section_meetings') && data.meetings.length > 0,
+      overdue:  on('section_overdue')  && data.overdueTasks.length > 0,
+      releases: on('section_releases') && data.releases.length > 0,
+      open:     on('section_open')     && data.openTasks.length > 0,
+      pending:  on('section_pending')  && data.pendingReleases.length > 0,
+      reviews:  on('section_plan_reviews') && (data.planReviewsOpen.length > 0 || data.planReviewsDecided.length > 0),
+      issues:   on('section_bim_issues')   && data.bimIssuesOpen.length > 0,
+      docs:     on('section_documents')    && data.newDocs.length > 0,
+      notes:    on('section_notes')        && data.newNotes.length > 0,
+    }
+    // Externe Variante: ohne interne Abschnitte (ausstehende Freimeldungen, Notizen)
+    const externalSections = { ...internalSections, pending: false, notes: false }
+
+    const hasInternal = Object.values(internalSections).some(Boolean)
+    if (!hasInternal) {
+      console.log(`[reporting] ${projName}: nichts zu berichten – übersprungen`)
+      skippedProjects.push({ id: projectId, name: projName, reason: 'no-content' })
+      continue
+    }
+
+    // Interne Empfänger: System-Admins + Projektadmins (mit E-Mail)
+    const internalRecipients = new Map(adminRecipients)
+    const adminUsernames = [project.projectAdminUser, ...(project.projectAdmins ?? [])].filter(Boolean)
+    for (const username of adminUsernames) {
+      const u = db.users.get(username)
+      if (u?.email) internalRecipients.set(u.email.trim().toLowerCase(), u.email.trim())
+    }
+
+    // Externe Empfänger: Projektkontakte mit E-Mail, die nicht schon intern bedient werden
+    const externalRecipients = new Map()
     for (const c of (project.contacts ?? [])) {
       const email = (c.email || '').trim().toLowerCase()
-      if (email) recipients.set(email, c.email.trim())
+      if (email && !internalRecipients.has(email)) externalRecipients.set(email, c.email.trim())
     }
-    if (recipients.size === 0) {
-      console.warn(`[reporting] ${projName}: keine Empfänger (keine Projektkontakte + keine Admins mit E-Mail) – übersprungen`)
+
+    if (internalRecipients.size === 0 && externalRecipients.size === 0) {
+      console.warn(`[reporting] ${projName}: keine Empfänger – übersprungen`)
       skippedProjects.push({ id: projectId, name: projName, reason: 'no-recipients' })
       continue
     }
 
-    const html    = buildWeeklyReportHtml(projName, data.releases, data.openTasks, weeklyTpl)
-    const text    = buildWeeklyReportText(projName, data.releases, data.openTasks, weeklyTpl)
-    const to      = Array.from(recipients.values()).join(', ')
     const subject = applyTpl(weeklyTpl.subject, { project: projName })
-    console.log(`[reporting] Versende für "${projName}" an ${recipients.size} Empfänger (${to})`)
-    try {
-      await mailer.sendMail({ from, to, subject, html, text })
-      sentProjects++
-      console.log(`[reporting] "${projName}" OK`)
-    } catch (e) {
-      console.warn(`[reporting] "${projName}" fehlgeschlagen:`, e.message)
-      skippedProjects.push({ id: projectId, name: projName, reason: 'send-error', detail: e.message })
+    let sentAny = false
+
+    // Interne Vollversion
+    if (internalRecipients.size > 0) {
+      const html = buildProjectStatusHtml(projName, data, weeklyTpl, internalSections)
+      const text = buildProjectStatusText(projName, data, weeklyTpl, internalSections)
+      const to   = Array.from(internalRecipients.values()).join(', ')
+      console.log(`[reporting] "${projName}" intern an ${internalRecipients.size} Empfänger`)
+      try {
+        await mailer.sendMail({ from, to, subject, html, text })
+        sentAny = true
+      } catch (e) {
+        console.warn(`[reporting] "${projName}" (intern) fehlgeschlagen:`, e.message)
+        skippedProjects.push({ id: projectId, name: projName, reason: 'send-error', detail: e.message })
+      }
     }
+
+    // Gekürzte externe Version (abschaltbar)
+    if (weeklyTpl.send_external !== false && externalRecipients.size > 0
+        && Object.values(externalSections).some(Boolean)) {
+      const html = buildProjectStatusHtml(projName, data, weeklyTpl, externalSections)
+      const text = buildProjectStatusText(projName, data, weeklyTpl, externalSections)
+      const to   = Array.from(externalRecipients.values()).join(', ')
+      console.log(`[reporting] "${projName}" extern an ${externalRecipients.size} Empfänger`)
+      try {
+        await mailer.sendMail({ from, to, subject, html, text })
+        sentAny = true
+      } catch (e) {
+        console.warn(`[reporting] "${projName}" (extern) fehlgeschlagen:`, e.message)
+      }
+    }
+
+    if (sentAny) { sentProjects++; console.log(`[reporting] "${projName}" OK`) }
   }
 
   if (byProject.size === 0) {
@@ -2767,67 +2920,153 @@ async function sendWeeklyReleaseReports({ appUrl } = {}) {
 const PRIORITY_LABEL = { hoch: 'Hoch', mittel: 'Mittel', niedrig: 'Niedrig' }
 const PRIORITY_COLOR = { hoch: '#DC2626', mittel: '#D97706', niedrig: '#6B7280' }
 const STATUS_LABEL   = { offen: 'Offen', in_arbeit: 'In Arbeit' }
+const REVIEW_STATUS_LABEL = { offen: 'Offen', in_pruefung: 'In Prüfung', freigegeben: 'Freigegeben', abgelehnt: 'Abgelehnt' }
+const AMPEL = {
+  rot:   { color: '#DC2626', label: 'Handlungsbedarf' },
+  gelb:  { color: '#D97706', label: 'Offene Punkte' },
+  gruen: { color: '#16A34A', label: 'Alles im Plan' },
+}
 
-function buildWeeklyReportHtml(projName, releases, openTasks, tpl) {
+// Generischer Tabellen-/Abschnittsbaustein für den Projektstatus
+function statusSection(title, intro, headBg, headColor, cols, rowsHtml) {
+  const ths = cols.map(c =>
+    `<th style="padding:9px 12px;text-align:left;font-size:11px;text-transform:uppercase;color:${headColor};font-family:Arial,sans-serif;">${c}</th>`
+  ).join('')
+  return `
+    <tr><td style="padding:20px 36px 8px 36px;">
+      <p style="margin:0 0 10px 0;font-size:13px;font-weight:bold;color:#000040;text-transform:uppercase;letter-spacing:1px;font-family:Arial,sans-serif;">${title}</p>
+      ${intro ? `<p style="margin:0 0 12px 0;color:#4B5563;font-size:13px;font-family:Arial,sans-serif;">${esc(intro)}</p>` : ''}
+      <table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #E5E7EB;border-collapse:collapse;">
+        <thead><tr style="background:${headBg};">${ths}</tr></thead>
+        <tbody>${rowsHtml}</tbody>
+      </table>
+    </td></tr>`
+}
+const td = (content, extra = '') =>
+  `<td style="padding:9px 12px;font-size:12px;color:#374151;font-family:Arial,sans-serif;${extra}">${content}</td>`
+const trOpen = '<tr style="border-bottom:1px solid #E5E7EB;">'
+const fmtDl  = (d) => d ? new Date(d + 'T12:00:00').toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '–'
+
+function buildProjectStatusHtml(projName, data, tpl, sections) {
   tpl = tpl || getEmailSettings().weekly_report
   const today = new Date().toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })
+  const ampel = AMPEL[data.ampel] || AMPEL.gruen
+  const parts = []
 
-  const releaseRows = releases.map(r => `
-    <tr style="border-bottom:1px solid #E5E7EB;">
-      <td style="padding:9px 12px;font-size:12px;color:#6B7280;white-space:nowrap;font-family:Arial,sans-serif;">${r.no || '–'}</td>
-      <td style="padding:9px 12px;font-weight:bold;color:#000040;font-family:Arial,sans-serif;">${esc(r.description)}</td>
-      <td style="padding:9px 12px;font-size:12px;color:#374151;white-space:nowrap;font-family:Arial,sans-serif;">${esc(r.responsible)}</td>
-      <td style="padding:9px 12px;font-size:12px;color:#374151;white-space:nowrap;font-family:Arial,sans-serif;">${fmtDateDe(r.approvedAt)}</td>
-    </tr>`).join('')
-
-  const openRows = openTasks.map(t => {
-    const dlText  = t.deadline ? new Date(t.deadline + 'T12:00:00').toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '–'
-    const dlColor = t.overdue ? '#DC2626' : '#374151'
-    const prColor = PRIORITY_COLOR[t.priority] || '#6B7280'
-    const prLabel = PRIORITY_LABEL[t.priority] || t.priority
-    const stLabel = STATUS_LABEL[t.status] || t.status
-    return `
-    <tr style="border-bottom:1px solid #E5E7EB;">
-      <td style="padding:9px 12px;font-size:12px;color:#6B7280;white-space:nowrap;font-family:Arial,sans-serif;">${t.no || '–'}</td>
-      <td style="padding:9px 12px;font-weight:bold;color:#000040;font-family:Arial,sans-serif;">${esc(t.description)}</td>
-      <td style="padding:9px 12px;font-size:12px;color:#374151;white-space:nowrap;font-family:Arial,sans-serif;">${esc(t.responsible)}</td>
-      <td style="padding:9px 12px;font-size:12px;color:${dlColor};white-space:nowrap;font-family:Arial,sans-serif;font-weight:${t.overdue ? 'bold' : 'normal'};">${dlText}${t.overdue ? ' ⚠' : ''}</td>
-      <td style="padding:9px 12px;font-size:11px;font-weight:bold;color:${prColor};white-space:nowrap;font-family:Arial,sans-serif;">${prLabel}</td>
-      <td style="padding:9px 12px;font-size:11px;color:#374151;white-space:nowrap;font-family:Arial,sans-serif;">${stLabel}</td>
-    </tr>`
-  }).join('')
-
-  const releasesSection = releases.length ? `
-    <tr><td style="padding:20px 36px 8px 36px;">
-      <p style="margin:0 0 10px 0;font-size:13px;font-weight:bold;color:#000040;text-transform:uppercase;letter-spacing:1px;font-family:Arial,sans-serif;">Diese Woche freigemeldete Aufgaben</p>
-      <p style="margin:0 0 12px 0;color:#4B5563;font-size:13px;font-family:Arial,sans-serif;">${esc(tpl.releases_intro)}</p>
-      <table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #E5E7EB;border-collapse:collapse;">
-        <thead><tr style="background:#166534;">
-          <th style="padding:9px 12px;text-align:left;font-size:11px;text-transform:uppercase;color:#BBF7D0;font-family:Arial,sans-serif;">Nr.</th>
-          <th style="padding:9px 12px;text-align:left;font-size:11px;text-transform:uppercase;color:#BBF7D0;font-family:Arial,sans-serif;">Aufgabe</th>
-          <th style="padding:9px 12px;text-align:left;font-size:11px;text-transform:uppercase;color:#BBF7D0;font-family:Arial,sans-serif;">Verantwortlich</th>
-          <th style="padding:9px 12px;text-align:left;font-size:11px;text-transform:uppercase;color:#BBF7D0;font-family:Arial,sans-serif;">Freigegeben</th>
-        </tr></thead>
-        <tbody>${releaseRows}</tbody>
+  // Ampel-/Kennzahlen-Zusammenfassung
+  parts.push(`
+    <tr><td style="padding:20px 36px 4px 36px;">
+      <table width="100%" cellpadding="0" cellspacing="0" style="background:#F9FAFB;border:1px solid #E5E7EB;border-left:4px solid ${ampel.color};">
+        <tr>
+          <td style="padding:14px 16px;font-family:Arial,sans-serif;">
+            <span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:${ampel.color};margin-right:8px;vertical-align:middle;"></span>
+            <span style="font-size:14px;font-weight:bold;color:#000040;vertical-align:middle;">${ampel.label}</span>
+            <span style="font-size:12px;color:#6B7280;margin-left:12px;vertical-align:middle;">
+              ${data.overdueCount > 0 ? `<strong style="color:#DC2626;">${data.overdueCount} überfällig</strong> · ` : ''}
+              ${data.openCount} offen · ${data.releases.length} diese Woche freigemeldet
+            </span>
+          </td>
+        </tr>
       </table>
-    </td></tr>` : ''
+    </td></tr>`)
 
-  const openSection = openTasks.length ? `
-    <tr><td style="padding:20px 36px 8px 36px;">
-      <p style="margin:0 0 10px 0;font-size:13px;font-weight:bold;color:#000040;text-transform:uppercase;letter-spacing:1px;font-family:Arial,sans-serif;">Offene Aufgaben</p>
-      <p style="margin:0 0 12px 0;color:#4B5563;font-size:13px;font-family:Arial,sans-serif;">${esc(tpl.open_intro)}</p>
-      <table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #E5E7EB;border-collapse:collapse;">
-        <thead><tr style="background:#000040;">
-          <th style="padding:9px 12px;text-align:left;font-size:11px;text-transform:uppercase;color:#8FBEFF;font-family:Arial,sans-serif;">Nr.</th>
-          <th style="padding:9px 12px;text-align:left;font-size:11px;text-transform:uppercase;color:#8FBEFF;font-family:Arial,sans-serif;">Aufgabe</th>
-          <th style="padding:9px 12px;text-align:left;font-size:11px;text-transform:uppercase;color:#8FBEFF;font-family:Arial,sans-serif;">Verantwortlich</th>
-          <th style="padding:9px 12px;text-align:left;font-size:11px;text-transform:uppercase;color:#8FBEFF;font-family:Arial,sans-serif;">Frist</th>
-          <th style="padding:9px 12px;text-align:left;font-size:11px;text-transform:uppercase;color:#8FBEFF;font-family:Arial,sans-serif;">Priorität</th>
-          <th style="padding:9px 12px;text-align:left;font-size:11px;text-transform:uppercase;color:#8FBEFF;font-family:Arial,sans-serif;">Status</th>
-        </tr></thead>
-        <tbody>${openRows}</tbody>
-      </table>
-    </td></tr>` : ''
+  if (sections.meetings) {
+    const rows = data.meetings.map(m => trOpen
+      + td(`<strong style="color:#000040;">${fmtDl(m.date)}</strong>${m.time ? ' · ' + esc(m.time) + ' Uhr' : ''}`, 'white-space:nowrap;')
+      + td(esc(m.type)) + td(esc(m.location || '–')) + '</tr>').join('')
+    parts.push(statusSection('Nächste Besprechungstermine', null, '#000040', '#8FBEFF',
+      ['Termin', 'Besprechung', 'Ort'], rows))
+  }
+
+  if (sections.overdue) {
+    const rows = data.overdueTasks.map(t => trOpen
+      + td(t.no || '–', 'color:#6B7280;white-space:nowrap;')
+      + td(`<strong style="color:#000040;">${esc(t.description)}</strong>`)
+      + td(esc(t.responsible || '–'), 'white-space:nowrap;')
+      + td(`<strong style="color:#DC2626;">${fmtDl(t.deadline)} ⚠</strong>`, 'white-space:nowrap;')
+      + '</tr>').join('')
+    parts.push(statusSection('Überfällige Aufgaben', 'Diese Aufgaben haben ihre Frist überschritten und benötigen dringend Bearbeitung:',
+      '#DC2626', '#FECACA', ['Nr.', 'Aufgabe', 'Verantwortlich', 'Frist'], rows))
+  }
+
+  if (sections.releases) {
+    const rows = data.releases.map(r => trOpen
+      + td(r.no || '–', 'color:#6B7280;white-space:nowrap;')
+      + td(`<strong style="color:#000040;">${esc(r.description)}</strong>`)
+      + td(esc(r.responsible || '–'), 'white-space:nowrap;')
+      + td(fmtDateDe(r.approvedAt), 'white-space:nowrap;') + '</tr>').join('')
+    parts.push(statusSection('Diese Woche freigemeldete Aufgaben', tpl.releases_intro,
+      '#166534', '#BBF7D0', ['Nr.', 'Aufgabe', 'Verantwortlich', 'Freigegeben'], rows))
+  }
+
+  if (sections.pending) {
+    const rows = data.pendingReleases.map(r => trOpen
+      + td(r.no || '–', 'color:#6B7280;white-space:nowrap;')
+      + td(`<strong style="color:#000040;">${esc(r.description)}</strong>`)
+      + td(esc(r.responsible || '–'), 'white-space:nowrap;')
+      + td(r.requestedAt ? fmtDateDe(r.requestedAt) : '–', 'white-space:nowrap;') + '</tr>').join('')
+    parts.push(statusSection('Ausstehende Freimeldungen', 'Diese Freimeldungen warten auf Genehmigung durch die Projektleitung:',
+      '#D97706', '#FEF3C7', ['Nr.', 'Aufgabe', 'Verantwortlich', 'Angefordert'], rows))
+  }
+
+  if (sections.open) {
+    const rows = data.openTasks.map(t => trOpen
+      + td(t.no || '–', 'color:#6B7280;white-space:nowrap;')
+      + td(`<strong style="color:#000040;">${esc(t.description)}</strong>`)
+      + td(esc(t.responsible || '–'), 'white-space:nowrap;')
+      + td(fmtDl(t.deadline), 'white-space:nowrap;')
+      + td(`<strong style="color:${PRIORITY_COLOR[t.priority] || '#6B7280'};">${PRIORITY_LABEL[t.priority] || t.priority}</strong>`, 'white-space:nowrap;font-size:11px;')
+      + td(STATUS_LABEL[t.status] || t.status, 'white-space:nowrap;font-size:11px;') + '</tr>').join('')
+    parts.push(statusSection('Offene Aufgaben', tpl.open_intro,
+      '#000040', '#8FBEFF', ['Nr.', 'Aufgabe', 'Verantwortlich', 'Frist', 'Priorität', 'Status'], rows))
+  }
+
+  if (sections.reviews) {
+    const rows = [
+      ...data.planReviewsOpen.map(r => trOpen
+        + td(`#${r.no}`, 'color:#6B7280;white-space:nowrap;')
+        + td(`<strong style="color:#000040;">${esc(r.title)}</strong><br><span style="color:#6B7280;font-size:11px;">${esc(r.plan)}</span>`)
+        + td(esc(r.assignedTo || '–'), 'white-space:nowrap;')
+        + td(r.overdue ? `<strong style="color:#DC2626;">${fmtDl(r.dueDate)} ⚠</strong>` : fmtDl(r.dueDate), 'white-space:nowrap;')
+        + td(REVIEW_STATUS_LABEL[r.status] || r.status, 'white-space:nowrap;font-size:11px;') + '</tr>'),
+      ...data.planReviewsDecided.map(r => trOpen
+        + td(`#${r.no}`, 'color:#6B7280;white-space:nowrap;')
+        + td(`${esc(r.title)}<br><span style="color:#6B7280;font-size:11px;">${esc(r.plan)}</span>`)
+        + td('–', 'white-space:nowrap;')
+        + td(fmtDateDe(r.at), 'white-space:nowrap;')
+        + td(`<strong style="color:${r.status === 'freigegeben' ? '#16A34A' : '#6B7280'};">${REVIEW_STATUS_LABEL[r.status] || r.status}</strong>`, 'white-space:nowrap;font-size:11px;') + '</tr>'),
+    ].join('')
+    parts.push(statusSection('Planprüfung', 'Offene Prüfvermerke und Entscheidungen der letzten Woche:',
+      '#5B21B6', '#DDD6FE', ['Nr.', 'Prüfvermerk / Plan', 'Prüfberechtigt', 'Frist / Datum', 'Status'], rows))
+  }
+
+  if (sections.issues) {
+    const rows = data.bimIssuesOpen.map(i => trOpen
+      + td(`<strong style="color:#000040;">${esc(i.title)}</strong>${i.isNew ? ' <span style="color:#0E7490;font-size:10px;font-weight:bold;">NEU</span>' : ''}`)
+      + td(esc(i.assignedTo || '–'), 'white-space:nowrap;')
+      + td(fmtDl(i.dueDate), 'white-space:nowrap;')
+      + td(`<strong style="color:${PRIORITY_COLOR[i.priority] || '#6B7280'};">${PRIORITY_LABEL[i.priority] || i.priority}</strong>`, 'white-space:nowrap;font-size:11px;')
+      + td(STATUS_LABEL[i.status] || i.status, 'white-space:nowrap;font-size:11px;') + '</tr>').join('')
+    parts.push(statusSection('BIM-Issues', 'Offene Punkte aus dem Gebäudemodell:',
+      '#0E7490', '#CFFAFE', ['Issue', 'Zuständig', 'Frist', 'Priorität', 'Status'], rows))
+  }
+
+  if (sections.docs) {
+    const rows = data.newDocs.map(d => trOpen
+      + td(`<strong style="color:#000040;">${esc(d.title)}</strong>`)
+      + td(esc(d.kind), 'white-space:nowrap;')
+      + td(esc(d.by || '–'), 'white-space:nowrap;') + '</tr>').join('')
+    parts.push(statusSection('Neue Dokumente', 'In der letzten Woche hochgeladen:',
+      '#374151', '#D1D5DB', ['Dokument', 'Art', 'Hochgeladen von'], rows))
+  }
+
+  if (sections.notes) {
+    const rows = data.newNotes.map(n => trOpen
+      + td(`<strong style="color:#000040;">${esc(n.subject)}</strong>`)
+      + td(esc(n.type), 'white-space:nowrap;') + '</tr>').join('')
+    parts.push(statusSection('Neue Akten- / Telefonnotizen', 'In der letzten Woche erfasst (intern):',
+      '#374151', '#D1D5DB', ['Betreff', 'Art'], rows))
+  }
 
   return `<!DOCTYPE html>
 <html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
@@ -2836,12 +3075,11 @@ function buildWeeklyReportHtml(projName, releases, openTasks, tpl) {
     <table width="680" cellpadding="0" cellspacing="0" style="background:#FFF;border:1px solid #E5E7EB;max-width:680px;width:100%;">
       <tr><td style="background:#000040;padding:28px 36px;">
         <p style="margin:0;color:#8FBEFF;font-size:11px;letter-spacing:2px;text-transform:uppercase;font-family:Arial,sans-serif;">GHBA</p>
-        <p style="margin:6px 0 0 0;color:#FBFFE6;font-size:20px;font-weight:bold;font-family:Arial,sans-serif;">Wochenbericht Aufgaben</p>
+        <p style="margin:6px 0 0 0;color:#FBFFE6;font-size:20px;font-weight:bold;font-family:Arial,sans-serif;">Projektstatus</p>
         <p style="margin:4px 0 0 0;color:#8FBEFF;font-size:14px;font-weight:600;font-family:Arial,sans-serif;">${esc(projName)}</p>
         <p style="margin:6px 0 0 0;color:#8FBEFF;font-size:12px;font-family:Arial,sans-serif;">Stand ${today}</p>
       </td></tr>
-      ${releasesSection}
-      ${openSection}
+      ${parts.join('')}
       <tr><td style="padding:20px 36px;border-top:1px solid #E5E7EB;background:#F0F0F0;text-align:center;font-family:Arial,sans-serif;">
         <p style="margin:0;color:#9CA3AF;font-size:12px;">${esc(tpl.footer)} · ${today}</p>
       </td></tr>
@@ -2850,30 +3088,43 @@ function buildWeeklyReportHtml(projName, releases, openTasks, tpl) {
 </body></html>`
 }
 
-function buildWeeklyReportText(projName, releases, openTasks, tpl) {
+function buildProjectStatusText(projName, data, tpl, sections) {
   tpl = tpl || getEmailSettings().weekly_report
   const today = new Date().toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })
-  const lines = [`Wochenbericht Aufgaben – ${projName}`, `Stand ${today}`, '']
-
-  if (releases.length) {
-    lines.push('DIESE WOCHE FREIGEMELDETE AUFGABEN', tpl.releases_intro, '-'.repeat(50))
-    releases.forEach(r => lines.push(
-      `• ${r.no ? r.no + '. ' : ''}${r.description} (${r.responsible || '–'}) – freigegeben ${fmtDateDe(r.approvedAt)}`
-    ))
+  const ampel = AMPEL[data.ampel] || AMPEL.gruen
+  const lines = [
+    `Projektstatus – ${projName}`, `Stand ${today}`, '',
+    `STATUS: ${ampel.label.toUpperCase()}${data.overdueCount > 0 ? ` – ${data.overdueCount} überfällig` : ''} · ${data.openCount} offen · ${data.releases.length} freigemeldet`, '',
+  ]
+  const section = (title, intro, rows) => {
+    if (!rows.length) return
+    lines.push(title.toUpperCase())
+    if (intro) lines.push(intro)
+    lines.push('-'.repeat(50))
+    rows.forEach(r => lines.push(`• ${r}`))
     lines.push('')
   }
 
-  if (openTasks.length) {
-    lines.push('OFFENE AUFGABEN', tpl.open_intro, '-'.repeat(50))
-    openTasks.forEach(t => {
-      const dl     = t.deadline ? new Date(t.deadline + 'T12:00:00').toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '–'
-      const status = STATUS_LABEL[t.status] || t.status
-      const prio   = PRIORITY_LABEL[t.priority] || t.priority
-      const overdue = t.overdue ? ' [ÜBERFÄLLIG]' : ''
-      lines.push(`• ${t.no ? t.no + '. ' : ''}${t.description} – ${t.responsible || '–'} | Frist: ${dl}${overdue} | ${prio} | ${status}`)
-    })
-    lines.push('')
-  }
+  if (sections.meetings) section('Nächste Besprechungstermine', null,
+    data.meetings.map(m => `${fmtDl(m.date)}${m.time ? ' ' + m.time + ' Uhr' : ''} – ${m.type}${m.location ? ' (' + m.location + ')' : ''}`))
+  if (sections.overdue) section('Überfällige Aufgaben', null,
+    data.overdueTasks.map(t => `${t.no ? t.no + '. ' : ''}${t.description} – ${t.responsible || '–'} | Frist: ${fmtDl(t.deadline)} [ÜBERFÄLLIG]`))
+  if (sections.releases) section('Diese Woche freigemeldete Aufgaben', tpl.releases_intro,
+    data.releases.map(r => `${r.no ? r.no + '. ' : ''}${r.description} (${r.responsible || '–'}) – freigegeben ${fmtDateDe(r.approvedAt)}`))
+  if (sections.pending) section('Ausstehende Freimeldungen', null,
+    data.pendingReleases.map(r => `${r.no ? r.no + '. ' : ''}${r.description} – ${r.responsible || '–'}`))
+  if (sections.open) section('Offene Aufgaben', tpl.open_intro,
+    data.openTasks.map(t => `${t.no ? t.no + '. ' : ''}${t.description} – ${t.responsible || '–'} | Frist: ${fmtDl(t.deadline)} | ${PRIORITY_LABEL[t.priority] || t.priority} | ${STATUS_LABEL[t.status] || t.status}`))
+  if (sections.reviews) section('Planprüfung', null, [
+    ...data.planReviewsOpen.map(r => `#${r.no} ${r.title} [${r.plan}] – ${r.assignedTo || '–'} | ${REVIEW_STATUS_LABEL[r.status]}${r.overdue ? ' [ÜBERFÄLLIG]' : ''}`),
+    ...data.planReviewsDecided.map(r => `#${r.no} ${r.title} [${r.plan}] – ${REVIEW_STATUS_LABEL[r.status]} ${fmtDateDe(r.at)}`),
+  ])
+  if (sections.issues) section('BIM-Issues', null,
+    data.bimIssuesOpen.map(i => `${i.title}${i.isNew ? ' [NEU]' : ''} – ${i.assignedTo || '–'} | ${STATUS_LABEL[i.status] || i.status}`))
+  if (sections.docs) section('Neue Dokumente', null,
+    data.newDocs.map(d => `${d.title} (${d.kind})${d.by ? ' – ' + d.by : ''}`))
+  if (sections.notes) section('Neue Akten-/Telefonnotizen', null,
+    data.newNotes.map(n => `${n.subject} (${n.type})`))
 
   lines.push(tpl.footer)
   return lines.join('\n')
