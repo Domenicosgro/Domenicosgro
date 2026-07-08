@@ -200,7 +200,6 @@ export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, 
   const [importError,     setImportError]     = useState('')
   const [deleteRequest,   setDeleteRequest]   = useState(null)   // { project, protocolCount }
   const [accessProject,   setAccessProject]   = useState(null)   // project for access modal
-  const [adminTilePicker, setAdminTilePicker] = useState(false)  // project picker for admin tile
   const [showArchive,     setShowArchive]     = useState(false)  // Archiv-Abschnitt aufgeklappt
   const [archivingId,     setArchivingId]     = useState(null)   // Projekt-ID während PDF-Erzeugung
   const [archiveError,    setArchiveError]    = useState('')
@@ -217,11 +216,8 @@ export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, 
         : projects.filter(p => p.projectAdminUser === serverUser.username || p.projectAdmins?.includes(serverUser.username)))
     : []
 
-  const handleAdminTileClick = () => {
-    if (serverUser?.role === 'admin' && onOpenAdmin) { onOpenAdmin(); return }
-    if (adminProjects.length === 1) { setAccessProject(adminProjects[0]); return }
-    if (adminProjects.length > 1)  { setAdminTilePicker(true) }
-  }
+  // Kachel ist nur für System-Admins sichtbar → öffnet direkt die Server-Einstellungen.
+  const handleAdminTileClick = () => { if (onOpenAdmin) onOpenAdmin() }
   const { settings, isFavorite, toggleFavorite } = useUserSettings(serverUser?.username)
 
   const handleImportProjectFile = (e) => {
@@ -531,8 +527,10 @@ export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, 
               </div>
             </button>
 
-            {/* Admin-Kachel – nur für Projektadmins und Systemadmins */}
-            {adminProjects.length > 0 && (
+            {/* Administration-Kachel – nur für System-Admins (öffnet die Server-Einstellungen).
+                Projektadmins verwalten den Zugang ihrer Projekte über das UserCog-Icon
+                direkt auf der jeweiligen Projektkarte. */}
+            {serverUser?.role === 'admin' && (
               <button
                 onClick={handleAdminTileClick}
                 className="card w-full text-left flex flex-col min-h-[110px] p-4 hover:border-brand-300 hover:bg-gray-50 transition-colors group border-l-4 border-brand-600"
@@ -541,19 +539,12 @@ export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, 
                   <span className="text-brand-600 group-hover:text-brand-700 transition-colors flex-shrink-0"><UserCog size={20} /></span>
                   <h3 className="font-semibold text-sm text-gray-900 group-hover:text-brand-700 transition-colors truncate">Administration</h3>
                 </div>
-                <p className="text-xs text-gray-500 line-clamp-3">Projektzugang, Administratoren und Freimelde-Links</p>
+                <p className="text-xs text-gray-500 line-clamp-3">Benutzer, E-Mail-Vorlagen, Backup &amp; Server-Einstellungen</p>
                 <div className="flex gap-4 mt-auto pt-2">
-                  {serverUser?.role === 'admin' ? (
-                    <div>
-                      <div className="text-lg font-bold text-night leading-none">{adminProjects.length}</div>
-                      <div className="text-xs text-gray-400 mt-0.5">Projekte</div>
-                    </div>
-                  ) : (
-                    <div>
-                      <div className="text-lg font-bold text-night leading-none">{adminProjects.length}</div>
-                      <div className="text-xs text-gray-400 mt-0.5">{adminProjects.length === 1 ? 'Projekt' : 'Projekte'}</div>
-                    </div>
-                  )}
+                  <div>
+                    <div className="text-lg font-bold text-night leading-none">{adminProjects.length}</div>
+                    <div className="text-xs text-gray-400 mt-0.5">Projekte</div>
+                  </div>
                 </div>
               </button>
             )}
@@ -889,32 +880,6 @@ export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, 
               <p className="text-xs text-gray-400 mt-0.5">{unassigned.length} Protokoll{unassigned.length !== 1 ? 'e' : ''}</p>
             </div>
             <ChevronRight size={16} className="text-gray-300 group-hover:text-sky transition-colors" />
-          </div>
-        </div>
-      )}
-
-      {/* Admin-Kachel Projekt-Picker – bei mehreren Admin-Projekten */}
-      {adminTilePicker && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="bg-white w-full max-w-sm border border-gray-200">
-            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200">
-              <h3 className="font-semibold text-gray-900 flex items-center gap-2">
-                <UserCog size={16} className="text-brand-600" /> Projekt wählen
-              </h3>
-              <button className="btn-ghost p-1" onClick={() => setAdminTilePicker(false)}><X size={16} /></button>
-            </div>
-            <div className="p-4 space-y-1 max-h-80 overflow-y-auto">
-              {adminProjects.map(p => (
-                <button
-                  key={p.id}
-                  className="w-full text-left px-4 py-3 hover:bg-brand-50 border border-gray-100 hover:border-brand-200 text-sm font-medium text-gray-900 transition-colors"
-                  onClick={() => { setAdminTilePicker(false); setAccessProject(p) }}
-                >
-                  {p.name || 'Unbenanntes Projekt'}
-                  {p.isAccessControlled && <span className="ml-2 text-xs text-brand-600"><ShieldCheck size={11} className="inline" /> Zugangsbeschränkt</span>}
-                </button>
-              ))}
-            </div>
           </div>
         </div>
       )}
