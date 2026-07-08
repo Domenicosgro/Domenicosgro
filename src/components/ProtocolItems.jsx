@@ -152,11 +152,14 @@ export default function ProtocolItems({ items, onChange, allTasks = [], onTasksC
     if (readOnly) return
     const parentIdx = items.findIndex(it => it.id === parentId)
     if (parentIdx < 0) return
-    const childLevel = Math.min((items[parentIdx].level ?? 1) + 1, 3)
+    const parent     = items[parentIdx]
+    const childLevel = Math.min((parent.level ?? 1) + 1, 3)
     const no         = suggestChildNo(items, parentIdx)
     const insertAt   = subtreeEnd(items, parentIdx)
     const next       = [...items]
-    next.splice(insertAt, 0, { ...emptyAgendaItem(childLevel), no })
+    // Unterunterpunkt (Ebene 3): Titel des übergeordneten Unterpunkts übernehmen (anpassbar)
+    const topic      = childLevel === 3 ? (parent.topic || '') : ''
+    next.splice(insertAt, 0, { ...emptyAgendaItem(childLevel), no, topic })
     onChange(next)
   }
 
@@ -268,8 +271,21 @@ export default function ProtocolItems({ items, onChange, allTasks = [], onTasksC
 
   const changeLevel = (id, delta) => {
     if (readOnly) return
+    const idx      = items.findIndex(it => it.id === id)
+    const cur      = items[idx]
+    const newLevel = Math.min(3, Math.max(1, (cur.level ?? 1) + delta))
+    // Beim Einrücken zum Unterunterpunkt (Ebene 3) den Titel des übergeordneten
+    // Unterpunkts übernehmen – nur wenn noch kein Titel gesetzt ist (nicht überschreiben).
+    let topicPatch = {}
+    if (newLevel === 3 && (cur.level ?? 1) < 3 && !(cur.topic || '').trim()) {
+      for (let i = idx - 1; i >= 0; i--) {
+        const l = items[i].level ?? 1
+        if (l === 2) { topicPatch = { topic: items[i].topic || '' }; break }
+        if (l === 1) break
+      }
+    }
     const next = items.map(it => it.id === id
-      ? { ...it, level: Math.min(3, Math.max(1, (it.level ?? 1) + delta)) }
+      ? { ...it, level: newLevel, ...topicPatch }
       : it)
     onChange(renumberItems(next))
   }

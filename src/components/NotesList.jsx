@@ -353,6 +353,12 @@ function NoteEditor({ note, contacts, allContacts, projectName, logoDataUrl, cli
 
   return (
     <div className="flex flex-col gap-4">
+      {/* Protokollbezug */}
+      {note.protocolRef && (
+        <span className="self-start inline-flex items-center gap-1 text-xs px-2 py-0.5 bg-brand-50 border border-brand-200 text-brand-700">
+          <FileText size={11} /> aus Protokoll: {note.protocolRef}
+        </span>
+      )}
       {/* Type + Date row */}
       <div className="flex flex-wrap gap-3 items-start">
         <div className="flex-1 min-w-40">

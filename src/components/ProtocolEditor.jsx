@@ -14,6 +14,7 @@ import { exportDocx } from '../exportDocx'
 import { attachmentStore } from '../attachmentStore'
 import GesamtprotokollModal from './GesamtprotokollModal'
 import TileSidebar from './TileSidebar'
+import ProtocolNotesPanel from './ProtocolNotesPanel'
 
 const isElectron = typeof window !== 'undefined' && !!window.electronAPI
 const isServer   = typeof window !== 'undefined' && !!window.__SERVER_MODE__
@@ -55,7 +56,7 @@ function promoteAgenda(agenda, existingItems) {
   ]
 }
 
-export default function ProtocolEditor({ protocol, protocols, projects, projectContacts, serverUser, logoDataUrl, clientLogoDataUrl, onUpdate, onUpdateProject, onBack, onRefresh, onOpenBim, onOpenBimIssue }) {
+export default function ProtocolEditor({ protocol, protocols, projects, projectContacts, serverUser, logoDataUrl, clientLogoDataUrl, onUpdate, onUpdateProject, onBack, onRefresh, onOpenBim, onOpenBimIssue, notes = [], onCreateNote, onDeleteNote }) {
   const change = (patch) => onUpdate(protocol.id, patch)
   const linkedProject  = (projects ?? []).find(p => p.id === protocol.projectId) ?? null
   // Freimeldung genehmigen: Systemadmin oder Projektadmin (Ersteller/Co-Admin)
@@ -412,6 +413,16 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
 
   return (
     <div className="flex items-start gap-2 px-4 sm:px-6 lg:px-10 py-4 justify-center print:block">
+    {onCreateNote && (
+      <ProtocolNotesPanel
+        protocol={protocol}
+        protocolRef={protocolNo}
+        projectId={protocol.projectId}
+        notes={notes}
+        onCreateNote={onCreateNote}
+        onDeleteNote={onDeleteNote}
+      />
+    )}
     <div className="flex-1 min-w-0 max-w-[1400px] space-y-0">
 
       {/* ── Top bar ── */}
