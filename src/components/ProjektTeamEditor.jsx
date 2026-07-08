@@ -19,6 +19,7 @@ export const TEAM_ANTEILE = [
   { value: 0.75, label: '75 %' },
   { value: 0.5,  label: '50 %' },
   { value: 0.25, label: '25 %' },
+  { value: 0,    label: '0 %' },
 ]
 
 /**
@@ -64,7 +65,7 @@ export default function ProjektTeamEditor({ project, staff: staffProp, onUpdateP
       .map(m => {
         const s = staff.find(x => x.id === m.staffId)
         if (!s || existing.has(s.name)) return null
-        const eff = Math.max(0.25, Math.round((m.anteil ?? 1) * templateAnteil * 4) / 4)
+        const eff = Math.max(0, Math.round((m.anteil ?? 1) * templateAnteil * 4) / 4)
         return { id: uid(), name: s.name, email: s.email || '', role: m.role || PROJECT_ROLES[0], anteil: eff }
       })
       .filter(Boolean)
