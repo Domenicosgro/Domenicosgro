@@ -150,6 +150,11 @@ function ContactModal({ contact, isNew, allProjects, suggestions, onSave, onClos
     role:     contact.role     || '',
     email:    contact.email    || '',
     phone:    contact.phone    || '',
+    mobile:   contact.mobile   || '',
+    street:   contact.street   || '',
+    zip:      contact.zip      || '',
+    city:     contact.city     || '',
+    notes:    contact.notes    || '',
     category: contact.category || '',
   })
   const [selProjects, setSelProjects] = useState(
@@ -221,6 +226,28 @@ function ContactModal({ contact, isNew, allProjects, suggestions, onSave, onClos
           <div>
             <label className="block text-xs text-gray-500 mb-1">Telefon</label>
             <input className="input w-full" value={form.phone} onChange={e => set('phone', e.target.value)} placeholder="+49 …" />
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">Mobil</label>
+            <input className="input w-full" value={form.mobile} onChange={e => set('mobile', e.target.value)} placeholder="+49 …" />
+          </div>
+
+          {/* Adresse */}
+          <div className="col-span-full">
+            <label className="block text-xs text-gray-500 mb-1">Straße &amp; Hausnummer</label>
+            <input className="input w-full" value={form.street} onChange={e => set('street', e.target.value)} placeholder="Musterstraße 1" />
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">PLZ</label>
+            <input className="input w-full" value={form.zip} onChange={e => set('zip', e.target.value)} placeholder="12345" />
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">Ort</label>
+            <input className="input w-full" value={form.city} onChange={e => set('city', e.target.value)} placeholder="Musterstadt" />
+          </div>
+          <div className="col-span-full">
+            <label className="block text-xs text-gray-500 mb-1">Notizen</label>
+            <textarea className="input w-full resize-y" rows={2} value={form.notes} onChange={e => set('notes', e.target.value)} placeholder="Ergänzende Informationen…" />
           </div>
 
           {/* Project assignment */}

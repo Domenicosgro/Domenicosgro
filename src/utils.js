@@ -131,6 +131,11 @@ export const emptyContact = () => ({
   role: '',
   email: '',
   phone: '',
+  mobile: '',
+  street: '',
+  zip: '',
+  city: '',
+  notes: '',
   category: '',
 })
 

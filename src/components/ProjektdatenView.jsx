@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react'
-import { ArrowLeft, Save, Check, AlertCircle, X, Database, UserPlus, Trash2, Handshake, Users } from 'lucide-react'
+import { ArrowLeft, Save, Check, AlertCircle, X, Database, UserPlus, Trash2, Handshake, Users, Building2, Link2 } from 'lucide-react'
 import { uid } from '../utils'
 import ProjektTeamEditor from './ProjektTeamEditor'
 
@@ -48,7 +48,8 @@ export const composeName  = (nummer, kuerzel, bezeichnung) =>
 
 const emptyData = () => ({
   nummer: '', kuerzel: '', kuerzelAusnahme: false, bezeichnung: '',
-  vertrag: VERTRAG_TYPES[0], vertragNotiz: '',
+  vertrag: VERTRAG_TYPES[0], vertragNotiz: '', gesellschaft: '',
+  bauherr: { company: '', person: '', street: '', zip: '', city: '', phone: '', email: '', contactId: null },
   lph: {},                      // { 1: { beauftragt: true, pauschale: '' }, … }
   pauschalGesamt: '',
   isGeneralplanung: false,
@@ -79,6 +80,26 @@ export default function ProjektdatenView({ project, allContacts = [], onUpdatePr
   const set = (patch) => { setData(d => ({ ...d, ...patch })); setSaved(false) }
   const setLph = (nr, patch) =>
     set({ lph: { ...data.lph, [nr]: { ...(data.lph[nr] || {}), ...patch } } })
+  const bauherr = data.bauherr || {}
+  const setBauherr = (patch) => set({ bauherr: { ...bauherr, ...patch } })
+  const [bauherrPick, setBauherrPick] = useState('')
+
+  // Bauherr aus der Kontaktdatenbank übernehmen (Adresse etc. vorbelegen)
+  const applyBauherrContact = () => {
+    const c = allContacts.find(x => (x.id || x.name) === bauherrPick)
+    if (!c) return
+    setBauherr({
+      company: c.company || bauherr.company || '',
+      person:  c.name || '',
+      street:  c.street || '',
+      zip:     c.zip || '',
+      city:    c.city || '',
+      phone:   c.phone || c.mobile || '',
+      email:   c.email || '',
+      contactId: c.id || null,
+    })
+    setBauherrPick('')
+  }
 
   const nummerOk  = !data.nummer  || validNummer(data.nummer)
   const kuerzelOk = !data.kuerzel || data.kuerzelAusnahme || validKuerzel(data.kuerzel)
@@ -173,6 +194,42 @@ export default function ProjektdatenView({ project, allContacts = [], onUpdatePr
             Projektname: <strong className="text-night">{codedName}</strong>
             <span className="text-xs text-gray-400 ml-2">(wird beim Speichern übernommen)</span>
           </p>
+        )}
+      </div>
+
+      {/* Bauherr / Auftraggeber */}
+      <div className="card p-5 space-y-3">
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <h2 className="section-title"><Building2 size={16} /> Bauherr / Auftraggeber</h2>
+          <div className="flex gap-2 items-center no-print">
+            <select className="select text-xs py-1 max-w-[220px]" value={bauherrPick} onChange={e => setBauherrPick(e.target.value)}>
+              <option value="">Aus Kontaktdatenbank übernehmen…</option>
+              {allContacts.map(c => (
+                <option key={c.id || c.name} value={c.id || c.name}>
+                  {c.name || c.company}{c.company && c.name ? ` (${c.company})` : ''}
+                </option>
+              ))}
+            </select>
+            <button className="btn-secondary text-xs" disabled={!bauherrPick} onClick={applyBauherrContact}>
+              <Link2 size={12} /> Übernehmen
+            </button>
+          </div>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <input className="input" placeholder="Bauherr / Firma" value={bauherr.company || ''} onChange={e => setBauherr({ company: e.target.value })} />
+          <input className="input" placeholder="Ansprechpartner" value={bauherr.person || ''} onChange={e => setBauherr({ person: e.target.value })} />
+          <input className="input sm:col-span-2" placeholder="Straße & Hausnummer" value={bauherr.street || ''} onChange={e => setBauherr({ street: e.target.value })} />
+          <div className="grid grid-cols-[100px_1fr] gap-3">
+            <input className="input" placeholder="PLZ" value={bauherr.zip || ''} onChange={e => setBauherr({ zip: e.target.value })} />
+            <input className="input" placeholder="Ort" value={bauherr.city || ''} onChange={e => setBauherr({ city: e.target.value })} />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <input className="input" placeholder="Telefon" value={bauherr.phone || ''} onChange={e => setBauherr({ phone: e.target.value })} />
+            <input className="input" type="email" placeholder="E-Mail" value={bauherr.email || ''} onChange={e => setBauherr({ email: e.target.value })} />
+          </div>
+        </div>
+        {bauherr.contactId && (
+          <p className="text-[11px] text-gray-400 flex items-center gap-1"><Link2 size={11} /> Mit einem Kontakt der Kontaktdatenbank verknüpft.</p>
         )}
       </div>
 

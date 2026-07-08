@@ -92,7 +92,10 @@ export default function App() {
           || `${(c.name || '').trim().toLowerCase()}|${(c.company || '').trim().toLowerCase()}`
         if (seen.has(key)) continue
         seen.add(key)
-        list.push({ id: c.id, name: c.name || '', company: c.company || '', email: c.email || '', phone: c.phone || '' })
+        list.push({
+          id: c.id, name: c.name || '', company: c.company || '', email: c.email || '', phone: c.phone || '',
+          mobile: c.mobile || '', street: c.street || '', zip: c.zip || '', city: c.city || '',
+        })
       }
     }
     return list.sort((a, b) => (a.name || a.company).localeCompare(b.name || b.company, 'de'))
