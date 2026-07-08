@@ -41,7 +41,11 @@ export default function ProjektdatenbankView({ projects, allContacts, canEdit, s
   }
 
   // Automatisch alle angelegten Projekte; archivierte fallen automatisch heraus
-  const active = projects.filter(p => !p.isArchived)
+  // Numerisch nach Projektnummer sortieren (Projekte ohne Nummer ans Ende)
+  const byNummer = (a, b) =>
+    (parseInt(a.projectData?.nummer, 10) || Infinity) - (parseInt(b.projectData?.nummer, 10) || Infinity)
+    || (a.name || '').localeCompare(b.name || '', 'de')
+  const active = projects.filter(p => !p.isArchived).sort(byNummer)
 
   const Row = ({ project }) => {
     const d = project.projectData || {}
