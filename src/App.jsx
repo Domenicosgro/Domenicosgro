@@ -107,6 +107,21 @@ export default function App() {
   const [serverAuthChecked, setServerAuthChecked] = useState(!isServer)
   const [showAdmin,         setShowAdmin]         = useState(false)
 
+  // ── Vorschau als Anwender ─────────────────────────────────────────────────
+  // Rein clientseitiger Modus: Ein Admin sieht die App wie ein einfacher Nutzer.
+  // effectiveUser wird ÜBERALL statt serverUser durchgereicht → alle Rollen-Checks
+  // zeigen automatisch die Anwender-Sicht. Serverrechte/Token bleiben unverändert;
+  // Umschalter und Banner nutzen weiterhin die echte Rolle (serverUser).
+  const [previewAsUser, setPreviewAsUser] = useState(false)
+  const isRealAdmin = isServer && serverUser?.role === 'admin'
+  const effectiveUser = useMemo(
+    () => (previewAsUser && serverUser?.role === 'admin')
+      ? { ...serverUser, role: 'user' }
+      : serverUser,
+    [previewAsUser, serverUser],
+  )
+  const startPreviewAsUser = () => { setShowAdmin(false); setPreviewAsUser(true) }
+
   useEffect(() => {
     if (!isServer) return
     const token = localStorage.getItem('kp_session_token')
@@ -141,6 +156,7 @@ export default function App() {
     localStorage.removeItem('kp_session_token')
     setServerUser(null)
     setShowAdmin(false)
+    setPreviewAsUser(false)
   }
 
   // ── Web update check (Server-Modus): version.json pollen ──────────────────
@@ -468,7 +484,7 @@ export default function App() {
       }
     }
 
-    if (isServer && serverUser?.role !== 'admin') {
+    if (isServer && effectiveUser?.role !== 'admin') {
       // Zustimmung des Software-Admins erforderlich → Anfrage stellen
       const headers = { 'Content-Type': 'application/json' }
       if (sessionToken) headers['Authorization'] = `Bearer ${sessionToken}`
@@ -483,7 +499,7 @@ export default function App() {
 
     updateProject(projectId, { isArchived: true, archivedAt: new Date().toISOString(), archivePdf })
     return { archived: true }
-  }, [projectsWithContacts, protocols, logoDataUrl, sessionToken, serverUser, updateProject])
+  }, [projectsWithContacts, protocols, logoDataUrl, sessionToken, effectiveUser, updateProject])
 
   const handleUnarchiveProject = useCallback((projectId) => {
     updateProject(projectId, { isArchived: false, archivedAt: null })
@@ -492,7 +508,25 @@ export default function App() {
   const wrap = (children) => (
     <>
       {children}
-      {showAdmin && <AdminPanel serverUser={serverUser} onClose={() => setShowAdmin(false)} />}
+      {showAdmin && (
+        <AdminPanel
+          serverUser={effectiveUser}
+          onClose={() => setShowAdmin(false)}
+          onPreviewAsUser={isRealAdmin && !previewAsUser ? startPreviewAsUser : undefined}
+        />
+      )}
+      {previewAsUser && (
+        <div className="fixed bottom-0 inset-x-0 z-[60] no-print flex items-center justify-center gap-3 bg-night text-white text-sm px-4 py-2">
+          <span className="font-medium">Vorschau als Anwender</span>
+          <span className="text-white/60 hidden sm:inline">– so sieht ein einfacher Nutzer die App</span>
+          <button
+            className="bg-sky text-night px-3 py-1 font-medium hover:opacity-90 transition-opacity"
+            onClick={() => setPreviewAsUser(false)}
+          >
+            Zurück zur Admin-Ansicht
+          </button>
+        </div>
+      )}
       {bimPopup && (
         <BimViewerPopup
           project={bimPopup.project}
@@ -540,7 +574,7 @@ export default function App() {
           protocols={protocols}
           projects={projectsWithContacts}
           projectContacts={linkedProject?.contacts ?? []}
-          serverUser={serverUser}
+          serverUser={effectiveUser}
           logoDataUrl={linkedProject?.logo || logoDataUrl}
           clientLogoDataUrl={linkedProject?.clientLogo || ''}
           onUpdate={handleUpdateProtocol}
@@ -613,7 +647,7 @@ export default function App() {
           projects={projectsWithContacts}
           projectId={selectedProjectId}
           projectContacts={[...(project?.contacts ?? []), ...(project?.adminContacts ?? [])]}
-          serverUser={serverUser}
+          serverUser={effectiveUser}
           onOpenProtocol={openProtocolFromDashboard}
           onUpdateProtocol={handleUpdateProtocol}
           onBack={() => setView('project-dashboard')}
@@ -674,7 +708,7 @@ export default function App() {
     return (
       <BimView
         project={project}
-        serverUser={serverUser}
+        serverUser={effectiveUser}
         token={typeof localStorage !== 'undefined' ? localStorage.getItem('kp_session_token') : null}
         onBack={() => setView(bimReturnView)}
         backLabel={
@@ -700,7 +734,7 @@ export default function App() {
           project={project}
           protocols={protocols}
           notes={notes}
-          serverUser={serverUser}
+          serverUser={effectiveUser}
           globalLogoDataUrl={logoDataUrl}
           onUpdateProject={handleUpdateProject}
           onBack={() => setView('home')}
@@ -738,7 +772,7 @@ export default function App() {
         {notesTab === 'notizbuch'
           ? <NotizbuchView
               project={project}
-              serverUser={serverUser}
+              serverUser={effectiveUser}
               onBack={() => setView('project-dashboard')}
               tabs={tabs}
             />
@@ -777,7 +811,7 @@ export default function App() {
     return wrap(
       <>
         <LearningPlatform
-          serverUser={serverUser}
+          serverUser={effectiveUser}
           onBack={() => setView('home')}
         />
         <UpdateBanner /><SaveErrorBanner />
@@ -787,13 +821,13 @@ export default function App() {
 
   if (view === 'personalplanung') {
     // Personalplanung obliegt dem Software-Admin
-    if (isServer && serverUser?.role !== 'admin') { setView('home'); return null }
+    if (isServer && effectiveUser?.role !== 'admin') { setView('home'); return null }
     return wrap(
       <>
         <PersonalplanungView
           projects={projectsWithContacts}
           onUpdateProject={handleUpdateProject}
-          serverUser={serverUser}
+          serverUser={effectiveUser}
           onBack={() => setView('home')}
         />
         <UpdateBanner /><SaveErrorBanner />
@@ -808,7 +842,7 @@ export default function App() {
       <>
         <BautagebuchView
           project={project}
-          serverUser={serverUser}
+          serverUser={effectiveUser}
           onBack={() => setView('project-dashboard')}
         />
         <UpdateBanner /><SaveErrorBanner />
@@ -817,7 +851,7 @@ export default function App() {
   }
 
   // Projektdatenbank bearbeiten dürfen System- und Projektadmins
-  const canEditProjektdaten = (project) => !isServer || serverUser?.role === 'admin'
+  const canEditProjektdaten = (project) => !isServer || effectiveUser?.role === 'admin'
     || project.projectAdminUser === serverUser?.username
     || project.projectAdmins?.includes(serverUser?.username)
 
@@ -845,7 +879,7 @@ export default function App() {
           projects={projectsWithContacts}
           allContacts={allContacts}
           canEdit={canEditProjektdaten}
-          serverUser={serverUser}
+          serverUser={effectiveUser}
           onCreate={handleCreateProject}
           onUpdateProject={handleUpdateProject}
           onBack={() => setView('home')}
@@ -858,14 +892,14 @@ export default function App() {
   if (view === 'project-dateiablage') {
     const project = projectsWithContacts.find(p => p.id === selectedProjectId)
     if (!project) { setView('home'); return null }
-    const canAdminFiles = !isServer || serverUser?.role === 'admin'
+    const canAdminFiles = !isServer || effectiveUser?.role === 'admin'
       || project.projectAdminUser === serverUser?.username
       || project.projectAdmins?.includes(serverUser?.username)
     return wrap(
       <>
         <DateiablageView
           project={project}
-          serverUser={serverUser}
+          serverUser={effectiveUser}
           canAdmin={canAdminFiles}
           onUpdateProject={handleUpdateProject}
           onBack={() => setView('project-dashboard')}
@@ -904,7 +938,7 @@ export default function App() {
         <MaengelView
           project={project}
           protocols={projectProtos}
-          serverUser={serverUser}
+          serverUser={effectiveUser}
           onBack={() => setView('project-dashboard')}
           onAddToProtocol={handleAddDefectToProtocol}
         />
@@ -936,7 +970,7 @@ export default function App() {
         notes={notes}
         onOpenProtocol={openProtocolFromDashboard}
         onOpenProjectNotes={(projectId) => { setSelectedProjectId(projectId); setView('notes') }}
-        serverUser={serverUser}
+        serverUser={effectiveUser}
         onLogout={isServer ? handleLogout : null}
         onOpenAdmin={isServer ? () => setShowAdmin(true) : null}
         onRequestDeleteProject={isServer ? handleRequestDeleteProject : null}

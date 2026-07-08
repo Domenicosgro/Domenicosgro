@@ -1631,7 +1631,7 @@ function EmailTemplatesTab() {
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
-export default function AdminPanel({ serverUser, onClose }) {
+export default function AdminPanel({ serverUser, onClose, onPreviewAsUser }) {
   const isAdmin = serverUser?.role === 'admin' || serverUser?.devMode
   const [tab, setTab] = useState(isAdmin ? 'users' : 'password')
 
@@ -1684,7 +1684,18 @@ export default function AdminPanel({ serverUser, onClose }) {
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200">
           <h2 className="font-semibold text-gray-900">Server-Einstellungen</h2>
-          <button className="btn-ghost p-1" onClick={onClose}><X size={16} /></button>
+          <div className="flex items-center gap-2">
+            {onPreviewAsUser && (
+              <button
+                className="btn btn-secondary text-xs flex items-center gap-1.5"
+                onClick={onPreviewAsUser}
+                title="Die App aus Sicht eines einfachen Anwenders ansehen – nur die Ansicht ändert sich, Ihre Rechte bleiben erhalten."
+              >
+                <Eye size={13} /> Als Anwender ansehen
+              </button>
+            )}
+            <button className="btn-ghost p-1" onClick={onClose}><X size={16} /></button>
+          </div>
         </div>
 
         {/* Tabs */}
