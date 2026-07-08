@@ -440,8 +440,21 @@ export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, 
 
       {/* Dashboard-Kacheln */}
       {(() => {
-        const totalContacts = projects.reduce((s, p) => s + (p.contacts ?? []).length, 0)
+        // Kontakte deduplizieren – wie in der Kontaktdatenbank (E-Mail bzw. Name+Firma)
+        const seenC = new Set()
+        let totalContacts = 0
+        for (const p of projects) {
+          for (const c of (p.contacts ?? [])) {
+            if (!c.name && !c.company && !c.email) continue
+            const key = (c.email || '').trim().toLowerCase()
+              || `${(c.name || '').trim().toLowerCase()}|${(c.company || '').trim().toLowerCase()}`
+            if (seenC.has(key)) continue
+            seenC.add(key); totalContacts++
+          }
+        }
         const contactProjectCount = projects.filter(p => (p.contacts ?? []).length > 0).length
+        // Projektdatenbank enthält alle nicht archivierten Projekte (board-unabhängig)
+        const dbProjectCount = projects.filter(p => !p.isArchived).length
         return (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
             <button
@@ -479,7 +492,7 @@ export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, 
               <p className="text-xs text-gray-500 line-clamp-3">Zentrale Projektstammdaten: Codierung, Leistungsphasen, Verträge, Generalplanung</p>
               <div className="flex gap-4 mt-auto pt-2">
                 <div>
-                  <div className="text-lg font-bold text-night leading-none">{activeProjects.length}</div>
+                  <div className="text-lg font-bold text-night leading-none">{dbProjectCount}</div>
                   <div className="text-xs text-gray-400 mt-0.5">Projekte</div>
                 </div>
                 <span className="text-xs text-gray-400 italic self-end">Bearbeitung: Admins</span>
