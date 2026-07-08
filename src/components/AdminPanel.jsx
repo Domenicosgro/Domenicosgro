@@ -315,9 +315,12 @@ function UsersTab({ serverUser }) {
             <div key={u.username} className="px-4 py-3 space-y-2">
               {/* Name + role + delete */}
               <div className="flex items-center justify-between">
-                <div>
-                  <div className="text-sm font-medium text-gray-900" title={u.display_name || u.username}>{userInitials(u)}</div>
-                  <div className="text-xs text-gray-500">{u.username}</div>
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-brand-100 text-brand-700 text-xs font-bold flex-shrink-0">{userInitials(u)}</span>
+                  <div className="min-w-0">
+                    <div className="text-sm font-medium text-gray-900 truncate">{u.display_name || u.username}</div>
+                    <div className="text-xs text-gray-500 truncate">{u.username}</div>
+                  </div>
                 </div>
                 <div className="flex items-center gap-2">
                   {u.source === 'synology' && (
