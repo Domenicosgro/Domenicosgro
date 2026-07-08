@@ -1,39 +1,53 @@
 import React, { useState } from 'react'
-import { StickyNote, X, Plus, Trash2, Check, ChevronRight } from 'lucide-react'
+import { StickyNote, X, Plus, Trash2, Check, ChevronRight, Pencil } from 'lucide-react'
 import RichTextEditor from './RichTextEditor'
 import { NOTE_TYPES, formatDate } from '../utils'
 
 /**
  * Seitliches Notiz-Panel im Protokoll-Editor. Unabhängig vom Protokoll,
  * erstellt Notizen mit Bezug auf den Protokolltitel, die in der
- * Notizenkachel (Projekt-Notizen) gespeichert werden.
+ * Notizenkachel (Projekt-Notizen) gespeichert werden. Bereits gespeicherte
+ * Notizen sind direkt hier weiter bearbeitbar.
  */
 export default function ProtocolNotesPanel({
-  protocol, protocolRef, projectId, notes = [], onCreateNote, onDeleteNote,
+  protocol, protocolRef, projectId, notes = [], onCreateNote, onUpdateNote, onDeleteNote,
 }) {
-  const [open,    setOpen]    = useState(false)
-  const [type,    setType]    = useState('aktennotiz')
-  const [subject, setSubject] = useState('')
-  const [content, setContent] = useState('')
-  const [saved,   setSaved]   = useState(false)
+  const [open,      setOpen]      = useState(false)
+  const [editingId, setEditingId] = useState(null)   // null = neue Notiz
+  const [type,      setType]      = useState('aktennotiz')
+  const [subject,   setSubject]   = useState('')
+  const [content,   setContent]   = useState('')
+  const [saved,     setSaved]     = useState(false)
 
   // Notizen, die aus diesem Protokoll erstellt wurden
   const linked = notes
     .filter(n => n.protocolId === protocol.id)
     .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''))
 
+  const resetForm = () => { setEditingId(null); setType('aktennotiz'); setSubject(''); setContent('') }
+
+  const startEdit = (n) => {
+    setEditingId(n.id)
+    setType(n.type || 'aktennotiz')
+    setSubject(n.subject || '')
+    setContent(n.content || '')
+    setSaved(false)
+  }
+
   const save = () => {
-    if (!onCreateNote) return
     if (!subject.trim() && !content.trim()) return
-    onCreateNote({
-      projectId: projectId ?? null,
-      protocolId: protocol.id,
-      protocolRef: protocolRef || '',
-      type,
-      subject: subject.trim() || (NOTE_TYPES.find(t => t.value === type)?.label || 'Notiz'),
-      content,
-    })
-    setSubject(''); setContent('')
+    const subj = subject.trim() || (NOTE_TYPES.find(t => t.value === type)?.label || 'Notiz')
+    if (editingId) {
+      if (onUpdateNote) onUpdateNote(editingId, { type, subject: subj, content })
+    } else {
+      if (onCreateNote) onCreateNote({
+        projectId: projectId ?? null,
+        protocolId: protocol.id,
+        protocolRef: protocolRef || '',
+        type, subject: subj, content,
+      })
+    }
+    resetForm()
     setSaved(true)
     setTimeout(() => setSaved(false), 2000)
   }
@@ -72,8 +86,18 @@ export default function ProtocolNotesPanel({
             </div>
 
             <div className="flex-1 overflow-y-auto p-4 space-y-4">
-              {/* Neue Notiz */}
+              {/* Neue/bearbeitete Notiz */}
               <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                    {editingId ? 'Notiz bearbeiten' : 'Neue Notiz'}
+                  </span>
+                  {editingId && (
+                    <button className="text-[11px] text-gray-400 hover:text-gray-600" onClick={resetForm}>
+                      + Neue Notiz
+                    </button>
+                  )}
+                </div>
                 <div className="flex gap-2">
                   <select className="select text-sm py-1" value={type} onChange={e => setType(e.target.value)}>
                     {NOTE_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
@@ -82,6 +106,7 @@ export default function ProtocolNotesPanel({
                     value={subject} onChange={e => setSubject(e.target.value)} />
                 </div>
                 <RichTextEditor
+                  key={editingId || 'new'}
                   value={content}
                   onChange={setContent}
                   placeholder="Notiz erfassen… (unabhängig vom Protokoll)"
@@ -89,7 +114,8 @@ export default function ProtocolNotesPanel({
                 <div className="flex items-center justify-between">
                   <span className="text-[11px] text-gray-400">Wird in der Notizenkachel des Projekts gespeichert.</span>
                   <button className="btn-primary text-sm py-1" onClick={save} disabled={!subject.trim() && !content.trim()}>
-                    {saved ? <Check size={14} /> : <Plus size={14} />} {saved ? 'Gespeichert' : 'Notiz speichern'}
+                    {saved ? <Check size={14} /> : editingId ? <Check size={14} /> : <Plus size={14} />}
+                    {saved ? 'Gespeichert' : editingId ? 'Änderungen speichern' : 'Notiz speichern'}
                   </button>
                 </div>
               </div>
@@ -102,9 +128,10 @@ export default function ProtocolNotesPanel({
                   </p>
                   <div className="space-y-2">
                     {linked.map(n => (
-                      <div key={n.id} className="border border-gray-100 p-2.5 group">
+                      <div key={n.id}
+                        className={`border p-2.5 group ${editingId === n.id ? 'border-brand-300 bg-brand-50/40' : 'border-gray-100'}`}>
                         <div className="flex items-start justify-between gap-2">
-                          <div className="min-w-0">
+                          <button className="min-w-0 text-left flex-1" title="Zum Bearbeiten öffnen" onClick={() => startEdit(n)}>
                             <p className="text-sm font-medium text-gray-800 truncate">
                               {n.subject || (NOTE_TYPES.find(t => t.value === n.type)?.label || 'Notiz')}
                             </p>
@@ -112,14 +139,17 @@ export default function ProtocolNotesPanel({
                               {NOTE_TYPES.find(t => t.value === n.type)?.label || n.type}
                               {n.date ? ` · ${formatDate(n.date)}` : ''}
                             </p>
+                          </button>
+                          <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+                            <button className="btn-ghost p-1 text-gray-300 hover:text-brand-600" title="Bearbeiten"
+                              onClick={() => startEdit(n)}><Pencil size={13} /></button>
+                            {onDeleteNote && (
+                              <button className="btn-ghost p-1 text-gray-300 hover:text-red-500" title="Notiz löschen"
+                                onClick={() => { if (confirm('Notiz löschen?')) { if (editingId === n.id) resetForm(); onDeleteNote(n.id) } }}>
+                                <Trash2 size={13} />
+                              </button>
+                            )}
                           </div>
-                          {onDeleteNote && (
-                            <button className="btn-ghost p-1 text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
-                              title="Notiz löschen"
-                              onClick={() => { if (confirm('Notiz löschen?')) onDeleteNote(n.id) }}>
-                              <Trash2 size={13} />
-                            </button>
-                          )}
                         </div>
                       </div>
                     ))}

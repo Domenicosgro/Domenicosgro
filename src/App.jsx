@@ -547,6 +547,7 @@ export default function App() {
           onOpenBimIssue={linkedProject?.bimMeta ? (viewpoint, title) => setBimPopup({ project: linkedProject, viewpoint, title }) : undefined}
           notes={notes}
           onCreateNote={activeProtocol.projectId ? (patch) => createNote(patch) : undefined}
+          onUpdateNote={updateNote}
           onDeleteNote={deleteNote}
         />
         <UpdateBanner /><SaveErrorBanner />

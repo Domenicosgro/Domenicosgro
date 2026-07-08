@@ -56,7 +56,7 @@ function promoteAgenda(agenda, existingItems) {
   ]
 }
 
-export default function ProtocolEditor({ protocol, protocols, projects, projectContacts, serverUser, logoDataUrl, clientLogoDataUrl, onUpdate, onUpdateProject, onBack, onRefresh, onOpenBim, onOpenBimIssue, notes = [], onCreateNote, onDeleteNote }) {
+export default function ProtocolEditor({ protocol, protocols, projects, projectContacts, serverUser, logoDataUrl, clientLogoDataUrl, onUpdate, onUpdateProject, onBack, onRefresh, onOpenBim, onOpenBimIssue, notes = [], onCreateNote, onUpdateNote, onDeleteNote }) {
   const change = (patch) => onUpdate(protocol.id, patch)
   const linkedProject  = (projects ?? []).find(p => p.id === protocol.projectId) ?? null
   // Freimeldung genehmigen: Systemadmin oder Projektadmin (Ersteller/Co-Admin)
@@ -420,6 +420,7 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
         projectId={protocol.projectId}
         notes={notes}
         onCreateNote={onCreateNote}
+        onUpdateNote={onUpdateNote}
         onDeleteNote={onDeleteNote}
       />
     )}
