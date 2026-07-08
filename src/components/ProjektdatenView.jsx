@@ -50,7 +50,7 @@ export const DISZIPLINEN = [
 ]
 
 export const validNummer  = (v) => /^\d{3,4}$/.test(v)
-export const validKuerzel = (v) => /^[A-Za-zÄÖÜäöüß]{3,4}$/.test(v)
+export const validKuerzel = (v) => /^[A-Za-z0-9ÄÖÜäöüß]{3,4}$/.test(v)
 export const composeName  = (nummer, kuerzel, bezeichnung) =>
   [nummer, kuerzel, bezeichnung].filter(Boolean).join(' ').trim()
 
@@ -71,7 +71,7 @@ export default function ProjektdatenView({ project, allContacts = [], onUpdatePr
   const initialData = () => {
     const base = { ...emptyData(), ...(project.projectData || {}) }
     if (!base.nummer && !base.kuerzel && !base.bezeichnung && project.name) {
-      const m = project.name.match(/^(\d{3,4})\s+([A-Za-zÄÖÜäöüß]{3,4})\s+(.+)$/)
+      const m = project.name.match(/^(\d{3,4})\s+([A-Za-z0-9ÄÖÜäöüß]{3,4})\s+(.+)$/)
       if (m) {
         base.nummer = m[1]; base.kuerzel = m[2].toUpperCase(); base.bezeichnung = m[3].trim()
       } else {
@@ -169,7 +169,7 @@ export default function ProjektdatenView({ project, allContacts = [], onUpdatePr
   useEffect(() => {
     if (readOnly) return
     setError((!nummerOk || !kuerzelOk)
-      ? 'Codierung prüfen: 3–4 Ziffern und 3–4 Buchstaben (oder Ausnahme aktivieren) – der Projektname wird erst bei gültiger Codierung übernommen.'
+      ? 'Codierung prüfen: 3–4 Ziffern und 3–4 Buchstaben/Ziffern (oder Ausnahme aktivieren) – der Projektname wird erst bei gültiger Codierung übernommen.'
       : null)
   }, [nummerOk, kuerzelOk, readOnly])
 
@@ -207,7 +207,7 @@ export default function ProjektdatenView({ project, allContacts = [], onUpdatePr
       {/* Projektcodierung */}
       <div className="card p-5 space-y-3">
         <h2 className="section-title">Projektcodierung</h2>
-        <p className="text-xs text-gray-400 -mt-1">Schema: 3–4 Ziffern · 3–4 Buchstaben · Projektbezeichnung</p>
+        <p className="text-xs text-gray-400 -mt-1">Schema: 3–4 Ziffern · 3–4 Buchstaben/Ziffern · Projektbezeichnung</p>
         <div className="grid grid-cols-2 sm:grid-cols-[110px_130px_1fr] gap-3">
           <div>
             <label className="block text-xs font-medium text-gray-500 mb-1">Nummer</label>
@@ -226,8 +226,8 @@ export default function ProjektdatenView({ project, allContacts = [], onUpdatePr
             </label>
             <input className={`input font-mono uppercase ${!kuerzelOk ? 'border-red-400' : ''}`} placeholder="MUST"
               maxLength={data.kuerzelAusnahme ? 12 : 4} value={data.kuerzel}
-              onChange={e => set({ kuerzel: data.kuerzelAusnahme ? e.target.value : e.target.value.replace(/[^A-Za-zÄÖÜäöüß]/g, '').toUpperCase() })} />
-            {!kuerzelOk && <p className="text-[11px] text-red-500 mt-0.5">3–4 Buchstaben (oder Ausnahme)</p>}
+              onChange={e => set({ kuerzel: data.kuerzelAusnahme ? e.target.value : e.target.value.replace(/[^A-Za-z0-9ÄÖÜäöüß]/g, '').toUpperCase() })} />
+            {!kuerzelOk && <p className="text-[11px] text-red-500 mt-0.5">3–4 Buchstaben/Ziffern (oder Ausnahme)</p>}
           </div>
           <div className="col-span-2 sm:col-span-1">
             <label className="block text-xs font-medium text-gray-500 mb-1">Projektbezeichnung</label>

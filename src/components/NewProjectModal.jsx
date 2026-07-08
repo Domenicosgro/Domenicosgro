@@ -3,7 +3,7 @@ import { Plus, X } from 'lucide-react'
 import { validNummer, validKuerzel, composeName } from './ProjektdatenView'
 
 /**
- * Anlage eines neuen Projekts mit Codierung (3–4 Ziffern · 3–4 Buchstaben ·
+ * Anlage eines neuen Projekts mit Codierung (3–4 Ziffern · 3–4 Buchstaben/Ziffern ·
  * Bezeichnung). Ruft onCreate({ name, projectData }) auf; der Aufrufer legt
  * das Projekt an und entscheidet über Defaults (z. B. onProtocolBoard).
  */
@@ -34,7 +34,7 @@ export default function NewProjectModal({ onCreate, onClose }) {
           <button className="btn-ghost p-1" onClick={onClose}><X size={16} /></button>
         </div>
         <div className="p-5 space-y-3">
-          <p className="text-xs text-gray-400">Codierung: 3–4 Ziffern · 3–4 Buchstaben · Projektbezeichnung</p>
+          <p className="text-xs text-gray-400">Codierung: 3–4 Ziffern · 3–4 Buchstaben/Ziffern · Projektbezeichnung</p>
           <div className="grid grid-cols-[100px_120px] gap-3">
             <div>
               <label className="block text-xs font-medium text-gray-500 mb-1">Nummer *</label>
@@ -53,7 +53,7 @@ export default function NewProjectModal({ onCreate, onClose }) {
               </label>
               <input className={`input font-mono uppercase ${kuerzel && !kuerzelOk ? 'border-red-400' : ''}`}
                 placeholder="MUST" maxLength={ausnahme ? 12 : 4} value={kuerzel}
-                onChange={e => setKuerzel(ausnahme ? e.target.value : e.target.value.replace(/[^A-Za-zÄÖÜäöüß]/g, '').toUpperCase())}
+                onChange={e => setKuerzel(ausnahme ? e.target.value : e.target.value.replace(/[^A-Za-z0-9ÄÖÜäöüß]/g, '').toUpperCase())}
                 onKeyDown={e => e.key === 'Enter' && submit()} />
             </div>
           </div>
