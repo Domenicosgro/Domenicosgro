@@ -542,8 +542,6 @@ export default function ProjectManager({ projects, allProjects, onCreate, onUpda
                             return (
                               <tr
                                 key={c.id}
-                                draggable={!isSortActive}
-                                onDragStart={() => handleDragStart(project.id, c.id, idx)}
                                 onDragOver={e => handleDragOver(e, project.id, idx)}
                                 onDrop={e => handleDrop(e, project, idx)}
                                 onDragEnd={handleDragEnd}
@@ -553,7 +551,10 @@ export default function ProjectManager({ projects, allProjects, onCreate, onUpda
                                   <td className="py-2 pr-2 w-6">
                                     <span
                                       className="cursor-grab text-gray-300 hover:text-gray-500 flex items-center"
-                                      title="Reihenfolge ändern"
+                                      title="Zum Umsortieren am Griff ziehen"
+                                      draggable
+                                      onDragStart={() => handleDragStart(project.id, c.id, idx)}
+                                      onDragEnd={handleDragEnd}
                                     >
                                       <GripVertical size={14} />
                                     </span>

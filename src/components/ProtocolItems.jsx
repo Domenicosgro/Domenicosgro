@@ -421,11 +421,7 @@ export default function ProtocolItems({ items, onChange, allTasks = [], onTasksC
             <div key={item.id} className={`protocol-item ${isDragging ? 'opacity-40' : ''}`}>
               <div
                 className={`${s.indent} print-level-${lvl} rounded-lg ${s.borderL} pl-2 pr-3 py-3 space-y-2
-                  ${gray ? 'bg-gray-50 opacity-60' : done ? 'bg-green-50' : 'bg-white'}
-                  ${dndActive ? 'cursor-grab' : ''}`}
-                draggable={dndActive && !gray}
-                onDragStart={e => handleDragStart(e, item.id)}
-                onDragEnd={handleDragEnd}
+                  ${gray ? 'bg-gray-50 opacity-60' : done ? 'bg-green-50' : 'bg-white'}`}
               >
                 {/* Row 1: collapse + drag handle + number + topic + controls */}
                 <div className="flex items-start gap-2">
@@ -444,10 +440,15 @@ export default function ProtocolItems({ items, onChange, allTasks = [], onTasksC
                     </button>
                   )}
 
-                  {/* Drag handle */}
+                  {/* Drag handle – nur der Griff ist ziehbar, damit Text im Punkt frei markierbar/kopierbar bleibt */}
                   {dndActive && !gray && (
-                    <div className="flex-shrink-0 mt-1 text-gray-300 hover:text-gray-500 cursor-grab no-print"
-                      title="Verschieben (Drag & Drop)">
+                    <div
+                      className="flex-shrink-0 mt-1 text-gray-300 hover:text-gray-500 cursor-grab no-print"
+                      title="Zum Verschieben am Griff ziehen"
+                      draggable
+                      onDragStart={e => handleDragStart(e, item.id)}
+                      onDragEnd={handleDragEnd}
+                    >
                       <GripVertical size={14} />
                     </div>
                   )}
