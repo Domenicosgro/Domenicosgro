@@ -109,10 +109,30 @@ function logEvent(event, req, extra = '') {
   if (event !== 'REQ') console.log(line.trim())
 }
 
+// ── Prozess-Crash-Guards ──────────────────────────────────────────────────────
+// Ohne diese Handler beendet ein einziger unbehandelter (asynchroner) Fehler den
+// gesamten Node-Prozess → ALLE Mitarbeiter verlieren gleichzeitig die Sitzung.
+// Da der komplette dauerhafte Zustand in SQLite liegt (WAL, atomare Writes) und
+// Requests weitgehend unabhängig sind, ist Weiterlaufen sicherer als ein
+// Komplettabsturz durch einen lokalen Fehler. Bleibt der Prozess doch hängen,
+// greift der Healthcheck + restart:unless-stopped des Containers als letztes Netz.
+const ERROR_LOG = path.join(LOG_DIR, 'error.log')
+function logCrash(kind, err) {
+  const detail = (err && (err.stack || err.message)) || String(err)
+  const line   = `${new Date().toISOString()} [${kind}] ${detail}\n`
+  try { fs.appendFileSync(ERROR_LOG, line) } catch {}
+  console.error(line.trim())
+}
+process.on('uncaughtException',  (err)    => logCrash('UNCAUGHT_EXCEPTION', err))
+process.on('unhandledRejection', (reason) => logCrash('UNHANDLED_REJECTION', reason))
+
 app.use((req, _res, next) => { logEvent('REQ', req); next() })
 
 // ── Body parser ───────────────────────────────────────────────────────────────
-app.use(express.json({ limit: '200mb' }))
+// 100 MB deckt alle base64-JSON-Payloads (komprimierte Fotos, client-erzeugte
+// PDF-Anhänge) großzügig ab. Die wirklich großen Uploads (Videos, BIM/IFC,
+// Plan-Dateien) laufen über eigene express.raw-Parser und hängen NICHT hieran.
+app.use(express.json({ limit: '100mb' }))
 
 // ── Authentication ────────────────────────────────────────────────────────────
 const API_KEY = process.env.API_KEY

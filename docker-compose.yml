@@ -3,6 +3,13 @@ services:
     image: komplizen-protokolle:latest
     container_name: komplizen-protokolle
     restart: unless-stopped
+    # Speicher-Obergrenze: schützt den NAS-Host, falls dieser Container zu viel RAM
+    # zieht (Speicherleck oder viele parallele Uploads). Bei Überschreitung wird nur
+    # DIESER Container per OOM neu gestartet (restart:unless-stopped), nicht die NAS.
+    # Muss über dem größten erwarteten Einzel-Upload liegen (Video/BIM werden beim
+    # Upload komplett im RAM gepuffert). 2 GB reicht für Videos bis ~1,5 GB; bei
+    # größeren Videos oder knappem NAS-RAM entsprechend anpassen.
+    mem_limit: 2g
     ports:
       - "3000:3000"
     volumes:
