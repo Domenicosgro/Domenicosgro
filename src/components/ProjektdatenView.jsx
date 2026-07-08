@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react'
+import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react'
 import { ArrowLeft, Save, Check, AlertCircle, X, Database, UserPlus, Trash2, Handshake, Users, Building2, Link2 } from 'lucide-react'
 import { uid } from '../utils'
 import ProjektTeamEditor from './ProjektTeamEditor'
@@ -77,7 +77,7 @@ export default function ProjektdatenView({ project, allContacts = [], onUpdatePr
   const [partnerPick, setPartnerPick] = useState('')
   const [partnerDisziplin, setPartnerDisziplin] = useState(DISZIPLINEN[0])
 
-  const set = (patch) => { setData(d => ({ ...d, ...patch })); setSaved(false) }
+  const set = (patch) => { dirtyRef.current = true; setData(d => ({ ...d, ...patch })); setSaved(false) }
   const setLph = (nr, patch) =>
     set({ lph: { ...data.lph, [nr]: { ...(data.lph[nr] || {}), ...patch } } })
   const bauherr = data.bauherr || {}
@@ -119,21 +119,55 @@ export default function ProjektdatenView({ project, allContacts = [], onUpdatePr
     setPartnerPick('')
   }
 
-  const save = () => {
-    if (!nummerOk || !kuerzelOk) { setError('Codierung prüfen: 3–4 Ziffern und 3–4 Buchstaben (oder Ausnahme aktivieren).'); return }
-    setError(null)
-    const patch = { projectData: data }
-    if (codedName) patch.name = codedName
+  // Automatisches Speichern: aktueller Stand wird beim Verlassen eines Feldes
+  // (kurze Tipp-Pause) und beim Verlassen der Ansicht/des Popups gesichert.
+  const dirtyRef = useRef(false)
+  const dataRef  = useRef(data)
+  dataRef.current = data
+  const saveTimer = useRef(null)
+
+  const commit = useCallback((silent = false) => {
+    if (readOnly) return
+    const d = dataRef.current
+    const okNummer  = !d.nummer  || validNummer(d.nummer)
+    const okKuerzel = !d.kuerzel || d.kuerzelAusnahme || validKuerzel(d.kuerzel)
+    const patch = { projectData: d }
+    // Namen nur übernehmen, wenn die Codierung gültig ist (sonst nur Daten sichern)
+    if (okNummer && okKuerzel) {
+      const name = composeName(d.nummer, d.kuerzel, d.bezeichnung)
+      if (name) patch.name = name
+    }
     onUpdateProject(project.id, patch)
-    setSaved(true)
-    setTimeout(() => setSaved(false), 2500)
-  }
+    dirtyRef.current = false
+    if (!silent) { setSaved(true); setTimeout(() => setSaved(false), 1800) }
+  }, [readOnly, onUpdateProject, project.id])
+
+  // Nach jeder Änderung debounced sichern (greift auch beim Verlassen des Feldes)
+  useEffect(() => {
+    if (readOnly || !dirtyRef.current) return
+    if (saveTimer.current) clearTimeout(saveTimer.current)
+    saveTimer.current = setTimeout(() => commit(true), 500)
+    return () => { if (saveTimer.current) clearTimeout(saveTimer.current) }
+  }, [data, readOnly, commit])
+
+  // Beim Verlassen der Ansicht/des Popups letzten Stand sofort sichern
+  useEffect(() => () => { if (dirtyRef.current) commit(true) }, [commit])
+
+  // Codierungshinweis (Validierung) live anzeigen
+  useEffect(() => {
+    if (readOnly) return
+    setError((!nummerOk || !kuerzelOk)
+      ? 'Codierung prüfen: 3–4 Ziffern und 3–4 Buchstaben (oder Ausnahme aktivieren) – der Projektname wird erst bei gültiger Codierung übernommen.'
+      : null)
+  }, [nummerOk, kuerzelOk, readOnly])
+
+  const handleBack = () => { if (dirtyRef.current) commit(true); onBack?.() }
 
   return (
     <div className="app-page">
       <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3">
         <div className="flex items-end gap-3">
-          <button className="btn-secondary" onClick={onBack}><ArrowLeft size={16} /> {backLabel}</button>
+          <button className="btn-secondary" onClick={handleBack}><ArrowLeft size={16} /> {backLabel}</button>
           <div>
             <h1 className="text-2xl font-bold text-night flex items-center gap-2">
               <Database size={22} className="text-brand-600" /> Projektdatenbank
@@ -144,9 +178,9 @@ export default function ProjektdatenView({ project, allContacts = [], onUpdatePr
         {readOnly ? (
           <span className="badge-gray text-xs">Nur Lesezugriff – Bearbeitung durch Administratoren</span>
         ) : (
-          <button className="btn-primary" onClick={save}>
-            {saved ? <Check size={15} /> : <Save size={15} />} {saved ? 'Gespeichert' : 'Speichern'}
-          </button>
+          <span className="text-xs text-gray-400 flex items-center gap-1.5 self-end">
+            {saved ? <><Check size={13} className="text-green-600" /> Gespeichert</> : 'Änderungen werden automatisch gespeichert'}
+          </span>
         )}
       </div>
 
