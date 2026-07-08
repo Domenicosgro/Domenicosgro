@@ -828,12 +828,15 @@ export default function PersonalplanungView({ projects, onUpdateProject, serverU
   // Projektreihenfolge: manuell (planSettings.projectOrder), sonst nach Nummer
   const sortedProjects = useMemo(() => {
     const idx = new Map(planSettings.projectOrder.map((id, i) => [id, i]))
+    const num = (p) => parseInt(p.projectData?.nummer, 10) || 99999
+    // Primär numerisch nach Projektnummer; manuelle Reihenfolge nur als
+    // Feinsortierung bei gleicher/fehlender Nummer, danach alphabetisch.
     return [...activeProjects].sort((a, b) => {
+      if (num(a) !== num(b)) return num(a) - num(b)
       const ia = idx.has(a.id) ? idx.get(a.id) : Infinity
       const ib = idx.has(b.id) ? idx.get(b.id) : Infinity
       if (ia !== ib) return ia - ib
-      return (parseInt(a.projectData?.nummer, 10) || 99999) - (parseInt(b.projectData?.nummer, 10) || 99999)
-        || (a.name || '').localeCompare(b.name || '', 'de')
+      return (a.name || '').localeCompare(b.name || '', 'de')
     })
   }, [activeProjects, planSettings.projectOrder])
 
