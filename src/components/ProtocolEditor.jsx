@@ -1,6 +1,6 @@
 import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react'
 import { flushSync } from 'react-dom'
-import { ArrowLeft, Printer, Download, Send, RefreshCw, AlertCircle, Lock, Unlock, FileText, RotateCcw, Layers, Loader, Eye, EyeOff, Users, Box } from 'lucide-react'
+import { ArrowLeft, Printer, Download, Send, RefreshCw, AlertCircle, Lock, Unlock, FileText, RotateCcw, Layers, Loader, Eye, EyeOff, Users, Box, ClipboardCheck } from 'lucide-react'
 import MeetingHeader    from './MeetingHeader'
 import ParticipantsList from './ParticipantsList'
 import AgendaDraft      from './AgendaDraft'
@@ -111,6 +111,7 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
   const [confirmClose,         setConfirmClose]         = useState(false)
   const [showGesamtprotokoll,  setShowGesamtprotokoll]  = useState(false)
   const [showProtocolEmail,    setShowProtocolEmail]    = useState(false)
+  const [emailMode,            setEmailMode]            = useState('send')   // 'send' | 'freigabe'
   const [printAttachmentData,  setPrintAttachmentData]  = useState({})  // attId → base64
   const [graphSendState,       setGraphSendState]       = useState(null)  // null | 'confirm' | 'sending' | { error } | 'done'
 
@@ -486,7 +487,13 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
             )
           )}
           {isServer && (
-            <button className="btn-secondary" onClick={() => setShowProtocolEmail(true)}
+            <button className="btn-secondary" onClick={() => { setEmailMode('freigabe'); setShowProtocolEmail(true) }}
+              title="Protokoll vorab zur Freigabe an die Projektbeteiligten senden – Rückmeldung erbeten">
+              <ClipboardCheck size={14} /> Zur Freigabe
+            </button>
+          )}
+          {isServer && (
+            <button className="btn-secondary" onClick={() => { setEmailMode('send'); setShowProtocolEmail(true) }}
               title="Protokoll als PDF-Anhang an die Teilnehmer senden">
               <Send size={14} /> Per E-Mail
             </button>
@@ -883,6 +890,8 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
           protocolNo={protocolNo}
           logoDataUrl={logoDataUrl}
           clientLogoDataUrl={clientLogoDataUrl}
+          projectContacts={enrichedProjectContacts}
+          mode={emailMode}
           onClose={() => setShowProtocolEmail(false)}
         />
       )}

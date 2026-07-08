@@ -1337,6 +1337,19 @@ const EMAIL_TYPES = [
     ],
   },
   {
+    id: 'protocol_review',
+    label: 'Protokoll-Freigabe',
+    desc: 'Protokoll vorab zur Freigabe',
+    fields: [
+      { key: 'subject',       label: 'Betreff',                  hint: '{project}, {date}',  rows: 1 },
+      { key: 'intro',         label: 'Einleitungstext',           hint: '{project}',          rows: 2 },
+      { key: 'detail',        label: 'Aufforderung zur Rückmeldung', hint: null,              rows: 2 },
+      { key: 'deadline_note', label: 'Fristsatz',                 hint: '{deadline}',         rows: 1 },
+      { key: 'silence_note',  label: 'Hinweis bei ausbleibender Rückmeldung', hint: null,     rows: 1 },
+      { key: 'footer',        label: 'Fußzeile',                  hint: null,                 rows: 1 },
+    ],
+  },
+  {
     id: 'note',
     label: 'Akten- / Telefonnotiz',
     desc: 'Notiz als PDF per E-Mail',

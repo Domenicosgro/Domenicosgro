@@ -2444,6 +2444,14 @@ const EMAIL_DEFAULTS = {
     reply_note:    'Für Rückfragen stehen wir gerne zur Verfügung.',
     footer:        'GHBA',
   },
+  protocol_review: {
+    subject:      'Protokoll zur Freigabe – {project}{date_sep}{date}',
+    intro:        'vorab und zur Freigabe erhalten Sie das Protokoll der Besprechung zum Projekt {project} als PDF-Anlage.',
+    detail:       'Bitte prüfen Sie das Protokoll und teilen Sie uns Ihre Anmerkungen oder Ihre Freigabe durch Antwort auf diese E-Mail mit.',
+    deadline_note: 'Wir bitten um Ihre Rückmeldung bis zum {deadline}.',
+    silence_note: 'Sofern bis dahin keine Rückmeldung erfolgt, betrachten wir das Protokoll als freigegeben.',
+    footer:       'GHBA',
+  },
   note: {
     subject:  '{type} – {note_subject}',
     greeting: 'Guten Tag,',
@@ -3741,7 +3749,8 @@ app.post('/api/protocols/:id/send-email', requireAuth, async (req, res) => {
         return res.status(403).json({ error: 'Kein Zugriff auf dieses Protokoll.' })
     }
 
-    const { to, subject, pdfBase64, pdfFilename } = req.body
+    const { to, subject, pdfBase64, pdfFilename, mode, deadline } = req.body
+    const isReview = mode === 'freigabe'
     if (!to) return res.status(400).json({ error: '"to" erwartet.' })
     if (!mailer.mailerStatus().configured) return res.status(400).json({ error: 'E-Mail-Versand nicht konfiguriert.' })
 
@@ -3756,23 +3765,41 @@ app.post('/api/protocols/:id/send-email', requireAuth, async (req, res) => {
     const today       = new Date().toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })
     const fmtDate     = (d) => d ? new Date(d + 'T12:00:00').toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }) : ''
     const protoDate   = fmtDate(protocol.date)
-    const protoTpl    = getEmailSettings().protocol
+    const tpl         = isReview ? getEmailSettings().protocol_review : getEmailSettings().protocol
     const nextStr = protocol.nextMeeting
       ? `${fmtDate(protocol.nextMeeting)}${protocol.nextMeetingTime ? `, ${protocol.nextMeetingTime} Uhr` : ''}${protocol.location ? ` · ${protocol.location}` : ''}`
       : null
     const hasActions = Array.isArray(protocol.actionItems) && protocol.actionItems.length > 0
+    const deadlineStr = deadline ? fmtDate(deadline) : ''
 
     const protoVars = { project: projStr, date: protoDate || '', date_sep: protoDate ? ' – ' : '' }
-    const mailSubject = subject || applyTpl(protoTpl.subject, protoVars)
-    const introText   = applyTpl(protoTpl.intro, protoVars)
+    const mailSubject = subject || applyTpl(tpl.subject, protoVars)
+    const introText   = applyTpl(tpl.intro, protoVars)
 
-    const nextMeetingHtml = nextStr
-      ? `<tr><td style="padding:0 36px 4px 36px;color:#000040;font-size:14px;"><strong>Nächste Besprechung:</strong> ${nextStr}</td></tr>`
-      : `<tr><td style="padding:0 36px 4px 36px;color:#6B7280;font-size:14px;">${esc(protoTpl.no_next_meeting)}</td></tr>`
-
-    const actionsHtml = hasActions
-      ? `<tr><td style="padding:8px 36px 0 36px;color:#4B5563;font-size:14px;">${esc(protoTpl.actions_note)}</td></tr>`
-      : ''
+    // Mittelteil unterscheidet sich: Standard = nächster Termin/Aufgaben,
+    // Freigabe = Frist-/Freigabehinweis (Rückmeldung erbeten).
+    let midHtml, midText
+    if (isReview) {
+      const deadlineHtml = deadlineStr
+        ? `<tr><td style="padding:0 36px 4px 36px;color:#000040;font-size:14px;"><strong>${esc(applyTpl(tpl.deadline_note, { deadline: deadlineStr }))}</strong></td></tr>
+           <tr><td style="padding:2px 36px 4px 36px;color:#6B7280;font-size:13px;">${esc(tpl.silence_note)}</td></tr>`
+        : ''
+      midHtml = deadlineHtml
+      midText = [
+        '', tpl.detail,
+        ...(deadlineStr ? ['', applyTpl(tpl.deadline_note, { deadline: deadlineStr }), tpl.silence_note] : []),
+      ]
+    } else {
+      midHtml =
+        (nextStr
+          ? `<tr><td style="padding:0 36px 4px 36px;color:#000040;font-size:14px;"><strong>Nächste Besprechung:</strong> ${nextStr}</td></tr>`
+          : `<tr><td style="padding:0 36px 4px 36px;color:#6B7280;font-size:14px;">${esc(tpl.no_next_meeting)}</td></tr>`)
+        + (hasActions ? `<tr><td style="padding:8px 36px 0 36px;color:#4B5563;font-size:14px;">${esc(tpl.actions_note)}</td></tr>` : '')
+      midText = [
+        '', nextStr ? `Nächste Besprechung: ${nextStr}` : tpl.no_next_meeting,
+        ...(hasActions ? ['', tpl.actions_note] : []),
+      ]
+    }
 
     const html = `<!DOCTYPE html>
 <html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
@@ -3781,23 +3808,22 @@ app.post('/api/protocols/:id/send-email', requireAuth, async (req, res) => {
     <tr><td align="center">
       <table width="620" cellpadding="0" cellspacing="0" style="background:#FFF;border:1px solid #E5E7EB;max-width:620px;width:100%;">
         <tr><td style="background:#000040;padding:28px 36px;">
-          <p style="margin:0;color:#8FBEFF;font-size:11px;letter-spacing:2px;text-transform:uppercase;">GHBA</p>
-          <p style="margin:6px 0 0 0;color:#FBFFE6;font-size:20px;font-weight:bold;">${meetingType}</p>
+          <p style="margin:0;color:#8FBEFF;font-size:11px;letter-spacing:2px;text-transform:uppercase;">GHBA${isReview ? ' · Freigabe erbeten' : ''}</p>
+          <p style="margin:6px 0 0 0;color:#FBFFE6;font-size:20px;font-weight:bold;">${meetingType}${isReview ? ' – zur Freigabe' : ''}</p>
           <p style="margin:4px 0 0 0;color:#8FBEFF;font-size:14px;font-weight:600;">${projStr}</p>
           ${protoDate ? `<p style="margin:6px 0 0 0;color:#8FBEFF;font-size:12px;">Datum der Besprechung: ${protoDate}</p>` : ''}
         </td></tr>
         <tr><td style="padding:28px 36px 8px 36px;">
           <p style="margin:0;font-size:15px;color:#000040;">Guten Tag,</p>
           <p style="margin:10px 0 0 0;color:#4B5563;">${esc(introText)}</p>
-          <p style="margin:10px 0 0 0;color:#4B5563;">${esc(protoTpl.detail)}</p>
+          <p style="margin:10px 0 0 0;color:#4B5563;">${esc(tpl.detail)}</p>
         </td></tr>
-        ${nextMeetingHtml}
-        ${actionsHtml}
+        ${midHtml}
         <tr><td style="padding:16px 36px 28px 36px;color:#4B5563;font-size:14px;">
-          ${esc(protoTpl.reply_note)}
+          ${esc(isReview ? '' : tpl.reply_note)}
         </td></tr>
         <tr><td style="padding:20px 36px;border-top:1px solid #E5E7EB;background:#F0F0F0;text-align:center;">
-          <p style="margin:0;color:#9CA3AF;font-size:12px;">${esc(protoTpl.footer)}${senderName ? ` · Gesendet von ${senderName}` : ''} · ${today}</p>
+          <p style="margin:0;color:#9CA3AF;font-size:12px;">${esc(tpl.footer)}${senderName ? ` · Gesendet von ${senderName}` : ''} · ${today}</p>
         </td></tr>
       </table>
     </td></tr>
@@ -3805,18 +3831,16 @@ app.post('/api/protocols/:id/send-email', requireAuth, async (req, res) => {
 </body></html>`
 
     const text = [
-      `${meetingType} – ${projStr}`,
+      `${meetingType} – ${projStr}${isReview ? ' (zur Freigabe)' : ''}`,
       protoDate ? `Datum der Besprechung: ${protoDate}` : '',
       '',
       'Guten Tag,',
       '',
       introText,
-      protoTpl.detail,
-      '',
-      nextStr ? `Nächste Besprechung: ${nextStr}` : protoTpl.no_next_meeting,
-      ...(hasActions ? ['', protoTpl.actions_note] : []),
-      '', protoTpl.reply_note,
-      '', protoTpl.footer,
+      tpl.detail,
+      ...midText,
+      ...(isReview ? [] : ['', tpl.reply_note]),
+      '', tpl.footer,
     ].filter(l => l !== undefined).join('\n')
 
     const attachments = []
@@ -3829,7 +3853,20 @@ app.post('/api/protocols/:id/send-email', requireAuth, async (req, res) => {
     }
 
     await mailer.sendMail({ from: fromAddress, to, replyTo, subject: mailSubject, html, text, attachments })
-    logEvent('PROTOCOL_EMAIL_SENT', req, `to=${to} project=${projStr} sender=${senderName || req.user}`)
+    logEvent(isReview ? 'PROTOCOL_REVIEW_SENT' : 'PROTOCOL_EMAIL_SENT', req, `to=${to} project=${projStr} sender=${senderName || req.user}`)
+
+    // Freigabe-Versand am Protokoll vermerken
+    if (isReview) {
+      try {
+        const { _version, _updatedAt, ...pData } = protocol
+        db.protocols.update(protocol.id, {
+          ...pData,
+          reviewSentAt: new Date().toISOString(),
+          reviewDeadline: deadline || null,
+        }, _version, req.user)
+        broadcast('protocol', 'update', protocol.id, new Date().toISOString())
+      } catch (_) {}
+    }
     res.json({ ok: true })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
