@@ -38,7 +38,7 @@ function DashboardTile({ icon, title, subtitle, accent, onClick, stat1, stat2 })
 
 export default function ProjectDashboard({
   project, protocols, notes, serverUser, globalLogoDataUrl,
-  onUpdateProject, onBack, onOpenProtocols, onOpenNotes, onManageContacts, onOpenMassnahmen, onOpenNotizbuch, onOpenBim,
+  onUpdateProject, onBack, onOpenProtocols, onOpenNotes, onManageContacts, onOpenMassnahmen, onOpenBim,
   onOpenBautagebuch, onOpenMaengel, onOpenDateiablage, onOpenProjektdaten, onSaved,
 }) {
   const [showAdminPanel, setShowAdminPanel] = useState(false)
@@ -134,11 +134,11 @@ export default function ProjectDashboard({
           stat1={{ value: contacts.length, label: 'Kontakte' }}
         />
 
-        {/* Aktennotizen */}
+        {/* Notizen & Notizbuch */}
         <DashboardTile
           icon={<NotebookPen size={20} />}
-          title="Akten- und Telefonnotizen"
-          subtitle="Gesprächsnotizen, Aktenvermerke und Besprechungsnotizen"
+          title="Notizen & Notizbuch"
+          subtitle="Akten-/Telefonnotizen, Besprechungsnotizen und internes Projekt-Notizbuch"
           accent="border-purple-400"
           onClick={onOpenNotes}
           stat1={{ value: projectNotes.length, label: 'Notizen' }}
@@ -155,14 +155,6 @@ export default function ProjectDashboard({
           stat2={{ value: openActions,       label: 'offen' }}
         />
 
-        {/* Notizbuch */}
-        <DashboardTile
-          icon={<BookOpen size={20} />}
-          title="Notizbuch"
-          subtitle="Interne Notizen, Themen und Aufgaben für das Projektteam"
-          accent="border-teal-500"
-          onClick={onOpenNotizbuch}
-        />
 
         {/* BIM-Modell */}
         <DashboardTile

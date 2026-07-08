@@ -487,7 +487,7 @@ function NoteEditor({ note, contacts, allContacts, projectName, logoDataUrl, cli
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
-export default function NotesList({ notes, projectContacts, allContacts, projectName, logoDataUrl, clientLogoDataUrl, onCreate, onUpdate, onDelete, onBack }) {
+export default function NotesList({ notes, projectContacts, allContacts, projectName, logoDataUrl, clientLogoDataUrl, onCreate, onUpdate, onDelete, onBack, tabs }) {
   const [activeId,       setActiveId]       = useState(null)
   const [search,         setSearch]         = useState('')
   const [filterType,     setFilterType]     = useState('')
@@ -533,9 +533,10 @@ export default function NotesList({ notes, projectContacts, allContacts, project
             <ArrowLeft size={16} /> Projekt
           </button>
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Notizen</h1>
+            <h1 className="text-2xl font-bold text-gray-900">Notizen &amp; Notizbuch</h1>
             <p className="text-sm text-gray-500 mt-0.5">{projectName || 'Projekt'} · {notes.length} Notiz{notes.length !== 1 ? 'en' : ''}</p>
           </div>
+          {tabs}
         </div>
 
         <div className="flex gap-2 items-stretch relative">

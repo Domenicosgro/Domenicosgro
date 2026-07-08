@@ -64,6 +64,7 @@ export default function App() {
   const [contactsOrigin,    setContactsOrigin]    = useState('protocols')
   const [bimReturnView,     setBimReturnView]     = useState('project-dashboard')
   const [bimPopup,          setBimPopup]          = useState(null)   // { project, viewpoint, title } | null
+  const [notesTab,          setNotesTab]          = useState('notizen')  // 'notizen' | 'notizbuch'
   const [activeId,          setActiveId]          = useState(null)
   const activeIdRef = useRef(activeId)
   activeIdRef.current = activeId
@@ -687,21 +688,6 @@ export default function App() {
     )
   }
 
-  if (view === 'project-notizbuch') {
-    const project = projectsWithContacts.find(p => p.id === selectedProjectId)
-    if (!project) { setView('home'); return null }
-    return wrap(
-      <>
-        <NotizbuchView
-          project={project}
-          serverUser={serverUser}
-          onBack={() => setView('project-dashboard')}
-        />
-        <UpdateBanner /><SaveErrorBanner />
-      </>
-    )
-  }
-
   if (view === 'project-dashboard') {
     const project = projectsWithContacts.find(p => p.id === selectedProjectId)
     if (!project) { setView('home'); return null }
@@ -716,10 +702,9 @@ export default function App() {
           onUpdateProject={handleUpdateProject}
           onBack={() => setView('home')}
           onOpenProtocols={(phase) => openProjectProtocols(selectedProjectId, phase)}
-          onOpenNotes={() => setView('notes')}
+          onOpenNotes={() => { setNotesTab('notizen'); setView('notes') }}
           onManageContacts={() => { setContactsOrigin('project-dashboard'); setView('project-contacts') }}
           onOpenMassnahmen={() => setView('project-massnahmen')}
-          onOpenNotizbuch={() => setView('project-notizbuch')}
           onOpenBim={() => { setBimReturnView('project-dashboard'); setView('project-bim') }}
           onOpenBautagebuch={() => setView('project-bautagebuch')}
           onOpenMaengel={() => setView('project-maengel')}
@@ -735,20 +720,38 @@ export default function App() {
   if (view === 'notes') {
     const project  = projectsWithContacts.find(p => p.id === selectedProjectId) ?? null
     const filtered = notes.filter(n => n.projectId === selectedProjectId)
+    const tabBtn = (id, label) => (
+      <button
+        className={`px-3 py-1.5 text-sm font-medium border transition-colors ${
+          notesTab === id ? 'bg-brand-600 text-white border-brand-600' : 'bg-white text-gray-600 border-gray-200 hover:border-brand-300'}`}
+        onClick={() => setNotesTab(id)}
+      >{label}</button>
+    )
+    const tabs = (
+      <div className="inline-flex self-end no-print">{tabBtn('notizen', 'Notizen')}{tabBtn('notizbuch', 'Notizbuch')}</div>
+    )
     return wrap(
       <>
-        <NotesList
-          notes={filtered}
-          projectContacts={project?.contacts ?? []}
-          allContacts={allContacts}
-          projectName={project?.name || ''}
-          logoDataUrl={project?.logo || logoDataUrl}
-          clientLogoDataUrl={project?.clientLogo || ''}
-          onCreate={(patch) => createNote({ ...patch, projectId: selectedProjectId })}
-          onUpdate={updateNote}
-          onDelete={deleteNote}
-          onBack={() => setView('project-dashboard')}
-        />
+        {notesTab === 'notizbuch'
+          ? <NotizbuchView
+              project={project}
+              serverUser={serverUser}
+              onBack={() => setView('project-dashboard')}
+              tabs={tabs}
+            />
+          : <NotesList
+              notes={filtered}
+              projectContacts={project?.contacts ?? []}
+              allContacts={allContacts}
+              projectName={project?.name || ''}
+              logoDataUrl={project?.logo || logoDataUrl}
+              clientLogoDataUrl={project?.clientLogo || ''}
+              onCreate={(patch) => createNote({ ...patch, projectId: selectedProjectId })}
+              onUpdate={updateNote}
+              onDelete={deleteNote}
+              onBack={() => setView('project-dashboard')}
+              tabs={tabs}
+            />}
         <UpdateBanner /><SaveErrorBanner />
       </>
     )

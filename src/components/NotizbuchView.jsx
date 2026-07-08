@@ -236,7 +236,7 @@ function EmailModal({ project, selNote, selTopic, onClose }) {
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export default function NotizbuchView({ project, serverUser, onBack }) {
+export default function NotizbuchView({ project, serverUser, onBack, tabs }) {
   const { notebook, loaded, saving, addTopic, updateTopic, deleteTopic, addNote, updateNote, deleteNote } = useNotebook(project.id)
 
   const [selectedTopicId, setSelectedTopicId] = useState(null)
@@ -353,6 +353,7 @@ export default function NotizbuchView({ project, serverUser, onBack }) {
             </h1>
             <p className="text-xs text-gray-500 mt-0.5">{project.name}</p>
           </div>
+          {tabs}
         </div>
         <div className="flex items-center gap-2">
           {isServer && (
