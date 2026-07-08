@@ -1,6 +1,12 @@
 import React, { useState } from 'react'
 import { ArrowLeft, Database, ChevronRight, Lock, Plus } from 'lucide-react'
-import ProjektdatenView, { lphRange } from './ProjektdatenView'
+import ProjektdatenView, { lphRange, PRE_LEISTUNGEN } from './ProjektdatenView'
+
+// Kurzbezeichnungen der beauftragten Vorleistungen, z. B. "MS · VS"
+const preAbbrev = (pre) => PRE_LEISTUNGEN
+  .filter(p => pre?.[p.key]?.beauftragt)
+  .map(p => p.label.split(/[\s/]+/).map(w => w[0]).join('').toUpperCase())
+  .join(' · ')
 import NewProjectModal from './NewProjectModal'
 
 const isServer = typeof window !== 'undefined' && !!window.__SERVER_MODE__
@@ -50,6 +56,7 @@ export default function ProjektdatenbankView({ projects, allContacts, canEdit, s
   const Row = ({ project }) => {
     const d = project.projectData || {}
     const lph = lphRange(d.lph)
+    const pre = preAbbrev(d.preLeistungen)
     const editable = canEdit(project)
     return (
       <button
@@ -75,7 +82,9 @@ export default function ProjektdatenbankView({ projects, allContacts, canEdit, s
             : <span className="text-gray-300">–</span>}
         </span>
         <span className="text-xs text-gray-500 truncate">{d.vertrag || '–'}</span>
-        <span className="text-xs text-gray-500 whitespace-nowrap">{lph ? `LPH ${lph}` : '–'}</span>
+        <span className="text-xs text-gray-500 whitespace-nowrap">
+          {[pre, lph ? `LPH ${lph}` : ''].filter(Boolean).join(' · ') || '–'}
+        </span>
         <span className="text-xs text-gray-500">
           {d.isGeneralplanung ? `GP · ${(d.planungspartner || []).length} Partner` : '–'}
         </span>

@@ -3,6 +3,14 @@ import { ArrowLeft, Save, Check, AlertCircle, X, Database, UserPlus, Trash2, Han
 import { uid } from '../utils'
 import ProjektTeamEditor from './ProjektTeamEditor'
 
+// Vorleistungen vor den HOAI-Leistungsphasen (eigene Schlüssel, damit die
+// numerische LPH-Bereichslogik unberührt bleibt)
+export const PRE_LEISTUNGEN = [
+  { key: 'machbarkeit', label: 'Machbarkeitsstudie' },
+  { key: 'vorstudie',   label: 'Vorstudie' },
+  { key: 'bedarf',      label: 'Bedarfsplanung' },
+  { key: 'wettbewerb',  label: 'Wettbewerb / Konzept' },
+]
 export const LPH = [
   { nr: 1, label: 'Grundlagenermittlung' },
   { nr: 2, label: 'Vorplanung' },
@@ -50,6 +58,7 @@ const emptyData = () => ({
   nummer: '', kuerzel: '', kuerzelAusnahme: false, bezeichnung: '',
   vertrag: VERTRAG_TYPES[0], vertragNotiz: '', gesellschaft: '',
   bauherr: { company: '', person: '', street: '', zip: '', city: '', phone: '', email: '', contactId: null },
+  preLeistungen: {},            // { machbarkeit: { beauftragt, pauschale }, … }
   lph: {},                      // { 1: { beauftragt: true, pauschale: '' }, … }
   pauschalGesamt: '',
   isGeneralplanung: false,
@@ -80,6 +89,9 @@ export default function ProjektdatenView({ project, allContacts = [], onUpdatePr
   const set = (patch) => { dirtyRef.current = true; setData(d => ({ ...d, ...patch })); setSaved(false) }
   const setLph = (nr, patch) =>
     set({ lph: { ...data.lph, [nr]: { ...(data.lph[nr] || {}), ...patch } } })
+  const preLeistungen = data.preLeistungen || {}
+  const setPre = (key, patch) =>
+    set({ preLeistungen: { ...preLeistungen, [key]: { ...(preLeistungen[key] || {}), ...patch } } })
   const bauherr = data.bauherr || {}
   const setBauherr = (patch) => set({ bauherr: { ...bauherr, ...patch } })
   const [bauherrPick, setBauherrPick] = useState('')
@@ -290,9 +302,34 @@ export default function ProjektdatenView({ project, allContacts = [], onUpdatePr
         </div>
       </div>
 
-      {/* Beauftragte Leistungsphasen / Pauschalwerte */}
+      {/* Beauftragte Leistungen / Pauschalwerte */}
       <div className="card p-5 space-y-3">
-        <h2 className="section-title">Beauftragte Leistungsphasen (HOAI) / Pauschalwerte</h2>
+        <h2 className="section-title">Beauftragte Leistungen / Pauschalwerte</h2>
+
+        {/* Vorleistungen (vor den HOAI-Leistungsphasen) */}
+        <p className="text-xs font-medium text-gray-500 -mb-1">Vorleistungen</p>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-x-6 gap-y-1.5">
+          {PRE_LEISTUNGEN.map(p => {
+            const entry = preLeistungen[p.key] || {}
+            return (
+              <div key={p.key} className="flex items-center gap-2">
+                <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer flex-1 min-w-0">
+                  <input type="checkbox" checked={!!entry.beauftragt}
+                    onChange={e => setPre(p.key, { beauftragt: e.target.checked })} />
+                  <span className="truncate">{p.label}</span>
+                </label>
+                {entry.beauftragt && (
+                  <input className="input py-0.5 text-xs w-24 text-right" placeholder="Pauschale €"
+                    value={entry.pauschale || ''}
+                    onChange={e => setPre(p.key, { pauschale: e.target.value })} />
+                )}
+              </div>
+            )
+          })}
+        </div>
+
+        {/* HOAI-Leistungsphasen */}
+        <p className="text-xs font-medium text-gray-500 pt-2 border-t border-gray-100 -mb-1">Leistungsphasen (HOAI)</p>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-x-6 gap-y-1.5">
           {LPH.map(p => {
             const entry = data.lph[p.nr] || {}
