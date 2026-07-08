@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { ArrowLeft, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Plus, Trash2, Loader, AlertCircle, X,
-         CalendarClock, Printer, Users, UserPlus, Link2, Copy, CheckSquare, Pencil, Check, FileDown, Briefcase, GripVertical, Eye, EyeOff } from 'lucide-react'
+         CalendarClock, Printer, Users, UserPlus, Link2, Copy, CheckSquare, Pencil, Check, FileDown, Briefcase, GripVertical, Eye, EyeOff, Lock } from 'lucide-react'
 import { uid, formatDate } from '../utils'
 import { buildStaffPlanPdf } from '../staffPlanPdf'
 import { downloadPdfBase64 } from '../archivePdf'
@@ -86,6 +86,7 @@ function StaffTab({ staff, orgUsers, onChanged, setError }) {
   const existingEmails = new Set(staff.map(s => (s.email || '').toLowerCase()).filter(Boolean))
   const existingNames  = new Set(staff.map(s => s.name))
   const availableUsers = orgUsers.filter(u => {
+    if (u.source === 'contact') return false   // Kontakt-Mirrors sind bereits Mitarbeiter
     const name  = u.display_name || u.username
     const email = (u.email || '').toLowerCase()
     return !existingNames.has(name) && (!email || !existingEmails.has(email))
@@ -191,6 +192,7 @@ function StaffTab({ staff, orgUsers, onChanged, setError }) {
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium text-gray-800 truncate">{s.name}
                   {s.funktion && <span className="text-gray-400 font-normal"> · {s.funktion}</span>}
+                  {s.source === 'contact' && <span className="badge badge-gray text-[10px] ml-2" title="Automatisch aus einem Kontakt der Kategorie „Eigene Organisation“ übernommen">aus Kontakt</span>}
                 </p>
                 <p className="text-xs text-gray-400 truncate">
                   {DAYS.reduce((sum, d) => sum + (s.dayHours?.[d.key] || 0), 0)} Std./Woche
@@ -204,11 +206,15 @@ function StaffTab({ staff, orgUsers, onChanged, setError }) {
                 aktiv
               </label>
               <button className="btn-ghost p-1.5 text-gray-400 hover:text-brand-600" onClick={() => { setEditing(s); setAdding(false) }}><Pencil size={14} /></button>
-              <button className="btn-ghost p-1.5 text-gray-400 hover:text-red-600"
-                onClick={async () => {
-                  if (!confirm(`${s.name} wirklich entfernen?`)) return
-                  try { await staffApi.remove(s.id); onChanged() } catch (e) { setError(e.message) }
-                }}><Trash2 size={14} /></button>
+              {s.source === 'contact' ? (
+                <span className="p-1.5 text-gray-300 flex-shrink-0" title="Wird automatisch aus der Kontaktdatenbank synchronisiert. Zum Entfernen die Kategorie des Kontakts ändern oder den Kontakt löschen."><Lock size={14} /></span>
+              ) : (
+                <button className="btn-ghost p-1.5 text-gray-400 hover:text-red-600"
+                  onClick={async () => {
+                    if (!confirm(`${s.name} wirklich entfernen?`)) return
+                    try { await staffApi.remove(s.id); onChanged() } catch (e) { setError(e.message) }
+                  }}><Trash2 size={14} /></button>
+              )}
             </div>
           )
         ))}

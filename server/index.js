@@ -1609,6 +1609,105 @@ app.get('/api/projects/:id/files/download', requireAuth, async (req, res) => {
 })
 
 // ── Personalplanung: Mitarbeiter-Stammdaten (Arbeitszeitmodelle) ──────────────
+// ── Sync: "Eigene Organisation"-Kontakte → Benutzer + Personalplanung ──────────
+// Einseitige Spiegelung. Quelle: alle Kontakte mit category==='organisation'
+// (projektübergreifend, dedupliziert nach E-Mail bzw. Name|Firma). Ziele:
+//   (1) Personalplanung-Mitarbeiter  (staff_members, Feld contactKey)
+//   (2) login-freie Benutzer         (users, source='contact', leeres Passwort)
+// Entfällt ein Kontakt (Kategorie geändert oder Projekt/Kontakt gelöscht), wird der
+// gespiegelte Eintrag automatisch entfernt. Echte Benutzer (local/synology) und
+// manuell angelegte Mitarbeiter werden nie verändert. Läuft nach jeder Projekt-
+// änderung und einmal beim Start; komplett synchron (better-sqlite3).
+function collectOrgContacts() {
+  const map = new Map()
+  for (const p of db.projects.list()) {
+    const list = Array.isArray(p.contacts) ? p.contacts : []
+    for (const c of list) {
+      if (c?.category !== 'organisation') continue
+      const name  = (c.name || c.company || '').trim()
+      const email = (c.email || '').trim()
+      if (!name && !email) continue
+      const key = email.toLowerCase()
+        || `${(c.name || '').trim().toLowerCase()}|${(c.company || '').trim().toLowerCase()}`
+      if (!key || map.has(key)) continue
+      map.set(key, { key, name, email, funktion: (c.role || c.gewerk || '').trim() })
+    }
+  }
+  return map
+}
+
+function reconcileStaffFromContacts(orgMap) {
+  const now = new Date().toISOString()
+  const mirrors = new Map()
+  for (const s of db.staffMembers.list()) if (s.contactKey) mirrors.set(s.contactKey, s)
+
+  for (const [key, c] of orgMap) {
+    const existing = mirrors.get(key)
+    if (existing) {
+      const funktion = c.funktion || existing.funktion || ''
+      if ((existing.name || '') !== c.name || (existing.email || '') !== c.email || (existing.funktion || '') !== funktion) {
+        const { _version, _updatedAt, ...rest } = existing
+        db.staffMembers.update(existing.id, { ...rest, name: c.name || existing.name, email: c.email, funktion, updatedAt: now }, _version, '__contactsync__')
+      }
+    } else {
+      db.staffMembers.create({
+        id:          require('crypto').randomBytes(12).toString('base64url'),
+        name:        c.name,
+        email:       c.email,
+        funktion:    c.funktion,
+        weeklyHours: 40,
+        dayHours:    { mo: 8, di: 8, mi: 8, do: 8, fr: 8 },
+        active:      true,
+        source:      'contact',
+        contactKey:  key,
+        createdAt:   now, updatedAt: now,
+      }, '__contactsync__')
+    }
+  }
+  // Nicht mehr vorhandene Kontakte → gespiegelte Mitarbeiter entfernen
+  for (const [key, s] of mirrors) if (!orgMap.has(key)) db.staffMembers.delete(s.id)
+}
+
+function reconcileUsersFromContacts(orgMap) {
+  const allUsers   = db.users.list()
+  const realEmails = new Set(
+    allUsers.filter(u => (u.source || 'local') !== 'contact')
+            .map(u => (u.email || '').trim().toLowerCase()).filter(Boolean))
+  const usernames  = new Set(allUsers.map(u => u.username))
+  const mirrors    = new Map()
+  for (const m of db.users.listContactMirrors()) mirrors.set(m.contact_key, m)
+
+  for (const [key, c] of orgMap) {
+    // Person ist bereits echter Login-Benutzer (per E-Mail) → nicht spiegeln
+    if (c.email && realEmails.has(c.email.toLowerCase())) {
+      if (mirrors.has(key)) { db.users.delete(mirrors.get(key).username); mirrors.delete(key) }
+      continue
+    }
+    const existing = mirrors.get(key)
+    if (existing) {
+      if ((existing.display_name || '') !== c.name || (existing.email || '') !== c.email) {
+        db.users.updateContactMirror(existing.username, { displayName: c.name, email: c.email })
+      }
+    } else {
+      const username = 'kontakt:' + key
+      if (!usernames.has(username)) {
+        db.users.createContactMirror({ username, displayName: c.name, email: c.email, contactKey: key })
+      }
+    }
+  }
+  for (const [key, m] of mirrors) if (!orgMap.has(key)) db.users.delete(m.username)
+}
+
+function syncOrgContacts() {
+  try {
+    const orgMap = collectOrgContacts()
+    reconcileStaffFromContacts(orgMap)
+    reconcileUsersFromContacts(orgMap)
+  } catch (e) {
+    console.error('[org-sync] ' + ((e && (e.stack || e.message)) || e))
+  }
+}
+
 app.get('/api/staff', requireAuth, (req, res) => {
   try { res.json(db.staffMembers.list()) }
   catch (e) { res.status(500).json({ error: e.message }) }
@@ -1986,6 +2085,7 @@ app.get('/api/users', requireAuth, (req, res) => {
       username:     u.username,
       display_name: u.display_name || u.username,
       role:         u.role,
+      source:       u.source || 'local',
     })))
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
@@ -4043,6 +4143,7 @@ app.post('/api/projects', requireAuth, writeLimiter, (req, res) => {
     }
     const result = db.projects.create(enriched, req.user)
     broadcast('project', 'create', enriched.id, enriched.updatedAt)
+    syncOrgContacts()
     res.status(201).json(result)
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
@@ -4078,6 +4179,7 @@ app.patch('/api/projects/:id', requireAuth, writeLimiter, (req, res) => {
       serverData:    result.serverData,
     })
     broadcast('project', 'update', req.params.id, safeData.updatedAt)
+    syncOrgContacts()
     res.json(result)
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
@@ -4089,6 +4191,7 @@ app.delete('/api/projects/:id', requireAuth, writeLimiter, (req, res) => {
     if (!isSysAdmin) return res.status(403).json({ error: 'Keine Berechtigung. Bitte eine Löschanfrage stellen.' })
     if (!db.projects.delete(req.params.id)) return res.status(404).json({ error: 'Nicht gefunden.' })
     broadcast('project', 'delete', req.params.id, new Date().toISOString())
+    syncOrgContacts()
     res.json({ ok: true })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
@@ -4431,6 +4534,10 @@ const onListen = (protocol) => () => {
   // Wöchentliches Reporting (Freitags 10:00)
   startWeeklyReportScheduler()
   console.log('  Reporting     : Wochenbericht Freitags 10:00')
+
+  // "Eigene Organisation"-Kontakte einmal beim Start mit Benutzer-/Mitarbeiter-DB abgleichen
+  try { syncOrgContacts(); console.log('  Kontakt-Sync  : Eigene Organisation abgeglichen') }
+  catch (e) { console.warn('  Kontakt-Sync fehlgeschlagen:', e.message) }
 }
 
 if (certFile && keyFile && fs.existsSync(certFile) && fs.existsSync(keyFile)) {

@@ -328,12 +328,17 @@ try { db.exec("ALTER TABLE users ADD COLUMN settings TEXT NOT NULL DEFAULT '{}'"
 try { db.exec("ALTER TABLE users ADD COLUMN password_note TEXT NOT NULL DEFAULT ''") } catch {}
 try { db.exec("ALTER TABLE users ADD COLUMN email TEXT NOT NULL DEFAULT ''") } catch {}
 // source: 'local' (lokaler App-Account) | 'synology' (via Synology DSM Auth)
+//       | 'contact' (aus "Eigene Organisation"-Kontakt gespiegelt, login-frei)
 try { db.exec("ALTER TABLE users ADD COLUMN source TEXT NOT NULL DEFAULT 'local'") } catch {}
+// contact_key: Dedup-Schlüssel des Quellkontakts (nur bei source='contact')
+try { db.exec("ALTER TABLE users ADD COLUMN contact_key TEXT NOT NULL DEFAULT ''") } catch {}
 // request_type: 'delete' (Projekt löschen) | 'archive' (Projekt archivieren)
 try { db.exec("ALTER TABLE deletion_requests ADD COLUMN request_type TEXT NOT NULL DEFAULT 'delete'") } catch {}
 
 // ── Users ─────────────────────────────────────────────────────────────────────
-const _uHasAny      = db.prepare('SELECT 1 FROM users LIMIT 1')
+// hasAny ignoriert gespiegelte Kontakt-Einträge – nur echte Accounts (local/synology)
+// entscheiden über den Auth-/Open-Mode, damit Kontakt-Mirrors nie die Anmeldung erzwingen.
+const _uHasAny      = db.prepare("SELECT 1 FROM users WHERE source != 'contact' LIMIT 1")
 const _uGet         = db.prepare('SELECT username, display_name, password_hash, role, settings, password_note, email, source, created_at, last_login FROM users WHERE username = ?')
 const _uList        = db.prepare('SELECT username, display_name, role, password_note, email, source, created_at, last_login FROM users ORDER BY created_at ASC')
 const _uInsert      = db.prepare('INSERT INTO users (username, display_name, password_hash, role, password_note, email, source) VALUES (@username, @displayName, @hash, @role, @passwordNote, @email, @source)')
@@ -354,6 +359,14 @@ const _uUpsertSynology = db.prepare(`
         source       = 'synology'
 `)
 const _uSetRole = db.prepare('UPDATE users SET role = @role WHERE username = @username')
+
+// ── Kontakt-Mirrors (login-freie Benutzer aus "Eigene Organisation"-Kontakten) ──
+const _uInsertMirror = db.prepare(`
+  INSERT INTO users (username, display_name, password_hash, role, email, source, contact_key)
+  VALUES (@username, @displayName, '', 'user', @email, 'contact', @contactKey)
+`)
+const _uListMirrors  = db.prepare("SELECT username, display_name, email, contact_key FROM users WHERE source = 'contact'")
+const _uUpdateMirror = db.prepare("UPDATE users SET display_name = @displayName, email = @email WHERE username = @username AND source = 'contact'")
 
 const users = {
   hasAny()                          { return !!_uHasAny.get() },
@@ -377,6 +390,14 @@ const users = {
     try { return JSON.parse(row.settings || '{}') } catch { return {} }
   },
   delete(username)                  { _sDeleteUser.run(username); return _uDelete.run(username).changes > 0 },
+  // Kontakt-Mirrors (source='contact')
+  listContactMirrors()              { return _uListMirrors.all() },
+  createContactMirror({ username, displayName, email = '', contactKey }) {
+    _uInsertMirror.run({ username, displayName, email, contactKey })
+  },
+  updateContactMirror(username, { displayName, email = '' }) {
+    _uUpdateMirror.run({ username, displayName, email })
+  },
 }
 
 // ── Sessions ──────────────────────────────────────────────────────────────────

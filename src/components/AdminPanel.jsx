@@ -313,8 +313,11 @@ function UsersTab({ serverUser }) {
                   {u.source === 'synology' && (
                     <span className="badge badge-blue text-xs" title="Synology-Benutzer – Passwort wird über DSM verwaltet">Synology</span>
                   )}
-                  {/* Rolle – klickbar zum Umschalten (nicht für eigenen Account) */}
-                  {u.username !== serverUser?.username ? (
+                  {u.source === 'contact' && (
+                    <span className="badge badge-gray text-xs" title="Aus einem Kontakt der Kategorie „Eigene Organisation“ – login-frei, wird automatisch synchronisiert">aus Kontakt</span>
+                  )}
+                  {/* Rolle – klickbar zum Umschalten (nicht für eigenen Account / Kontakt-Mirror) */}
+                  {u.username !== serverUser?.username && u.source !== 'contact' ? (
                     <button
                       className={`badge text-xs flex items-center gap-1 cursor-pointer transition-opacity hover:opacity-70 ${u.role === 'admin' ? 'badge-blue' : 'badge-gray'}`}
                       title={u.role === 'admin' ? 'Zum normalen Nutzer herabstufen' : 'Zum Administrator ernennen'}
@@ -330,7 +333,7 @@ function UsersTab({ serverUser }) {
                   ) : (
                     <span className={`badge text-xs ${u.role === 'admin' ? 'badge-blue' : 'badge-gray'}`}>{u.role}</span>
                   )}
-                  {u.username !== serverUser?.username && (
+                  {u.username !== serverUser?.username && u.source !== 'contact' && (
                     confirmDel === u.username ? (
                       <div className="flex items-center gap-1">
                         <span className="text-xs text-red-600">Wirklich?</span>
@@ -356,7 +359,7 @@ function UsersTab({ serverUser }) {
               </div>
 
               {/* Stored password note + login PW reset (nur für lokale Nutzer) */}
-              {u.source !== 'synology' ? (
+              {u.source === 'local' ? (
                 <>
                   <div className="flex items-center gap-2">
                     <span className="text-xs text-gray-400 w-20 shrink-0">Notiz PW:</span>
@@ -398,7 +401,11 @@ function UsersTab({ serverUser }) {
                   </div>
                 </>
               ) : (
-                <p className="text-xs text-gray-400 italic">Passwort wird über Synology DSM verwaltet.</p>
+                <p className="text-xs text-gray-400 italic">
+                  {u.source === 'synology'
+                    ? 'Passwort wird über Synology DSM verwaltet.'
+                    : 'Login-freier Eintrag – automatisch aus der Kontaktdatenbank („Eigene Organisation“) synchronisiert.'}
+                </p>
               )}
 
               {/* E-Mail + Einladung */}
