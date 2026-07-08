@@ -3,25 +3,88 @@ import { Plus, Trash2, Users, FolderOpen, RefreshCw, AlertCircle, Search, X, Dat
 import { emptyParticipant, uid } from '../utils'
 
 // ── Globale Kontaktsuche ──────────────────────────────────────────────────────
-function ContactSearchPanel({ allContacts, participants, onAdd, onClose }) {
+// Dedup-Schlüssel identisch zur zentralen Kontaktdatenbank (App.jsx allContacts)
+const contactKey = (c) =>
+  (c.email || '').trim().toLowerCase() ||
+  `${(c.name || '').trim().toLowerCase()}|${(c.company || '').trim().toLowerCase()}`
+
+function ContactSearchPanel({ projectContacts = [], allContacts, participants, onAdd, onClose }) {
   const [q, setQ] = useState('')
   const inputRef  = useRef(null)
 
   useEffect(() => { inputRef.current?.focus() }, [])
 
   const existingEmails = new Set(participants.map(p => p.email).filter(Boolean))
+  const projectKeys    = new Set(projectContacts.map(contactKey))
 
-  const results = q.trim().length === 0
-    ? allContacts.slice(0, 40)
-    : allContacts.filter(c => {
-        const term = q.toLowerCase()
-        return (
-          (c.name    ?? '').toLowerCase().includes(term) ||
-          (c.company ?? '').toLowerCase().includes(term) ||
-          (c.email   ?? '').toLowerCase().includes(term) ||
-          (c.gewerk  ?? '').toLowerCase().includes(term)
-        )
-      }).slice(0, 40)
+  const term = q.trim().toLowerCase()
+
+  const matches = (c) => {
+    if (!term) return true
+    return (
+      (c.name    ?? '').toLowerCase().includes(term) ||
+      (c.company ?? '').toLowerCase().includes(term) ||
+      (c.email   ?? '').toLowerCase().includes(term) ||
+      (c.role    ?? '').toLowerCase().includes(term) ||
+      (c.gewerk  ?? '').toLowerCase().includes(term)
+    )
+  }
+
+  // Rang: Präfix-Treffer (Name → Firma → E-Mail) vor Teiltreffern → Vorschläge
+  // werden mit jedem weiteren Buchstaben konkreter.
+  const rank = (c) => {
+    if (!term) return 5
+    const name  = (c.name    ?? '').toLowerCase()
+    const comp  = (c.company ?? '').toLowerCase()
+    const email = (c.email   ?? '').toLowerCase()
+    if (name.startsWith(term))  return 0
+    if (comp.startsWith(term))  return 1
+    if (email.startsWith(term)) return 2
+    if (name.includes(term))    return 3
+    return 4
+  }
+  const byRank = (a, b) =>
+    rank(a) - rank(b) ||
+    (a.name || a.company || '').localeCompare(b.name || b.company || '', 'de')
+
+  // Gruppe 1: Kontakte des konkreten Projekts. Gruppe 2: übrige Datenbank.
+  const projectResults = projectContacts.filter(matches).sort(byRank)
+  const otherResults   = allContacts
+    .filter(c => !projectKeys.has(contactKey(c)))
+    .filter(matches)
+    .sort(byRank)
+
+  const LIMIT      = 50
+  const shownProj  = projectResults.slice(0, LIMIT)
+  const shownOther = otherResults.slice(0, Math.max(0, LIMIT - shownProj.length))
+  const totalShown = shownProj.length + shownOther.length
+  const dbCount    = allContacts.length
+
+  const renderRow = (c, fromProject) => {
+    const alreadyAdded = !!c.email && existingEmails.has(c.email)
+    return (
+      <button
+        key={`${fromProject ? 'p' : 'a'}-${c.id}-${contactKey(c)}`}
+        className={`w-full text-left px-3 py-2 flex items-start gap-3 hover:bg-brand-50 transition-colors
+          ${alreadyAdded ? 'opacity-40 cursor-not-allowed' : ''}`}
+        onClick={() => { if (!alreadyAdded) { onAdd(c); setQ('') } }}
+        disabled={alreadyAdded}
+        title={alreadyAdded ? 'Bereits in der Teilnehmerliste' : ''}
+      >
+        <div className="w-7 h-7 flex-shrink-0 rounded-full bg-brand-100 text-brand-700 flex items-center justify-center text-xs font-bold mt-0.5">
+          {(c.name || c.company || '?')[0].toUpperCase()}
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="text-sm font-medium text-gray-900 truncate">{c.name || '–'}</div>
+          <div className="text-xs text-gray-500 truncate">
+            {[c.company, c.role || c.gewerk].filter(Boolean).join(' · ')}
+            {c.email && <span className="ml-1 text-gray-400">{c.email}</span>}
+          </div>
+        </div>
+        {alreadyAdded && <span className="text-xs text-gray-400 flex-shrink-0 self-center">✓</span>}
+      </button>
+    )
+  }
 
   return (
     <div className="border border-brand-200 bg-white shadow-sm mt-2">
@@ -40,44 +103,38 @@ function ContactSearchPanel({ allContacts, participants, onAdd, onClose }) {
         </button>
       </div>
 
-      {/* Ergebnisliste */}
-      <div className="max-h-64 overflow-y-auto divide-y divide-gray-50">
-        {results.length === 0 && (
+      {/* Ergebnisliste – Projektkontakte zuerst, dann restliche Datenbank */}
+      <div className="max-h-72 overflow-y-auto">
+        {totalShown === 0 && (
           <p className="text-xs text-gray-400 text-center py-4">Keine Kontakte gefunden.</p>
         )}
-        {results.map(c => {
-          const alreadyAdded = existingEmails.has(c.email) && !!c.email
-          return (
-            <button
-              key={`${c.id}-${c._projectName}`}
-              className={`w-full text-left px-3 py-2 flex items-start gap-3 hover:bg-brand-50 transition-colors
-                ${alreadyAdded ? 'opacity-40 cursor-not-allowed' : ''}`}
-              onClick={() => { if (!alreadyAdded) { onAdd(c); setQ('') } }}
-              disabled={alreadyAdded}
-              title={alreadyAdded ? 'Bereits in der Teilnehmerliste' : ''}
-            >
-              <div className="w-7 h-7 flex-shrink-0 rounded-full bg-brand-100 text-brand-700 flex items-center justify-center text-xs font-bold mt-0.5">
-                {(c.name || '?')[0].toUpperCase()}
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="text-sm font-medium text-gray-900 truncate">{c.name || '–'}</div>
-                <div className="text-xs text-gray-500 truncate">
-                  {[c.company, c.role || c.gewerk].filter(Boolean).join(' · ')}
-                  {c.email && <span className="ml-1 text-gray-400">{c.email}</span>}
-                </div>
-                {c._projectName && (
-                  <div className="text-xs text-brand-400 truncate">aus: {c._projectName}</div>
-                )}
-              </div>
-              {alreadyAdded && <span className="text-xs text-gray-400 flex-shrink-0 self-center">✓</span>}
-            </button>
-          )
-        })}
+
+        {shownProj.length > 0 && (
+          <>
+            <div className="px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-brand-500 bg-brand-50/60 border-b border-brand-100 sticky top-0">
+              Projektkontakte
+            </div>
+            <div className="divide-y divide-gray-50">
+              {shownProj.map(c => renderRow(c, true))}
+            </div>
+          </>
+        )}
+
+        {shownOther.length > 0 && (
+          <>
+            <div className="px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-gray-400 bg-gray-50 border-y border-gray-100 sticky top-0">
+              {shownProj.length > 0 ? 'Weitere Kontakte' : 'Alle Kontakte'}
+            </div>
+            <div className="divide-y divide-gray-50">
+              {shownOther.map(c => renderRow(c, false))}
+            </div>
+          </>
+        )}
       </div>
 
       <div className="px-3 py-1.5 text-xs text-gray-400 border-t border-gray-100">
-        {allContacts.length} Kontakt{allContacts.length !== 1 ? 'e' : ''} in der Datenbank
-        {q.trim() && results.length < allContacts.length && ` · ${results.length} Treffer`}
+        {dbCount} Kontakt{dbCount !== 1 ? 'e' : ''} in der Datenbank
+        {term && ` · ${totalShown} Treffer`}
       </div>
     </div>
   )
@@ -164,11 +221,11 @@ export default function ParticipantsList({ participants, onChange, readOnly, pro
                 <FolderOpen size={14} /> Aus Projekt
               </button>
             )}
-            {allContacts.length > 0 && (
+            {(allContacts.length > 0 || (projectContacts ?? []).length > 0) && (
               <button
                 className={`btn-secondary ${showSearch ? 'bg-brand-50 border-brand-300 text-brand-700' : ''}`}
                 onClick={() => setShowSearch(v => !v)}
-                title="Aus zentraler Kontaktdatenbank hinzufügen"
+                title="Aus Kontaktdatenbank hinzufügen – Projektkontakte zuerst"
               >
                 <Database size={14} /> Datenbank
               </button>
@@ -181,6 +238,7 @@ export default function ParticipantsList({ participants, onChange, readOnly, pro
       {/* Globale Kontaktsuche */}
       {showSearch && !readOnly && (
         <ContactSearchPanel
+          projectContacts={projectContacts ?? []}
           allContacts={allContacts}
           participants={participants}
           onAdd={(c) => { addFromDb(c) }}
