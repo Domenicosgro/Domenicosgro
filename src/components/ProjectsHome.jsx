@@ -3,87 +3,12 @@ import { Plus, Trash2, Search, ChevronRight, FileText, Users, FolderOpen,
          Calendar, Lock, LockOpen, X, Eye, EyeOff, Star,
          User, Settings, LogOut, Download, RotateCcw, Upload, AlertTriangle,
          ShieldCheck, Loader, CalendarClock, Copy, Link2, UserCog, GraduationCap,
-         Archive, ArchiveRestore, FileDown, Smartphone } from 'lucide-react'
+         Archive, ArchiveRestore, FileDown, Smartphone, Database } from 'lucide-react'
 import ProjectAdminPanel from './ProjectAdminPanel'
 import GlobalSearch from './GlobalSearch'
 import NotificationBell from './NotificationBell'
 import QrInstallModal from './QrInstallModal'
-import { validNummer, validKuerzel, composeName } from './ProjektdatenView'
 import { formatDate } from '../utils'
-
-// ── Neues Projekt mit Codierung (3–4 Ziffern · 3–4 Buchstaben · Bezeichnung) ──
-function NewProjectModal({ onCreate, onClose }) {
-  const [nummer,      setNummer]      = useState('')
-  const [kuerzel,     setKuerzel]     = useState('')
-  const [ausnahme,    setAusnahme]    = useState(false)
-  const [bezeichnung, setBezeichnung] = useState('')
-
-  const nummerOk  = validNummer(nummer)
-  const kuerzelOk = ausnahme ? kuerzel.trim().length > 0 : validKuerzel(kuerzel)
-  const name      = composeName(nummer, kuerzel, bezeichnung)
-  const valid     = nummerOk && kuerzelOk && bezeichnung.trim().length > 0
-
-  const submit = () => {
-    if (!valid) return
-    onCreate({
-      name,
-      projectData: { nummer, kuerzel, kuerzelAusnahme: ausnahme, bezeichnung: bezeichnung.trim() },
-    })
-  }
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
-      <div className="bg-white w-full max-w-md border border-gray-200 shadow-2xl" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200">
-          <h3 className="font-semibold text-gray-900 flex items-center gap-2"><Plus size={16} className="text-brand-600" /> Neues Projekt</h3>
-          <button className="btn-ghost p-1" onClick={onClose}><X size={16} /></button>
-        </div>
-        <div className="p-5 space-y-3">
-          <p className="text-xs text-gray-400">Codierung: 3–4 Ziffern · 3–4 Buchstaben · Projektbezeichnung</p>
-          <div className="grid grid-cols-[100px_120px] gap-3">
-            <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1">Nummer *</label>
-              <input className={`input font-mono ${nummer && !nummerOk ? 'border-red-400' : ''}`}
-                placeholder="1234" maxLength={4} autoFocus value={nummer}
-                onChange={e => setNummer(e.target.value.replace(/\D/g, ''))}
-                onKeyDown={e => e.key === 'Enter' && submit()} />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1">
-                Kürzel *
-                <label className="ml-1.5 font-normal text-gray-400 cursor-pointer">
-                  <input type="checkbox" className="mr-0.5 align-middle" checked={ausnahme}
-                    onChange={e => setAusnahme(e.target.checked)} />Ausnahme
-                </label>
-              </label>
-              <input className={`input font-mono uppercase ${kuerzel && !kuerzelOk ? 'border-red-400' : ''}`}
-                placeholder="MUST" maxLength={ausnahme ? 12 : 4} value={kuerzel}
-                onChange={e => setKuerzel(ausnahme ? e.target.value : e.target.value.replace(/[^A-Za-zÄÖÜäöüß]/g, '').toUpperCase())}
-                onKeyDown={e => e.key === 'Enter' && submit()} />
-            </div>
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-500 mb-1">Projektbezeichnung *</label>
-            <input className="input" placeholder="z. B. Neubau Produktionshalle Musterstadt"
-              value={bezeichnung} onChange={e => setBezeichnung(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && submit()} />
-          </div>
-          {name && (
-            <p className="text-sm text-gray-600 bg-gray-50 border border-gray-100 px-3 py-2">
-              Projektname: <strong className="text-night">{name}</strong>
-            </p>
-          )}
-        </div>
-        <div className="px-5 py-3 border-t border-gray-200 flex justify-end gap-2">
-          <button className="btn-secondary" onClick={onClose}>Abbrechen</button>
-          <button className="btn-primary" disabled={!valid} onClick={submit}>
-            <Plus size={14} /> Projekt anlegen
-          </button>
-        </div>
-      </div>
-    </div>
-  )
-}
 import { useUserSettings } from '../hooks/useUserSettings'
 
 const isServer = typeof window !== 'undefined' && !!window.__SERVER_MODE__
@@ -282,7 +207,7 @@ export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, 
   const [archiveNotice,   setArchiveNotice]   = useState('')     // "Anfrage gesendet"-Hinweis
   const [showGlobalSearch, setShowGlobalSearch] = useState(false)
   const [showQrInstall,    setShowQrInstall]    = useState(false)
-  const [showNewProject,   setShowNewProject]   = useState(false)
+  const [showAddFromDb,    setShowAddFromDb]    = useState(false)
   const importProjectRef = useRef(null)
 
   // Projekte, für die der aktuelle Benutzer Admin ist
@@ -328,8 +253,13 @@ export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, 
   // ID of the project whose name input should be auto-focused after creation
   const focusIdRef = useRef(null)
 
-  const activeProjects   = projects.filter(p => !p.isArchived)
-  const archivedProjects = projects.filter(p => !!p.isArchived)
+  // Auf dem Protokoll-Dashboard erscheinen nur Projekte, die als Protokoll-
+  // grundlage hinzugefügt wurden (onProtocolBoard). Bestand (undefined) = sichtbar.
+  const onBoard          = (p) => p.onProtocolBoard !== false
+  const activeProjects   = projects.filter(p => !p.isArchived && onBoard(p))
+  const archivedProjects = projects.filter(p => !!p.isArchived && onBoard(p))
+  // In der Datenbank vorhanden, aber noch nicht auf dem Dashboard:
+  const availableFromDb  = projects.filter(p => !p.isArchived && !onBoard(p))
 
   const hasFavorites = activeProjects.some(p => isFavorite(p.id))
 
@@ -384,15 +314,17 @@ export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, 
     }
   }
 
-  const handleCreate = () => setShowNewProject(true)
-
-  // Projekt mit Codierung (Nummer + Kürzel + Bezeichnung) anlegen
-  const createCodedProject = ({ name, projectData }) => {
-    const id = onCreate()
-    if (name || projectData) onUpdate(id, { ...(name ? { name } : {}), projectData })
-    focusIdRef.current = id
+  // Projekt aus der Datenbank als Protokollgrundlage aufs Dashboard holen
+  const addFromDb = (id) => {
+    onUpdate(id, { onProtocolBoard: true })
     if (hasFavorites) setShowAll(true)
-    setShowNewProject(false)
+    setShowAddFromDb(false)
+    onOpenProjectDashboard?.(id)
+  }
+  // Projekt vom Dashboard nehmen (bleibt in der Projektdatenbank erhalten)
+  const removeFromBoard = (project) => {
+    if (confirm(`„${project.name || 'Unbenannt'}" vom Dashboard entfernen?\nDas Projekt bleibt in der Projektdatenbank erhalten.`))
+      onUpdate(project.id, { onProtocolBoard: false })
   }
 
   const handleCardClick = (project) => {
@@ -495,8 +427,9 @@ export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, 
           <button className="btn btn-secondary" onClick={() => importProjectRef.current?.click()} title="Projekt aus Export-Datei importieren">
             <Upload size={16} /> Import
           </button>
-          <button className="btn btn-primary" onClick={handleCreate}>
-            <Plus size={16} /> Neues Projekt
+          <button className="btn btn-primary" onClick={() => setShowAddFromDb(true)}
+            title="Projekt aus der Projektdatenbank als Protokollgrundlage hinzufügen">
+            <Plus size={16} /> Projekt hinzufügen
           </button>
         </div>
       </div>
@@ -644,14 +577,25 @@ export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, 
       )}
 
       {/* Empty state */}
-      {projects.length === 0 && unassigned.length === 0 && (
+      {activeProjects.length === 0 && archivedProjects.length === 0 && unassigned.length === 0 && (
         <div className="card p-16 text-center">
           <FolderOpen size={44} className="mx-auto text-gray-300 mb-3" />
-          <p className="text-gray-500 font-medium text-lg">Noch keine Projekte vorhanden</p>
-          <p className="text-sm text-gray-400 mt-1">Lege ein Projekt an – danach kannst du Protokolle erstellen und zuordnen.</p>
-          <button className="btn-primary mt-5" onClick={handleCreate}>
-            <Plus size={15} /> Erstes Projekt anlegen
-          </button>
+          <p className="text-gray-500 font-medium text-lg">Noch keine Projekte auf dem Dashboard</p>
+          {availableFromDb.length > 0 ? (
+            <>
+              <p className="text-sm text-gray-400 mt-1">Füge ein Projekt aus der Projektdatenbank als Protokollgrundlage hinzu.</p>
+              <button className="btn-primary mt-5" onClick={() => setShowAddFromDb(true)}>
+                <Plus size={15} /> Projekt hinzufügen
+              </button>
+            </>
+          ) : (
+            <>
+              <p className="text-sm text-gray-400 mt-1">Lege zuerst ein Projekt in der Projektdatenbank an – danach kannst du es hier als Protokollgrundlage hinzufügen.</p>
+              <button className="btn-primary mt-5" onClick={() => onOpenProjektdatenbank?.()}>
+                <Database size={15} /> Zur Projektdatenbank
+              </button>
+            </>
+          )}
         </div>
       )}
 
@@ -787,6 +731,13 @@ export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, 
                         : <Archive size={14} />}
                     </button>
                   )}
+                  <button
+                    className="btn-ghost p-1.5 text-gray-400 hover:text-gray-700"
+                    title="Vom Dashboard entfernen (bleibt in der Projektdatenbank)"
+                    onClick={() => removeFromBoard(project)}
+                  >
+                    <EyeOff size={14} />
+                  </button>
                   <button
                     className="btn-ghost p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50"
                     title="Projekt löschen"
@@ -958,9 +909,49 @@ export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, 
       {/* QR-Code für Handy-Installation */}
       {showQrInstall && <QrInstallModal onClose={() => setShowQrInstall(false)} />}
 
-      {/* Neues Projekt mit Codierung */}
-      {showNewProject && (
-        <NewProjectModal onCreate={createCodedProject} onClose={() => setShowNewProject(false)} />
+      {/* Projekt aus der Datenbank als Protokollgrundlage hinzufügen */}
+      {showAddFromDb && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setShowAddFromDb(false)}>
+          <div className="bg-white w-full max-w-md max-h-[80vh] flex flex-col border border-gray-200 shadow-2xl" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200">
+              <h3 className="font-semibold text-gray-900 flex items-center gap-2"><Plus size={16} className="text-brand-600" /> Projekt hinzufügen</h3>
+              <button className="btn-ghost p-1" onClick={() => setShowAddFromDb(false)}><X size={16} /></button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-5 space-y-2">
+              <p className="text-xs text-gray-500 mb-1">
+                Projekt aus der Projektdatenbank als Protokollgrundlage aufs Dashboard holen.
+              </p>
+              {availableFromDb.length === 0 ? (
+                <div className="text-sm text-gray-400 text-center py-8 border border-gray-100">
+                  Alle Projekte sind bereits auf dem Dashboard.<br />
+                  Neue Projekte werden in der <strong>Projektdatenbank</strong> angelegt.
+                </div>
+              ) : (
+                availableFromDb
+                  .sort((a, b) => (parseInt(a.projectData?.nummer, 10) || 99999) - (parseInt(b.projectData?.nummer, 10) || 99999)
+                    || (a.name || '').localeCompare(b.name || '', 'de'))
+                  .map(p => (
+                    <button key={p.id}
+                      className="w-full flex items-center gap-3 text-left px-3 py-2.5 border border-gray-100 hover:border-brand-300 hover:bg-brand-50/50 transition-colors"
+                      onClick={() => addFromDb(p.id)}>
+                      <FolderOpen size={15} className="text-brand-500 flex-shrink-0" />
+                      <div className="min-w-0 flex-1">
+                        <span className="block text-sm font-medium text-gray-900 truncate">{p.name || 'Unbenannt'}</span>
+                        {p.projectData?.vertrag && <span className="block text-xs text-gray-400 truncate">{p.projectData.vertrag}</span>}
+                      </div>
+                      <Plus size={14} className="text-gray-300 flex-shrink-0" />
+                    </button>
+                  ))
+              )}
+            </div>
+            <div className="px-5 py-3 border-t border-gray-200 flex justify-between items-center">
+              <span className="text-xs text-gray-400">Anlegen in der Projektdatenbank</span>
+              <button className="btn-secondary text-sm" onClick={() => { setShowAddFromDb(false); onOpenProjektdatenbank?.() }}>
+                <Database size={14} /> Zur Projektdatenbank
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Globale Volltextsuche */}

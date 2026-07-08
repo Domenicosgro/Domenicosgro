@@ -842,6 +842,8 @@ export default function App() {
           projects={projectsWithContacts}
           allContacts={allContacts}
           canEdit={canEditProjektdaten}
+          serverUser={serverUser}
+          onCreate={handleCreateProject}
           onUpdateProject={handleUpdateProject}
           onBack={() => setView('home')}
         />

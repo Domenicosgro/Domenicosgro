@@ -1,15 +1,31 @@
 import React, { useState } from 'react'
-import { ArrowLeft, Database, ChevronRight, Lock } from 'lucide-react'
+import { ArrowLeft, Database, ChevronRight, Lock, Plus } from 'lucide-react'
 import ProjektdatenView, { lphRange } from './ProjektdatenView'
+import NewProjectModal from './NewProjectModal'
+
+const isServer = typeof window !== 'undefined' && !!window.__SERVER_MODE__
 
 /**
- * Zentrale Projektdatenbank: Übersicht aller Projekte mit Codierung,
- * Gesellschaft, Vertrag, Leistungsphasen und Generalplanung.
+ * Zentrale Projektdatenbank: Projekte werden hier angelegt und verwaltet
+ * (Codierung, Gesellschaft, Vertrag, Leistungsphasen, Team, Generalplanung).
  * Bearbeitung nur durch System-/Projektadmins (canEdit je Projekt).
  */
-export default function ProjektdatenbankView({ projects, allContacts, canEdit, onUpdateProject, onBack }) {
+export default function ProjektdatenbankView({ projects, allContacts, canEdit, serverUser, onCreate, onUpdateProject, onBack }) {
   const [selectedId, setSelectedId] = useState(null)
+  const [showNew,    setShowNew]    = useState(false)
   const selected = projects.find(p => p.id === selectedId)
+
+  // Neue Projekte dürfen System-Admins anlegen (bzw. lokal jeder)
+  const canCreate = !isServer || serverUser?.role === 'admin'
+
+  const createProject = ({ name, projectData }) => {
+    const id = onCreate()
+    // Neu angelegte Projekte sind zunächst NICHT auf dem Protokoll-Dashboard –
+    // sie werden dort separat als Protokollgrundlage hinzugefügt.
+    onUpdateProject(id, { name, projectData, onProtocolBoard: false })
+    setShowNew(false)
+    setSelectedId(id)   // direkt die Projektdaten öffnen
+  }
 
   if (selected) {
     return (
@@ -75,17 +91,26 @@ export default function ProjektdatenbankView({ projects, allContacts, canEdit, o
 
   return (
     <div className="app-page">
-      <div className="flex items-end gap-3">
-        <button className="btn-secondary" onClick={onBack}><ArrowLeft size={16} /> Start</button>
-        <div>
-          <h1 className="text-2xl font-bold text-night flex items-center gap-2">
-            <Database size={22} className="text-brand-600" /> Projektdatenbank
-          </h1>
-          <p className="text-sm text-gray-500 mt-0.5">
-            Zentrale Projektstammdaten · {active.length} aktive{active.length === 1 ? 's' : ''} Projekt{active.length !== 1 ? 'e' : ''} · Bearbeitung durch Administratoren
-          </p>
+      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3">
+        <div className="flex items-end gap-3">
+          <button className="btn-secondary" onClick={onBack}><ArrowLeft size={16} /> Start</button>
+          <div>
+            <h1 className="text-2xl font-bold text-night flex items-center gap-2">
+              <Database size={22} className="text-brand-600" /> Projektdatenbank
+            </h1>
+            <p className="text-sm text-gray-500 mt-0.5">
+              Projekte anlegen &amp; verwalten · {active.length} aktive{active.length === 1 ? 's' : ''} Projekt{active.length !== 1 ? 'e' : ''} · Bearbeitung durch Administratoren
+            </p>
+          </div>
         </div>
+        {canCreate && onCreate && (
+          <button className="btn-primary" onClick={() => setShowNew(true)}>
+            <Plus size={16} /> Neues Projekt
+          </button>
+        )}
       </div>
+
+      {showNew && <NewProjectModal onCreate={createProject} onClose={() => setShowNew(false)} />}
 
       <div className="card overflow-x-auto">
         <div className="min-w-[860px]">
