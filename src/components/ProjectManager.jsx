@@ -7,9 +7,10 @@ import BeteiligtenModal from './BeteiligtenModal'
 const CONTACT_CATEGORIES = [
   { value: 'auftraggeber', label: 'Auftraggeber'        },
   { value: 'planer',       label: 'Planer'              },
-  { value: 'ausfuehrend',  label: 'Ausführende Firma'   },
-  { value: 'organisation', label: 'Eigene Organisation' },
-  { value: 'nutzer',       label: 'Nutzer'              },
+  { value: 'ausfuehrend',    label: 'Ausführende Firma'   },
+  { value: 'projektadresse', label: 'Projektadresse'      },
+  { value: 'organisation',   label: 'Eigene Organisation' },
+  { value: 'nutzer',         label: 'Nutzer'              },
 ]
 
 // ── CSV helpers ───────────────────────────────────────────────────────────────

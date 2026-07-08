@@ -7,9 +7,10 @@ import { uid } from '../utils'
 const CATEGORIES = [
   { value: 'auftraggeber', label: 'Auftraggeber',        badge: 'badge-blue'   },
   { value: 'planer',       label: 'Planer',              badge: 'badge-green'  },
-  { value: 'ausfuehrend',  label: 'Ausführende Firma',   badge: 'badge-yellow' },
-  { value: 'organisation', label: 'Eigene Organisation', badge: 'badge-gray'   },
-  { value: 'nutzer',       label: 'Nutzer',              badge: 'badge-gray'   },
+  { value: 'ausfuehrend',    label: 'Ausführende Firma',   badge: 'badge-yellow' },
+  { value: 'projektadresse', label: 'Projektadresse',      badge: 'badge-red'    },
+  { value: 'organisation',   label: 'Eigene Organisation', badge: 'badge-gray'   },
+  { value: 'nutzer',         label: 'Nutzer',              badge: 'badge-gray'   },
 ]
 
 function categoryInfo(value) {
