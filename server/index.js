@@ -651,6 +651,7 @@ app.post('/api/auth/users/:username/invite', requireAuth, requireAdmin, async (r
     })
 
     logEvent('INVITE_SENT', req, `to=${user.email} user=${username}`)
+    db.users.markInvited(username)
     res.json({ ok: true })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
@@ -708,6 +709,7 @@ app.post('/api/admin/synology-bulk-invite', requireAuth, requireAdmin, async (re
             html, text, attachments,
           })
           invited = true
+          db.users.markInvited(username)
         } catch (e) { inviteError = e.message }
       } else if (sendInvite && !email) {
         inviteError = 'Keine E-Mail-Adresse angegeben.'

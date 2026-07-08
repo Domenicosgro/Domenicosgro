@@ -332,6 +332,8 @@ try { db.exec("ALTER TABLE users ADD COLUMN email TEXT NOT NULL DEFAULT ''") } c
 try { db.exec("ALTER TABLE users ADD COLUMN source TEXT NOT NULL DEFAULT 'local'") } catch {}
 // contact_key: Dedup-Schlüssel des Quellkontakts (nur bei source='contact')
 try { db.exec("ALTER TABLE users ADD COLUMN contact_key TEXT NOT NULL DEFAULT ''") } catch {}
+// invited_at: Zeitpunkt der letzten Einladungs-E-Mail (leer = noch nie eingeladen)
+try { db.exec("ALTER TABLE users ADD COLUMN invited_at TEXT NOT NULL DEFAULT ''") } catch {}
 // request_type: 'delete' (Projekt löschen) | 'archive' (Projekt archivieren)
 try { db.exec("ALTER TABLE deletion_requests ADD COLUMN request_type TEXT NOT NULL DEFAULT 'delete'") } catch {}
 
@@ -340,9 +342,10 @@ try { db.exec("ALTER TABLE deletion_requests ADD COLUMN request_type TEXT NOT NU
 // entscheiden über den Auth-/Open-Mode, damit Kontakt-Mirrors nie die Anmeldung erzwingen.
 const _uHasAny      = db.prepare("SELECT 1 FROM users WHERE source != 'contact' LIMIT 1")
 const _uGet         = db.prepare('SELECT username, display_name, password_hash, role, settings, password_note, email, source, created_at, last_login FROM users WHERE username = ?')
-const _uList        = db.prepare('SELECT username, display_name, role, password_note, email, source, created_at, last_login FROM users ORDER BY created_at ASC')
+const _uList        = db.prepare('SELECT username, display_name, role, password_note, email, source, invited_at, created_at, last_login FROM users ORDER BY created_at ASC')
 const _uInsert      = db.prepare('INSERT INTO users (username, display_name, password_hash, role, password_note, email, source) VALUES (@username, @displayName, @hash, @role, @passwordNote, @email, @source)')
 const _uLastLogin   = db.prepare("UPDATE users SET last_login = datetime('now') WHERE username = ?")
+const _uMarkInvited = db.prepare("UPDATE users SET invited_at = datetime('now') WHERE username = ?")
 const _uPassword    = db.prepare('UPDATE users SET password_hash = @hash WHERE username = @username')
 const _uSettings    = db.prepare('UPDATE users SET settings = @settings WHERE username = @username')
 const _uPwNote      = db.prepare('UPDATE users SET password_note = @note WHERE username = @username')
@@ -380,6 +383,7 @@ const users = {
   },
   setRole(username, role) { _uSetRole.run({ role, username }) },
   updateLastLogin(username)         { _uLastLogin.run(username) },
+  markInvited(username)             { _uMarkInvited.run(username) },
   updatePassword(username, hash)    { _uPassword.run({ hash, username }) },
   updateSettings(username, settings){ _uSettings.run({ settings: JSON.stringify(settings), username }) },
   updatePasswordNote(username, note){ _uPwNote.run({ note, username }) },

@@ -2,6 +2,15 @@ import React, { useState, useEffect, useRef } from 'react'
 import { X, UserPlus, Users, Key, Eye, EyeOff, Loader, Trash2, Printer, Download, Pencil, Check, KeyRound, HardDrive, Upload, Mail, Send, Settings2, Search, AlertTriangle, Shield, ShieldOff, LogOut, Activity, RefreshCw, UserCheck, CheckSquare, Square } from 'lucide-react'
 import { formatDate } from '../utils'
 
+// Initialen aus Anzeigename bzw. Benutzername (z. B. "Max Mustermann" → "MM")
+function userInitials(u) {
+  const base = (u.display_name || u.username || '').trim()
+  if (!base) return '?'
+  const words = base.split(/\s+/).filter(Boolean)
+  if (words.length >= 2) return (words[0][0] + words[words.length - 1][0]).toUpperCase()
+  return base.slice(0, 2).toUpperCase()
+}
+
 function apiHeaders() {
   const h = { 'Content-Type': 'application/json' }
   const token = localStorage.getItem('kp_session_token')
@@ -223,6 +232,7 @@ function UsersTab({ serverUser }) {
       const res  = await fetch(`/api/auth/users/${encodeURIComponent(username)}/invite`, { method: 'POST', headers: apiHeaders() })
       const data = await res.json()
       setInviteMsg(p => ({ ...p, [username]: { ok: res.ok, text: res.ok ? 'Einladung gesendet.' : data.error } }))
+      if (res.ok) setUsers(list => list.map(u => u.username === username ? { ...u, invited_at: new Date().toISOString() } : u))
     } catch { setInviteMsg(p => ({ ...p, [username]: { ok: false, text: 'Netzwerkfehler.' } })) }
     finally { setInviting(null) }
   }
@@ -306,7 +316,7 @@ function UsersTab({ serverUser }) {
               {/* Name + role + delete */}
               <div className="flex items-center justify-between">
                 <div>
-                  <div className="text-sm font-medium text-gray-900">{u.display_name || u.username}</div>
+                  <div className="text-sm font-medium text-gray-900" title={u.display_name || u.username}>{userInitials(u)}</div>
                   <div className="text-xs text-gray-500">{u.username}</div>
                 </div>
                 <div className="flex items-center gap-2">
@@ -426,11 +436,18 @@ function UsersTab({ serverUser }) {
                       onClick={() => { setEditingEmail(u.username); setEmailDraft(u.email || '') }}>
                       <Pencil size={13} />
                     </button>
-                    <button className="btn-ghost p-1 text-gray-400 hover:text-brand-600" title="Einladung senden"
-                      disabled={!u.email || inviting === u.username}
-                      onClick={() => handleInvite(u.username)}>
-                      {inviting === u.username ? <Loader size={13} className="animate-spin" /> : <Send size={13} />}
-                    </button>
+                    {u.source !== 'contact' && (
+                      <>
+                        <button className="btn-ghost p-1 text-gray-400 hover:text-brand-600" title={u.invited_at ? 'Erneut einladen' : 'Einladung senden'}
+                          disabled={!u.email || inviting === u.username}
+                          onClick={() => handleInvite(u.username)}>
+                          {inviting === u.username ? <Loader size={13} className="animate-spin" /> : <Send size={13} />}
+                        </button>
+                        {u.invited_at
+                          ? <span className="badge badge-green text-[10px] whitespace-nowrap flex items-center gap-1" title={`Einladung gesendet am ${formatDate(u.invited_at.slice(0, 10))}`}><Check size={10} /> eingeladen</span>
+                          : <span className="badge badge-gray text-[10px] whitespace-nowrap" title="Es wurde noch keine Einladung versendet">nicht eingeladen</span>}
+                      </>
+                    )}
                   </>
                 )}
               </div>
