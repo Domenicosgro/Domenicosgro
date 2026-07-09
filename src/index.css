@@ -188,7 +188,10 @@
   h1, h2, h3 { page-break-after: avoid; }
   tr          { page-break-inside: avoid; }
 
-  .protocol-item {
+  /* Umbruch-Vermeidung auf BEIDEN Ebenen – sonst wird die farbige Box (> div)
+     am Seitenende angeschnitten und von der fixen Fußzeile überlagert. */
+  .protocol-item,
+  .protocol-item > div {
     page-break-inside: avoid;
     break-inside: avoid;
   }
