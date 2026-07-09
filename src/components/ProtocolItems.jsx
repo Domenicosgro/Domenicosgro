@@ -332,7 +332,8 @@ export default function ProtocolItems({ items, onChange, allTasks = [], onTasksC
       (it.assignedTo ?? '').toLowerCase().includes(q) ||
       (it.no ?? '').toLowerCase().includes(q)
     )
-    if (isHiddenByCollapse(items, idx, collapsed)) return false
+    // Eingeklappte Unterpunkte NICHT herausfiltern – sie werden nur am Bildschirm
+    // per CSS ausgeblendet (hidden print:block), damit der Ausdruck vollständig bleibt.
     if (!showCompleted && it.status === 'erledigt' && !it.carriedGray) return false
     return true
   })
@@ -421,7 +422,7 @@ export default function ProtocolItems({ items, onChange, allTasks = [], onTasksC
       )}
 
       {/* Items list */}
-      <div className="space-y-0" onDragLeave={() => setDropIdx(null)}>
+      <div className="space-y-2" onDragLeave={() => setDropIdx(null)}>
         {/* Drop zone before first item */}
         <DropZone insertBeforeIdx={0} />
 
@@ -432,9 +433,13 @@ export default function ProtocolItems({ items, onChange, allTasks = [], onTasksC
           const done    = item.status === 'erledigt'
           const gray    = done && item.carriedGray
           const isDragging = dragId === item.id
+          // Durch Einklappen verborgen: am Bildschirm aus, im Ausdruck sichtbar.
+          const hiddenByCollapse = !q && isHiddenByCollapse(items, realIdx, collapsed)
+          // Anzahl der durch Einklappen dieses Punkts verborgenen Unterpunkte
+          const collapsedCount = collapsed.has(item.id) ? subtreeEnd(items, realIdx) - realIdx - 1 : 0
 
           return (
-            <div key={item.id} className={`protocol-item ${isDragging ? 'opacity-40' : ''}`}>
+            <div key={item.id} className={`protocol-item ${isDragging ? 'opacity-40' : ''} ${hiddenByCollapse ? 'hidden print:block' : ''}`}>
               <div
                 className={`${s.indent} print-level-${lvl} rounded-lg ${s.borderL} pl-2 pr-3 py-3 space-y-2
                   ${gray ? 'bg-gray-50 opacity-60' : done ? 'bg-green-50' : 'bg-white'}`}
@@ -516,6 +521,17 @@ export default function ProtocolItems({ items, onChange, allTasks = [], onTasksC
                           onChange={e => update(item.id, 'topic', e.target.value)} />
                     }
                   </div>
+
+                  {/* Einklapp-Hinweis – eindeutig sichtbar, dass Unterpunkte verborgen sind (nur Bildschirm) */}
+                  {collapsedCount > 0 && (
+                    <button
+                      onClick={() => toggleCollapse(item.id)}
+                      className="flex-shrink-0 self-center flex items-center gap-1 no-print badge text-[11px] bg-amber-100 text-amber-800 border border-amber-300 hover:bg-amber-200 transition-colors"
+                      title="Ausgeblendete Unterpunkte einblenden"
+                    >
+                      <ChevronRight size={11} /> {collapsedCount} {collapsedCount === 1 ? 'Unterpunkt' : 'Unterpunkte'} ausgeblendet
+                    </button>
+                  )}
 
                   {!readOnly && !gray && (
                     <div className="flex items-center gap-1 no-print flex-shrink-0">
