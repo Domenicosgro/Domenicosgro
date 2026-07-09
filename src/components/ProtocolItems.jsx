@@ -323,6 +323,9 @@ export default function ProtocolItems({ items, onChange, allTasks = [], onTasksC
 
   const q             = search.trim().toLowerCase()
   const completedCount = items.filter(it => it.status === 'erledigt' && !it.carriedGray).length
+  // Neu eingefügte Punkte (ohne carriedFromId) nur hervorheben, wenn es auch
+  // übernommene Punkte gibt – im Erstprotokoll ist ohnehin alles neu.
+  const hasCarried    = items.some(it => it.carriedFromId)
   const dndActive     = !q && !readOnly   // disable DnD while searching
 
   const visible = items.filter((it, idx) => {
@@ -432,6 +435,7 @@ export default function ProtocolItems({ items, onChange, allTasks = [], onTasksC
           const s       = LEVEL_STYLES[lvl]
           const done    = item.status === 'erledigt'
           const gray    = done && item.carriedGray
+          const isNew   = hasCarried && !item.carriedFromId
           const isDragging = dragId === item.id
           // Durch Einklappen verborgen: am Bildschirm aus, im Ausdruck sichtbar.
           const hiddenByCollapse = !q && isHiddenByCollapse(items, realIdx, collapsed)
@@ -442,7 +446,7 @@ export default function ProtocolItems({ items, onChange, allTasks = [], onTasksC
             <div key={item.id} className={`protocol-item ${isDragging ? 'opacity-40' : ''} ${hiddenByCollapse ? 'hidden print:block' : ''}`}>
               <div
                 className={`${s.indent} print-level-${lvl} rounded-lg ${s.borderL} pl-2 pr-3 py-3 space-y-2
-                  ${gray ? 'bg-gray-50 opacity-60' : done ? 'bg-green-50' : 'bg-white'}`}
+                  ${gray ? 'bg-gray-50 opacity-60' : done ? 'bg-green-50' : isNew ? 'bg-amber-50 protocol-item-new' : 'bg-white'}`}
               >
                 {/* Row 1: collapse + drag handle + number + topic + controls */}
                 <div className="flex items-start gap-2">
@@ -511,6 +515,7 @@ export default function ProtocolItems({ items, onChange, allTasks = [], onTasksC
                     </div>
                   )}
                   {!gray && item.carriedFromId && <span className="badge-blue text-xs flex-shrink-0 no-print">↩ Übernommen</span>}
+                  {isNew && !gray && <span className="badge text-xs flex-shrink-0 bg-amber-100 text-amber-800 border border-amber-300">Neu</span>}
 
                   {/* Topic */}
                   <div className="flex-1">

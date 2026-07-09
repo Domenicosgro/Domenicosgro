@@ -225,6 +225,16 @@
     background-color: transparent !important;
   }
 
+  /* Neu eingefügte Punkte im Druck farblich hervorheben (amber) – muss NACH den
+     Ebenen-Regeln stehen, damit die Amber-Farbe die Ebenen-Färbung überschreibt */
+  .protocol-item > div.protocol-item-new {
+    background-color: #fef3c7 !important;   /* amber-100 */
+    border-left-color: #f59e0b !important;  /* amber-500 */
+  }
+  .protocol-item > div.protocol-item-new * {
+    background-color: transparent !important;
+  }
+
   /* Maßnahmen & Issues im Druck dezent absetzen */
   .print-action-item {
     -webkit-print-color-adjust: exact !important;
