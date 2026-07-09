@@ -1,5 +1,6 @@
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib'
 import { formatDate } from './utils'
+import { attachmentStore } from './attachmentStore'
 
 const STATUS_LABELS   = { offen: 'Offen', in_arbeit: 'In Arbeit', erledigt: 'Erledigt', verschoben: 'Verschoben' }
 const PRIORITY_LABELS = { hoch: 'Hoch', mittel: 'Mittel', niedrig: 'Niedrig' }
@@ -273,7 +274,19 @@ export async function buildProtocolPdf(protocol, protocolNo, logoDataUrl, client
     drawParagraph(notes, { size: 9.5, font: fontReg, color: rgb(0, 0, 0), lineH: 13 })
   }
 
-  // ── Fußzeile auf allen Seiten ─────────────────────────────────────────────────
+  // ── Anlagenverzeichnis ────────────────────────────────────────────────────────
+  const attachments = protocol.attachments ?? []
+  if (attachments.length) {
+    sectionTitle('Anlagenverzeichnis')
+    attachments.forEach((a, i) => {
+      const typ = a.mimeType === 'application/pdf' ? 'PDF'
+        : (a.mimeType || '').startsWith('image/') ? 'Bild' : 'Datei'
+      drawParagraph(`Anlage ${i + 1}:  ${a.name || '–'}  (${typ})`,
+        { size: 9.5, font: fontReg, color: rgb(0, 0, 0), lineH: 13 })
+    })
+  }
+
+  // ── Fußzeile auf allen Seiten (Protokoll + Anlagenverzeichnis) ─────────────────
   const pages = pdfDoc.getPages()
   pages.forEach((pg, i) => {
     const footer = `${protocol.projectName || '–'} · ${protocol.meetingType || ''}`
@@ -281,6 +294,29 @@ export async function buildProtocolPdf(protocol, protocolNo, logoDataUrl, client
     const pageStr = `Seite ${i + 1} / ${pages.length}`
     pg.drawText(pageStr, { x: PAGE_W - MARGIN - fontReg.widthOfTextAtSize(pageStr, 7), y: 22, size: 7, font: fontReg, color: rgb(0.5, 0.5, 0.5) })
   })
+
+  // ── Anlagen physisch anhängen (NACH der Fußzeile → Anlagen selbst ohne Fußzeile).
+  //    PDF-Dateien werden seitenweise gemergt, Bilder ganzseitig eingebettet. ─────
+  for (let i = 0; i < attachments.length; i++) {
+    const a = attachments[i]
+    let b64 = null
+    try { b64 = await attachmentStore.load(a.id) } catch {}
+    if (!b64) continue
+    try {
+      if (a.mimeType === 'application/pdf') {
+        const src    = await PDFDocument.load(b64, { ignoreEncryption: true })
+        const copied = await pdfDoc.copyPages(src, src.getPageIndices())
+        copied.forEach(p => pdfDoc.addPage(p))
+      } else if ((a.mimeType || '').startsWith('image/')) {
+        const img = a.mimeType.includes('png') ? await pdfDoc.embedPng(b64) : await pdfDoc.embedJpg(b64)
+        const pg  = pdfDoc.addPage([PAGE_W, PAGE_H])
+        pg.drawText(`Anlage ${i + 1} – ${a.name || ''}`,
+          { x: MARGIN, y: PAGE_H - MARGIN, size: 8, font: fontReg, color: rgb(0.3, 0.3, 0.3) })
+        const d = img.scaleToFit(PAGE_W - MARGIN * 2, PAGE_H - MARGIN * 2 - 24)
+        pg.drawImage(img, { x: (PAGE_W - d.width) / 2, y: (PAGE_H - d.height) / 2 - 8, width: d.width, height: d.height })
+      }
+    } catch { /* defekte/inkompatible Datei überspringen */ }
+  }
 
   return pdfDoc.saveAsBase64()
 }

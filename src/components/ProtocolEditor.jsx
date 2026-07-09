@@ -1,6 +1,6 @@
 import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react'
 import { flushSync } from 'react-dom'
-import { ArrowLeft, Printer, Download, Send, RefreshCw, AlertCircle, Lock, Unlock, FileText, RotateCcw, Layers, Loader, Eye, EyeOff, Users, Box, ClipboardCheck } from 'lucide-react'
+import { ArrowLeft, Printer, Download, Send, RefreshCw, AlertCircle, Lock, Unlock, FileText, RotateCcw, Layers, Loader, Eye, EyeOff, Users, Box, ClipboardCheck, Paperclip, Trash2, Plus } from 'lucide-react'
 import MeetingHeader    from './MeetingHeader'
 import ParticipantsList from './ParticipantsList'
 import AgendaDraft      from './AgendaDraft'
@@ -18,6 +18,13 @@ import ProtocolNotesPanel from './ProtocolNotesPanel'
 
 const isElectron = typeof window !== 'undefined' && !!window.electronAPI
 const isServer   = typeof window !== 'undefined' && !!window.__SERVER_MODE__
+
+function formatFileSize(bytes) {
+  if (!bytes) return ''
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
 
 // ── Carryover helpers ─────────────────────────────────────────────────────────
 function carryProtocolItems(predecessorItems) {
@@ -113,6 +120,37 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
   const [showProtocolEmail,    setShowProtocolEmail]    = useState(false)
   const [emailMode,            setEmailMode]            = useState('send')   // 'send' | 'freigabe'
   const [printAttachmentData,  setPrintAttachmentData]  = useState({})  // attId → base64
+  const attachInputRef = useRef(null)
+  const [attachBusy, setAttachBusy] = useState(false)
+
+  // ── Protokoll-Anlagen (werden dem versendeten PDF angehängt) ─────────────────
+  const addProtocolAttachment = async (file) => {
+    if (!file) return
+    const okType = file.type === 'application/pdf' || file.type.startsWith('image/')
+    if (!okType) { alert('Nur PDF- oder Bilddateien sind als Anlage möglich.'); return }
+    if (file.size > 25 * 1024 * 1024) { alert('Datei ist zu groß (max. 25 MB).'); return }
+    setAttachBusy(true)
+    try {
+      const base64 = await new Promise((resolve, reject) => {
+        const r = new FileReader()
+        r.onload  = () => resolve(String(r.result).split(',')[1])
+        r.onerror = reject
+        r.readAsDataURL(file)
+      })
+      const id = uid()
+      await attachmentStore.save(id, base64)
+      change({ attachments: [...(protocol.attachments ?? []), { id, name: file.name, mimeType: file.type || 'application/octet-stream', size: file.size }] })
+    } catch {
+      alert('Anlage konnte nicht gespeichert werden.')
+    } finally {
+      setAttachBusy(false)
+    }
+  }
+
+  const removeProtocolAttachment = async (id) => {
+    change({ attachments: (protocol.attachments ?? []).filter(a => a.id !== id) })
+    try { await attachmentStore.remove(id) } catch {}
+  }
   const [graphSendState,       setGraphSendState]       = useState(null)  // null | 'confirm' | 'sending' | { error } | 'done'
 
   // Tracks which predecessorId we have already initiated item-carryover for.
@@ -809,6 +847,70 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
             readOnly={isClosed}
           />
         </div>
+
+        {/* Protokoll-Anlagen (Bildschirm) – werden dem versendeten PDF angehängt */}
+        <div className="py-6 no-print">
+          <div className="flex items-center justify-between flex-wrap gap-2 pb-2 border-b border-gray-200">
+            <h2 className="section-title"><Paperclip size={16} /> Anlagen</h2>
+            {!isClosed && (
+              <>
+                <input ref={attachInputRef} type="file" className="hidden"
+                  accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg"
+                  onChange={e => { addProtocolAttachment(e.target.files?.[0]); e.target.value = '' }} />
+                <button className="btn-secondary btn-sm" disabled={attachBusy} onClick={() => attachInputRef.current?.click()}>
+                  {attachBusy ? <Loader size={13} className="animate-spin" /> : <Plus size={13} />} Anlage hinzufügen
+                </button>
+              </>
+            )}
+          </div>
+          {(protocol.attachments ?? []).length === 0 ? (
+            <p className="text-sm text-gray-400 italic py-2">
+              Keine Anlagen. PDF- und Bilddateien werden dem versendeten Protokoll-PDF angehängt und im Anlagenverzeichnis gelistet.
+            </p>
+          ) : (
+            <ul className="mt-2 space-y-1">
+              {(protocol.attachments ?? []).map((a, i) => (
+                <li key={a.id} className="flex items-center gap-2 text-sm">
+                  <span className="text-gray-400 w-16 flex-shrink-0">Anlage {i + 1}</span>
+                  <Paperclip size={13} className="text-brand-600 flex-shrink-0" />
+                  <span className="flex-1 truncate text-gray-800">{a.name}</span>
+                  <span className="text-xs text-gray-400 flex-shrink-0">{formatFileSize(a.size)}</span>
+                  {!isClosed && (
+                    <button className="btn-ghost p-1 text-red-400 hover:text-red-600 flex-shrink-0"
+                      title="Anlage entfernen" onClick={() => removeProtocolAttachment(a.id)}>
+                      <Trash2 size={13} />
+                    </button>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
+        {/* Anlagenverzeichnis (Druck) – am Ende des Protokolls */}
+        {(protocol.attachments ?? []).length > 0 && (
+          <div className="hidden print:block py-4">
+            <h2 style={{ fontSize: '11pt', fontWeight: 'bold', borderBottom: '0.5pt solid #000', paddingBottom: '2mm', marginBottom: '3mm', fontFamily: 'Arial, sans-serif' }}>
+              Anlagenverzeichnis
+            </h2>
+            <table style={{ width: '100%', fontSize: '9pt', fontFamily: 'Arial, sans-serif', borderCollapse: 'collapse' }}>
+              <tbody>
+                {(protocol.attachments ?? []).map((a, i) => (
+                  <tr key={a.id}>
+                    <td style={{ padding: '1.5mm 2mm', width: '22mm', verticalAlign: 'top', whiteSpace: 'nowrap' }}>Anlage {i + 1}</td>
+                    <td style={{ padding: '1.5mm 2mm', verticalAlign: 'top' }}>{a.name}</td>
+                    <td style={{ padding: '1.5mm 2mm', width: '28mm', verticalAlign: 'top', color: '#555', whiteSpace: 'nowrap' }}>
+                      {a.mimeType === 'application/pdf' ? 'PDF' : a.mimeType?.startsWith('image/') ? 'Bild' : 'Datei'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <p style={{ fontSize: '8pt', color: '#555', marginTop: '3mm', fontFamily: 'Arial, sans-serif' }}>
+              Die Anlagen sind dem per E-Mail versendeten Protokoll-PDF beigefügt.
+            </p>
+          </div>
+        )}
       </div>
 
       {/* ── Print footer (every page) ── */}
