@@ -35,9 +35,28 @@ function stripHtmlForPdf(html) {
     .trim()
 }
 
+// Die pdf-lib-Standardschriften nutzen WinAnsi (CP1252) und brechen bei Zeichen
+// ab, die sie nicht kodieren können (Häkchen ✓, Pfeile →, Emojis, Math-Symbole …).
+// pdfSafe() ersetzt gängige Symbole durch ASCII-Äquivalente und tauscht alle
+// übrigen nicht kodierbaren Zeichen gegen '?' – so bricht die PDF-Erzeugung nie ab.
+const PDF_CHAR_MAP = {
+  '✓': '[x]', '✔': '[x]', '☑': '[x]', '☒': '[x]', '☐': '[ ]', '✗': 'x', '✘': 'x',
+  '→': '->', '←': '<-', '↑': '^', '↓': 'v', '↩': '<-', '⇒': '=>', '➔': '->', '»': '>>', '«': '<<',
+  '≤': '<=', '≥': '>=', '≈': '~', '≠': '!=', '±': '+/-',
+  '‣': '-', '◦': '-', '∙': '-', '●': '-', '▪': '-', '■': '-', '□': '-', '★': '*', '☆': '*',
+}
+function pdfSafe(text) {
+  if (text == null) return ''
+  let s = String(text)
+  for (const [k, v] of Object.entries(PDF_CHAR_MAP)) if (s.includes(k)) s = s.split(k).join(v)
+  // CP1252 = Latin-1 (0x00–0xFF) + einige typografische Sonderzeichen. Alles andere → '?'
+  // u-Flag: ganze Codepoints (auch Emojis) werden je zu EINEM '?' zusammengefasst.
+  return s.replace(/[^\x00-\xFF€‚ƒ„…†‡ˆ‰Š‹ŒŽ‘’“”•–—˜™š›œžŸ]/gu, '?')
+}
+
 function wrapText(text, font, fontSize, maxWidth) {
   const lines = []
-  for (const para of String(text).split('\n')) {
+  for (const para of pdfSafe(text).split('\n')) {
     if (!para.trim()) { lines.push(''); continue }
     const words = para.split(/\s+/)
     let line = ''
@@ -106,7 +125,7 @@ export async function buildProtocolPdf(protocol, protocolNo, logoDataUrl, client
 
     const typeText  = 'BESPRECHUNGSPROTOKOLL'
     const rawTitle  = protocol.meetingType || 'Protokoll'
-    const projText  = protocol.projectName || ''
+    const projText  = pdfSafe(protocol.projectName || '')
 
     const TITLE_SIZE   = 14
     const TITLE_LINE_H = 17
@@ -173,8 +192,8 @@ export async function buildProtocolPdf(protocol, protocolNo, logoDataUrl, client
   const VALUE_X = MARGIN + 120
   for (const [k, v] of metaRows) {
     ensureSpace(14)
-    page.drawText(k.toUpperCase(), { x: MARGIN, y, size: 6.5, font: fontReg, color: rgb(0.47, 0.47, 0.47) })
-    page.drawText(String(v), { x: VALUE_X, y, size: 9, font: fontReg, color: rgb(0, 0, 0) })
+    page.drawText(pdfSafe(k).toUpperCase(), { x: MARGIN, y, size: 6.5, font: fontReg, color: rgb(0.47, 0.47, 0.47) })
+    page.drawText(pdfSafe(v), { x: VALUE_X, y, size: 9, font: fontReg, color: rgb(0, 0, 0) })
     y -= 14
   }
   y -= 6
@@ -289,7 +308,7 @@ export async function buildProtocolPdf(protocol, protocolNo, logoDataUrl, client
   // ── Fußzeile auf allen Seiten (Protokoll + Anlagenverzeichnis) ─────────────────
   const pages = pdfDoc.getPages()
   pages.forEach((pg, i) => {
-    const footer = `${protocol.projectName || '–'} · ${protocol.meetingType || ''}`
+    const footer = pdfSafe(`${protocol.projectName || '–'} · ${protocol.meetingType || ''}`)
     pg.drawText(footer, { x: MARGIN, y: 22, size: 7, font: fontReg, color: rgb(0.5, 0.5, 0.5) })
     const pageStr = `Seite ${i + 1} / ${pages.length}`
     pg.drawText(pageStr, { x: PAGE_W - MARGIN - fontReg.widthOfTextAtSize(pageStr, 7), y: 22, size: 7, font: fontReg, color: rgb(0.5, 0.5, 0.5) })
@@ -310,7 +329,7 @@ export async function buildProtocolPdf(protocol, protocolNo, logoDataUrl, client
       } else if ((a.mimeType || '').startsWith('image/')) {
         const img = a.mimeType.includes('png') ? await pdfDoc.embedPng(b64) : await pdfDoc.embedJpg(b64)
         const pg  = pdfDoc.addPage([PAGE_W, PAGE_H])
-        pg.drawText(`Anlage ${i + 1} – ${a.name || ''}`,
+        pg.drawText(pdfSafe(`Anlage ${i + 1} – ${a.name || ''}`),
           { x: MARGIN, y: PAGE_H - MARGIN, size: 8, font: fontReg, color: rgb(0.3, 0.3, 0.3) })
         const d = img.scaleToFit(PAGE_W - MARGIN * 2, PAGE_H - MARGIN * 2 - 24)
         pg.drawImage(img, { x: (PAGE_W - d.width) / 2, y: (PAGE_H - d.height) / 2 - 8, width: d.width, height: d.height })
