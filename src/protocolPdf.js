@@ -220,17 +220,23 @@ export async function buildProtocolPdf(protocol, protocolNo, logoDataUrl, client
   // ── Protokollpunkte ─────────────────────────────────────────────────────────
   const items   = protocol.agendaItems ?? []
   const actions = protocol.actionItems ?? []
+  // Neu eingefügte Punkte (ohne carriedFromId) nur hervorheben, wenn es auch
+  // übernommene Punkte gibt – analog zur Bildschirm-/Druckansicht.
+  const hasCarried = items.some(it => it.carriedFromId)
   if (items.length > 0) {
     sectionTitle('Protokollpunkte')
     for (const item of items) {
       const lvl    = item.level ?? 1
       const indent = (lvl - 1) * 16
       const isGray = !!item.carriedGray
-      const color  = isGray ? rgb(0.5, 0.5, 0.5) : rgb(0, 0, 0)
+      const isNew  = hasCarried && !item.carriedFromId && !isGray
+      const color  = isGray ? rgb(0.5, 0.5, 0.5) : isNew ? rgb(0.55, 0.36, 0.02) : rgb(0, 0, 0)
 
       ensureSpace(16)
       y -= lvl === 1 ? 4 : 2
-      const head = `${item.no}  ${item.topic || '–'}${item.assignedTo ? `   [${item.assignedTo}]` : ''}`
+      // Neu-Punkte: amber Balken links + "(neu)"-Zusatz (identisch in Druck & Versand)
+      if (isNew) page.drawRectangle({ x: MARGIN + indent - 5, y: y - 12, width: 2.5, height: 14, color: rgb(0.96, 0.62, 0.04) })
+      const head = `${item.no}  ${item.topic || '–'}${item.assignedTo ? `   [${item.assignedTo}]` : ''}${isNew ? '   (neu)' : ''}`
       drawParagraph(head, {
         size: lvl === 1 ? 10.5 : 10,
         font: lvl === 1 ? fontBold : (isGray ? fontItal : fontBold),
@@ -335,6 +341,23 @@ export async function buildProtocolPdf(protocol, protocolNo, logoDataUrl, client
         pg.drawImage(img, { x: (PAGE_W - d.width) / 2, y: (PAGE_H - d.height) / 2 - 8, width: d.width, height: d.height })
       }
     } catch { /* defekte/inkompatible Datei überspringen */ }
+  }
+
+  // ── Per-Punkt-Bildanlagen als eigene Seiten (wie in der Druckansicht) ──────────
+  for (const item of items) {
+    const att = item.attachment
+    if (!att?.id || !(att.mimeType || '').startsWith('image/')) continue
+    let b64 = null
+    try { b64 = await attachmentStore.load(att.id) } catch {}
+    if (!b64) continue
+    try {
+      const img = att.mimeType.includes('png') ? await pdfDoc.embedPng(b64) : await pdfDoc.embedJpg(b64)
+      const pg  = pdfDoc.addPage([PAGE_W, PAGE_H])
+      pg.drawText(pdfSafe(`Anlage ${item.no || ''} – ${att.name || ''}`),
+        { x: MARGIN, y: PAGE_H - MARGIN, size: 8, font: fontReg, color: rgb(0.3, 0.3, 0.3) })
+      const d = img.scaleToFit(PAGE_W - MARGIN * 2, PAGE_H - MARGIN * 2 - 24)
+      pg.drawImage(img, { x: (PAGE_W - d.width) / 2, y: (PAGE_H - d.height) / 2 - 8, width: d.width, height: d.height })
+    } catch { /* defekte Bilddatei überspringen */ }
   }
 
   return pdfDoc.saveAsBase64()

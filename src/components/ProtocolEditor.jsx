@@ -1,5 +1,4 @@
 import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react'
-import { flushSync } from 'react-dom'
 import { ArrowLeft, Printer, Download, Send, RefreshCw, AlertCircle, Lock, Unlock, FileText, RotateCcw, Layers, Loader, Eye, EyeOff, Users, Box, ClipboardCheck, Paperclip, Trash2, Plus } from 'lucide-react'
 import MeetingHeader    from './MeetingHeader'
 import ParticipantsList from './ParticipantsList'
@@ -11,6 +10,7 @@ import ActionItems      from './ActionItems'
 import NotesSection     from './NotesSection'
 import { formatDate, buildProtocolNo, getChainNo, uid, emptyAgendaItem } from '../utils'
 import { exportDocx } from '../exportDocx'
+import { buildProtocolPdf } from '../protocolPdf'
 import { attachmentStore } from '../attachmentStore'
 import GesamtprotokollModal from './GesamtprotokollModal'
 import TileSidebar from './TileSidebar'
@@ -332,36 +332,31 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
     change({ agenda: newAgenda, agendaItems })
   }
 
-  // Pre-load attachment blobs for the print view, then call window.print().
-  // Uses flushSync to ensure React re-renders before the print dialog opens.
+  // Ausdruck = exakt dasselbe pdf-lib-PDF wie der E-Mail-/Freigabe-Versand
+  // (ein gemeinsamer Generator → garantiert identisch). Öffnet das PDF im Browser,
+  // wo es angesehen, gedruckt oder gespeichert werden kann.
+  const [printing, setPrinting] = useState(false)
   const handlePrint = useCallback(async () => {
-    const prev = document.title
-    document.title = protocolNo
-
-    const imageItems = (protocol.agendaItems ?? []).filter(
-      item => item.attachment?.id && item.attachment.mimeType?.startsWith('image/')
-    )
-    if (imageItems.length > 0) {
-      const resolved = {}
-      await Promise.allSettled(
-        imageItems.map(async (item) => {
-          try {
-            const b64 = await attachmentStore.load(item.attachment.id)
-            if (b64) resolved[item.attachment.id] = b64
-          } catch {}
-        })
-      )
-      if (Object.keys(resolved).length > 0) {
-        flushSync(() => setPrintAttachmentData(resolved))
+    setPrinting(true)
+    try {
+      const pdfBase64 = await buildProtocolPdf(protocol, protocolNo, logoDataUrl, clientLogoDataUrl)
+      const bytes = Uint8Array.from(atob(pdfBase64), c => c.charCodeAt(0))
+      const url   = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }))
+      const win   = window.open(url, '_blank')
+      if (!win) {
+        // Popup blockiert → als Download anbieten
+        const a = document.createElement('a')
+        a.href = url
+        a.download = `${(protocolNo || 'Protokoll').replace(/[/\\:*?"<>|]/g, '-')}.pdf`
+        document.body.appendChild(a); a.click(); a.remove()
       }
+      setTimeout(() => URL.revokeObjectURL(url), 60000)
+    } catch (e) {
+      alert('PDF konnte nicht erzeugt werden: ' + (e?.message || e))
+    } finally {
+      setPrinting(false)
     }
-
-    window.print()
-    setTimeout(() => {
-      document.title = prev
-      setPrintAttachmentData({})
-    }, 500)
-  }, [protocol.agendaItems, protocolNo])
+  }, [protocol, protocolNo, logoDataUrl, clientLogoDataUrl])
 
   // Allow the Electron menu shortcut (Cmd+P) to also use our async print handler
   const handlePrintRef = useRef(null)
@@ -536,8 +531,8 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
               <Send size={14} /> Per E-Mail
             </button>
           )}
-          <button className="btn-secondary" onClick={handlePrint}>
-            <Printer size={16} /> Drucken / PDF
+          <button className="btn-secondary" onClick={handlePrint} disabled={printing} title="Erzeugt dasselbe PDF wie der E-Mail-/Freigabe-Versand">
+            {printing ? <Loader size={16} className="animate-spin" /> : <Printer size={16} />} Drucken / PDF
           </button>
           {isClosed
             ? <button className="btn-secondary text-amber-600 border-amber-300" onClick={handleReopen}>
