@@ -31,7 +31,10 @@ export default function ProtocolEmailModal({ protocol, protocolNo, logoDataUrl, 
 
   const participantsWithoutEmail = (protocol.participants ?? []).filter(p => !p.email)
 
-  const [recipients,  setRecipients]  = useState(() => recipientCandidates.map(p => p.email))
+  // Vorauswahl: Freigabe → nur Anwesende (Teilnehmer der Besprechung);
+  //             Versand   → alle Eingeladenen mit E-Mail.
+  const [recipients,  setRecipients]  = useState(() =>
+    recipientCandidates.filter(p => (isReview ? p.present : true)).map(p => p.email))
   const [customEmail, setCustomEmail] = useState('')
   const [subject,     setSubject]     = useState(
     isReview ? `Protokoll zur Freigabe: ${protocolNo}` : `Protokoll: ${protocolNo}`)
@@ -129,7 +132,9 @@ export default function ProtocolEmailModal({ protocol, protocolNo, logoDataUrl, 
             <div>
               <p className="text-xs font-medium text-gray-700 mb-2">
                 Empfänger (Teilnehmer der Besprechung)
-                {isReview && <span className="text-amber-600 font-normal ml-1">– alle vorausgewählt</span>}
+                <span className="text-amber-600 font-normal ml-1">
+                  – {isReview ? 'Anwesende vorausgewählt' : 'alle Eingeladenen vorausgewählt'}
+                </span>
               </p>
               <div className="border border-gray-200 divide-y divide-gray-100 max-h-40 overflow-y-auto">
                 {recipientCandidates.map(p => (
@@ -142,6 +147,7 @@ export default function ProtocolEmailModal({ protocol, protocolNo, logoDataUrl, 
                     />
                     <div className="flex-1 min-w-0">
                       <span className="text-sm text-gray-900">{p.name || p.company || p.email}</span>
+                      {!p.present && <span className="badge-gray text-[10px] ml-1.5">entschuldigt</span>}
                       <span className="text-xs text-gray-400 ml-1.5">{p.email}</span>
                     </div>
                   </label>
