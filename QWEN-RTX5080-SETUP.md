@@ -6,6 +6,43 @@
 
 ---
 
+## 0. Ist-Konfiguration (validiert, Stand 2026-07-11)
+
+> **Phase A ist erfolgreich abgeschlossen und getestet** — inkl. Tool-/Function-Calling über den Endpoint. Diese Sektion beschreibt das **tatsächlich laufende Setup**; die Phasen 1–7 darunter sind der Weg dorthin (mit den live gefundenen Korrekturen).
+
+| Komponente | Ist-Wert |
+|---|---|
+| NVIDIA-Treiber | **591.86** (CUDA ≥ 12.8) — weit über der 580-Schwelle |
+| LM Studio | **0.4.19** (winget-ID `ElementLabs.LMStudio`), Developer Mode **an** |
+| Aktive Runtime | `llama.cpp-win-x86_64-nvidia-cuda12-avx2` (automatisch gewählt) |
+| **Modell (Hermes-Workhorse)** | **`qwen/qwen3.6-35b-a3b`**, Quant **Q4_K_M** (~22 GB, MoE `qwen35moe`, 3B aktiv/Token) — Capabilities laut Modellkarte: **Tool Use ✅, Reasoning, Vision** |
+| Kontextlänge | **65536** (Modell kann bis 262144) |
+| GPU-Offload | **24 Layer** (von 40) → real **~15,4 GB / 16,3 GB VRAM** belegt |
+| Unified KV Cache | **an** (schrumpft den 64K-Cache; kostet nur ~0,6 GB extra ggü. 8K) |
+| API-Server | OpenAI-kompatibel auf **`http://localhost:1234/v1`** |
+| Zusätzlich vorhanden | `qwen/qwen3-14b` (Q4_K_M, ~8,4 GB) + Embedding-Modell `text-embedding-nomic-embed-text-v1.5` (nützlich für Hermes-Memory/RAG) |
+
+**Getesteter Funktionsnachweis:**
+- `GET /v1/models` listet `qwen/qwen3.6-35b-a3b`.
+- Chat-Completion → korrekte deutsche Antwort.
+- Tool-Call-Test → Antwort mit `finish_reason: "tool_calls"` und `get_weather(location="Rom")`. ✅
+
+### Korrekturen ggü. dem ursprünglichen Runbook (aus dem Live-Setup)
+
+1. **Kein `--gpu max`** bei Modellen, die **größer als der VRAM** sind (22 GB > 16 GB) — das erzwingt vollen Offload und scheitert/OOM. Stattdessen **partieller Offload**, getunt über die **GUI-Ladeparameter** (siehe Phase 4).
+2. **Laden über die GUI** mit *„Manually choose model load parameters"* (Schalter im Lade-Dialog bzw. `Alt` halten): dort **Context Length**, **GPU Offload** (Layer-Anzahl) und **Unified KV Cache** einstellen. In LM Studio 0.4.19 gibt es **kein** separates Flash-Attention- oder KV-Cache-Quantisierungs-Dropdown — „Unified KV Cache" ist der moderne Ersatz. Der CLI-Befehl `lms load` kennt kein KV-Quant-Flag.
+3. **VRAM-Estimate ist optimistisch:** Der angezeigte „Estimated Memory Usage"-GPU-Wert (~14,3 GB bei 24 Layern) liegt **unter** der Realität (~15,4 GB), weil Windows-Desktop/Browser zusätzlich ~1 GB VRAM belegen. **Faustregel:** GPU-Estimate auf **~14 GB** zielen, dann bleibt real ~1 GB Puffer.
+4. **PowerShell-Falle:** `curl` ist in Windows PowerShell ein **Alias für `Invoke-WebRequest`** und versteht `-H`/`-d` **nicht** wie echtes curl. API-Tests deshalb mit **`Invoke-RestMethod`** (siehe Phase 7) oder explizit `curl.exe`.
+5. **Modellwahl:** Statt des 14B-Validierungsmodells direkt den **MoE-Workhorse `qwen3.6-35b-a3b`** genommen — bestes Verhältnis aus Intelligenz und Tempo auf der 5080 (nur 3B aktiv/Token) und mit belegtem Tool-Calling.
+
+### Reproduzieren nach Neustart
+
+- „Start local LLM service on login" ist **an** → der Server startet automatisch. Sonst: `lms server start --port 1234`.
+- Modell-Ladeparameter sind über *„Remember settings for qwen3.6-35b-a3b"* gespeichert → erneutes Laden übernimmt Kontext 65536 + 24 Layer.
+- Prüfen: `lms ps` (Kontext 65536?) und `nvidia-smi` (VRAM < 16 GB?).
+
+---
+
 ## 1. Ziel & Kontext
 
 Auf diesem Rechner soll **Qwen als lokales LLM** laufen und später als **OpenAI-kompatibler API-Endpoint im LAN** bereitstehen. Ein **externer Rechner** wird darüber **Hermes Agent** (Nous Research) betreiben.
@@ -126,29 +163,37 @@ lms runtime ls    # falls vorhanden; sonst 'lms --help' nach Runtime-Befehlen ab
 
 ---
 
-## 7. Phase 4 — Qwen-Modell laden
+## 7. Phase 4 — Qwen-Modell laden (Hermes-Workhorse)
 
-> Genaue Katalog-IDs mit `lms get --help` bzw. Teilstring-Suche bestätigen — unten stehende IDs sind Richtwerte und **vor Nutzung zu verifizieren**.
+> Katalog mit `lms get qwen3` durchsuchen (zeigt eine Auswahlliste). Bestätigte verfügbare IDs u. a.: `qwen/qwen3.6-35b-a3b` (MoE), `qwen/qwen3.6-27b` (dicht), `qwen/qwen3-14b`.
 
-**Zuerst Validierungsmodell (passt komplett in 16 GB VRAM):**
+**Modellwahl für Hermes:** **`qwen/qwen3.6-35b-a3b`** (MoE, 3B aktiv/Token) — Capabilities `Tool Use` + `Reasoning`, schnell trotz Größe, Sweet Spot auf der 5080. Alternative für maximale Qualität: `qwen/qwen3.6-27b` (dicht, langsamer).
+
+**Download** (bei ~22 GB und wackliger Leitung besser über den **GUI-Downloader** — der setzt Timeouts automatisch fort):
 
 ```powershell
-# Download (ID/Quant verifizieren; Ziel: Qwen3-14B, Q4_K_M ~9-11 GB)
-lms get "qwen3-14b"        # ggf. exakte ID/Quant interaktiv wählen
-
-# Laden mit voller GPU-Auslastung UND 64K Kontext
-lms load "qwen3-14b" --gpu max --context-length 65536
-#   Falls der Flag-Name abweicht: 'lms load --help' prüfen (Kontext-Flag kann anders heißen)
-
-lms ps    # zeigt geladene Modelle + Offload-Status
+lms get qwen/qwen3.6-35b-a3b   # Variante Q4_K_M wählen (~22 GB)
 ```
 
-**Danach die Workhorses nachladen (nicht gleichzeitig):**
+**Laden — WICHTIG, über die GUI, nicht `lms load --gpu max`:**
+Das Modell (22 GB) ist größer als der VRAM (16 GB), daher **partieller Offload** mit fein eingestellten Parametern. `--gpu max` würde vollen Offload erzwingen und scheitern.
 
-- `Qwen3.6-27B` (dicht, ~17–18 GB Q4 — braucht etwas RAM-Offload auf 16 GB)
-- `Qwen3.6-35B-A3B` (MoE, nur 3B aktiv/Token — läuft via VRAM+RAM-Offload flüssig)
+1. Oben `Strg+L` → `qwen3.6-35b-a3b` wählen.
+2. Schalter **„Manually choose model load parameters"** (bzw. `Alt` halten) → Konfig-Panel öffnet sich **vor** dem Laden.
+3. Setzen:
+   - **Context Length** = `65536`
+   - **Unified KV Cache** = an
+   - **GPU Offload** = so viele Layer, dass der **GPU-Estimate ~14 GB** zeigt (hier: **24** von 40 Layern → real ~15,4 GB inkl. Desktop)
+   - **„Remember settings for qwen3.6-35b-a3b"** anhaken
+4. **Load Model**.
 
-**Akzeptanzkriterium:** `lms ps` zeigt Qwen3-14B geladen, Kontext 65536, Offload auf GPU.
+```powershell
+lms ps    # erwartet: qwen/qwen3.6-35b-a3b, CONTEXT 65536, DEVICE Local
+```
+
+> **CLI-Alternative** (nur wenn kein KV-Tuning nötig): `lms load qwen3.6-35b-a3b -c 65536 --gpu 0.6` — Offload-Ratio zwischen 0 und 1, **nicht** `max`. Mit `--estimate-only` vorab den Bedarf berechnen, ohne zu laden.
+
+**Akzeptanzkriterium:** `lms ps` zeigt `qwen3.6-35b-a3b` geladen, Kontext 65536; `nvidia-smi` zeigt VRAM < 16 GB.
 
 ---
 
@@ -180,27 +225,59 @@ lms server status
 
 ## 10. Phase 7 — Endpoint testen
 
-```powershell
-# Modelle listen
-curl http://localhost:1234/v1/models
+> ⚠️ In Windows PowerShell ist `curl` ein Alias für `Invoke-WebRequest` und versteht `-H`/`-d` **nicht** wie echtes curl. Deshalb **`Invoke-RestMethod`** verwenden (oder explizit `curl.exe`).
 
-# Chat-Completion testen (exakten Modellnamen aus /v1/models einsetzen)
-curl http://localhost:1234/v1/chat/completions `
-  -H "Content-Type: application/json" `
-  -d '{ \"model\": \"qwen3-14b\", \"messages\": [{ \"role\": \"user\", \"content\": \"Sag kurz Hallo auf Deutsch.\" }] }'
+**1. Modelle listen** (bestätigt die exakte Modell-ID):
+```powershell
+Invoke-RestMethod http://localhost:1234/v1/models | ConvertTo-Json -Depth 5
 ```
 
-**Akzeptanzkriterium:** `/v1/models` listet Qwen; die Chat-Completion liefert eine sinnvolle deutsche Antwort.
+**2. Chat-Completion:**
+```powershell
+$body = @{
+  model    = "qwen/qwen3.6-35b-a3b"
+  messages = @(@{ role = "user"; content = "Sag kurz Hallo auf Deutsch und nenne die Hauptstadt von Italien." })
+} | ConvertTo-Json -Depth 5
+
+Invoke-RestMethod -Uri http://localhost:1234/v1/chat/completions -Method Post -ContentType "application/json" -Body $body |
+  Select-Object -ExpandProperty choices | ForEach-Object { $_.message.content }
+```
+
+**3. Tool-/Function-Calling (kritisch für Hermes):**
+```powershell
+$body = @{
+  model    = "qwen/qwen3.6-35b-a3b"
+  messages = @(@{ role="user"; content="Wie ist das Wetter in Rom?" })
+  tools    = @(@{
+    type = "function"
+    function = @{
+      name = "get_weather"
+      description = "Ruft das aktuelle Wetter fuer einen Ort ab"
+      parameters = @{
+        type = "object"
+        properties = @{ location = @{ type="string"; description="Stadt" } }
+        required = @("location")
+      }
+    }
+  })
+} | ConvertTo-Json -Depth 10
+
+Invoke-RestMethod -Uri http://localhost:1234/v1/chat/completions -Method Post -ContentType "application/json" -Body $body |
+  Select-Object -ExpandProperty choices | ConvertTo-Json -Depth 10
+```
+
+**Akzeptanzkriterium:** `/v1/models` listet Qwen; die Chat-Completion liefert eine sinnvolle deutsche Antwort (Rom); der Tool-Test liefert `finish_reason: "tool_calls"` mit `get_weather(location="Rom")`.
 
 ---
 
-## 11. Definition of Done (Phase A)
+## 11. Definition of Done (Phase A) — ✅ erfüllt
 
-- [ ] Treiber ≥ 580 / CUDA 12.8, RTX 5080 erkannt
-- [ ] LM Studio ≥ 0.3.15, CUDA-12-Runtime aktiv, Developer Mode an
-- [ ] Qwen3-14B geladen, Kontext 65536, GPU-Offload bestätigt
-- [ ] Lokaler OpenAI-Server auf `:1234` läuft, Test-Completion erfolgreich
-- [ ] (Optional) Qwen3.6-27B / 35B-A3B als weitere Modelle heruntergeladen
+- [x] Treiber ≥ 580 / CUDA 12.8, RTX 5080 erkannt (591.86)
+- [x] LM Studio ≥ 0.3.15, CUDA-12-Runtime aktiv, Developer Mode an (0.4.19)
+- [x] `qwen3.6-35b-a3b` geladen, Kontext 65536, GPU-Offload 24 Layer (~15,4 GB VRAM) bestätigt
+- [x] Lokaler OpenAI-Server auf `:1234` läuft, Test-Completion erfolgreich
+- [x] **Tool-/Function-Calling über den Endpoint verifiziert** (`finish_reason: "tool_calls"`)
+- [x] Embedding-Modell `nomic-embed-text-v1.5` vorhanden (für Hermes-Memory/RAG)
 
 ---
 
