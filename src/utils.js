@@ -310,7 +310,7 @@ export const buildAgendaEmailBody = (protocol) => {
       lines.push(`** ${label} **`)
       const linked = agenda.filter(a => a.linkedProtocolItemId === si.id)
       linked.forEach((item, i) => {
-        const no          = item.no || String(i + 1)
+        const no          = si.no ? `${si.no}.${i + 1}` : String(i + 1)
         const topic       = (item.time ? `${item.time} · ` : '') + (item.topic || '(kein Thema)')
         const dur         = item.duration    ? `${item.duration} min` : ''
         const responsible = item.responsible ? `  [${item.responsible}]` : ''
@@ -322,7 +322,7 @@ export const buildAgendaEmailBody = (protocol) => {
     const linkedIds = new Set(sectionItems.map(si => si.id))
     const unlinked = agenda.filter(a => !a.linkedProtocolItemId || !linkedIds.has(a.linkedProtocolItemId))
     unlinked.forEach((item, i) => {
-      const no          = item.no || String(i + 1)
+      const no          = String(i + 1)
       const topic       = (item.time ? `${item.time} · ` : '') + (item.topic || '(kein Thema)')
       const dur         = item.duration    ? `${item.duration} min` : ''
       const responsible = item.responsible ? `  [${item.responsible}]` : ''
@@ -331,7 +331,7 @@ export const buildAgendaEmailBody = (protocol) => {
     })
   } else {
     agenda.forEach((item, i) => {
-      const no          = item.no || String(i + 1)
+      const no          = String(i + 1)
       const topic       = (item.time ? `${item.time} · ` : '') + (item.topic || '(kein Thema)')
       const dur         = item.duration    ? `${item.duration} min` : ''
       const responsible = item.responsible ? `  [${item.responsible}]` : ''

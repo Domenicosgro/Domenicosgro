@@ -16,22 +16,24 @@ export default function AgendaDraft({ agenda, agendaGreeting, agendaSentAt, prot
   const sections = useMemo(() => {
     const linked = sectionItems.map(pi => ({
       id: pi.id,
+      no: pi.no,
+      topic: pi.topic,
       label: `${pi.no ? pi.no + ' – ' : ''}${pi.topic}`,
       items: agenda.filter(a => a.linkedProtocolItemId === pi.id),
     }))
     const newItems = agenda.filter(a =>
       !a.linkedProtocolItemId || !sectionItems.find(pi => pi.id === a.linkedProtocolItemId)
     )
-    return [...linked, { id: '__new__', label: null, items: newItems }]
+    return [...linked, { id: '__new__', no: null, label: null, items: newItems }]
   }, [agenda, sectionItems])
 
   const totalMin = agenda.reduce((s, a) => s + (parseInt(a.duration) || 0), 0)
 
   const addToSection = (parentId) => {
-    const no = String(agenda.length + 1)
+    const pi = parentId === '__new__' ? null : sectionItems.find(p => p.id === parentId)
     onChange([...agenda, {
       ...emptyAgendaDraftItem(),
-      no,
+      topic: pi?.topic || '',   // erbt zunächst den Titel des Hauptpunkts (bleibt änderbar)
       linkedProtocolItemId: parentId === '__new__' ? null : parentId,
     }])
   }
@@ -156,9 +158,10 @@ export default function AgendaDraft({ agenda, agendaGreeting, agendaSentAt, prot
                       {section.items.map((item, i) => (
                         <tr key={item.id} className={dragId === item.id ? 'opacity-40' : ''}>
                           <td className="py-2 pl-3 pr-2 align-top">
-                            <input className="input py-1 w-10 text-center text-xs font-semibold"
-                              value={item.no} placeholder={String(i + 1)}
-                              onChange={e => update(item.id, 'no', e.target.value)} />
+                            <span className="block w-12 text-center text-xs font-semibold text-gray-600 pt-1.5"
+                              title="Automatisch aus Hauptpunkt und Position abgeleitet">
+                              {section.no ? `${section.no}.${i + 1}` : String(i + 1)}
+                            </span>
                           </td>
                           <td className="py-2 pr-2 align-top">
                             <input className="input py-1 text-xs w-20" type="time"
