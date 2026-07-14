@@ -813,9 +813,10 @@ function BackupTab() {
         setPdfMsg({ type: 'err', text: d.error || `Fehler ${res.status}` }); return
       }
       const url = URL.createObjectURL(await res.blob())
-      window.open(url, '_blank')
+      const w = window.open(url, '_blank')
+      if (!w) { const a = document.createElement('a'); a.href = url; a.download = 'pdf-selbsttest.pdf'; document.body.appendChild(a); a.click(); a.remove() }
       setTimeout(() => URL.revokeObjectURL(url), 60000)
-      setPdfMsg({ type: 'ok', text: 'PDF erzeugt – serverseitiges Chromium läuft.' })
+      setPdfMsg({ type: 'ok', text: 'PDF erzeugt – serverseitiges Chromium läuft. (Öffnet in neuem Tab oder als Download)' })
     } catch (e) {
       setPdfMsg({ type: 'err', text: 'Netzwerkfehler: ' + e.message })
     } finally { setPdfBusy(false) }

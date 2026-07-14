@@ -4521,6 +4521,25 @@ app.get('/api/pdf-selftest', requireAuth, requireAdmin, async (_req, res) => {
   }
 })
 
+// Rendert die vom Client übergebene Druckansicht (HTML) serverseitig via Chrome
+// zu einem durchsuchbaren PDF. Ergebnis ist per Konstruktion identisch zu
+// window.print() (gleiches DOM + CSS, Print-Media) – nur deterministisch.
+app.post('/api/protocols/:id/render-pdf', requireAuth, writeLimiter, async (req, res) => {
+  try {
+    const { html } = req.body || {}
+    if (typeof html !== 'string' || html.length < 50) {
+      return res.status(400).json({ error: 'Kein Druck-HTML übergeben.' })
+    }
+    const { renderHtmlToPdf } = require('./pdfRender')
+    const pdf = await renderHtmlToPdf(html)
+    logEvent('RENDER_PDF', req, `protocol=${req.params.id} bytes=${pdf.length}`)
+    res.json({ pdfBase64: Buffer.from(pdf).toString('base64') })
+  } catch (e) {
+    logEvent('RENDER_PDF_FAIL', req, e.message)
+    res.status(500).json({ error: 'PDF-Erzeugung fehlgeschlagen: ' + e.message })
+  }
+})
+
 // ── SPA fallback ──────────────────────────────────────────────────────────────
 // Express 5 requires named wildcards (path-to-regexp v8)
 app.get('/{*path}', serveHtml)

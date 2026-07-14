@@ -332,36 +332,66 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
     change({ agenda: newAgenda, agendaItems })
   }
 
-  // Ausdruck = HTML-Druckansicht (@media print). Bild-Anlagen vorab laden, dann
-  // window.print(). flushSync stellt sicher, dass React vor dem Druckdialog rendert.
-  const handlePrint = useCallback(async () => {
-    const prev = document.title
-    document.title = protocolNo
-
+  // Sammelt die AKTUELLE Druckansicht (DOM + zusammengefasstes CSS) ein und lässt
+  // sie serverseitig via Chrome zu einem durchsuchbaren PDF rendern. Ergebnis ist
+  // per Konstruktion identisch zu window.print() (gleiches DOM + CSS, Print-Media),
+  // aber deterministisch. Gibt das PDF als base64 zurück – wird von Druck UND
+  // Versand genutzt.
+  const buildServerPdf = useCallback(async () => {
+    // 1. Bild-Anlagen vorab laden → als data:-URL inline im Druck-DOM
     const imageItems = (protocol.agendaItems ?? []).filter(
       item => item.attachment?.id && item.attachment.mimeType?.startsWith('image/')
     )
     if (imageItems.length > 0) {
       const resolved = {}
-      await Promise.allSettled(
-        imageItems.map(async (item) => {
-          try {
-            const b64 = await attachmentStore.load(item.attachment.id)
-            if (b64) resolved[item.attachment.id] = b64
-          } catch {}
-        })
-      )
-      if (Object.keys(resolved).length > 0) {
-        flushSync(() => setPrintAttachmentData(resolved))
-      }
+      await Promise.allSettled(imageItems.map(async (item) => {
+        try { const b64 = await attachmentStore.load(item.attachment.id); if (b64) resolved[item.attachment.id] = b64 } catch {}
+      }))
+      if (Object.keys(resolved).length > 0) flushSync(() => setPrintAttachmentData(resolved))
     }
-
-    window.print()
-    setTimeout(() => {
-      document.title = prev
+    try {
+      // 2. Gesamtes CSS + Body einsammeln (Skripte entfernen → nur statisches Rendern)
+      const css = Array.from(document.styleSheets).map(s => {
+        try { return Array.from(s.cssRules).map(r => r.cssText).join('\n') } catch { return '' }
+      }).join('\n')
+      const body = document.body.innerHTML.replace(/<script[\s\S]*?<\/script>/gi, '')
+      const html = `<!doctype html><html lang="de"><head><meta charset="utf-8"><style>${css}</style></head><body class="${document.body.className}">${body}</body></html>`
+      // 3. Serverseitig rendern (Chrome, Print-Media)
+      const token = typeof localStorage !== 'undefined' ? localStorage.getItem('kp_session_token') : null
+      const res = await fetch(`/api/protocols/${protocol.id}/render-pdf`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({ html }),
+      })
+      if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || `Fehler ${res.status}`) }
+      const { pdfBase64 } = await res.json()
+      return pdfBase64
+    } finally {
       setPrintAttachmentData({})
-    }, 500)
-  }, [protocol.agendaItems, protocolNo])
+    }
+  }, [protocol.agendaItems, protocol.id])
+
+  const [printing, setPrinting] = useState(false)
+  const handlePrint = useCallback(async () => {
+    setPrinting(true)
+    try {
+      const pdfBase64 = await buildServerPdf()
+      const bytes = Uint8Array.from(atob(pdfBase64), c => c.charCodeAt(0))
+      const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }))
+      const w = window.open(url, '_blank')
+      if (!w) {
+        const a = document.createElement('a')
+        a.href = url
+        a.download = `${(protocolNo || 'Protokoll').replace(/[/\\:*?"<>|]/g, '-')}.pdf`
+        document.body.appendChild(a); a.click(); a.remove()
+      }
+      setTimeout(() => URL.revokeObjectURL(url), 60000)
+    } catch (e) {
+      alert('PDF konnte nicht erzeugt werden: ' + (e?.message || e))
+    } finally {
+      setPrinting(false)
+    }
+  }, [buildServerPdf, protocolNo])
 
   // Allow the Electron menu shortcut (Cmd+P) to also use our async print handler
   const handlePrintRef = useRef(null)
@@ -536,8 +566,8 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
               <Send size={14} /> Per E-Mail
             </button>
           )}
-          <button className="btn-secondary" onClick={handlePrint}>
-            <Printer size={16} /> Drucken / PDF
+          <button className="btn-secondary" onClick={handlePrint} disabled={printing} title="Erzeugt ein durchsuchbares PDF (serverseitig, immer identisch)">
+            {printing ? <Loader size={16} className="animate-spin" /> : <Printer size={16} />} Drucken / PDF
           </button>
           {isClosed
             ? <button className="btn-secondary text-amber-600 border-amber-300" onClick={handleReopen}>
