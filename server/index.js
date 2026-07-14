@@ -4497,6 +4497,30 @@ app.post('/api/admin/restore', requireAuth, requireAdmin, (req, res) => {
 app.get('/api/health',  (_req, res) => res.json({ status: 'ok', time: new Date().toISOString(), version: require('../package.json').version }))
 app.get('/api/version', (_req, res) => res.json({ version: require('../package.json').version }))
 
+// PDF-Selbsttest (Stufe 1): prüft, ob das serverseitige Chromium-Rendering im
+// Container funktioniert. Rendert ein Mini-HTML zu PDF. Nur Admin.
+app.get('/api/pdf-selftest', requireAuth, requireAdmin, async (_req, res) => {
+  try {
+    const { renderHtmlToPdf } = require('./pdfRender')
+    const html = `<!doctype html><html><head><meta charset="utf-8">
+      <style>body{font-family:Arial,sans-serif;padding:20px;color:#000}
+      h1{font-size:20px}.box{background:#fef3c7;border-left:3px solid #f59e0b;padding:8px;margin-top:12px}</style>
+      </head><body>
+      <h1>PDF-Selbsttest – Chromium läuft ✓</h1>
+      <p>Umlaute: ä ö ü ß Ä Ö Ü · Häkchen ✓ · Pfeil → · Anführung „Test".</p>
+      <div class="box">Wenn dieser Kasten farbig ist, druckt Chromium Hintergrundfarben korrekt.</div>
+      <p style="margin-top:12px">Erzeugt: ${new Date().toISOString()}</p>
+      </body></html>`
+    const pdf = await renderHtmlToPdf(html)
+    res.setHeader('Content-Type', 'application/pdf')
+    res.setHeader('Content-Disposition', 'inline; filename="pdf-selftest.pdf"')
+    res.send(pdf)
+  } catch (e) {
+    logEvent('PDF_SELFTEST_FAIL', _req, e.message)
+    res.status(500).json({ error: 'PDF-Selbsttest fehlgeschlagen: ' + e.message })
+  }
+})
+
 // ── SPA fallback ──────────────────────────────────────────────────────────────
 // Express 5 requires named wildcards (path-to-regexp v8)
 app.get('/{*path}', serveHtml)

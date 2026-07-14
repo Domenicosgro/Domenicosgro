@@ -801,6 +801,26 @@ function BackupTab() {
     return `${m[3]}.${m[2]}.${m[1]}  ${m[4]}:${m[5]} Uhr`
   }
 
+  // PDF-Selbsttest: prüft serverseitiges Chromium-Rendering (Stufe 1)
+  const [pdfBusy, setPdfBusy] = useState(false)
+  const [pdfMsg,  setPdfMsg]  = useState(null)
+  async function handlePdfSelftest() {
+    setPdfBusy(true); setPdfMsg(null)
+    try {
+      const res = await fetch('/api/pdf-selftest', { headers: apiHeaders() })
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}))
+        setPdfMsg({ type: 'err', text: d.error || `Fehler ${res.status}` }); return
+      }
+      const url = URL.createObjectURL(await res.blob())
+      window.open(url, '_blank')
+      setTimeout(() => URL.revokeObjectURL(url), 60000)
+      setPdfMsg({ type: 'ok', text: 'PDF erzeugt – serverseitiges Chromium läuft.' })
+    } catch (e) {
+      setPdfMsg({ type: 'err', text: 'Netzwerkfehler: ' + e.message })
+    } finally { setPdfBusy(false) }
+  }
+
   return (
     <div className="space-y-4">
       <p className="text-sm text-gray-600">
@@ -823,6 +843,22 @@ function BackupTab() {
         </button>
         <input ref={fileRef} type="file" accept=".json" className="hidden"
           onChange={e => { if (e.target.files[0]) handleRestore(e.target.files[0]); e.target.value = '' }} />
+      </div>
+
+      {/* PDF-Selbsttest (Stufe 1: serverseitiges Chromium) */}
+      <div className="border-t border-gray-100 pt-4">
+        <p className="text-sm font-medium text-gray-700 mb-1">Serverseitiges PDF-Rendering (Test)</p>
+        <p className="text-xs text-gray-500 mb-2">
+          Prüft, ob Chromium im Container läuft (Grundlage für den späteren identischen PDF-Druck). Erzeugt ein Test-PDF.
+        </p>
+        <button className="btn btn-secondary text-sm" onClick={handlePdfSelftest} disabled={pdfBusy}>
+          {pdfBusy ? <Loader size={14} className="animate-spin" /> : <Printer size={14} />} PDF-Selbsttest
+        </button>
+        {pdfMsg && (
+          <div className={`mt-2 text-sm px-3 py-2 border ${pdfMsg.type === 'ok' ? 'text-green-700 bg-green-50 border-green-200' : 'text-red-700 bg-red-50 border-red-200'}`}>
+            {pdfMsg.text}
+          </div>
+        )}
       </div>
 
       {loading ? (

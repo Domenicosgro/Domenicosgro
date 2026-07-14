@@ -22,6 +22,14 @@ LABEL org.opencontainers.image.title="Komplizen Protokolle" \
       org.opencontainers.image.description="Besprechungsprotokoll-Tool für Bauprojekte" \
       org.opencontainers.image.source="https://github.com/domenicosgro/domenicosgro"
 
+# System-Chromium + Schriften für serverseitiges PDF-Rendering (puppeteer-core).
+# Bleibt im Image (nicht löschen) – wird zur Laufzeit gebraucht.
+RUN apk add --no-cache \
+      chromium nss freetype harfbuzz ca-certificates \
+      ttf-freefont font-noto
+ENV PUPPETEER_SKIP_DOWNLOAD=true \
+    PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
+
 # Build-Tools zum Kompilieren von better-sqlite3
 RUN apk add --no-cache python3 make g++
 
