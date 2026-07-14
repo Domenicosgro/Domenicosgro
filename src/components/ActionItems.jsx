@@ -3,6 +3,7 @@ import { Plus, Trash2, CheckSquare, EyeOff, Eye, Search, X,
          CheckCircle2, Circle, User, Calendar, Flag, Box, Video, ClipboardCheck } from 'lucide-react'
 import { emptyActionItem, ACTION_STATUSES, PRIORITIES, formatDate } from '../utils'
 import FreimeldungBadge from './FreimeldungBadge'
+import ContactAutocomplete from './ContactAutocomplete'
 
 function highlight(text, query) {
   if (!query || !text) return text
@@ -20,7 +21,6 @@ function highlight(text, query) {
 export default function ActionItems({ items, onChange, agendaItems = [], projectContacts = [], protocolId = null, canManageRelease = false, onOpenBimIssue }) {
   const [hideCompleted, setHideCompleted] = useState(false)
   const [search, setSearch] = useState('')
-  const contactListId = 'action-contacts-list'
 
   // Reguläre Maßnahmen vs. BIM-Issues vs. Planprüfungen getrennt
   const regularItems = items.filter(it => !it.bimIssueId && !it.planReviewId)
@@ -192,12 +192,12 @@ export default function ActionItems({ items, onChange, agendaItems = [], project
         <div className="flex items-center gap-3 pl-14 flex-wrap">
           <div className="flex items-center gap-1">
             <User size={12} className="text-gray-400 flex-shrink-0" />
-            <input
+            <ContactAutocomplete
               className={`input py-0.5 text-xs w-36 ${done ? 'text-gray-400' : ''}`}
               placeholder="Zuständig…"
               value={item.responsible}
-              list={projectContacts.length > 0 ? contactListId : undefined}
-              onChange={e => update(item.id, 'responsible', e.target.value)}
+              contacts={projectContacts}
+              onChange={v => update(item.id, 'responsible', v)}
             />
           </div>
           <div className="flex items-center gap-1 no-print">
@@ -295,14 +295,6 @@ export default function ActionItems({ items, onChange, agendaItems = [], project
         <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded px-3 py-1.5 no-print">
           Die Suche zeigt auch erledigte Punkte.
         </p>
-      )}
-
-      {projectContacts.length > 0 && (
-        <datalist id={contactListId}>
-          {projectContacts.map(c => (
-            <option key={c.id} value={c.name ? (c.company ? `${c.name} (${c.company})` : c.name) : c.company} />
-          ))}
-        </datalist>
       )}
 
       {regularItems.length === 0 && bimItems.length === 0 && reviewItems.length === 0 && (

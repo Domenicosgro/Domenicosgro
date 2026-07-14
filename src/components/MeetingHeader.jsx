@@ -1,6 +1,7 @@
 import React from 'react'
 import { MEETING_TYPES, PHASES, formatDate, buildProtocolNo, getChainNo } from '../utils'
 import { FolderOpen, Star } from 'lucide-react'
+import ContactAutocomplete from './ContactAutocomplete'
 
 export default function MeetingHeader({ protocol, protocols, projects, logoDataUrl, clientLogoDataUrl, onChange }) {
   const set = (field) => (e) => onChange({ [field]: e.target.value })
@@ -119,22 +120,15 @@ export default function MeetingHeader({ protocol, protocols, projects, logoDataU
       </div>
 
       {/* Author + next meeting */}
-      {linkedProject?.contacts?.length > 0 && (
-        <datalist id="preparedby-contacts-list">
-          {linkedProject.contacts.map(c => (
-            <option key={c.id} value={c.name ? (c.company ? `${c.name} (${c.company})` : c.name) : c.company} />
-          ))}
-        </datalist>
-      )}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
           <label className="block text-xs font-medium text-gray-500 mb-1">Erstellt von</label>
-          <input
+          <ContactAutocomplete
             className="input"
             placeholder="Max Mustermann"
             value={protocol.preparedBy}
-            list={linkedProject?.contacts?.length > 0 ? 'preparedby-contacts-list' : undefined}
-            onChange={set('preparedBy')}
+            contacts={linkedProject?.contacts ?? []}
+            onChange={v => onChange({ preparedBy: v })}
           />
         </div>
         <div>

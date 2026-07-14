@@ -3,6 +3,7 @@ import {
   ArrowLeft, Plus, Trash2, ChevronRight, ChevronDown,
   BookOpen, Printer, Mail, X, CheckSquare, Square, PanelLeftClose, PanelLeftOpen,
 } from 'lucide-react'
+import ContactAutocomplete from './ContactAutocomplete'
 import { useNotebook } from '../hooks/useNotebook'
 import { uid } from '../utils'
 import RichTextEditor from './RichTextEditor'
@@ -124,16 +125,13 @@ function TaskRow({ task, contacts, onChange, onDelete }) {
         placeholder="Aufgabe…"
         onChange={e => onChange({ text: e.target.value })}
       />
-      <input
+      <ContactAutocomplete
         className="input text-xs w-28 py-0.5 shrink-0"
         placeholder="Zuständig"
         value={task.assignedTo || ''}
-        onChange={e => onChange({ assignedTo: e.target.value })}
-        list={`nb-c-${task.id}`}
+        contacts={contacts}
+        onChange={v => onChange({ assignedTo: v })}
       />
-      <datalist id={`nb-c-${task.id}`}>
-        {contacts.map(c => <option key={c.id} value={c.name} />)}
-      </datalist>
       <input
         type="date"
         className="input text-xs w-34 py-0.5 shrink-0"

@@ -4,6 +4,7 @@ import { Plus, Trash2, FileText, IndentIncrease, IndentDecrease, Search, X,
          ChevronRight, ChevronDown, CalendarClock } from 'lucide-react'
 import { emptyAgendaItem, emptyActionItem, uid, formatDate } from '../utils'
 import RichTextEditor, { stripHtml } from './RichTextEditor'
+import ContactAutocomplete from './ContactAutocomplete'
 import { attachmentStore } from '../attachmentStore'
 
 const isElectron = typeof window !== 'undefined' && !!window.electronAPI
@@ -125,7 +126,6 @@ function isHiddenByCollapse(items, idx, collapsed) {
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function ProtocolItems({ items, onChange, allTasks = [], onTasksChange = () => {}, readOnly, projectContacts }) {
-  const contactListId = 'protocol-contacts-list'
   const [search,        setSearch]        = useState('')
   const [showCompleted, setShowCompleted] = useState(true)
   // Drag-and-drop state
@@ -415,15 +415,6 @@ export default function ProtocolItems({ items, onChange, allTasks = [], onTasksC
         </p>
       )}
 
-      {/* Contact datalist */}
-      {(projectContacts ?? []).length > 0 && (
-        <datalist id={contactListId}>
-          {(projectContacts ?? []).map(c => (
-            <option key={c.id} value={c.name ? (c.company ? `${c.name} (${c.company})` : c.name) : c.company} />
-          ))}
-        </datalist>
-      )}
-
       {/* Items list */}
       <div className="space-y-2" onDragLeave={() => setDropIdx(null)}>
         {/* Drop zone before first item */}
@@ -567,12 +558,12 @@ export default function ProtocolItems({ items, onChange, allTasks = [], onTasksC
                       <User size={13} className="text-gray-400 flex-shrink-0" />
                       {readOnly
                         ? <span className="text-xs text-gray-500">{item.assignedTo || '–'}</span>
-                        : <input
+                        : <ContactAutocomplete
                             className="input py-0.5 text-xs max-w-64"
                             placeholder="Zugewiesen an (Person / Firma)…"
                             value={item.assignedTo ?? ''}
-                            list={(projectContacts ?? []).length > 0 ? contactListId : undefined}
-                            onChange={e => update(item.id, 'assignedTo', e.target.value)}
+                            contacts={projectContacts ?? []}
+                            onChange={v => update(item.id, 'assignedTo', v)}
                           />
                       }
                     </div>
@@ -680,10 +671,10 @@ export default function ProtocolItems({ items, onChange, allTasks = [], onTasksC
                                       <input className={`input py-0.5 text-xs flex-1 ${taskDone ? 'line-through text-gray-400' : ''}`}
                                         placeholder="Aufgabe…" value={task.description}
                                         onChange={e => updateTask(task.id, 'description', e.target.value)} />
-                                      <input className={`input py-0.5 text-xs w-28 ${taskDone ? 'text-gray-400' : ''}`}
+                                      <ContactAutocomplete className={`input py-0.5 text-xs w-28 ${taskDone ? 'text-gray-400' : ''}`}
                                         placeholder="Zuständig…" value={task.responsible}
-                                        list={(projectContacts ?? []).length > 0 ? contactListId : undefined}
-                                        onChange={e => updateTask(task.id, 'responsible', e.target.value)} />
+                                        contacts={projectContacts ?? []}
+                                        onChange={v => updateTask(task.id, 'responsible', v)} />
                                       <input type="date" className={`input py-0.5 text-xs w-32 no-print ${taskDone ? 'text-gray-400' : ''}`}
                                         value={task.deadline ?? ''}
                                         onChange={e => updateTask(task.id, 'deadline', e.target.value)} />
