@@ -134,6 +134,7 @@ export default function AgendaDraft({ agenda, agendaGreeting, agendaSentAt, prot
                     <thead>
                       <tr className="border-b border-gray-100 text-xs text-gray-500">
                         <th className="text-left py-1.5 pl-3 pr-2 w-10">Nr.</th>
+                        <th className="text-left py-1.5 pr-2 w-20">Uhrzeit</th>
                         <th className="text-left py-1.5 pr-2">Thema</th>
                         <th className="text-left py-1.5 pr-2 w-24">Dauer (min)</th>
                         <th className="text-left py-1.5 pr-2 w-36">Zuständig</th>
@@ -148,6 +149,10 @@ export default function AgendaDraft({ agenda, agendaGreeting, agendaSentAt, prot
                             <input className="input py-1 w-10 text-center text-xs font-semibold"
                               value={item.no} placeholder={String(i + 1)}
                               onChange={e => update(item.id, 'no', e.target.value)} />
+                          </td>
+                          <td className="py-2 pr-2 align-top">
+                            <input className="input py-1 text-xs w-20" type="time"
+                              value={item.time ?? ''} onChange={e => update(item.id, 'time', e.target.value)} />
                           </td>
                           <td className="py-2 pr-2 align-top">
                             <textarea className="textarea py-1 font-medium text-sm leading-snug" rows={2}

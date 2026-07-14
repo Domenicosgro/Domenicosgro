@@ -206,6 +206,11 @@ export default function RichTextEditor({
   // Skip when the incoming value is what we just emitted to avoid cursor resets.
   useEffect(() => {
     if (!editor) return
+    // Während der Nutzer tippt (Editor fokussiert) NIE von außen setzen. Sonst kann
+    // ein verzögert zurücklaufender value den Editor mitten im Tippen zurücksetzen
+    // → Cursor springt / Buchstaben verdoppeln sich. Externe Änderungen (z. B.
+    // Übernahme aus Vorgänger) greifen, sobald der Editor nicht fokussiert ist.
+    if (editor.isFocused) return
     const incoming = toHtml(value)
     const current  = editor.getHTML()
     const emitted  = lastEmittedRef.current !== null ? toHtml(lastEmittedRef.current) : null

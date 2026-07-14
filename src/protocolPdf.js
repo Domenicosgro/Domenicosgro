@@ -236,7 +236,7 @@ export async function buildProtocolPdf(protocol, protocolNo, logoDataUrl, client
       y -= lvl === 1 ? 4 : 2
       // Neu-Punkte: amber Balken links + "(neu)"-Zusatz (identisch in Druck & Versand)
       if (isNew) page.drawRectangle({ x: MARGIN + indent - 5, y: y - 12, width: 2.5, height: 14, color: rgb(0.96, 0.62, 0.04) })
-      const head = `${item.no}  ${item.topic || '–'}${item.assignedTo ? `   [${item.assignedTo}]` : ''}${isNew ? '   (neu)' : ''}`
+      const head = `${item.no}  ${item.topic || '–'}${item.assignedTo ? `   [${item.assignedTo}]` : ''}${item.deadline ? `   Frist: ${formatDate(item.deadline)}` : ''}${isNew ? '   (neu)' : ''}`
       drawParagraph(head, {
         size: lvl === 1 ? 10.5 : 10,
         font: lvl === 1 ? fontBold : (isGray ? fontItal : fontBold),

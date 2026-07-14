@@ -263,6 +263,7 @@ export const emptyAgendaDraftItem = () => ({
   id: uid(),
   no: '',
   topic: '',
+  time: '',        // optionale Uhrzeit des Themas (HH:MM)
   duration: '',
   responsible: '',
   documents: '',
@@ -310,7 +311,7 @@ export const buildAgendaEmailBody = (protocol) => {
       const linked = agenda.filter(a => a.linkedProtocolItemId === si.id)
       linked.forEach((item, i) => {
         const no          = item.no || String(i + 1)
-        const topic       = item.topic       || '(kein Thema)'
+        const topic       = (item.time ? `${item.time} · ` : '') + (item.topic || '(kein Thema)')
         const dur         = item.duration    ? `${item.duration} min` : ''
         const responsible = item.responsible ? `  [${item.responsible}]` : ''
         lines.push(`  ${no.padEnd(4)} ${topic.padEnd(38)} ${dur.padStart(7)}${responsible}`)
@@ -322,7 +323,7 @@ export const buildAgendaEmailBody = (protocol) => {
     const unlinked = agenda.filter(a => !a.linkedProtocolItemId || !linkedIds.has(a.linkedProtocolItemId))
     unlinked.forEach((item, i) => {
       const no          = item.no || String(i + 1)
-      const topic       = item.topic       || '(kein Thema)'
+      const topic       = (item.time ? `${item.time} · ` : '') + (item.topic || '(kein Thema)')
       const dur         = item.duration    ? `${item.duration} min` : ''
       const responsible = item.responsible ? `  [${item.responsible}]` : ''
       lines.push(`${no.padEnd(4)} ${topic.padEnd(40)} ${dur.padStart(7)}${responsible}`)
@@ -331,7 +332,7 @@ export const buildAgendaEmailBody = (protocol) => {
   } else {
     agenda.forEach((item, i) => {
       const no          = item.no || String(i + 1)
-      const topic       = item.topic       || '(kein Thema)'
+      const topic       = (item.time ? `${item.time} · ` : '') + (item.topic || '(kein Thema)')
       const dur         = item.duration    ? `${item.duration} min` : ''
       const responsible = item.responsible ? `  [${item.responsible}]` : ''
       lines.push(`${no.padEnd(4)} ${topic.padEnd(40)} ${dur.padStart(7)}${responsible}`)

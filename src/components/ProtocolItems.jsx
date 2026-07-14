@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import { Plus, Trash2, FileText, IndentIncrease, IndentDecrease, Search, X,
          CheckCircle2, Circle, User, Calendar, Paperclip, ExternalLink, GripVertical,
-         ChevronRight, ChevronDown } from 'lucide-react'
+         ChevronRight, ChevronDown, CalendarClock } from 'lucide-react'
 import { emptyAgendaItem, emptyActionItem, uid, formatDate } from '../utils'
 import RichTextEditor, { stripHtml } from './RichTextEditor'
 import { attachmentStore } from '../attachmentStore'
@@ -556,14 +556,14 @@ export default function ProtocolItems({ items, onChange, allTasks = [], onTasksC
                   )}
                 </div>
 
-                {/* Row 2: createdAt + assignedTo */}
+                {/* Row 2: createdAt + assignedTo + Frist */}
                 {!gray && (
                   <div className="flex items-center gap-4 pl-16 flex-wrap">
                     <span className="flex items-center gap-1 text-xs text-gray-400 flex-shrink-0">
                       <Calendar size={11} />
                       {item.createdAt ? formatDate(item.createdAt.slice(0, 10)) : '–'}
                     </span>
-                    <div className={`flex items-center gap-1 flex-1 ${!item.assignedTo ? 'print:hidden' : ''}`}>
+                    <div className={`flex items-center gap-1 flex-1 min-w-[8rem] ${!item.assignedTo ? 'print:hidden' : ''}`}>
                       <User size={13} className="text-gray-400 flex-shrink-0" />
                       {readOnly
                         ? <span className="text-xs text-gray-500">{item.assignedTo || '–'}</span>
@@ -573,6 +573,20 @@ export default function ProtocolItems({ items, onChange, allTasks = [], onTasksC
                             value={item.assignedTo ?? ''}
                             list={(projectContacts ?? []).length > 0 ? contactListId : undefined}
                             onChange={e => update(item.id, 'assignedTo', e.target.value)}
+                          />
+                      }
+                    </div>
+                    {/* Frist zur Erledigung des Punkts – unabhängig von Aufgaben */}
+                    <div className={`flex items-center gap-1 flex-shrink-0 ${!item.deadline ? 'print:hidden' : ''}`}>
+                      <CalendarClock size={13} className="text-gray-400 flex-shrink-0" />
+                      {readOnly
+                        ? <span className="text-xs text-gray-500">{item.deadline ? `Frist: ${formatDate(item.deadline)}` : '–'}</span>
+                        : <input
+                            type="date"
+                            className="input py-0.5 text-xs w-36"
+                            title="Frist zur Erledigung dieses Punkts (unabhängig von einer Aufgabe)"
+                            value={item.deadline ?? ''}
+                            onChange={e => update(item.id, 'deadline', e.target.value)}
                           />
                       }
                     </div>
