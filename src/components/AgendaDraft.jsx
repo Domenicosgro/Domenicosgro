@@ -1,5 +1,5 @@
-import React, { useMemo } from 'react'
-import { Plus, Trash2, CalendarClock } from 'lucide-react'
+import React, { useMemo, useState } from 'react'
+import { Plus, Trash2, CalendarClock, GripVertical } from 'lucide-react'
 import { emptyAgendaDraftItem } from '../utils'
 import SpellCheckTextarea from './SpellCheckTextarea'
 import ContactAutocomplete from './ContactAutocomplete'
@@ -40,6 +40,19 @@ export default function AgendaDraft({ agenda, agendaGreeting, agendaSentAt, prot
     onChange(agenda.map(it => it.id === id ? { ...it, [field]: value } : it))
 
   const remove = (id) => onChange(agenda.filter(it => it.id !== id))
+
+  // ── Drag & Drop: Agenda-Punkt einem anderen Hauptthema (Section) zuordnen ────
+  const [dragId,     setDragId]     = useState(null)
+  const [dragOverId, setDragOverId] = useState(null)
+  const handleDropOnSection = (sectionId) => {
+    if (!dragId) return
+    const target = sectionId === '__new__' ? null : sectionId
+    const it = agenda.find(a => a.id === dragId)
+    if (it && (it.linkedProtocolItemId ?? null) !== target) {
+      update(dragId, 'linkedProtocolItemId', target)
+    }
+    setDragId(null); setDragOverId(null)
+  }
 
   const moveUp = (sectionAgenda, item) => {
     const si = sectionAgenda.findIndex(a => a.id === item.id)
@@ -103,7 +116,13 @@ export default function AgendaDraft({ agenda, agendaGreeting, agendaSentAt, prot
           if (isNew && section.items.length === 0 && sectionItems.length > 0) return null
 
           return (
-            <div key={section.id} className="border border-gray-200">
+            <div
+              key={section.id}
+              className={`border transition-colors ${dragOverId === section.id ? 'border-brand-400 ring-2 ring-brand-200' : 'border-gray-200'}`}
+              onDragOver={e => { if (dragId) { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; if (dragOverId !== section.id) setDragOverId(section.id) } }}
+              onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget)) setDragOverId(prev => (prev === section.id ? null : prev)) }}
+              onDrop={e => { e.preventDefault(); handleDropOnSection(section.id) }}
+            >
               {/* Section header */}
               <div className={`flex items-center justify-between px-3 py-2 ${
                 isNew ? 'bg-gray-50' : 'bg-brand-50 border-b border-brand-100'
@@ -135,7 +154,7 @@ export default function AgendaDraft({ agenda, agendaGreeting, agendaSentAt, prot
                     </thead>
                     <tbody className="divide-y divide-gray-50">
                       {section.items.map((item, i) => (
-                        <tr key={item.id}>
+                        <tr key={item.id} className={dragId === item.id ? 'opacity-40' : ''}>
                           <td className="py-2 pl-3 pr-2 align-top">
                             <input className="input py-1 w-10 text-center text-xs font-semibold"
                               value={item.no} placeholder={String(i + 1)}
@@ -168,7 +187,14 @@ export default function AgendaDraft({ agenda, agendaGreeting, agendaSentAt, prot
                               value={item.documents} onChange={e => update(item.id, 'documents', e.target.value)} />
                           </td>
                           <td className="py-2 pr-3 align-top no-print">
-                            <div className="flex gap-1 pt-1">
+                            <div className="flex gap-1 pt-1 items-center">
+                              <span
+                                className="cursor-grab text-gray-300 hover:text-gray-500 flex-shrink-0"
+                                title="Ziehen, um den Punkt einem anderen Hauptthema zuzuordnen"
+                                draggable
+                                onDragStart={e => { setDragId(item.id); e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', item.id) }}
+                                onDragEnd={() => { setDragId(null); setDragOverId(null) }}
+                              ><GripVertical size={14} /></span>
                               <button className="btn-ghost p-1 text-gray-400 disabled:opacity-30"
                                 onClick={() => moveUp(section.items, item)} disabled={i === 0}>↑</button>
                               <button className="btn-ghost p-1 text-gray-400 disabled:opacity-30"
