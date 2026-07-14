@@ -456,7 +456,6 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
   }, [protocol.agenda])
 
   const present = (protocol.participants ?? []).filter(p => p.present)
-  const absent  = (protocol.participants ?? []).filter(p => !p.present)
 
   // ── Shared print header (agenda page + cover page use same logo/title block)
   const PrintHeader = ({ subtitle }) => (
@@ -734,10 +733,11 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
             </tbody>
           </table>
 
-          {(protocol.participants ?? []).length > 0 && (
+          {/* Nur die als anwesend markierten Teilnehmer im Ausdruck */}
+          {present.length > 0 && (
             <>
               <div className="font-bold mb-2 text-sm border-b border-black pb-1 uppercase tracking-wide">
-                Teilnehmerliste ({present.length} anwesend{absent.length > 0 ? `, ${absent.length} entschuldigt` : ''})
+                Teilnehmerliste ({present.length})
               </div>
               <table className="w-full text-sm border-collapse">
                 <thead>
@@ -747,18 +747,16 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
                     <th className="text-left py-1 pr-4">Firma</th>
                     <th className="text-left py-1 pr-4">Funktion</th>
                     <th className="text-left py-1 pr-4">E-Mail</th>
-                    <th className="text-center py-1 w-20">Anwesend</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {protocol.participants.map((p, i) => (
-                    <tr key={p.id} className={!p.present ? 'italic' : ''}>
+                  {present.map((p, i) => (
+                    <tr key={p.id}>
                       <td className="py-1.5 pr-4 text-xs">{i + 1}</td>
                       <td className="py-1.5 pr-4 font-medium">{p.name || '–'}</td>
                       <td className="py-1.5 pr-4">{p.company || '–'}</td>
                       <td className="py-1.5 pr-4">{p.role || '–'}</td>
                       <td className="py-1.5 pr-4 text-xs">{p.email || '–'}</td>
-                      <td className="py-1.5 text-center">{p.present ? '✓' : '–'}</td>
                     </tr>
                   ))}
                 </tbody>
