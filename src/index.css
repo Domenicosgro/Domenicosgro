@@ -243,6 +243,9 @@
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
     border-left-width: 2px !important;
+    /* Nicht am Seitenende anschneiden / von der Fußzeile überlagern lassen */
+    page-break-inside: avoid;
+    break-inside: avoid;
   }
   .print-action-regular { background-color: #fbf8f1 !important; border-left-color: #cdb98a !important; }  /* dezent warm */
   .print-action-bim     { background-color: #edf7f8 !important; border-left-color: #8ec4cc !important; }  /* dezent cyan */
