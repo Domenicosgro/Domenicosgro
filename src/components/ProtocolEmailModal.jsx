@@ -14,7 +14,7 @@ function apiHeaders() {
 // mode='send'     → reguläres Protokoll (nächster Termin, Aufgabenhinweis)
 // mode='freigabe' → Protokoll vorab zur Freigabe, Rückmeldung erbeten
 // Der E-Mail-Text wird serverseitig aus den Protokolldaten + Vorlage erzeugt.
-export default function ProtocolEmailModal({ protocol, protocolNo, logoDataUrl, clientLogoDataUrl, projectContacts = [], mode = 'send', onClose, onSent }) {
+export default function ProtocolEmailModal({ protocol, protocolNo, logoDataUrl, clientLogoDataUrl, projectContacts = [], mode = 'send', buildPdf, onClose, onSent }) {
   const isReview = mode === 'freigabe'
 
   // Teilnehmer der Besprechung – bei Freigabe immer im Verteiler vorbelegt
@@ -61,7 +61,9 @@ export default function ProtocolEmailModal({ protocol, protocolNo, logoDataUrl, 
     if (allTo.length === 0) { setError('Bitte mindestens einen Empfänger angeben.'); return }
     setSending(true); setError('')
     try {
-      const pdfBase64   = await buildProtocolPdf(protocol, protocolNo, logoDataUrl, clientLogoDataUrl)
+      const pdfBase64   = buildPdf
+        ? await buildPdf()   // serverseitiges Chrome-PDF – identisch zum Druck
+        : await buildProtocolPdf(protocol, protocolNo, logoDataUrl, clientLogoDataUrl)
       const pdfFilename = `${protocolNo.replace(/[/\\:*?"<>|]/g, '-')}.pdf`
 
       const res = await fetch(`/api/protocols/${protocol.id}/send-email`, {
@@ -80,7 +82,7 @@ export default function ProtocolEmailModal({ protocol, protocolNo, logoDataUrl, 
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 no-print">
       <div className="bg-white w-full max-w-lg border border-gray-200 flex flex-col max-h-[88vh]">
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200">
           <h3 className="font-semibold text-gray-900 flex items-center gap-2">

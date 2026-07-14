@@ -1024,6 +1024,7 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
           clientLogoDataUrl={clientLogoDataUrl}
           projectContacts={enrichedProjectContacts}
           mode={emailMode}
+          buildPdf={buildServerPdf}
           onClose={() => setShowProtocolEmail(false)}
         />
       )}
