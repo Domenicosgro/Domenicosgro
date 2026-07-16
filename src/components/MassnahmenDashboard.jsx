@@ -328,6 +328,7 @@ export default function MassnahmenDashboard({ protocols, projects, projectId, pr
   const [planReviews,       setPlanReviews]       = useState([])
   const [selected,          setSelected]          = useState(() => new Set())  // ausgewählte Aufgaben für Versand
   const [showCreate,        setShowCreate]        = useState(false)
+  const [showDone,          setShowDone]          = useState(false)             // erledigten Bereich ein-/ausklappen
   const itemKey = (item) => `${item._protocolId}-${item.id}`
   const toggleSelect = (item) => setSelected(prev => {
     const n = new Set(prev); const k = itemKey(item); n.has(k) ? n.delete(k) : n.add(k); return n
@@ -485,6 +486,10 @@ export default function MassnahmenDashboard({ protocols, projects, projectId, pr
     return true
   }), [allItems, filterProject, filterStatus, filterPriority, filterResponsible, onlyOpen, onlyOverdue])
 
+  // Erledigte Aufgaben in einen eigenen Bereich trennen
+  const activeItems = useMemo(() => visible.filter(i => i.status !== 'erledigt'), [visible])
+  const doneItems   = useMemo(() => visible.filter(i => i.status === 'erledigt'), [visible])
+
   // Für den Versand: nur ausgewählte Aufgaben (falls Haken gesetzt), sonst alle sichtbaren
   const emailSource = useMemo(
     () => (selected.size > 0 ? visible.filter(i => selected.has(itemKey(i))) : visible),
@@ -571,6 +576,110 @@ export default function MassnahmenDashboard({ protocols, projects, projectId, pr
     )
     onUpdateProtocol(item._protocolId, { actionItems: updatedActionItems })
   }
+
+  // Eine Tabellenzeile (wiederverwendet für aktive + erledigte Maßnahmen)
+  const renderRow = (item, idx) => {
+    const ovr   = calcOverdue(item)
+    const done  = item.status === 'erledigt'
+    const sb    = statusBadge(item.status)
+    const pb    = priorityBadge(item.priority)
+    const rowBg = ovr  ? 'bg-red-50 hover:bg-red-100'
+                : done ? 'bg-green-50/60 hover:bg-green-100/60'
+                : idx % 2 === 0 ? 'bg-white hover:bg-sky/5'
+                : 'bg-gray-50/40 hover:bg-sky/5'
+    return (
+      <tr key={`${item._protocolId}-${item.id}`}
+        className={`${rowBg} cursor-pointer border-b border-gray-100 transition-colors`}
+        onClick={() => onOpenProtocol(item._protocolId)}
+        title="Protokoll öffnen"
+      >
+        <td className="px-3 py-2.5 text-center" onClick={e => e.stopPropagation()}>
+          <button onClick={() => toggleSelect(item)} className="text-gray-400 hover:text-brand-600 align-middle" title="Für E-Mail-Versand auswählen">
+            {selected.has(itemKey(item)) ? <CheckSquare size={16} className="text-brand-600" /> : <Square size={16} />}
+          </button>
+        </td>
+        {!isScoped && (
+          <td className="px-4 py-2.5 text-xs max-w-[120px]">
+            {item._projectLocked
+              ? <span className="flex items-center gap-1 text-amber-600"><Lock size={10} /> Gesperrt</span>
+              : <span className="font-medium text-gray-700 truncate block">{item._projectName || '–'}</span>}
+          </td>
+        )}
+        <td className="px-4 py-2.5 text-xs text-gray-500 max-w-[150px]">
+          <span className="truncate block" title={item._protocolNo}>{item._protocolNo}</span>
+        </td>
+        <td className="px-3 py-2.5 text-center text-xs font-bold text-brand-700">{item.no}</td>
+        <td className="px-4 py-2.5 max-w-xs">
+          {item.title && (
+            <span className={`block font-semibold ${done ? 'line-through text-gray-400' : ovr ? 'text-red-700' : 'text-gray-900'}`}>{item.title}</span>
+          )}
+          <span className={item.title
+            ? `block text-xs ${done ? 'line-through text-gray-400' : 'text-gray-600'}`
+            : `block font-medium ${done ? 'line-through text-gray-400' : ovr ? 'text-red-700' : 'text-gray-800'}`}>
+            {item.description || <span className="italic text-gray-400">–</span>}
+          </span>
+          {item.art && artBadge(item.art) && (
+            <span className={`badge ${artBadge(item.art).color} text-[10px] mt-1 inline-block`}>{artBadge(item.art).label}</span>
+          )}
+          {item.remarks && (
+            <span className="block text-xs text-gray-400 truncate mt-0.5">{item.remarks}</span>
+          )}
+          {(item.releaseRequest || (item.releaseHistory?.length > 0)) && (
+            <span className="inline-block mt-1" onClick={e => e.stopPropagation()}>
+              <FreimeldungBadge item={item} protocolId={item._protocolId} canManage={canManageRelease(item)} />
+            </span>
+          )}
+        </td>
+        <td className="px-4 py-2.5 text-xs text-gray-600 whitespace-nowrap">{item.responsible || '–'}</td>
+        <td className="px-4 py-2.5 text-xs whitespace-nowrap">
+          {item.deadline ? (
+            <span className={ovr ? 'text-red-600 font-semibold' : 'text-gray-600'}>
+              {formatDate(item.deadline)}
+              {ovr && <AlertTriangle size={11} className="inline ml-1 text-red-500" />}
+            </span>
+          ) : <span className="text-gray-400">–</span>}
+        </td>
+        <td className="px-4 py-2.5">
+          <span className={`badge text-xs ${pb.color}`}>{pb.label}</span>
+        </td>
+        <td className="px-3 py-2" onClick={e => e.stopPropagation()}>
+          {onUpdateProtocol ? (
+            <select
+              className={`select text-xs py-0.5 px-1.5 font-medium border ${sb.color} bg-transparent`}
+              value={item.status}
+              onChange={e => handleStatusChange(item, e.target.value)}
+            >
+              {ACTION_STATUSES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+            </select>
+          ) : (
+            <span className={`badge text-xs ${sb.color}`}>{sb.label}</span>
+          )}
+        </td>
+      </tr>
+    )
+  }
+
+  const renderTable = (items, footer) => (
+    <div className="card overflow-x-auto">
+      <table className="w-full text-sm border-collapse">
+        <thead>
+          <tr className="border-b border-gray-200 bg-gray-50/80">
+            <th className="px-3 py-2.5 w-8" title="Für Versand auswählen"></th>
+            {!isScoped && <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Projekt</th>}
+            <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Protokoll</th>
+            <th className="text-center px-3 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Nr</th>
+            <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Beschreibung</th>
+            <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Zuständig</th>
+            <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Frist</th>
+            <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Priorität</th>
+            <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Status</th>
+          </tr>
+        </thead>
+        <tbody>{items.map((item, idx) => renderRow(item, idx))}</tbody>
+      </table>
+      {footer && <div className="px-4 py-2 text-xs text-gray-400 border-t border-gray-100 bg-gray-50/50">{footer}</div>}
+    </div>
+  )
 
   return (
     <div className="app-page !space-y-5">
@@ -687,113 +796,30 @@ export default function MassnahmenDashboard({ protocols, projects, projectId, pr
         </div>
       )}
 
-      {/* Tabelle */}
-      {visible.length > 0 && (
-        <div className="card overflow-x-auto">
-          <table className="w-full text-sm border-collapse">
-            <thead>
-              <tr className="border-b border-gray-200 bg-gray-50/80">
-                <th className="px-3 py-2.5 w-8" title="Für Versand auswählen"></th>
-                {!isScoped && <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Projekt</th>}
-                <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Protokoll</th>
-                <th className="text-center px-3 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Nr</th>
-                <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Beschreibung</th>
-                <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Zuständig</th>
-                <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Frist</th>
-                <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Priorität</th>
-                <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {visible.map((item, idx) => {
-                const ovr   = calcOverdue(item)
-                const done  = item.status === 'erledigt'
-                const sb    = statusBadge(item.status)
-                const pb    = priorityBadge(item.priority)
-                const rowBg = ovr  ? 'bg-red-50 hover:bg-red-100'
-                            : done ? 'bg-green-50/60 hover:bg-green-100/60'
-                            : idx % 2 === 0 ? 'bg-white hover:bg-sky/5'
-                            : 'bg-gray-50/40 hover:bg-sky/5'
+      {/* Aktive Maßnahmen */}
+      {activeItems.length > 0 && renderTable(
+        activeItems,
+        `${activeItems.length} aktiv${doneItems.length > 0 ? ` · ${doneItems.length} erledigt` : ''} · Klick auf eine Zeile öffnet das Protokoll`
+      )}
 
-                return (
-                  <tr key={`${item._protocolId}-${item.id}`}
-                    className={`${rowBg} cursor-pointer border-b border-gray-100 transition-colors`}
-                    onClick={() => onOpenProtocol(item._protocolId)}
-                    title="Protokoll öffnen"
-                  >
-                    <td className="px-3 py-2.5 text-center" onClick={e => e.stopPropagation()}>
-                      <button onClick={() => toggleSelect(item)} className="text-gray-400 hover:text-brand-600 align-middle" title="Für E-Mail-Versand auswählen">
-                        {selected.has(itemKey(item)) ? <CheckSquare size={16} className="text-brand-600" /> : <Square size={16} />}
-                      </button>
-                    </td>
-                    {!isScoped && (
-                      <td className="px-4 py-2.5 text-xs max-w-[120px]">
-                        {item._projectLocked
-                          ? <span className="flex items-center gap-1 text-amber-600"><Lock size={10} /> Gesperrt</span>
-                          : <span className="font-medium text-gray-700 truncate block">{item._projectName || '–'}</span>
-                        }
-                      </td>
-                    )}
-                    <td className="px-4 py-2.5 text-xs text-gray-500 max-w-[150px]">
-                      <span className="truncate block" title={item._protocolNo}>{item._protocolNo}</span>
-                    </td>
-                    <td className="px-3 py-2.5 text-center text-xs font-bold text-brand-700">{item.no}</td>
-                    <td className="px-4 py-2.5 max-w-xs">
-                      {item.title && (
-                        <span className={`block font-semibold ${done ? 'line-through text-gray-400' : ovr ? 'text-red-700' : 'text-gray-900'}`}>{item.title}</span>
-                      )}
-                      <span className={item.title
-                        ? `block text-xs ${done ? 'line-through text-gray-400' : 'text-gray-600'}`
-                        : `block font-medium ${done ? 'line-through text-gray-400' : ovr ? 'text-red-700' : 'text-gray-800'}`}>
-                        {item.description || <span className="italic text-gray-400">–</span>}
-                      </span>
-                      {item.art && artBadge(item.art) && (
-                        <span className={`badge ${artBadge(item.art).color} text-[10px] mt-1 inline-block`}>{artBadge(item.art).label}</span>
-                      )}
-                      {item.remarks && (
-                        <span className="block text-xs text-gray-400 truncate mt-0.5">{item.remarks}</span>
-                      )}
-                      {(item.releaseRequest || (item.releaseHistory?.length > 0)) && (
-                        <span className="inline-block mt-1" onClick={e => e.stopPropagation()}>
-                          <FreimeldungBadge item={item} protocolId={item._protocolId} canManage={canManageRelease(item)} />
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-4 py-2.5 text-xs text-gray-600 whitespace-nowrap">{item.responsible || '–'}</td>
-                    <td className="px-4 py-2.5 text-xs whitespace-nowrap">
-                      {item.deadline ? (
-                        <span className={ovr ? 'text-red-600 font-semibold' : 'text-gray-600'}>
-                          {formatDate(item.deadline)}
-                          {ovr && <AlertTriangle size={11} className="inline ml-1 text-red-500" />}
-                        </span>
-                      ) : <span className="text-gray-400">–</span>}
-                    </td>
-                    <td className="px-4 py-2.5">
-                      <span className={`badge text-xs ${pb.color}`}>{pb.label}</span>
-                    </td>
-                    <td className="px-3 py-2" onClick={e => e.stopPropagation()}>
-                      {onUpdateProtocol ? (
-                        <select
-                          className={`select text-xs py-0.5 px-1.5 font-medium border ${sb.color} bg-transparent`}
-                          value={item.status}
-                          onChange={e => handleStatusChange(item, e.target.value)}
-                        >
-                          {ACTION_STATUSES.map(s => (
-                            <option key={s.value} value={s.value}>{s.label}</option>
-                          ))}
-                        </select>
-                      ) : (
-                        <span className={`badge text-xs ${sb.color}`}>{sb.label}</span>
-                      )}
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-          <div className="px-4 py-2 text-xs text-gray-400 border-t border-gray-100 bg-gray-50/50">
-            {visible.length} von {allItems.length} Maßnahmen · Klick auf eine Zeile öffnet das Protokoll
-          </div>
+      {activeItems.length === 0 && doneItems.length > 0 && (
+        <div className="card p-6 text-center text-sm text-gray-500">
+          Keine offenen Maßnahmen – alle sind erledigt. 🎉
+        </div>
+      )}
+
+      {/* Erledigt – eigener, einklappbarer Bereich */}
+      {doneItems.length > 0 && (
+        <div className="space-y-2">
+          <button
+            className="flex items-center gap-2 text-sm font-medium text-gray-600 hover:text-gray-900"
+            onClick={() => setShowDone(v => !v)}
+          >
+            {showDone ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+            <Check size={15} className="text-green-600" />
+            Erledigt ({doneItems.length})
+          </button>
+          {showDone && renderTable(doneItems, null)}
         </div>
       )}
 

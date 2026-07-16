@@ -5,7 +5,30 @@ import { lphRange } from './ProjektdatenView'
 
 const isServer = typeof window !== 'undefined' && !!window.__SERVER_MODE__
 
-function DashboardTile({ icon, title, subtitle, accent, onClick, stat1, stat2 }) {
+// Kompaktes Donut-Diagramm: erledigt (grün) vs. offen (amber) im Vergleich.
+function DoneOpenDonut({ done, open }) {
+  const total = done + open
+  const size = 54, stroke = 7, r = (size - stroke) / 2, c = 2 * Math.PI * r
+  const frac = total ? done / total : 0
+  return (
+    <div className="flex items-center gap-2">
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="flex-shrink-0 -rotate-90">
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={total ? '#FCD34D' : '#E5E7EB'} strokeWidth={stroke} />
+        {done > 0 && (
+          <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#16A34A" strokeWidth={stroke}
+            strokeDasharray={`${c * frac} ${c}`} strokeLinecap={frac < 1 ? 'round' : 'butt'} />
+        )}
+      </svg>
+      <div className="text-[10px] leading-tight">
+        <div className="text-sm font-bold text-night leading-none">{total ? Math.round(frac * 100) : 0}%</div>
+        <div className="flex items-center gap-1 text-green-700 mt-1"><span className="w-2 h-2 rounded-full bg-green-500 inline-block flex-shrink-0" /> {done} erledigt</div>
+        <div className="flex items-center gap-1 text-amber-700"><span className="w-2 h-2 rounded-full bg-amber-300 inline-block flex-shrink-0" /> {open} offen</div>
+      </div>
+    </div>
+  )
+}
+
+function DashboardTile({ icon, title, subtitle, accent, onClick, stat1, stat2, chart }) {
   return (
     <button
       onClick={onClick}
@@ -16,8 +39,8 @@ function DashboardTile({ icon, title, subtitle, accent, onClick, stat1, stat2 })
         <h3 className="font-semibold text-sm text-gray-900 group-hover:text-brand-700 transition-colors truncate">{title}</h3>
       </div>
       {subtitle && <p className="text-xs text-gray-500 line-clamp-3">{subtitle}</p>}
-      {(stat1 !== undefined || stat2 !== undefined) && (
-        <div className="flex gap-4 mt-auto pt-2">
+      {(stat1 !== undefined || stat2 !== undefined || chart) && (
+        <div className="flex items-end gap-4 mt-auto pt-2">
           {stat1 !== undefined && (
             <div>
               <div className="text-lg font-bold text-night leading-none">{stat1.value}</div>
@@ -30,6 +53,7 @@ function DashboardTile({ icon, title, subtitle, accent, onClick, stat1, stat2 })
               <div className="text-xs text-gray-400 mt-0.5">{stat2.label}</div>
             </div>
           )}
+          {chart && <div className="ml-auto">{chart}</div>}
         </div>
       )}
     </button>
@@ -72,6 +96,7 @@ export default function ProjectDashboard({
 
   const allActions   = protos.flatMap(p => (p.actionItems ?? []).filter(a => !a.bimIssueId))
   const openActions  = allActions.filter(a => a.status === 'offen' || a.status === 'in_arbeit').length
+  const doneActions  = allActions.filter(a => a.status === 'erledigt').length
   const openBimIssues = bimIssues.filter(i => i.status === 'offen' || i.status === 'in_arbeit').length
 
   return (
@@ -152,7 +177,7 @@ export default function ProjectDashboard({
           accent="border-amber-400"
           onClick={onOpenMassnahmen}
           stat1={{ value: allActions.length, label: 'Maßnahmen' }}
-          stat2={{ value: openActions,       label: 'offen' }}
+          chart={<DoneOpenDonut done={doneActions} open={allActions.length - doneActions} />}
         />
 
 
