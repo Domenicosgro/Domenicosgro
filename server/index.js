@@ -898,6 +898,19 @@ app.post('/api/actions/send-email', requireAuth, async (req, res) => {
               <td style="padding:8px 12px;font-size:13px;color:#374151;border-top:1px solid #E5E7EB;">${items.length} Aufgabe${items.length !== 1 ? 'n' : ''}</td>
             </tr>
           </table>
+          <p style="margin:20px 0 8px 0;font-size:13px;font-weight:600;color:#000040;">Versendete Aufgaben</p>
+          <table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #E5E7EB;border-collapse:collapse;">
+            <thead>
+              <tr style="background:#000040;">
+                <th style="padding:9px 12px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:#8FBEFF;font-weight:600;">Protokoll</th>
+                <th style="padding:9px 12px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:#8FBEFF;font-weight:600;">Aufgabe</th>
+                <th style="padding:9px 12px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:#8FBEFF;font-weight:600;">Frist</th>
+                <th style="padding:9px 12px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:#8FBEFF;font-weight:600;">Priorität</th>
+                <th style="padding:9px 12px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:#8FBEFF;font-weight:600;">Status</th>
+              </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+          </table>
         </td></tr>
         <tr><td style="padding:16px 32px;border-top:1px solid #E5E7EB;background:#F0F0F0;text-align:center;">
           <p style="margin:0;color:#9CA3AF;font-size:11px;">GHBA · Automatische Bestätigung · ${today}</p>
@@ -914,6 +927,15 @@ app.post('/api/actions/send-email', requireAuth, async (req, res) => {
               `Empfänger:    ${responsible}`,
               `E-Mail:       ${to}`,
               `Aufgaben:     ${items.length}`,
+              '',
+              'Versendete Aufgaben:',
+              ...items.map(item => {
+                const dl   = item.deadline ? new Date(item.deadline + 'T12:00:00').toLocaleDateString('de-DE') : '–'
+                const head = item.title || item.description || '–'
+                const desc = item.title && item.description ? `\n  ${item.description}` : ''
+                const art  = ART_LABELS[item.art] ? ` [${ART_LABELS[item.art]}]` : ''
+                return `• ${head}${art}${desc}\n  Protokoll: ${item._protocolNo || '–'} | Frist: ${dl} | Status: ${STATUS_LABELS[item.status] || item.status}`
+              }),
               '',
               'GHBA · Automatische Bestätigung',
             ].join('\n')
