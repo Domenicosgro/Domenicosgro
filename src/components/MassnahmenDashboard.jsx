@@ -1,9 +1,10 @@
 import React, { useState, useMemo, useEffect } from 'react'
-import { ArrowLeft, AlertTriangle, CheckSquare, Filter, X, Lock, BarChart2,
+import { ArrowLeft, AlertTriangle, CheckSquare, Square, Filter, X, Lock, BarChart2, Plus,
          Mail, Send, Loader, ChevronDown, ChevronRight, Check, Box, Eye, ClipboardCheck } from 'lucide-react'
-import { ACTION_STATUSES, PRIORITIES, formatDate, buildProtocolNo, getChainNo,
-         statusBadge, priorityBadge } from '../utils'
+import { ACTION_STATUSES, PRIORITIES, ACTION_ARTEN, formatDate, buildProtocolNo, getChainNo,
+         statusBadge, priorityBadge, artBadge, emptyActionItem } from '../utils'
 import FreimeldungBadge from './FreimeldungBadge'
+import ContactAutocomplete from './ContactAutocomplete'
 
 const BIM_STATUS_CFG = {
   offen:       { label: 'Offen',       badge: 'bg-red-100 text-red-700 border-red-300' },
@@ -47,7 +48,10 @@ function buildActionsText(responsible, projectName, items) {
     ...items.map(item => {
       const dl = item.deadline
         ? new Date(item.deadline + 'T12:00:00').toLocaleDateString('de-DE') : '–'
-      return `• ${item.description || '–'}\n  Protokoll: ${item._protocolNo || '–'} | Frist: ${dl} | Status: ${STATUS[item.status] || item.status}`
+      const art  = artBadge(item.art)?.label
+      const head = item.title || item.description || '–'
+      const desc = item.title && item.description ? `\n  ${item.description}` : ''
+      return `• ${head}${art ? ` [${art}]` : ''}${desc}\n  Protokoll: ${item._protocolNo || '–'} | Frist: ${dl} | Status: ${STATUS[item.status] || item.status}`
     }),
     '', 'GHBA',
   ]
@@ -230,6 +234,75 @@ function EmailModal({ groups, onClose }) {
 }
 
 // ── Hauptkomponente ───────────────────────────────────────────────────────────
+// ── Aufgabe/Maßnahme anlegen (Pflicht: Titel + Beschreibung) ──────────────────
+function CreateActionModal({ projectContacts = [], targetLabel, onCreate, onClose }) {
+  const [title,       setTitle]       = useState('')
+  const [description, setDescription] = useState('')
+  const [art,         setArt]         = useState('')
+  const [responsible, setResponsible] = useState('')
+  const [deadline,    setDeadline]    = useState('')
+  const [priority,    setPriority]    = useState('mittel')
+  const [error,       setError]       = useState('')
+
+  const submit = () => {
+    if (!title.trim() || !description.trim()) { setError('Titel und Beschreibung sind Pflichtfelder.'); return }
+    onCreate({ title: title.trim(), description: description.trim(), art, responsible, deadline, priority })
+    onClose()
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+      <div className="bg-white w-full max-w-md border border-gray-200 flex flex-col max-h-[88vh]" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200">
+          <h3 className="font-semibold text-night flex items-center gap-2"><Plus size={16} className="text-brand-600" /> Aufgabe anlegen</h3>
+          <button className="btn-ghost p-1" onClick={onClose}><X size={16} /></button>
+        </div>
+        <div className="overflow-y-auto flex-1 p-5 space-y-3">
+          {targetLabel && <p className="text-xs text-gray-500">Wird angelegt in: <strong>{targetLabel}</strong></p>}
+          <div>
+            <label className="text-xs font-medium text-gray-700 block mb-1">Titel <span className="text-red-500">*</span></label>
+            <input className="input" value={title} onChange={e => setTitle(e.target.value)} placeholder="Kurztitel der Aufgabe" autoFocus />
+          </div>
+          <div>
+            <label className="text-xs font-medium text-gray-700 block mb-1">Beschreibung <span className="text-red-500">*</span></label>
+            <textarea className="textarea" rows={3} value={description} onChange={e => setDescription(e.target.value)} placeholder="Was ist zu tun?" />
+          </div>
+          <div className="flex gap-3 flex-wrap">
+            <div className="flex-1 min-w-[140px]">
+              <label className="text-xs font-medium text-gray-700 block mb-1">Art</label>
+              <select className="select" value={art} onChange={e => setArt(e.target.value)}>
+                <option value="">– keine –</option>
+                {ACTION_ARTEN.map(a => <option key={a.value} value={a.value}>{a.label}</option>)}
+              </select>
+            </div>
+            <div className="flex-1 min-w-[140px]">
+              <label className="text-xs font-medium text-gray-700 block mb-1">Priorität</label>
+              <select className="select" value={priority} onChange={e => setPriority(e.target.value)}>
+                {PRIORITIES.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
+              </select>
+            </div>
+          </div>
+          <div className="flex gap-3 flex-wrap items-end">
+            <div className="flex-1 min-w-[140px]">
+              <label className="text-xs font-medium text-gray-700 block mb-1">Zuständig</label>
+              <ContactAutocomplete className="input" value={responsible} contacts={projectContacts} onChange={setResponsible} placeholder="Name / Firma" />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-gray-700 block mb-1">Frist</label>
+              <input type="date" className="input" value={deadline} onChange={e => setDeadline(e.target.value)} />
+            </div>
+          </div>
+          {error && <p className="text-xs text-red-600 bg-red-50 border border-red-200 px-3 py-2">{error}</p>}
+        </div>
+        <div className="flex gap-2 justify-end px-5 py-4 border-t border-gray-200">
+          <button className="btn-secondary" onClick={onClose}>Abbrechen</button>
+          <button className="btn-primary flex items-center gap-2" onClick={submit}><Plus size={14} /> Anlegen</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function MassnahmenDashboard({ protocols, projects, projectId, projectContacts, serverUser, onOpenProtocol, onUpdateProtocol, onBack, project, onOpenBim, onOpenBimIssue }) {
   const isScoped = !!projectId
   const scopedName = isScoped ? (projects.find(p => p.id === projectId)?.name || '') : ''
@@ -253,6 +326,12 @@ export default function MassnahmenDashboard({ protocols, projects, projectId, pr
   const [bimIssues,         setBimIssues]         = useState([])
   const [bimStatusFilter,   setBimStatusFilter]   = useState('alle')
   const [planReviews,       setPlanReviews]       = useState([])
+  const [selected,          setSelected]          = useState(() => new Set())  // ausgewählte Aufgaben für Versand
+  const [showCreate,        setShowCreate]        = useState(false)
+  const itemKey = (item) => `${item._protocolId}-${item.id}`
+  const toggleSelect = (item) => setSelected(prev => {
+    const n = new Set(prev); const k = itemKey(item); n.has(k) ? n.delete(k) : n.add(k); return n
+  })
 
   // BIM-Issues laden (nur wenn projektbezogen und BIM-Modell vorhanden)
   useEffect(() => {
@@ -326,6 +405,21 @@ export default function MassnahmenDashboard({ protocols, projects, projectId, pr
     [protocols, projectId, isScoped]
   )
 
+  // Neueste Besprechung des Projekts – Ziel für hier neu angelegte Maßnahmen
+  const newestProtocol = useMemo(() => {
+    if (!scopedProtocols.length) return null
+    return [...scopedProtocols].sort((a, b) => (b.date || '').localeCompare(a.date || ''))[0]
+  }, [scopedProtocols])
+
+  const handleCreateAction = (data) => {
+    if (!onUpdateProtocol || !newestProtocol) return
+    const item = {
+      ...emptyActionItem(), ...data,
+      no: String((newestProtocol.actionItems ?? []).length + 1),
+    }
+    onUpdateProtocol(newestProtocol.id, { actionItems: [...(newestProtocol.actionItems ?? []), item] })
+  }
+
   // Flat list: reguläre Maßnahmen (OHNE BIM-Issues) aus (scoped) Protokollen
   const allItems = useMemo(() => {
     const items = []
@@ -391,10 +485,16 @@ export default function MassnahmenDashboard({ protocols, projects, projectId, pr
     return true
   }), [allItems, filterProject, filterStatus, filterPriority, filterResponsible, onlyOpen, onlyOverdue])
 
-  // E-Mail-Gruppen: sichtbare Aufgaben gruppiert nach Verantwortlichem + Projekt
+  // Für den Versand: nur ausgewählte Aufgaben (falls Haken gesetzt), sonst alle sichtbaren
+  const emailSource = useMemo(
+    () => (selected.size > 0 ? visible.filter(i => selected.has(itemKey(i))) : visible),
+    [visible, selected]
+  )
+
+  // E-Mail-Gruppen: Aufgaben gruppiert nach Verantwortlichem + Projekt
   const emailGroups = useMemo(() => {
     const map = new Map()
-    for (const item of visible) {
+    for (const item of emailSource) {
       const responsible = (item.responsible || '').trim() || '(kein Verantwortlicher)'
       const itemProjectId   = item._projectId   || ''
       const projectName = item._projectName || 'Unbekanntes Projekt'
@@ -449,7 +549,7 @@ export default function MassnahmenDashboard({ protocols, projects, projectId, pr
       const pc = a.projectName.localeCompare(b.projectName)
       return pc !== 0 ? pc : a.responsible.localeCompare(b.responsible)
     })
-  }, [visible, projects, isScoped, projectContacts, scopedProtocols])
+  }, [emailSource, projects, isScoped, projectContacts, scopedProtocols])
 
   const totalOverdue  = allItems.filter(calcOverdue).length
   const totalOpen     = allItems.filter(i => i.status === 'offen' || i.status === 'in_arbeit').length
@@ -491,11 +591,18 @@ export default function MassnahmenDashboard({ protocols, projects, projectId, pr
             </p>
           </div>
         </div>
-        {visible.length > 0 && (
-          <button className="btn-primary text-sm" onClick={() => setShowEmailModal(true)}>
-            <Mail size={15} /> E-Mail versenden
-          </button>
-        )}
+        <div className="flex items-center gap-2">
+          {isScoped && onUpdateProtocol && newestProtocol && (
+            <button className="btn-secondary text-sm" onClick={() => setShowCreate(true)} title="Neue Aufgabe – wird ins neueste Protokoll übernommen">
+              <Plus size={15} /> Neue Aufgabe
+            </button>
+          )}
+          {visible.length > 0 && (
+            <button className="btn-primary text-sm" onClick={() => setShowEmailModal(true)}>
+              <Mail size={15} /> E-Mail versenden{selected.size > 0 ? ` (${selected.size})` : ''}
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Stats */}
@@ -586,6 +693,7 @@ export default function MassnahmenDashboard({ protocols, projects, projectId, pr
           <table className="w-full text-sm border-collapse">
             <thead>
               <tr className="border-b border-gray-200 bg-gray-50/80">
+                <th className="px-3 py-2.5 w-8" title="Für Versand auswählen"></th>
                 {!isScoped && <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Projekt</th>}
                 <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Protokoll</th>
                 <th className="text-center px-3 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Nr</th>
@@ -613,6 +721,11 @@ export default function MassnahmenDashboard({ protocols, projects, projectId, pr
                     onClick={() => onOpenProtocol(item._protocolId)}
                     title="Protokoll öffnen"
                   >
+                    <td className="px-3 py-2.5 text-center" onClick={e => e.stopPropagation()}>
+                      <button onClick={() => toggleSelect(item)} className="text-gray-400 hover:text-brand-600 align-middle" title="Für E-Mail-Versand auswählen">
+                        {selected.has(itemKey(item)) ? <CheckSquare size={16} className="text-brand-600" /> : <Square size={16} />}
+                      </button>
+                    </td>
                     {!isScoped && (
                       <td className="px-4 py-2.5 text-xs max-w-[120px]">
                         {item._projectLocked
@@ -626,9 +739,17 @@ export default function MassnahmenDashboard({ protocols, projects, projectId, pr
                     </td>
                     <td className="px-3 py-2.5 text-center text-xs font-bold text-brand-700">{item.no}</td>
                     <td className="px-4 py-2.5 max-w-xs">
-                      <span className={`block font-medium ${done ? 'line-through text-gray-400' : ovr ? 'text-red-700' : 'text-gray-800'}`}>
+                      {item.title && (
+                        <span className={`block font-semibold ${done ? 'line-through text-gray-400' : ovr ? 'text-red-700' : 'text-gray-900'}`}>{item.title}</span>
+                      )}
+                      <span className={item.title
+                        ? `block text-xs ${done ? 'line-through text-gray-400' : 'text-gray-600'}`
+                        : `block font-medium ${done ? 'line-through text-gray-400' : ovr ? 'text-red-700' : 'text-gray-800'}`}>
                         {item.description || <span className="italic text-gray-400">–</span>}
                       </span>
+                      {item.art && artBadge(item.art) && (
+                        <span className={`badge ${artBadge(item.art).color} text-[10px] mt-1 inline-block`}>{artBadge(item.art).label}</span>
+                      )}
                       {item.remarks && (
                         <span className="block text-xs text-gray-400 truncate mt-0.5">{item.remarks}</span>
                       )}
@@ -880,6 +1001,15 @@ export default function MassnahmenDashboard({ protocols, projects, projectId, pr
         <EmailModal
           groups={emailGroups}
           onClose={() => setShowEmailModal(false)}
+        />
+      )}
+
+      {showCreate && (
+        <CreateActionModal
+          projectContacts={projectContacts ?? []}
+          targetLabel={newestProtocol ? buildProtocolNo(newestProtocol.projectName, newestProtocol.date, getChainNo(newestProtocol, protocols), newestProtocol.meetingType) : null}
+          onCreate={handleCreateAction}
+          onClose={() => setShowCreate(false)}
         />
       )}
     </div>

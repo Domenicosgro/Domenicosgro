@@ -762,6 +762,7 @@ app.post('/api/actions/send-email', requireAuth, async (req, res) => {
 
     const STATUS_LABELS   = { offen: 'Offen', in_arbeit: 'In Arbeit', erledigt: 'Erledigt', verschoben: 'Verschoben' }
     const PRIORITY_LABELS = { hoch: 'Hoch', mittel: 'Mittel', niedrig: 'Niedrig' }
+    const ART_LABELS      = { planung: 'Planung', ausfuehrung: 'Ausführung', ag: 'AG', gp: 'GP' }
     const todayIso        = new Date().toISOString().slice(0, 10)
 
     const rows = items.map(item => {
@@ -772,9 +773,12 @@ app.post('/api/actions/send-email', requireAuth, async (req, res) => {
       const deadlineFmt = item.deadline
         ? new Date(item.deadline + 'T12:00:00').toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })
         : '–'
+      const head    = esc(item.title || item.description || '–')
+      const sub     = item.title && item.description ? `<br><span style="font-weight:normal;font-size:12px;color:#4B5563;">${esc(item.description)}</span>` : ''
+      const artTag  = ART_LABELS[item.art] ? `<br><span style="display:inline-block;margin-top:3px;font-size:10px;color:#4B5563;border:1px solid #D1D5DB;padding:1px 6px;">${ART_LABELS[item.art]}</span>` : ''
       return `<tr style="background:${rowBg};border-bottom:1px solid #E5E7EB;">
-        <td style="padding:9px 12px;font-size:12px;color:#6B7280;white-space:nowrap;">${item._protocolNo || '–'}</td>
-        <td style="padding:9px 12px;font-weight:bold;color:${descColor};">${item.description || '–'}${item.remarks ? `<br><span style="font-weight:normal;font-size:11px;color:#9CA3AF;">${item.remarks}</span>` : ''}</td>
+        <td style="padding:9px 12px;font-size:12px;color:#6B7280;white-space:nowrap;">${esc(item._protocolNo || '–')}</td>
+        <td style="padding:9px 12px;font-weight:bold;color:${descColor};">${head}${sub}${item.remarks ? `<br><span style="font-weight:normal;font-size:11px;color:#9CA3AF;">${esc(item.remarks)}</span>` : ''}${artTag}</td>
         <td style="padding:9px 12px;font-size:12px;color:${overdue ? '#DC2626' : '#374151'};white-space:nowrap;">${deadlineFmt}${overdue ? ' ⚠' : ''}</td>
         <td style="padding:9px 12px;font-size:12px;color:#374151;white-space:nowrap;">${PRIORITY_LABELS[item.priority] || '–'}</td>
         <td style="padding:9px 12px;font-size:12px;color:#374151;white-space:nowrap;">${STATUS_LABELS[item.status] || '–'}</td>
@@ -835,7 +839,10 @@ app.post('/api/actions/send-email', requireAuth, async (req, res) => {
       ...items.map(item => {
         const dl = item.deadline
           ? new Date(item.deadline + 'T12:00:00').toLocaleDateString('de-DE') : '–'
-        return `• ${item.description || '–'}\n  Protokoll: ${item._protocolNo || '–'} | Frist: ${dl} | Status: ${STATUS_LABELS[item.status] || item.status}`
+        const head = item.title || item.description || '–'
+        const desc = item.title && item.description ? `\n  ${item.description}` : ''
+        const art  = ART_LABELS[item.art] ? ` [${ART_LABELS[item.art]}]` : ''
+        return `• ${head}${art}${desc}\n  Protokoll: ${item._protocolNo || '–'} | Frist: ${dl} | Status: ${STATUS_LABELS[item.status] || item.status}`
       }),
       ...(releaseUrl ? ['', 'Aufgaben online freimelden: ' + releaseUrl] : []),
       '', taskTpl.footer,

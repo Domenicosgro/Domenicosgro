@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import { Plus, Trash2, CheckSquare, EyeOff, Eye, Search, X,
          CheckCircle2, Circle, User, Calendar, Flag, Box, Video, ClipboardCheck } from 'lucide-react'
-import { emptyActionItem, ACTION_STATUSES, PRIORITIES, formatDate } from '../utils'
+import { emptyActionItem, ACTION_STATUSES, PRIORITIES, ACTION_ARTEN, artBadge, formatDate } from '../utils'
 import FreimeldungBadge from './FreimeldungBadge'
 import ContactAutocomplete from './ContactAutocomplete'
 
@@ -173,7 +173,13 @@ export default function ActionItems({ items, onChange, agendaItems = [], project
               </div>
             )}
             <input
-              className={`input py-0.5 text-sm font-medium w-full ${done ? 'line-through text-gray-400' : ''}`}
+              className={`input py-0.5 text-sm font-semibold w-full ${done ? 'line-through text-gray-400' : ''}`}
+              placeholder="Titel der Aufgabe…"
+              value={item.title ?? ''}
+              onChange={e => update(item.id, 'title', e.target.value)}
+            />
+            <input
+              className={`input py-0.5 text-sm w-full ${done ? 'line-through text-gray-400' : ''}`}
               placeholder="Beschreibung der Maßnahme…"
               value={item.description}
               onChange={e => update(item.id, 'description', e.target.value)}
@@ -228,6 +234,18 @@ export default function ActionItems({ items, onChange, agendaItems = [], project
           >
             {ACTION_STATUSES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
           </select>
+          <select
+            className={`select py-0.5 text-xs w-28 no-print ${done ? 'text-gray-400' : ''}`}
+            value={item.art ?? ''}
+            onChange={e => update(item.id, 'art', e.target.value)}
+            title="Art der Aufgabe"
+          >
+            <option value="">Art…</option>
+            {ACTION_ARTEN.map(a => <option key={a.value} value={a.value}>{a.label}</option>)}
+          </select>
+          {item.art && artBadge(item.art) && (
+            <span className={`hidden print:inline-block badge ${artBadge(item.art).color} text-xs`}>{artBadge(item.art).label}</span>
+          )}
           {done && item.completedAt && (
             <span className="text-xs text-green-600">
               Erledigt {formatDate(item.completedAt.slice(0, 10))}

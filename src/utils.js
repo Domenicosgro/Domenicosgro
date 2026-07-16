@@ -31,6 +31,16 @@ export const PRIORITIES = [
   { value: 'niedrig',label: 'Niedrig',color: 'badge-gray'   },
 ]
 
+// Art einer Aufgabe/Maßnahme. Einfachauswahl; Liste bewusst als Konstante,
+// damit sie später leicht konfigurierbar gemacht werden kann.
+export const ACTION_ARTEN = [
+  { value: 'planung',     label: 'Planung',     color: 'badge-blue'   },
+  { value: 'ausfuehrung', label: 'Ausführung',  color: 'badge-yellow' },
+  { value: 'ag',          label: 'AG',          color: 'badge-green'  },
+  { value: 'gp',          label: 'GP',          color: 'badge-gray'   },
+]
+export const artBadge = (val) => ACTION_ARTEN.find(a => a.value === val) ?? null
+
 export const statusBadge = (val) =>
   ACTION_STATUSES.find(s => s.value === val) ?? ACTION_STATUSES[0]
 
@@ -381,7 +391,9 @@ export const emptyAgendaItem = (level = 1) => ({
 export const emptyActionItem = () => ({
   id: uid(),
   no: '',
+  title: '',              // Kurztitel der Aufgabe (in E-Mail erkennbar)
   description: '',
+  art: '',                // Art der Aufgabe: planung | ausfuehrung | ag | gp
   responsible: '',
   deadline: '',
   status: 'offen',
