@@ -8,7 +8,7 @@ import ProjectAdminPanel from './ProjectAdminPanel'
 import GlobalSearch from './GlobalSearch'
 import NotificationBell from './NotificationBell'
 import QrInstallModal from './QrInstallModal'
-import { formatDate } from '../utils'
+import { formatDate, liveActionItems } from '../utils'
 import { useUserSettings } from '../hooks/useUserSettings'
 
 const isServer = typeof window !== 'undefined' && !!window.__SERVER_MODE__
@@ -619,9 +619,11 @@ export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, 
           const isSession = project.isUnlocked
           const isFav     = isFavorite(project.id)
 
-          // Cockpit-Ampel: überfällige/offene Aufgaben + nächster Termin
+          // Cockpit-Ampel: überfällige/offene Aufgaben + nächster Termin.
+          // Zählweise identisch zu Maßnahmenbereich und Protokoll: ohne BIM-/
+          // Planprüfungs-Spiegel und ohne in ein Folgeprotokoll übernommene Vorgänger.
           const todayISO   = new Date().toISOString().slice(0, 10)
-          const actions    = protos.flatMap(p => p.actionItems ?? [])
+          const actions    = liveActionItems(protos, protocols)
           const openTasks  = actions.filter(a => a.status === 'offen' || a.status === 'in_arbeit')
           const overdueCnt = openTasks.filter(a => a.deadline && a.deadline < todayISO).length
           const nextMeet   = protos.map(p => p.nextMeeting).filter(d => d && d >= todayISO).sort()[0]

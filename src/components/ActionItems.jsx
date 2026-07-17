@@ -1,7 +1,8 @@
 import React, { useState } from 'react'
 import { Plus, Trash2, CheckSquare, EyeOff, Eye, Search, X,
          CheckCircle2, Circle, User, Calendar, Flag, Box, Video, ClipboardCheck } from 'lucide-react'
-import { emptyActionItem, ACTION_STATUSES, PRIORITIES, ACTION_ARTEN, artBadge, formatDate } from '../utils'
+import { emptyActionItem, ACTION_STATUSES, PRIORITIES, ACTION_ARTEN, artBadge, formatDate,
+         isMirrorAction } from '../utils'
 import FreimeldungBadge from './FreimeldungBadge'
 import ContactAutocomplete from './ContactAutocomplete'
 
@@ -23,7 +24,7 @@ export default function ActionItems({ items, onChange, agendaItems = [], project
   const [search, setSearch] = useState('')
 
   // Reguläre Maßnahmen vs. BIM-Issues vs. Planprüfungen getrennt
-  const regularItems = items.filter(it => !it.bimIssueId && !it.planReviewId)
+  const regularItems = items.filter(it => !isMirrorAction(it))
   const bimItems     = items.filter(it =>  !!it.bimIssueId)
   const reviewItems  = items.filter(it =>  !it.bimIssueId && !!it.planReviewId)
 

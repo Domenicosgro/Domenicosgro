@@ -2,7 +2,8 @@ import React, { useState, useMemo, useEffect } from 'react'
 import { ArrowLeft, AlertTriangle, CheckSquare, Square, Filter, X, Lock, BarChart2, Plus,
          Mail, Send, Loader, ChevronDown, ChevronRight, Check, Box, Eye, ClipboardCheck } from 'lucide-react'
 import { ACTION_STATUSES, PRIORITIES, ACTION_ARTEN, formatDate, buildProtocolNo, getChainNo,
-         statusBadge, priorityBadge, artBadge, emptyActionItem, supersededActionIds } from '../utils'
+         statusBadge, priorityBadge, artBadge, emptyActionItem,
+         supersededActionIds, isMirrorAction } from '../utils'
 import FreimeldungBadge from './FreimeldungBadge'
 import ContactAutocomplete from './ContactAutocomplete'
 
@@ -446,8 +447,8 @@ export default function MassnahmenDashboard({ protocols, projects, projectId, pr
       const chainNo    = getChainNo(protocol, protocols)
       const protocolNo = buildProtocolNo(protocol.projectName, protocol.date, chainNo, protocol.meetingType)
       for (const item of (protocol.actionItems ?? [])) {
-        if (item.bimIssueId) continue  // BIM-Issues werden separat angezeigt
-        if (superseded.has(item.id)) continue  // in ein Folgeprotokoll übernommen
+        if (isMirrorAction(item)) continue      // BIM-Issues / Planprüfungen: eigene Abschnitte
+        if (superseded.has(item.id)) continue   // in ein Folgeprotokoll übernommen
         items.push({
           ...item,
           _protocolId:    protocol.id,

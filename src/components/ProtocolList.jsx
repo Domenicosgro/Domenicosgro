@@ -1,6 +1,7 @@
 import React, { useState, useRef } from 'react'
 import { Plus, Trash2, Copy, FileText, Search, ChevronRight, Upload, Lock, ArrowLeft, Users, RotateCcw, Download, Box, Eye, EyeOff } from 'lucide-react'
-import { formatDate, buildProtocolNo, getChainNo, phaseBadge, PHASES } from '../utils'
+import { formatDate, buildProtocolNo, getChainNo, phaseBadge, PHASES,
+         supersededActionIds, isMirrorAction } from '../utils'
 
 function formatBytes(bytes) {
   if (!bytes) return ''
@@ -126,9 +127,16 @@ export default function ProtocolList({
   const olderCount   = collapsibleGroups.reduce((s, g) => s + g.items.length - 1, 0)
   const toggleAllOlder = () => setCollapsedGroups(allCollapsed ? new Set() : new Set(collapsibleGroups.map(g => g.type)))
 
+  // Einmal für alle Karten: in ein Folgeprotokoll übernommene Maßnahmen
+  const superseded = supersededActionIds(pool)
+
   // Eine Protokoll-Karte (wiederverwendet je Kategorie)
   const renderProtocolCard = (p, isNewest) => {
-    const openActions = (p.actionItems ?? []).filter(a => a.status === 'offen' || a.status === 'in_arbeit').length
+    // Zählweise identisch zu Maßnahmenbereich und Projektkachel: ohne Spiegel-
+    // Einträge und ohne bereits ins Folgeprotokoll übernommene Maßnahmen.
+    const openActions = (p.actionItems ?? []).filter(a =>
+      !isMirrorAction(a) && !superseded.has(a.id)
+      && (a.status === 'offen' || a.status === 'in_arbeit')).length
     const no = buildProtocolNo(p.projectName, p.date, getChainNo(p, pool), p.meetingType)
     return (
       <div

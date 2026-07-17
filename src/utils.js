@@ -405,6 +405,12 @@ export const emptyActionItem = () => ({
   protocolItemId: null,   // links to an agendaItem.id when added from within a protocol point
 })
 
+// BIM-Issues und Planprüfungen werden als Maßnahme ins Protokoll gespiegelt.
+// Ihr Status wird in der jeweiligen Datenquelle gepflegt, nicht am Spiegel –
+// der bleibt für immer auf "offen". Sie zählen deshalb nie als reguläre
+// Maßnahme und werden in eigenen Abschnitten dargestellt.
+export const isMirrorAction = (a) => !!a.bimIssueId || !!a.planReviewId
+
 // Wird eine offene Maßnahme in ein Folgeprotokoll übernommen, entsteht dort eine
 // Kopie mit carriedFromId → ID des Originals. Das Original bleibt im Vorgänger
 // stehen (historischer Beleg) und behält seinen Status. In projektweiten
@@ -420,6 +426,18 @@ export const supersededActionIds = (protocols) => {
     }
   }
   return ids
+}
+
+// Die eine Definition einer "regulären, aktuellen Maßnahme" für alle projekt-
+// weiten Ansichten (Projektkachel, Projektübersicht, Maßnahmenbereich, Bericht):
+// ohne Spiegel-Einträge und ohne in ein Folgeprotokoll übernommene Vorgänger.
+// protos       – Protokolle, deren Maßnahmen gelistet werden sollen
+// allProtocols – Gesamtbestand zur Ermittlung der Übernahmen (Folgeprotokolle
+//                können außerhalb von protos liegen); Default: protos
+export const liveActionItems = (protos, allProtocols) => {
+  const superseded = supersededActionIds(allProtocols ?? protos)
+  return (protos ?? []).flatMap(p => (p.actionItems ?? [])
+    .filter(a => !isMirrorAction(a) && !superseded.has(a.id)))
 }
 
 export const emptyTile = (color = 'night') => ({
