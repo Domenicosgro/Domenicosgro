@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react'
 import { ArrowLeft, AlertTriangle, CheckSquare, Square, Filter, X, Lock, BarChart2, Plus,
          Mail, Send, Loader, ChevronDown, ChevronRight, Check, Box, Eye, ClipboardCheck } from 'lucide-react'
 import { ACTION_STATUSES, PRIORITIES, ACTION_ARTEN, formatDate, buildProtocolNo, getChainNo,
-         statusBadge, priorityBadge, artBadge, emptyActionItem } from '../utils'
+         statusBadge, priorityBadge, artBadge, emptyActionItem, supersededActionIds } from '../utils'
 import FreimeldungBadge from './FreimeldungBadge'
 import ContactAutocomplete from './ContactAutocomplete'
 
@@ -433,6 +433,11 @@ export default function MassnahmenDashboard({ protocols, projects, projectId, pr
     onUpdateProtocol(newestProtocol.id, { actionItems: [...(newestProtocol.actionItems ?? []), item] })
   }
 
+  // Von einem Folgeprotokoll übernommene Maßnahmen: nur die jüngste Kopie zählt.
+  // Über ALLE Protokolle gebildet – ein Folgeprotokoll kann außerhalb des Scopes
+  // liegen (Vorgänger sind auch aus ★-Projekten wählbar).
+  const superseded = useMemo(() => supersededActionIds(protocols), [protocols])
+
   // Flat list: reguläre Maßnahmen (OHNE BIM-Issues) aus (scoped) Protokollen
   const allItems = useMemo(() => {
     const items = []
@@ -442,6 +447,7 @@ export default function MassnahmenDashboard({ protocols, projects, projectId, pr
       const protocolNo = buildProtocolNo(protocol.projectName, protocol.date, chainNo, protocol.meetingType)
       for (const item of (protocol.actionItems ?? [])) {
         if (item.bimIssueId) continue  // BIM-Issues werden separat angezeigt
+        if (superseded.has(item.id)) continue  // in ein Folgeprotokoll übernommen
         items.push({
           ...item,
           _protocolId:    protocol.id,
@@ -463,7 +469,7 @@ export default function MassnahmenDashboard({ protocols, projects, projectId, pr
       return (b._protocolDate ?? '').localeCompare(a._protocolDate ?? '')
     })
     return items
-  }, [scopedProtocols, projects, protocols])
+  }, [scopedProtocols, projects, protocols, superseded])
 
   // Filter-Optionen: eindeutige Projekte und Verantwortliche
   const projectOptions = useMemo(() => {

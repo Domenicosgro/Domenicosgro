@@ -2674,15 +2674,36 @@ function matchResponsible(itemResponsible, target) {
   return (itemResponsible || '').trim().toLowerCase() === (target || '').trim().toLowerCase()
 }
 
+// Wird eine offene Maßnahme in ein Folgeprotokoll übernommen, entsteht dort eine
+// Kopie mit carriedFromId → ID des Originals; das Original bleibt im Vorgänger
+// stehen (historischer Beleg). Projektweite Listen und Meldungen dürfen nur die
+// jüngste Kopie zählen, sonst erscheint dieselbe Maßnahme je Protokoll der Kette
+// erneut. Liefert die IDs aller Maßnahmen, die von einer Kopie abgelöst wurden.
+// Spiegelbild von supersededActionIds() in src/utils.js.
+function supersededActionIds(protocols) {
+  const ids = new Set()
+  for (const p of protocols ?? []) {
+    for (const a of (p.actionItems ?? [])) {
+      if (a.carriedFromId) ids.add(a.carriedFromId)
+    }
+  }
+  return ids
+}
+
 // Offene Aufgaben eines Verantwortlichen in einem Projekt (für die Freimelde-Seite)
 function openTasksFor(projectId, responsible) {
-  const protocols = db.protocols.list().filter(p => p.projectId === projectId)
+  const allProtocols = db.protocols.list()
+  const superseded   = supersededActionIds(allProtocols)
+  const protocols    = allProtocols.filter(p => p.projectId === projectId)
   const tasks = []
   for (const proto of protocols) {
     const label = `${proto.meetingType ? proto.meetingType + ' · ' : ''}${proto.projectName || ''} ${fmtDateDe(proto.date)}`.trim()
     for (const a of (proto.actionItems ?? [])) {
       if (!matchResponsible(a.responsible, responsible)) continue
       if (a.status === 'erledigt') continue
+      // In ein Folgeprotokoll übernommen: dort steht die aktuelle Kopie, sonst
+      // würde am abgelösten Original freigemeldet.
+      if (superseded.has(a.id)) continue
       tasks.push({
         protocolId:  proto.id,
         protocolNo:  label,
@@ -3189,6 +3210,7 @@ async function sendWeeklyReleaseReports({ appUrl } = {}) {
   const allIssues   = db.bimIssues.list()
   const allPlans    = db.bimPlans.list()
   const allNotes    = db.notes.list()
+  const superseded  = supersededActionIds(protocols)
 
   // System-Admins mit E-Mail – erhalten immer die interne Vollversion
   const adminRecipients = new Map()
@@ -3230,6 +3252,8 @@ async function sendWeeklyReleaseReports({ appUrl } = {}) {
       // wird in der jeweiligen Datenquelle gepflegt, nicht am Spiegel. Sie werden
       // in den Abschnitten "BIM-Issues" bzw. "Planprüfung" berichtet.
       if (isMirrorAction(a)) continue
+      // In ein Folgeprotokoll übernommen → dort zählt die jüngste Kopie
+      if (superseded.has(a.id)) continue
       // Freigemeldete Aufgaben dieser Woche (genehmigt)
       for (const h of (a.releaseHistory ?? [])) {
         if (h.event !== 'genehmigt') continue
@@ -3648,13 +3672,16 @@ function collectProjectStatus(projectId) {
     planReviewsOpen: [], planReviewsDecided: [], bimIssuesOpen: [], bimIssuesNew: [],
     newDocs: [], newNotes: [],
   }
-  for (const proto of db.protocols.list()) {
+  const allProtocols = db.protocols.list()
+  const superseded   = supersededActionIds(allProtocols)
+  for (const proto of allProtocols) {
     if (proto.projectId !== projectId) continue
     if (proto.nextMeeting && proto.nextMeeting >= todayStr) {
       data.meetings.push({ date: proto.nextMeeting, time: proto.nextMeetingTime || '', type: proto.meetingType || 'Besprechung', location: proto.location || '' })
     }
     for (const a of (proto.actionItems ?? [])) {
-      if (isMirrorAction(a)) continue   // siehe collectWeeklyData
+      if (isMirrorAction(a)) continue   // siehe sendWeeklyReleaseReports
+      if (superseded.has(a.id)) continue
       for (const h of (a.releaseHistory ?? [])) {
         if (h.event === 'genehmigt' && h.at && new Date(h.at).getTime() >= sinceMs) {
           data.releases.push({ no: a.no || '', description: a.description || '', responsible: a.responsible || '', approvedAt: h.at })

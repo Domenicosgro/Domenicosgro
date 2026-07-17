@@ -405,6 +405,23 @@ export const emptyActionItem = () => ({
   protocolItemId: null,   // links to an agendaItem.id when added from within a protocol point
 })
 
+// Wird eine offene Maßnahme in ein Folgeprotokoll übernommen, entsteht dort eine
+// Kopie mit carriedFromId → ID des Originals. Das Original bleibt im Vorgänger
+// stehen (historischer Beleg) und behält seinen Status. In projektweiten
+// Übersichten und Statusmeldungen darf deshalb NUR die jüngste Kopie zählen –
+// sonst erscheint dieselbe Maßnahme je Protokoll der Kette erneut.
+// Liefert die IDs aller Maßnahmen, die von einer Kopie abgelöst wurden.
+// IDs sind global eindeutig (uid), daher gefahrlos über alle Protokolle bildbar.
+export const supersededActionIds = (protocols) => {
+  const ids = new Set()
+  for (const p of protocols ?? []) {
+    for (const a of (p.actionItems ?? [])) {
+      if (a.carriedFromId) ids.add(a.carriedFromId)
+    }
+  }
+  return ids
+}
+
 export const emptyTile = (color = 'night') => ({
   id: uid(),
   label: '',

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { ArrowLeft, FileText, Users, HardHat, Pencil, NotebookPen, ChevronRight, BarChart2, UserCog, BookOpen, Box, AlertOctagon, HardDrive, Database } from 'lucide-react'
 import ProjectAdminPanel from './ProjectAdminPanel'
 import { lphRange } from './ProjektdatenView'
+import { supersededActionIds } from '../utils'
 
 const isServer = typeof window !== 'undefined' && !!window.__SERVER_MODE__
 
@@ -94,7 +95,10 @@ export default function ProjectDashboard({
   const projectNotes  = (notes ?? []).filter(n => n.projectId === project.id)
   const contacts      = project.contacts ?? []
 
-  const allActions   = protos.flatMap(p => (p.actionItems ?? []).filter(a => !a.bimIssueId))
+  // In ein Folgeprotokoll übernommene Maßnahmen zählen nur einmal (jüngste Kopie)
+  const supersededActions = supersededActionIds(protocols)
+  const allActions   = protos.flatMap(p => (p.actionItems ?? [])
+    .filter(a => !a.bimIssueId && !supersededActions.has(a.id)))
   const openActions  = allActions.filter(a => a.status === 'offen' || a.status === 'in_arbeit').length
   const doneActions  = allActions.filter(a => a.status === 'erledigt').length
   const openBimIssues = bimIssues.filter(i => i.status === 'offen' || i.status === 'in_arbeit').length
