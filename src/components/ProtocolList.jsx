@@ -97,6 +97,14 @@ export default function ProtocolList({
     )
   })
 
+  // Sortierung: nach Besprechungsart gruppiert, darin das NEUESTE Protokoll zuerst.
+  // (Bei nur einer Art greift automatisch nur "neueste zuerst".)
+  const sorted = [...filtered].sort((a, b) =>
+    (a.meetingType || '').localeCompare(b.meetingType || '', 'de')
+    || (b.date || '').localeCompare(a.date || '')
+    || (b.createdAt || '').localeCompare(a.createdAt || '')
+  )
+
   const phaseInfo = phaseFilter ? phaseBadge(phaseFilter) : null
   const title     = project ? project.name || 'Unbenanntes Projekt' : 'Protokolle ohne Projekt'
   const contacts  = project?.contacts ?? []
@@ -227,7 +235,7 @@ export default function ProtocolList({
 
       {/* List */}
       <div className="space-y-3">
-        {filtered.map(p => {
+        {sorted.map(p => {
           const openActions = (p.actionItems ?? []).filter(a => a.status === 'offen' || a.status === 'in_arbeit').length
           const no = buildProtocolNo(p.projectName, p.date, getChainNo(p, pool), p.meetingType)
           return (
