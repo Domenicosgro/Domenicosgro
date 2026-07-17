@@ -3165,6 +3165,13 @@ app.get('/freimeldung/:token', (req, res) => {
   res.send(renderReleasePage(row))
 })
 
+// BIM-Issues und Planprüfungen werden als Maßnahme in die Protokolle gespiegelt.
+// Der Status dieser Spiegel bleibt auf "offen" stehen – gepflegt wird er in der
+// jeweiligen Datenquelle (bimIssues / planReviews). Sie dürfen deshalb nirgends
+// als reguläre Aufgabe gezählt werden; die Oberfläche filtert sie genauso heraus
+// (MassnahmenDashboard, ProjectDashboard, ActionItems).
+const isMirrorAction = (a) => !!a.bimIssueId || !!a.planReviewId
+
 // ── Wöchentliches Reporting (Freitags 10:00) ──────────────────────────────────
 // Sendet je Projekt:
 //   – diese Woche freigemeldete (genehmigte) Aufgaben
@@ -3219,6 +3226,10 @@ async function sendWeeklyReleaseReports({ appUrl } = {}) {
     }
 
     for (const a of (proto.actionItems ?? [])) {
+      // Spiegel-Einträge von BIM-Issues / Planprüfungen überspringen: ihr Status
+      // wird in der jeweiligen Datenquelle gepflegt, nicht am Spiegel. Sie werden
+      // in den Abschnitten "BIM-Issues" bzw. "Planprüfung" berichtet.
+      if (isMirrorAction(a)) continue
       // Freigemeldete Aufgaben dieser Woche (genehmigt)
       for (const h of (a.releaseHistory ?? [])) {
         if (h.event !== 'genehmigt') continue
@@ -3643,6 +3654,7 @@ function collectProjectStatus(projectId) {
       data.meetings.push({ date: proto.nextMeeting, time: proto.nextMeetingTime || '', type: proto.meetingType || 'Besprechung', location: proto.location || '' })
     }
     for (const a of (proto.actionItems ?? [])) {
+      if (isMirrorAction(a)) continue   // siehe collectWeeklyData
       for (const h of (a.releaseHistory ?? [])) {
         if (h.event === 'genehmigt' && h.at && new Date(h.at).getTime() >= sinceMs) {
           data.releases.push({ no: a.no || '', description: a.description || '', responsible: a.responsible || '', approvedAt: h.at })
