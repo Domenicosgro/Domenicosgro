@@ -1,13 +1,22 @@
 import React, { useState } from 'react'
 import { Plus, Trash2, FileText, IndentIncrease, IndentDecrease, Search, X,
          CheckCircle2, Circle, User, Calendar, Paperclip, ExternalLink, GripVertical,
-         ChevronRight, ChevronDown, CalendarClock } from 'lucide-react'
+         ChevronRight, ChevronDown, CalendarClock, Info } from 'lucide-react'
 import { emptyAgendaItem, emptyActionItem, uid, formatDate } from '../utils'
 import RichTextEditor, { stripHtml } from './RichTextEditor'
 import ContactAutocomplete from './ContactAutocomplete'
 import { attachmentStore } from '../attachmentStore'
 
 const isElectron = typeof window !== 'undefined' && !!window.electronAPI
+
+// Feste Auswahl in der Zuständigkeit eines Protokollpunkts: "Info" = der Punkt
+// dient nur der Kenntnisnahme, es gibt keine handelnde Zuständigkeit.
+// Modulebene, damit die Referenz stabil bleibt (Memoisierung im Autocomplete).
+const ASSIGNEE_EXTRA_OPTIONS = [
+  { value: 'Info', hint: 'Zur Information / Kenntnisnahme – keine Zuständigkeit' },
+]
+
+const isInfoAssignee = (v) => (v ?? '').trim().toLowerCase() === 'info'
 
 function formatFileSize(bytes) {
   if (!bytes) return ''
@@ -558,14 +567,17 @@ export default function ProtocolItems({ items, onChange, allTasks = [], onTasksC
                       {item.createdAt ? formatDate(item.createdAt.slice(0, 10)) : '–'}
                     </span>
                     <div className={`flex items-center gap-1 flex-1 min-w-[8rem] ${!item.assignedTo ? 'print:hidden' : ''}`}>
-                      <User size={13} className="text-gray-400 flex-shrink-0" />
+                      {isInfoAssignee(item.assignedTo)
+                        ? <Info size={13} className="text-sky flex-shrink-0" />
+                        : <User size={13} className="text-gray-400 flex-shrink-0" />}
                       {readOnly
                         ? <span className="text-xs text-gray-500">{item.assignedTo || '–'}</span>
                         : <ContactAutocomplete
                             className="input py-0.5 text-xs max-w-64"
-                            placeholder="Zugewiesen an (Person / Firma)…"
+                            placeholder="Zugewiesen an (Person / Firma / Info)…"
                             value={item.assignedTo ?? ''}
                             contacts={projectContacts ?? []}
+                            extraOptions={ASSIGNEE_EXTRA_OPTIONS}
                             onChange={v => update(item.id, 'assignedTo', v)}
                           />
                       }
