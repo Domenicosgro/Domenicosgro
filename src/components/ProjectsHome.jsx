@@ -3,7 +3,7 @@ import { Plus, Trash2, Search, ChevronRight, FileText, Users, FolderOpen,
          Calendar, Lock, LockOpen, X, Eye, EyeOff, Star,
          User, Settings, LogOut, Download, RotateCcw, Upload, AlertTriangle,
          ShieldCheck, Loader, CalendarClock, Copy, Link2, UserCog, GraduationCap,
-         Archive, ArchiveRestore, FileDown, Smartphone, Database } from 'lucide-react'
+         Archive, ArchiveRestore, FileDown, Smartphone, Database, CheckSquare } from 'lucide-react'
 import ProjectAdminPanel from './ProjectAdminPanel'
 import GlobalSearch from './GlobalSearch'
 import NotificationBell from './NotificationBell'
@@ -626,6 +626,7 @@ export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, 
           const actions    = liveActionItems(protos, protocols)
           const openTasks  = actions.filter(a => a.status === 'offen' || a.status === 'in_arbeit')
           const overdueCnt = openTasks.filter(a => a.deadline && a.deadline < todayISO).length
+          const openCnt    = openTasks.length - overdueCnt   // offen, aber noch nicht überfällig
           const nextMeet   = protos.map(p => p.nextMeeting).filter(d => d && d >= todayISO).sort()[0]
           const ampel      = overdueCnt > 0 ? 'bg-red-500' : openTasks.length > 0 ? 'bg-amber-400' : 'bg-green-500'
           const ampelTitle = overdueCnt > 0 ? `${overdueCnt} Aufgabe${overdueCnt !== 1 ? 'n' : ''} überfällig`
@@ -665,13 +666,14 @@ export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, 
                 )}
               </div>
 
-              {/* Kennzahlen */}
+              {/* Kennzahlen – jede Kachel zeigt dieselben Zeilen, Null-Werte
+                  erscheinen grau statt zu verschwinden (vergleichbare Kacheln). */}
               <div className="flex flex-col gap-1 mt-2 text-xs text-gray-500">
                 <span className="flex items-center gap-1 flex-wrap">
                   <FileText size={11} className="flex-shrink-0" />
                   {protos.length} Protokoll{protos.length !== 1 ? 'e' : ''}
-                  {open   > 0 && <span className="badge-yellow ml-1">{open} offen</span>}
-                  {closed > 0 && <span className="badge-gray ml-1">{closed} abgeschlossen</span>}
+                  <span className={`ml-1 ${open > 0 ? 'badge-yellow' : 'badge-gray'}`}>{open} offen</span>
+                  <span className="badge-gray ml-1">{closed} abgeschlossen</span>
                 </span>
                 <span className="flex items-center gap-1">
                   <Users size={11} className="flex-shrink-0" />
@@ -680,18 +682,21 @@ export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, 
                     : `${(project.contacts ?? []).length} Kontakt${(project.contacts ?? []).length !== 1 ? 'e' : ''}`
                   }
                 </span>
-                {(overdueCnt > 0 || openTasks.length > 0) && (
-                  <span className="flex items-center gap-1 flex-wrap">
-                    {overdueCnt > 0 && <span className="badge-red">{overdueCnt} überfällig</span>}
-                    {openTasks.length - overdueCnt > 0 && <span className="badge-yellow">{openTasks.length - overdueCnt} Aufgaben offen</span>}
+                <span className="flex items-center gap-1 flex-wrap">
+                  <CheckSquare size={11} className="flex-shrink-0" />
+                  <span className={overdueCnt > 0 ? 'badge-red' : 'badge-gray'}>{overdueCnt} überfällig</span>
+                  <span className={openCnt > 0 ? 'badge-yellow' : 'badge-gray'}>
+                    {openCnt} {openCnt === 1 ? 'Aufgabe' : 'Aufgaben'} offen
                   </span>
-                )}
-                {(nextMeet || last) && (
-                  <span className="flex items-center gap-1">
-                    <Calendar size={11} className="flex-shrink-0" />
-                    {nextMeet ? <>Nächster Termin: <strong className="text-gray-700">{formatDate(nextMeet)}</strong></> : <>Zuletzt: {formatDate(last)}</>}
-                  </span>
-                )}
+                </span>
+                <span className="flex items-center gap-1">
+                  <Calendar size={11} className="flex-shrink-0" />
+                  {nextMeet
+                    ? <>Nächster Termin: <strong className="text-gray-700">{formatDate(nextMeet)}</strong></>
+                    : last
+                      ? <>Zuletzt: {formatDate(last)}</>
+                      : <span className="text-gray-400">Kein Termin</span>}
+                </span>
                 {project.isAccessControlled && (
                   <span className="flex items-center gap-1 text-brand-600">
                     <ShieldCheck size={11} className="flex-shrink-0" /> Zugangsbeschränkt
