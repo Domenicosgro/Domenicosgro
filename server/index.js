@@ -4605,6 +4605,25 @@ app.post('/api/admin/restore', requireAuth, requireAdmin, (req, res) => {
 app.get('/api/health',  (_req, res) => res.json({ status: 'ok', time: new Date().toISOString(), version: require('../package.json').version }))
 app.get('/api/version', (_req, res) => res.json({ version: require('../package.json').version }))
 
+// Laufende Software-Version (Admin-Bereich). Die eigentliche Kennung ist die
+// Build-ID aus dist/version.json: sie wird bei jedem Build neu vergeben
+// (Zeitstempel) und identifiziert damit den ausgerollten Stand eindeutig.
+const SERVER_STARTED_AT = new Date().toISOString()
+app.get('/api/system-info', requireAuth, requireAdmin, (_req, res) => {
+  let buildId = null
+  try {
+    buildId = JSON.parse(fs.readFileSync(path.join(distDir, 'version.json'), 'utf8')).buildId ?? null
+  } catch {}
+  res.json({
+    version:   require('../package.json').version,
+    buildId,
+    startedAt: SERVER_STARTED_AT,
+    uptimeSec: Math.floor(process.uptime()),
+    node:      process.version,
+    platform:  `${process.platform}/${process.arch}`,
+  })
+})
+
 // PDF-Selbsttest (Stufe 1): prüft, ob das serverseitige Chromium-Rendering im
 // Container funktioniert. Rendert ein Mini-HTML zu PDF. Nur Admin.
 app.get('/api/pdf-selftest', requireAuth, requireAdmin, async (_req, res) => {

@@ -18,6 +18,71 @@ function apiHeaders() {
   return h
 }
 
+// ── Laufende Software-Version ─────────────────────────────────────────────────
+// Die Build-ID ist ein Zeitstempel aus dem Build (vite.config.mjs) und
+// identifiziert den ausgerollten Stand eindeutig. __BUILD_ID__ steckt im
+// geladenen Bundle, die Server-ID kommt aus dist/version.json: weichen sie ab,
+// läuft im Browser noch ein alter Stand (Tab neu laden).
+const CLIENT_BUILD_ID = typeof __BUILD_ID__ !== 'undefined' ? __BUILD_ID__ : null
+
+function fmtBuildId(id) {
+  const ms = Number(id)
+  if (!id || !Number.isFinite(ms)) return id || '–'
+  const d = new Date(ms)
+  if (Number.isNaN(d.getTime())) return String(id)
+  return d.toLocaleString('de-DE', {
+    day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
+  }) + ' Uhr'
+}
+
+function fmtUptime(sec) {
+  if (!Number.isFinite(sec)) return '–'
+  const d = Math.floor(sec / 86400)
+  const h = Math.floor((sec % 86400) / 3600)
+  const m = Math.floor((sec % 3600) / 60)
+  if (d > 0) return `${d} Tag${d !== 1 ? 'e' : ''}, ${h} Std.`
+  if (h > 0) return `${h} Std. ${m} Min.`
+  return `${m} Min.`
+}
+
+function VersionInfo() {
+  const [info, setInfo] = useState(null)
+  const [err,  setErr]  = useState(false)
+
+  useEffect(() => {
+    let stopped = false
+    fetch('/api/system-info', { headers: apiHeaders() })
+      .then(r => r.ok ? r.json() : Promise.reject(new Error(String(r.status))))
+      .then(d => { if (!stopped) setInfo(d) })
+      .catch(() => { if (!stopped) setErr(true) })
+    return () => { stopped = true }
+  }, [])
+
+  if (err)   return <p className="text-xs text-gray-400 mt-0.5">Version nicht abrufbar</p>
+  if (!info) return <p className="text-xs text-gray-400 mt-0.5">Version wird geladen…</p>
+
+  // Oberfläche älter als der Server → Tab läuft auf einem alten Stand
+  const stale = !!(info.buildId && CLIENT_BUILD_ID && info.buildId !== CLIENT_BUILD_ID)
+
+  return (
+    <p className="text-xs text-gray-400 mt-0.5 flex items-center gap-1.5 flex-wrap">
+      <span>Version <span className="font-medium text-gray-600">{info.version}</span></span>
+      <span>· Stand <span className="font-medium text-gray-600">{fmtBuildId(info.buildId)}</span></span>
+      <span>· Server läuft seit <span className="font-medium text-gray-600">{fmtUptime(info.uptimeSec)}</span></span>
+      <span className="text-gray-300">· Node {info.node} · {info.platform}</span>
+      {stale && (
+        <button
+          className="badge-yellow flex items-center gap-1 hover:bg-amber-200"
+          title={`Geladene Oberfläche: ${fmtBuildId(CLIENT_BUILD_ID)} – auf dem Server läuft ein neuerer Stand.`}
+          onClick={() => window.location.reload()}
+        >
+          <RefreshCw size={10} /> Oberfläche veraltet – neu laden
+        </button>
+      )}
+    </p>
+  )
+}
+
 // ── CSV export ────────────────────────────────────────────────────────────────
 function exportCsv(users) {
   const BOM = '﻿'
@@ -1746,9 +1811,12 @@ export default function AdminPanel({ serverUser, onClose, onPreviewAsUser }) {
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
       <div className="bg-white w-full max-w-5xl h-[90vh] flex flex-col border border-gray-200">
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200">
-          <h2 className="font-semibold text-gray-900">Server-Einstellungen</h2>
-          <div className="flex items-center gap-2">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 gap-4">
+          <div className="min-w-0">
+            <h2 className="font-semibold text-gray-900">Server-Einstellungen</h2>
+            {isAdmin && <VersionInfo />}
+          </div>
+          <div className="flex items-center gap-2 flex-shrink-0">
             {onPreviewAsUser && (
               <button
                 className="btn btn-secondary text-xs flex items-center gap-1.5"
