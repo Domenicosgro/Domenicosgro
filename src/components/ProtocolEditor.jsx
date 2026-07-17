@@ -446,8 +446,8 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
         const to = (protocol.participants ?? []).filter(p => p.email).map(p => p.email)
         const result = await window.electronAPI.graphSendProtocol({
           to,
-          subject:          `Protokoll: ${protocolNo}`,
-          bodyText:         `Anbei das Protokoll zur ${protocol.meetingType}${protocol.projectName ? ' – ' + protocol.projectName : ''} vom ${protocol.date ? new Date(protocol.date + 'T12:00:00').toLocaleDateString('de-DE') : ''}.`,
+          subject:          `Protokoll: ${protocolNo}${protocol.subtitle?.trim() ? ` – ${protocol.subtitle.trim()}` : ''}`,
+          bodyText:         `Anbei das Protokoll zur ${protocol.meetingType}${protocol.subtitle?.trim() ? ` – ${protocol.subtitle.trim()}` : ''}${protocol.projectName ? ' – ' + protocol.projectName : ''} vom ${protocol.date ? new Date(protocol.date + 'T12:00:00').toLocaleDateString('de-DE') : ''}.`,
           attachmentBase64: base64,
           attachmentName:   filename,
         })
@@ -486,6 +486,9 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
         <div className="text-right">
           <div className="text-xs uppercase tracking-widest">{subtitle}</div>
           <div className="text-xl font-bold">{protocol.meetingType}</div>
+          {protocol.subtitle?.trim() && (
+            <div className="text-sm font-semibold">{protocol.subtitle}</div>
+          )}
           <div className="text-sm">{protocol.projectName}</div>
         </div>
       </div>
@@ -735,6 +738,7 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
             <tbody>
               {[
                 ['Protokoll-Nr.',        protocolNo],
+                ...(protocol.subtitle?.trim() ? [['Bezeichnung', protocol.subtitle]] : []),
                 ['Datum der Besprechung', formatDate(protocol.date)],
                 ['Erstellt am',          createdDate],
                 ['Ort / Raum',           protocol.location || '–'],

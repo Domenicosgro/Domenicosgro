@@ -233,6 +233,7 @@ export const emptyNote = (projectId = null) => ({
 export const emptyProtocol = () => ({
   id: uid(),
   meetingType: '',
+  subtitle: '',      // freier Untertitel = Protokollbezeichnung (Kopf, Ausdruck, E-Mail)
   projectName: '',
   projectId: null,   // link to project database entry
   date: today(),

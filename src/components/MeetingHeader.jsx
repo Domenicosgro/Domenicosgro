@@ -85,6 +85,18 @@ export default function MeetingHeader({ protocol, protocols, projects, logoDataU
         </div>
       </div>
 
+      {/* Untertitel = Protokollbezeichnung (Ausdruck + E-Mail) */}
+      <div>
+        <label className="block text-xs font-medium text-gray-500 mb-1">
+          Untertitel / Protokollbezeichnung
+          <span className="text-gray-400 font-normal ml-1">
+            (optional – erscheint im Ausdruck und im E-Mail-Versand)
+          </span>
+        </label>
+        <input className="input" placeholder="z. B. Abstimmung Rohbau – Freigabe Fassade"
+          value={protocol.subtitle || ''} onChange={set('subtitle')} />
+      </div>
+
       {/* Protocol number */}
       <div className="flex items-center gap-3 bg-brand-50 border border-brand-200 px-4 py-2">
         <span className="text-xs font-medium text-brand-600 flex-shrink-0">Protokoll-Nr.</span>

@@ -165,6 +165,12 @@ function buildPageHeader(protocol, subtitle, logoImage, clientImage) {
       spacing:   { before: 0, after: 20 },
       children:  [new TextRun({ text: protocol.meetingType || '', bold: true, size: 32, color: BLACK, font: FONT })],
     }),
+    // Protokollbezeichnung (Untertitel), sofern gepflegt
+    ...(protocol.subtitle?.trim() ? [new Paragraph({
+      alignment: AlignmentType.RIGHT,
+      spacing:   { before: 0, after: 20 },
+      children:  [new TextRun({ text: protocol.subtitle.trim(), bold: true, size: 20, color: BLACK, font: FONT })],
+    })] : []),
     new Paragraph({
       alignment: AlignmentType.RIGHT,
       spacing:   { before: 0, after: 0 },
@@ -278,6 +284,7 @@ function buildCoverPage(protocol, protocolNo, logoImage, clientImage) {
   out.push(...buildPageHeader(protocol, 'Besprechungsprotokoll', logoImage, clientImage))
   out.push(metaTable([
     ['Protokoll-Nr.',      protocolNo],
+    ...(protocol.subtitle?.trim() ? [['Bezeichnung', protocol.subtitle.trim()]] : []),
     ['Datum',              formatDate(protocol.date)],
     ['Ort / Raum',         protocol.location || '–'],
     ['Erstellt von',       protocol.preparedBy || '–'],

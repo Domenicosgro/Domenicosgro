@@ -95,6 +95,7 @@ export default function ProtocolList({
     return (
       p.projectName.toLowerCase().includes(q) ||
       p.meetingType.toLowerCase().includes(q) ||
+      (p.subtitle ?? '').toLowerCase().includes(q) ||
       no.toLowerCase().includes(q)
     )
   })
@@ -139,6 +140,9 @@ export default function ProtocolList({
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <span className="font-semibold text-gray-900 truncate">{formatDate(p.date)}</span>
+            {p.subtitle?.trim() && (
+              <span className="text-sm text-gray-600 truncate">– {p.subtitle}</span>
+            )}
             {isNewest && <span className="badge text-xs bg-sky/30 text-brand-800">Aktuell</span>}
             {p.meetingType && <span className="badge-blue">{p.meetingType}</span>}
             {p.phase && (() => { const ph = phaseBadge(p.phase); return ph ? <span className={`text-xs px-1.5 py-0.5 border ${ph.color}`}>{ph.label}</span> : null })()}

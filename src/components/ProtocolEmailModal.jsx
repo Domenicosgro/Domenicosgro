@@ -53,8 +53,10 @@ export default function ProtocolEmailModal({ protocol, protocolNo, logoDataUrl, 
     .reduce((s, a) => s + (a.size || 0), 0)
 
   const [customEmail, setCustomEmail] = useState('')
+  // Betreff enthält die Protokollbezeichnung (Untertitel), sofern gepflegt.
+  const subtitleSuffix = protocol.subtitle?.trim() ? ` – ${protocol.subtitle.trim()}` : ''
   const [subject,     setSubject]     = useState(
-    isReview ? `Protokoll zur Freigabe: ${protocolNo}` : `Protokoll: ${protocolNo}`)
+    isReview ? `Protokoll zur Freigabe: ${protocolNo}${subtitleSuffix}` : `Protokoll: ${protocolNo}${subtitleSuffix}`)
   const [deadline,    setDeadline]    = useState('')
   const [sending,     setSending]     = useState(false)
   const [sent,        setSent]        = useState(false)

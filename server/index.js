@@ -3913,6 +3913,7 @@ app.post('/api/protocols/:id/send-email', requireAuth, async (req, res) => {
 
     const projStr     = protocol.projectName || 'Unbekanntes Projekt'
     const meetingType = protocol.meetingType || 'Besprechung'
+    const subtitleStr = (protocol.subtitle || '').trim()   // Protokollbezeichnung
     const today       = new Date().toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })
     const fmtDate     = (d) => d ? new Date(d + 'T12:00:00').toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }) : ''
     const protoDate   = fmtDate(protocol.date)
@@ -3981,6 +3982,7 @@ app.post('/api/protocols/:id/send-email', requireAuth, async (req, res) => {
         <tr><td style="background:#000040;padding:28px 36px;">
           <p style="margin:0;color:#8FBEFF;font-size:11px;letter-spacing:2px;text-transform:uppercase;">GHBA${isReview ? ' · Freigabe erbeten' : ''}</p>
           <p style="margin:6px 0 0 0;color:#FBFFE6;font-size:20px;font-weight:bold;">${meetingType}${isReview ? ' – zur Freigabe' : ''}</p>
+          ${subtitleStr ? `<p style="margin:4px 0 0 0;color:#FBFFE6;font-size:15px;font-weight:600;">${esc(subtitleStr)}</p>` : ''}
           <p style="margin:4px 0 0 0;color:#8FBEFF;font-size:14px;font-weight:600;">${projStr}</p>
           ${protoDate ? `<p style="margin:6px 0 0 0;color:#8FBEFF;font-size:12px;">Datum der Besprechung: ${protoDate}</p>` : ''}
         </td></tr>
@@ -4004,6 +4006,7 @@ app.post('/api/protocols/:id/send-email', requireAuth, async (req, res) => {
 
     const text = [
       `${meetingType} – ${projStr}${isReview ? ' (zur Freigabe)' : ''}`,
+      ...(subtitleStr ? [subtitleStr] : []),
       protoDate ? `Datum der Besprechung: ${protoDate}` : '',
       '',
       'Guten Tag,',
