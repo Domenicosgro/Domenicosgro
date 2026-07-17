@@ -23,6 +23,16 @@ const BIM_PRIORITY_CFG = {
   mittel:  { label: 'Mittel',  color: 'text-yellow-600' },
   niedrig: { label: 'Niedrig', color: 'text-gray-400' },
 }
+const BIM_DONE = new Set(['erledigt', 'geschlossen'])
+const REVIEW_STATUS_CFG = {
+  offen:       { label: 'Offen',       badge: 'bg-red-100 text-red-700 border-red-300' },
+  in_pruefung: { label: 'In Prüfung',  badge: 'bg-yellow-100 text-yellow-700 border-yellow-300' },
+  geprueft:    { label: 'Geprüft',     badge: 'bg-blue-100 text-blue-700 border-blue-300' },
+  freigegeben: { label: 'Freigegeben', badge: 'bg-green-100 text-green-700 border-green-300' },
+  abgelehnt:   { label: 'Abgelehnt',   badge: 'bg-gray-100 text-gray-500 border-gray-300' },
+}
+const REVIEW_TYPE_CFG = { pruefung: 'Prüfung', mangel: 'Mangel', hinweis: 'Hinweis', freigabe: 'Freigabe' }
+const REVIEW_DONE = new Set(['freigegeben', 'abgelehnt'])
 
 const isServer   = typeof window !== 'undefined' && !!window.__SERVER_MODE__
 const isElectron = typeof window !== 'undefined' && !!window.electronAPI
@@ -328,7 +338,9 @@ export default function MassnahmenDashboard({ protocols, projects, projectId, pr
   const [planReviews,       setPlanReviews]       = useState([])
   const [selected,          setSelected]          = useState(() => new Set())  // ausgewählte Aufgaben für Versand
   const [showCreate,        setShowCreate]        = useState(false)
-  const [showDone,          setShowDone]          = useState(false)             // erledigten Bereich ein-/ausklappen
+  const [showDone,          setShowDone]          = useState(false)             // erledigte Maßnahmen ein-/ausklappen
+  const [showDoneBim,       setShowDoneBim]       = useState(false)             // erledigte BIM-Issues
+  const [showDoneReview,    setShowDoneReview]    = useState(false)             // erledigte Planprüfungen
   const itemKey = (item) => `${item._protocolId}-${item.id}`
   const toggleSelect = (item) => setSelected(prev => {
     const n = new Set(prev); const k = itemKey(item); n.has(k) ? n.delete(k) : n.add(k); return n
@@ -681,6 +693,100 @@ export default function MassnahmenDashboard({ protocols, projects, projectId, pr
     </div>
   )
 
+  // ── BIM-Issue-Zeile/-Tabelle (aktiv + erledigt) ─────────────────────────────
+  const renderBimRow = (issue, idx) => {
+    const sc     = BIM_STATUS_CFG[issue.status]     || BIM_STATUS_CFG.offen
+    const pc     = BIM_PRIORITY_CFG[issue.priority] || BIM_PRIORITY_CFG.mittel
+    const ovr    = !!(issue.dueDate && (issue.status === 'offen' || issue.status === 'in_arbeit') && issue.dueDate < todayStr())
+    const isDone = BIM_DONE.has(issue.status)
+    const rowBg  = isDone ? 'bg-gray-50/60' : ovr ? 'bg-red-50' : idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/40'
+    return (
+      <tr key={issue.id} className={`${rowBg} border-b border-gray-100 hover:bg-cyan-50/40 transition-colors ${issue.viewpoint && onOpenBimIssue ? 'cursor-pointer' : ''}`}
+        onClick={() => issue.viewpoint && onOpenBimIssue && onOpenBimIssue(issue.viewpoint, issue.title)}
+        title={issue.viewpoint && onOpenBimIssue ? 'Im BIM-Viewer anzeigen' : undefined}>
+        <td className="px-4 py-2.5 text-xs text-gray-500 whitespace-nowrap">{BIM_TYPE_CFG[issue.type] || issue.type}</td>
+        <td className="px-4 py-2.5 max-w-xs">
+          <span className="flex items-center gap-1.5">
+            <span className="badge text-[10px] bg-cyan-100 text-cyan-700 border border-cyan-300 flex items-center gap-0.5 flex-shrink-0"><Box size={8} /> BIM</span>
+            <span className={`font-medium ${isDone ? 'line-through text-gray-400' : 'text-gray-800'}`}>{issue.title}</span>
+          </span>
+          {issue.description && <span className="block text-xs text-gray-400 truncate mt-0.5">{issue.description}</span>}
+        </td>
+        <td className="px-4 py-2.5 text-xs text-gray-600 whitespace-nowrap">{issue.assignedTo || '–'}</td>
+        <td className="px-4 py-2.5 text-xs whitespace-nowrap">
+          {issue.dueDate ? (<span className={ovr ? 'text-red-600 font-semibold' : 'text-gray-600'}>{formatDate(issue.dueDate)}{ovr && <AlertTriangle size={11} className="inline ml-1 text-red-500" />}</span>) : <span className="text-gray-400">–</span>}
+        </td>
+        <td className="px-4 py-2.5"><span className={`text-xs font-medium ${pc.color}`}>{pc.label}</span></td>
+        <td className="px-3 py-2" onClick={e => e.stopPropagation()}>
+          <select className={`select text-xs py-0.5 px-1.5 font-medium border ${sc.badge} bg-transparent`} value={issue.status}
+            onChange={e => { e.stopPropagation(); handleBimStatusChange(issue, e.target.value) }}>
+            {Object.entries(BIM_STATUS_CFG).map(([v, c]) => <option key={v} value={v}>{c.label}</option>)}
+          </select>
+        </td>
+      </tr>
+    )
+  }
+  const renderBimTable = (items) => (
+    <table className="w-full text-sm border-collapse">
+      <thead>
+        <tr className="border-b border-gray-200 bg-gray-50/80">
+          <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Typ</th>
+          <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Titel / Beschreibung</th>
+          <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Zuständig</th>
+          <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Frist</th>
+          <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Priorität</th>
+          <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Status</th>
+        </tr>
+      </thead>
+      <tbody>{items.map((issue, idx) => renderBimRow(issue, idx))}</tbody>
+    </table>
+  )
+
+  // ── Planprüfungs-Zeile/-Tabelle (aktiv + erledigt) ──────────────────────────
+  const renderReviewRow = (r, idx) => {
+    const sc     = REVIEW_STATUS_CFG[r.status] || REVIEW_STATUS_CFG.offen
+    const ovr    = !!(r.dueDate && (r.status === 'offen' || r.status === 'in_pruefung') && r.dueDate < todayStr())
+    const isDone = REVIEW_DONE.has(r.status)
+    const rowBg  = isDone ? 'bg-gray-50/60' : ovr ? 'bg-red-50' : idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/40'
+    return (
+      <tr key={r.id} className={`${rowBg} border-b border-gray-100 hover:bg-violet-50/40 transition-colors`}>
+        <td className="px-3 py-2.5 text-center text-xs font-bold text-violet-700">{r.no}</td>
+        <td className="px-4 py-2.5 text-xs text-gray-600 max-w-[140px]"><span className="truncate block">{r.planTitle || '–'}</span></td>
+        <td className="px-4 py-2.5 max-w-xs">
+          <span className={`font-medium ${isDone ? 'text-gray-400' : 'text-gray-800'}`}>{r.title}</span>
+          {r.description && <span className="block text-xs text-gray-400 truncate mt-0.5">{r.description}</span>}
+        </td>
+        <td className="px-4 py-2.5 text-xs text-gray-500 whitespace-nowrap">{REVIEW_TYPE_CFG[r.type] || r.type}</td>
+        <td className="px-4 py-2.5 text-xs text-gray-600 whitespace-nowrap">{r.assignedTo || '–'}</td>
+        <td className="px-4 py-2.5 text-xs whitespace-nowrap">
+          {r.dueDate ? (<span className={ovr ? 'text-red-600 font-semibold' : 'text-gray-600'}>{formatDate(r.dueDate)}{ovr && <AlertTriangle size={11} className="inline ml-1 text-red-500" />}</span>) : <span className="text-gray-400">–</span>}
+        </td>
+        <td className="px-3 py-2">
+          <select className={`select text-xs py-0.5 px-1.5 font-medium border ${sc.badge} bg-transparent`} value={r.status}
+            onChange={e => handleReviewStatusChange(r, e.target.value)}>
+            {Object.entries(REVIEW_STATUS_CFG).map(([v, c]) => <option key={v} value={v}>{c.label}</option>)}
+          </select>
+        </td>
+      </tr>
+    )
+  }
+  const renderReviewTable = (items) => (
+    <table className="w-full text-sm border-collapse">
+      <thead>
+        <tr className="border-b border-gray-200 bg-gray-50/80">
+          <th className="text-center px-3 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Nr</th>
+          <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Plan</th>
+          <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Prüfvermerk</th>
+          <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Art</th>
+          <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Prüfberechtigt</th>
+          <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Frist</th>
+          <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Status</th>
+        </tr>
+      </thead>
+      <tbody>{items.map((r, idx) => renderReviewRow(r, idx))}</tbody>
+    </table>
+  )
+
   return (
     <div className="app-page !space-y-5">
 
@@ -841,7 +947,7 @@ export default function MassnahmenDashboard({ protocols, projects, projectId, pr
             <div className="flex items-center gap-2">
               {/* Status-Filter */}
               <div className="flex gap-1">
-                {[['alle', 'Alle'], ['offen', 'Offen'], ['in_arbeit', 'In Arbeit'], ['erledigt', 'Erledigt'], ['geschlossen', 'Geschlossen']].map(([v, l]) => (
+                {[['alle', 'Alle offenen'], ['offen', 'Offen'], ['in_arbeit', 'In Arbeit']].map(([v, l]) => (
                   <button
                     key={v}
                     onClick={() => setBimStatusFilter(v)}
@@ -871,95 +977,35 @@ export default function MassnahmenDashboard({ protocols, projects, projectId, pr
             <div className="p-8 text-center text-sm text-gray-400">
               Keine BIM-Issues erfasst.
             </div>
-          ) : (
-            <table className="w-full text-sm border-collapse">
-              <thead>
-                <tr className="border-b border-gray-200 bg-gray-50/80">
-                  <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Typ</th>
-                  <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Titel / Beschreibung</th>
-                  <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Zuständig</th>
-                  <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Frist</th>
-                  <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Priorität</th>
-                  <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {bimIssues
-                  .filter(i => bimStatusFilter === 'alle' || i.status === bimStatusFilter)
-                  .map((issue, idx) => {
-                    const sc  = BIM_STATUS_CFG[issue.status]   || BIM_STATUS_CFG.offen
-                    const pc  = BIM_PRIORITY_CFG[issue.priority] || BIM_PRIORITY_CFG.mittel
-                    const ovr = !!(issue.dueDate && (issue.status === 'offen' || issue.status === 'in_arbeit') && issue.dueDate < todayStr())
-                    const rowBg = issue.status === 'erledigt' || issue.status === 'geschlossen'
-                      ? 'bg-gray-50/60'
-                      : ovr ? 'bg-red-50'
-                      : idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/40'
-                    return (
-                      <tr
-                        key={issue.id}
-                        className={`${rowBg} border-b border-gray-100 hover:bg-cyan-50/40 transition-colors ${issue.viewpoint && onOpenBimIssue ? 'cursor-pointer' : ''}`}
-                        onClick={() => issue.viewpoint && onOpenBimIssue && onOpenBimIssue(issue.viewpoint, issue.title)}
-                        title={issue.viewpoint && onOpenBimIssue ? 'Im BIM-Viewer anzeigen' : undefined}
-                      >
-                        <td className="px-4 py-2.5 text-xs text-gray-500 whitespace-nowrap">
-                          {BIM_TYPE_CFG[issue.type] || issue.type}
-                        </td>
-                        <td className="px-4 py-2.5 max-w-xs">
-                          <span className="flex items-center gap-1.5">
-                            <span className="badge text-[10px] bg-cyan-100 text-cyan-700 border border-cyan-300 flex items-center gap-0.5 flex-shrink-0">
-                              <Box size={8} /> BIM
-                            </span>
-                            <span className={`font-medium ${issue.status === 'erledigt' || issue.status === 'geschlossen' ? 'line-through text-gray-400' : 'text-gray-800'}`}>
-                              {issue.title}
-                            </span>
-                          </span>
-                          {issue.description && (
-                            <span className="block text-xs text-gray-400 truncate mt-0.5">{issue.description}</span>
-                          )}
-                        </td>
-                        <td className="px-4 py-2.5 text-xs text-gray-600 whitespace-nowrap">{issue.assignedTo || '–'}</td>
-                        <td className="px-4 py-2.5 text-xs whitespace-nowrap">
-                          {issue.dueDate ? (
-                            <span className={ovr ? 'text-red-600 font-semibold' : 'text-gray-600'}>
-                              {formatDate(issue.dueDate)}
-                              {ovr && <AlertTriangle size={11} className="inline ml-1 text-red-500" />}
-                            </span>
-                          ) : <span className="text-gray-400">–</span>}
-                        </td>
-                        <td className="px-4 py-2.5">
-                          <span className={`text-xs font-medium ${pc.color}`}>{pc.label}</span>
-                        </td>
-                        <td className="px-3 py-2" onClick={e => e.stopPropagation()}>
-                          <select
-                            className={`select text-xs py-0.5 px-1.5 font-medium border ${sc.badge} bg-transparent`}
-                            value={issue.status}
-                            onChange={e => { e.stopPropagation(); handleBimStatusChange(issue, e.target.value) }}
-                          >
-                            {Object.entries(BIM_STATUS_CFG).map(([v, c]) => (
-                              <option key={v} value={v}>{c.label}</option>
-                            ))}
-                          </select>
-                        </td>
-                      </tr>
-                    )
-                  })}
-              </tbody>
-            </table>
-          )}
+          ) : (() => {
+            const active = bimIssues.filter(i => !BIM_DONE.has(i.status) && (bimStatusFilter === 'alle' || i.status === bimStatusFilter))
+            const done   = bimIssues.filter(i => BIM_DONE.has(i.status))
+            return (
+              <>
+                {active.length > 0 ? renderBimTable(active) : (
+                  <div className="p-6 text-center text-sm text-gray-400">Keine offenen BIM-Issues.</div>
+                )}
+                {done.length > 0 && (
+                  <div className="border-t border-gray-100">
+                    <button className="flex items-center gap-2 text-sm font-medium text-gray-600 hover:text-gray-900 px-4 py-2.5 w-full"
+                      onClick={() => setShowDoneBim(v => !v)}>
+                      {showDoneBim ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                      <Check size={15} className="text-green-600" /> Erledigt / Geschlossen ({done.length})
+                    </button>
+                    {showDoneBim && renderBimTable(done)}
+                  </div>
+                )}
+              </>
+            )
+          })()}
         </div>
       )}
 
       {/* Planprüfung – Reporting-Abschnitt (nur projektbezogen) */}
       {isScoped && planReviews.length > 0 && (() => {
-        const RSTAT = {
-          offen:       { label: 'Offen',       badge: 'bg-red-100 text-red-700 border-red-300' },
-          in_pruefung: { label: 'In Prüfung',  badge: 'bg-yellow-100 text-yellow-700 border-yellow-300' },
-          geprueft:    { label: 'Geprüft',     badge: 'bg-blue-100 text-blue-700 border-blue-300' },
-          freigegeben: { label: 'Freigegeben', badge: 'bg-green-100 text-green-700 border-green-300' },
-          abgelehnt:   { label: 'Abgelehnt',   badge: 'bg-gray-100 text-gray-500 border-gray-300' },
-        }
-        const RTYPE = { pruefung: 'Prüfung', mangel: 'Mangel', hinweis: 'Hinweis', freigabe: 'Freigabe' }
-        const openReviews = planReviews.filter(r => r.status === 'offen' || r.status === 'in_pruefung').length
+        const openReviews   = planReviews.filter(r => !REVIEW_DONE.has(r.status)).length
+        const activeReviews = planReviews.filter(r => !REVIEW_DONE.has(r.status))
+        const doneReviews   = planReviews.filter(r => REVIEW_DONE.has(r.status))
         return (
           <div className="card overflow-hidden">
             <div className="flex items-center gap-2 px-4 py-3 bg-violet-50 border-b border-violet-200">
@@ -970,55 +1016,19 @@ export default function MassnahmenDashboard({ protocols, projects, projectId, pr
               )}
               <span className="text-xs text-gray-500">{planReviews.length} Prüfvermerk{planReviews.length !== 1 ? 'e' : ''}</span>
             </div>
-            <table className="w-full text-sm border-collapse">
-              <thead>
-                <tr className="border-b border-gray-200 bg-gray-50/80">
-                  <th className="text-center px-3 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Nr</th>
-                  <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Plan</th>
-                  <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Prüfvermerk</th>
-                  <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Art</th>
-                  <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Prüfberechtigt</th>
-                  <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Frist</th>
-                  <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {planReviews.map((r, idx) => {
-                  const sc  = RSTAT[r.status] || RSTAT.offen
-                  const ovr = !!(r.dueDate && (r.status === 'offen' || r.status === 'in_pruefung') && r.dueDate < todayStr())
-                  const rowBg = r.status === 'freigegeben' || r.status === 'abgelehnt' ? 'bg-gray-50/60'
-                              : ovr ? 'bg-red-50' : idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/40'
-                  return (
-                    <tr key={r.id} className={`${rowBg} border-b border-gray-100 hover:bg-violet-50/40 transition-colors`}>
-                      <td className="px-3 py-2.5 text-center text-xs font-bold text-violet-700">{r.no}</td>
-                      <td className="px-4 py-2.5 text-xs text-gray-600 max-w-[140px]"><span className="truncate block">{r.planTitle || '–'}</span></td>
-                      <td className="px-4 py-2.5 max-w-xs">
-                        <span className={`font-medium ${r.status === 'freigegeben' || r.status === 'abgelehnt' ? 'text-gray-400' : 'text-gray-800'}`}>{r.title}</span>
-                        {r.description && <span className="block text-xs text-gray-400 truncate mt-0.5">{r.description}</span>}
-                      </td>
-                      <td className="px-4 py-2.5 text-xs text-gray-500 whitespace-nowrap">{RTYPE[r.type] || r.type}</td>
-                      <td className="px-4 py-2.5 text-xs text-gray-600 whitespace-nowrap">{r.assignedTo || '–'}</td>
-                      <td className="px-4 py-2.5 text-xs whitespace-nowrap">
-                        {r.dueDate ? (
-                          <span className={ovr ? 'text-red-600 font-semibold' : 'text-gray-600'}>
-                            {formatDate(r.dueDate)}{ovr && <AlertTriangle size={11} className="inline ml-1 text-red-500" />}
-                          </span>
-                        ) : <span className="text-gray-400">–</span>}
-                      </td>
-                      <td className="px-3 py-2">
-                        <select
-                          className={`select text-xs py-0.5 px-1.5 font-medium border ${sc.badge} bg-transparent`}
-                          value={r.status}
-                          onChange={e => handleReviewStatusChange(r, e.target.value)}
-                        >
-                          {Object.entries(RSTAT).map(([v, c]) => <option key={v} value={v}>{c.label}</option>)}
-                        </select>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
+            {activeReviews.length > 0 ? renderReviewTable(activeReviews) : (
+              <div className="p-6 text-center text-sm text-gray-400">Keine offenen Prüfvermerke.</div>
+            )}
+            {doneReviews.length > 0 && (
+              <div className="border-t border-gray-100">
+                <button className="flex items-center gap-2 text-sm font-medium text-gray-600 hover:text-gray-900 px-4 py-2.5 w-full"
+                  onClick={() => setShowDoneReview(v => !v)}>
+                  {showDoneReview ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                  <Check size={15} className="text-green-600" /> Erledigt (freigegeben / abgelehnt) ({doneReviews.length})
+                </button>
+                {showDoneReview && renderReviewTable(doneReviews)}
+              </div>
+            )}
           </div>
         )
       })()}
