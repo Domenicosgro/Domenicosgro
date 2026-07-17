@@ -1,6 +1,6 @@
 # Komplizen Protokolle – Vollständige Entwicklungsdokumentation
 
-> Stand: 2026-05-28 · Branch: `claude/protocol-tool-meetings-tIoZX`
+> Stand: 2026-07-10 · Branch: `claude/protocol-tool-meetings-tIoZX`
 
 ---
 
@@ -33,12 +33,18 @@
 **Kernfunktionen:**
 - Projekte mit verschlüsselter Kontaktdatenbank (AES-GCM)
 - Protokolle erstellen, abschließen und in Reihen (Vorgänger-Kette) verknüpfen
-- Protokollpunkte mit Rich-Text, Anhängen und Hierarchie (3 Ebenen)
-- Maßnahmen/Aufgaben mit Status, Priorität, Deadline
-- Tagesordnungs-Entwurf und Einladungs-E-Mail (SMTP, CID-Logo, PWA-Anleitung)
-- Projektübergreifendes Maßnahmen-Dashboard
+- Protokollpunkte mit Rich-Text, Anhängen, Hierarchie (3 Ebenen), eigener **Frist** und Ein-/Ausklappen
+- Maßnahmen/Aufgaben mit **Titel**, **Art** (Planung/Ausführung/AG/GP), Status, Priorität, Deadline
+- Protokoll-**Anlagen** (PDF/Bilder) inkl. **Anlagenverzeichnis**
+- Tagesordnungs-Entwurf (optionale Uhrzeit je Thema, Drag&Drop in Hauptthemen,
+  abgeleitete Nummerierung) und Einladungs-E-Mail (SMTP, CID-Logo, PWA-Anleitung)
+- Projektübergreifendes Maßnahmen-Dashboard (Anlegen, Auswahl-Versand, Fortschritts-Diagramm,
+  eigener „Erledigt"-Bereich – auch für BIM-Issues und Planprüfung)
+- **Kontakt-Sync**: Kontakte der Kategorie „Eigene Organisation" werden automatisch als
+  Mitarbeiter (Personalplanung) und login-freie Benutzer gespiegelt
+- **Admin-Vorschau** „Als Anwender ansehen" (rein clientseitig)
 - Gesamtprotokoll über gesamte Sitzungsreihe drucken
-- Export als Word (.docx), PDF (Druckdialog) und CSV
+- Export als Word (.docx), **PDF (serverseitig via Chrome – identisch für Druck & Versand)** und CSV
 - PWA-Installation (Edge ohne HTTPS, Chrome mit HTTPS)
 
 ---
@@ -253,14 +259,20 @@ Nur Web-URLs (https://…). Windows-Pfade (\\server\...) werden vom Browser bloc
 ```js
 {
   id:                    uid(),
-  no:                    '',
-  topic:                 '',
+  no:                    '',     // ⚠ nicht mehr genutzt – Nummer wird ABGELEITET
+  topic:                 '',     // erbt beim Anlegen den Titel des Hauptpunkts (änderbar)
+  time:                  '',     // optionale Uhrzeit des Themas (HH:MM)
   duration:              '',     // Minuten als String
   responsible:           '',
   documents:             '',
   linkedProtocolItemId:  null,   // Link zu bestehendem agendaItems.id (null = neu erstellen)
 }
 ```
+
+**Nummerierung ist abgeleitet** (nicht gespeichert): `{Hauptpunkt-Nr}.{Position im Abschnitt}`
+(z. B. `3.1`, `3.2`) – passt sich bei **Drag & Drop** in ein anderes Hauptthema und beim
+Sortieren automatisch an. `AgendaDraft` zeigt sie read-only; `buildAgendaEmailBody()` leitet
+sie identisch ab. Per Drag&Drop (Griff) wird `linkedProtocolItemId` umgesetzt.
 
 ### 4.6 Protokollpunkt (agendaItems[])
 
@@ -274,13 +286,18 @@ Nur Web-URLs (https://…). Windows-Pfade (\\server\...) werden vom Browser bloc
   level:              1,           // 1 = Hauptpunkt, 2 = Unterpunkt, 3 = Unter-Unterpunkt
   status:             'offen',     // 'offen' | 'erledigt'
   assignedTo:         '',
+  deadline:           '',          // eigene Frist zur Erledigung des PUNKTS (unabhängig von Aufgaben)
   carriedGray:        false,       // true = war erledigt im direkten Vorgänger → grau anzeigen
-  carriedFromId:      null,        // ID des Quell-Items im Vorgänger
+  carriedFromId:      null,        // ID des Quell-Items im Vorgänger · fehlt = NEU in diesem Protokoll
   linkedFromAgendaId: null,        // Link auf Agenda-Entwurfspunkt (verhindert Dopplung beim Abschließen)
   createdAt:          ISO-String,
   attachment:         null,        // { name, mimeType, data (base64), size } – max 20 MB
 }
 ```
+
+**Neu-Markierung:** Punkte **ohne** `carriedFromId` gelten als neu und werden amber
+hervorgehoben – aber nur, wenn das Protokoll auch übernommene Punkte enthält
+(sonst wäre im Erstprotokoll alles amber).
 
 ### 4.8 Kachel (tiles[] im Protokoll)
 
@@ -302,7 +319,9 @@ Kacheln werden in `TileSidebar.jsx` gerendert (fixed rechts, no-print). Klick ö
 {
   id:             uid(),
   no:             '',
+  title:          '',          // Kurztitel – in der E-Mail die erkennbare Überschrift
   description:    '',
+  art:            '',          // 'planung' | 'ausfuehrung' | 'ag' | 'gp'  (ACTION_ARTEN)
   responsible:    '',
   deadline:       '',          // ISO-Datum-String 'YYYY-MM-DD'
   status:         'offen',     // 'offen' | 'in_arbeit' | 'erledigt' | 'verschoben'
@@ -313,6 +332,20 @@ Kacheln werden in `TileSidebar.jsx` gerendert (fixed rechts, no-print). Klick ö
   protocolItemId: null,        // Link zu agendaItem.id (wenn direkt aus Protokollpunkt erstellt)
 }
 ```
+
+- `ACTION_ARTEN` (utils) ist bewusst eine **Konstante** → später leicht konfigurierbar.
+- **Anlegen aus der Projekt-Maßnahmenübersicht**: `CreateActionModal` erzwingt **Titel + Beschreibung**
+  und hängt die Maßnahme an das **neueste Protokoll** des Projekts → erscheint synchron am Protokollende.
+- Versand: Auswahl per Haken (sonst alle sichtbaren), gruppiert nach Verantwortlichem
+  (`POST /api/actions/send-email`). Die **Admin-Bestätigung** enthält dieselbe Aufgaben-Tabelle.
+
+### 4.9 Protokoll-Anlagen (protocol.attachments[])
+
+```js
+{ id, name, mimeType, size }   // Bytes liegen im attachmentStore (Server: /api/attachments)
+```
+PDF/PNG/JPG. Werden im **Anlagenverzeichnis** am Protokollende gelistet; im pdf-lib-Fallback
+zusätzlich physisch angehängt (PDF-Seiten gemergt, Bilder ganzseitig).
 
 ---
 
@@ -661,6 +694,22 @@ stripHtml(html)    // → Plaintext (für Suche, Print-Zusammenfassungen)
 toHtml(str)        // → HTML (konvertiert Legacy-Plaintext; erkennt <-Tags)
 ```
 
+### 7.13a ContactAutocomplete ← NEU
+
+Wiederverwendbares **Namensfeld mit smarter Suche** – ersetzt die früheren nativen
+`<datalist>`-Felder (browserabhängig, wurde in Tabellen abgeschnitten).
+
+```jsx
+<ContactAutocomplete value={x} onChange={v => …} contacts={projectContacts}
+                     placeholder="Zuständig…" className="input" />
+```
+- Treffer in **Name/Firma/E-Mail/Funktion**; **Präfix-Treffer vor Teiltreffern**
+  → Vorschläge werden mit jedem Buchstaben konkreter. Freitext bleibt erlaubt.
+- Tastatur: ↑/↓ navigieren, Enter übernimmt, Esc schließt.
+- Dropdown per **Portal** (`position: fixed`) → **kein Clipping** in Tabellen/Scroll-Containern.
+- Eingesetzt in: ProtocolItems (Zuständigkeit + Aufgaben), ActionItems, AgendaDraft,
+  MeetingHeader (Erstellt von), NotizbuchView, CreateActionModal.
+
 ### 7.14 GesamtprotokollModal
 
 **Props:** `{ protocol, protocols, logoDataUrl, onClose }`
@@ -805,28 +854,62 @@ Body-Hintergrund: `bg-gray-100` → weiße Karten heben sich ab ohne Schatten.
 
 ## 11. Drucken & PDF
 
+### 11.0 Ein PDF für Druck UND Versand (serverseitiges Chrome) ⭐
+
+**Wichtigste Architekturentscheidung (2026-07):** Druck und E-Mail-/Freigabe-Versand
+erzeugen **dieselbe** Datei – ein **durchsuchbares, immer identisches** PDF.
+
+Ablauf (`ProtocolEditor.buildServerPdf()`):
+1. Bild-Anlagen vorladen (`flushSync` → als `data:`-URL inline im Druck-DOM)
+2. **Aktuelle Druckansicht einsammeln**: `document.body.innerHTML` (Skripte entfernt)
+   + gesamtes CSS aus `document.styleSheets` inline als `<style>`
+3. `POST /api/protocols/:id/render-pdf` → Server rendert per **Chromium (puppeteer-core)**
+   in **Print-Media** → PDF
+
+Da dasselbe DOM + CSS in Print-Media gerendert wird, ist das Ergebnis **per Konstruktion
+identisch zu `window.print()`** – nur deterministisch (Server-Chrome statt Nutzer-Browser).
+
+- `server/pdfRender.js`: geteilte Browser-Instanz, **serialisiertes** Rendering,
+  `renderHtmlToPdf()` blockiert externe Requests (nur `data:`/`blob:`) → **SSRF-sicher**;
+  A4, `printBackground`, Ränder 12/12/20/12 mm, `preferCSSPageSize`.
+- **Dockerfile**: System-Chromium + Schriften (`chromium`, `ttf-freefont`, `font-noto`),
+  `PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser` (Alpine → **kein** gebündeltes Chromium!)
+- **Selbsttest**: `GET /api/pdf-selftest` (Admin) + Button im AdminPanel → Backup-Tab.
+- `ProtocolEmailModal` bekommt `buildPdf` als Prop und nutzt es statt pdf-lib;
+  der Dialog ist `no-print`, damit er beim Einsammeln nicht im PDF landet.
+- `src/protocolPdf.js` (pdf-lib) existiert nur noch als **Fallback**.
+
 ### 11.1 Print-CSS (@media print in index.css)
 
 - `@page`: A4, Ränder `12mm 12mm 20mm 12mm`
-- `.no-print`: `display: none !important` (Toolbar, Buttons, etc.)
+- `.no-print`: `display: none !important` (Toolbar, Buttons, Modals, etc.)
 - `.card`: kein Border, kein Shadow, kein Radius
 - Inputs/Textareas: `border: none`, `background: transparent`
 - Rich-Text Toolbar: ausgeblendet; ProseMirror-Chrome entfernt
 - `.print-footer`: `position: fixed; bottom: 0` → Chromium wiederholt auf jeder Seite
 - `.print-page-break`: `page-break-after: always`
+- **Umbruchschutz**: `break-inside: avoid` auf `.protocol-item` **und** `.protocol-item > div`
+  sowie auf `.print-action-item` – sonst werden Punkte/Aufgaben am Seitenende
+  angeschnitten und von der fixen Fußzeile überlagert.
+- **Farben erzwungen**: `print-color-adjust: exact` (Amber „Neu"-Punkte, Ebenen-Farben)
+- `.protocol-item-new`: amber Hervorhebung neu eingefügter Punkte – muss **nach** den
+  Ebenen-Regeln stehen, um sie zu überschreiben.
 
 ### 11.2 Druckstruktur im ProtocolEditor
 
 ```
 [hidden print:block] Agenda-Seite (print-agenda-page)
 [print-page-break]
-[hidden print:block] Deckblatt (print-cover-page)
+[hidden print:block] Deckblatt (print-cover-page)   ← Teilnehmerliste NUR Anwesende
 [print-page-break]
 [hidden print:flex]  Laufender Header (jede Seite)
-[screen content]     Protokollinhalt
+[screen content]     Protokollinhalt (+ Anlagenverzeichnis am Ende)
 [print-footer]       Fußzeile (jede Seite)
 [hidden print:block] Anlagen (je Anhang eine Seite mit Wasserzeichen)
 ```
+
+**Einklappen ist druck-sicher**: eingeklappte Unterpunkte werden **nicht** aus der Liste
+gefiltert, sondern nur am Bildschirm ausgeblendet (`hidden print:block`) → im PDF vollständig.
 
 ### 11.3 Iframe-Druck (Modals)
 
@@ -914,19 +997,27 @@ function promoteAgenda(agenda, existingItems) {
 }
 ```
 
-### 13.3 Tiptap Cursor-Reset
+### 13.3 Tiptap Cursor-Reset / Cursor springt / doppelte Buchstaben
 
-**Problem:** Bei React-State-Updates ruft `editor.commands.setContent()` den Cursor an den Anfang zurück.
+**Problem 1:** Bei React-State-Updates ruft `editor.commands.setContent()` den Cursor an den Anfang zurück.
+**Lösung 1:** `lastEmittedRef` unterscheidet eigene Editor-Änderungen von externen Updates.
 
-**Lösung:** `lastEmittedRef` unterscheidet eigene Editor-Änderungen von externen Updates:
+**Problem 2 (2026-07):** Beim **schnellen Tippen** lief der value-Sync-Effekt gelegentlich mit
+einem **veralteten** `value` (React hatte den emittierten Wert noch nicht zurückgereicht) und
+setzte den Editor mitten im Tippen per `setContent()` zurück → **Cursor sprang, Buchstaben
+gingen verloren/verdoppelten sich**.
+
+**Lösung 2:** Während der Editor **fokussiert** ist (= Nutzer tippt) **nie** von außen setzen.
+Externe Änderungen (z. B. Vorgänger-Übernahme) greifen bei Fokusverlust.
 ```js
-const lastEmittedRef = useRef(null)
-// Im Editor onUpdate:
-lastEmittedRef.current = html
-onChange(html)
-// Im useEffect bei prop-Änderung:
-if (incoming === lastEmittedRef.current) return   // eigene Änderung → überspringen
-editor.commands.setContent(incoming, false)        // externe Änderung → übernehmen
+useEffect(() => {
+  if (!editor) return
+  if (editor.isFocused) return                      // ← der entscheidende Guard
+  const incoming = toHtml(value)
+  if (incoming === toHtml(lastEmittedRef.current)) return  // eigene Änderung
+  if (incoming === editor.getHTML()) return                // keine echte Änderung
+  editor.commands.setContent(incoming, false)
+}, [value])
 ```
 
 ### 13.4 Projekt-Name-Sync
@@ -962,6 +1053,60 @@ theme: {
 }
 ```
 Alle `rounded-*` Klassen erzeugen automatisch `border-radius: 0`.
+
+### 13.7 pdf-lib: „WinAnsi cannot encode" (Versand schlug fehl)
+
+**Problem:** Die pdf-lib-Standardschriften nutzen WinAnsi/CP1252 und **brechen ab**, sobald ein
+Zeichen nicht kodierbar ist (z. B. Häkchen `✓`, Pfeile, Emojis) → „Versand fehlgeschlagen".
+
+**Lösung:** `pdfSafe()` in `src/protocolPdf.js` – ersetzt gängige Symbole durch ASCII
+(`✓→[x]`, `→→->`, `≥→>=` …) und tauscht alle übrigen nicht kodierbaren Zeichen gegen `?`
+(Regex mit `u`-Flag → Emojis werden zu **einem** `?`). Umlaute, `€`, typografische
+Anführungen/Bindestriche/Bullets bleiben erhalten (CP1252). Angewendet zentral in
+`wrapText`/`drawParagraph` + an den dynamischen `drawText`-Aufrufen.
+
+### 13.8 Umbruchfehler: Fußzeile überlagert Inhalt
+
+**Problem:** `break-inside: avoid` galt nur auf `.protocol-item`, nicht auf der eigentlichen
+(farbigen) Box `> div` bzw. gar nicht auf `.print-action-item` → Punkte/Aufgaben wurden am
+Seitenende angeschnitten und von der fixen Fußzeile überlagert.
+
+**Lösung:** Umbruch-Vermeidung auf **beiden** Ebenen sowie auf Maßnahmen (siehe 11.1).
+**Grenze:** Ein Block, der **länger als eine Seite** ist, kann nicht zusammengehalten werden.
+
+### 13.9 Kontakt-Sync „Eigene Organisation" (source='contact')
+
+Kontakte mit `category === 'organisation'` werden **serverseitig einseitig** gespiegelt in
+`staff_members` (Feld `contactKey`) und `users` (`source='contact'`, Username `kontakt:<key>`,
+**leeres Passwort → kein Login**). `syncOrgContacts()` läuft nach jeder Projekt-Schreibroute
+und beim Start; entfällt ein Kontakt, wird der Mirror entfernt.
+
+**Fallstricke:**
+- `users.hasAny()` ignoriert `source='contact'` – sonst könnten Mirrors den Auth-/Open-Mode erzwingen.
+- Ist ein Org-Kontakt bereits echter Login-Benutzer (per E-Mail), wird **nicht** zusätzlich gespiegelt.
+- Mirrors NIE von Hand löschen/bearbeiten → über die Kontaktkategorie steuern (UI-Badge „aus Kontakt").
+
+### 13.10 Popup-Blocker bei `window.open()` nach `await`
+
+**Problem:** `window.open(blobUrl)` **nach** einem `await fetch(...)` gilt nicht mehr als
+direkte Nutzerinteraktion → wird blockiert (PDF öffnete sich nicht).
+**Lösung:** Rückgabewert prüfen und auf einen `<a download>`-Klick zurückfallen.
+
+### 13.11 Prozess-Crash-Guards (Server)
+
+Ohne Handler beendet **ein** unbehandelter async-Fehler den gesamten Node-Prozess → **alle**
+Nutzer fliegen gleichzeitig raus. `process.on('uncaughtException'|'unhandledRejection')` loggt
+nach `logs/error.log` und hält den Server am Leben (Zustand liegt in SQLite/WAL, atomar).
+Healthcheck + `restart: unless-stopped` bleiben das Netz für echte Hänger.
+Ergänzend: `express.json` auf 100 MB begrenzt (große Uploads laufen über eigene
+`express.raw`-Parser), `mem_limit: 2g` im Compose.
+
+### 13.12 Lokale Test-Umgebung (Windows)
+
+`node_modules` ist für die **NAS-Node-Version** gebaut → unter lokalem Node ABI-Fehler.
+Vor lokalen Server-/Node-Tests: `npm rebuild better-sqlite3`, ggf. fehlende Deps
+(`nodemailer`, `pdf-lib`) nachinstallieren. Für Node-Tests von ESM-Modulen mit
+extensionslosen Imports: vorher mit `esbuild --bundle` bündeln.
 
 ---
 
