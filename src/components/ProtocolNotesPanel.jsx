@@ -8,11 +8,17 @@ import { NOTE_TYPES, formatDate } from '../utils'
  * erstellt Notizen mit Bezug auf den Protokolltitel, die in der
  * Notizenkachel (Projekt-Notizen) gespeichert werden. Bereits gespeicherte
  * Notizen sind direkt hier weiter bearbeitbar.
+ *
+ * Das Panel dockt seitlich an und blockiert das Protokoll NICHT: kein
+ * Overlay/Backdrop, der Editor schiebt seinen Inhalt daneben (siehe
+ * ProtocolEditor). Notiz und Protokoll sind dadurch parallel bearbeitbar.
+ * Der Offen-Zustand wird vom Editor gehalten (kontrollierte Komponente).
  */
 export default function ProtocolNotesPanel({
   protocol, protocolRef, projectId, notes = [], onCreateNote, onUpdateNote, onDeleteNote,
+  open = false, onOpenChange,
 }) {
-  const [open,      setOpen]      = useState(false)
+  const setOpen = (v) => onOpenChange?.(v)
   const [editingId, setEditingId] = useState(null)   // null = neue Notiz
   const [type,      setType]      = useState('aktennotiz')
   const [subject,   setSubject]   = useState('')
@@ -70,8 +76,8 @@ export default function ProtocolNotesPanel({
 
       {open && (
         <>
-          <div className="fixed inset-0 z-40 bg-black/20 no-print" onClick={() => setOpen(false)} />
-          <div className="fixed right-0 top-0 bottom-0 z-50 w-full max-w-sm bg-white border-l border-gray-200 shadow-2xl flex flex-col no-print">
+          {/* Kein Backdrop: das Protokoll bleibt bedienbar, während die Notiz offen ist. */}
+          <div className="fixed right-0 top-0 bottom-0 z-40 w-full max-w-sm bg-white border-l border-gray-200 shadow-2xl flex flex-col no-print">
             {/* Kopf */}
             <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 bg-gray-50">
               <div>
@@ -82,8 +88,11 @@ export default function ProtocolNotesPanel({
                   Bezug: <span className="font-medium text-gray-600">{protocolRef || protocol.meetingType || 'Protokoll'}</span>
                 </p>
               </div>
-              <button className="btn-ghost p-1" onClick={() => setOpen(false)}><X size={16} /></button>
+              <button className="btn-ghost p-1" title="Notizen schließen" onClick={() => setOpen(false)}><X size={16} /></button>
             </div>
+            <p className="px-4 py-1.5 text-[11px] text-gray-400 border-b border-gray-100 bg-gray-50/60">
+              Protokoll und Notiz sind parallel bearbeitbar – Eingaben bleiben beim Wechsel erhalten.
+            </p>
 
             <div className="flex-1 overflow-y-auto p-4 space-y-4">
               {/* Neue/bearbeitete Notiz */}

@@ -10,6 +10,13 @@ function apiHeaders() {
   return h
 }
 
+function formatFileSize(bytes) {
+  if (!bytes) return ''
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
 // Versendet das Protokoll als PDF-Anhang (Server-Modus).
 // mode='send'     → reguläres Protokoll (nächster Termin, Aufgabenhinweis)
 // mode='freigabe' → Protokoll vorab zur Freigabe, Rückmeldung erbeten
@@ -35,6 +42,16 @@ export default function ProtocolEmailModal({ protocol, protocolNo, logoDataUrl, 
   //             Versand   → alle Eingeladenen mit E-Mail.
   const [recipients,  setRecipients]  = useState(() =>
     recipientCandidates.filter(p => (isReview ? p.present : true)).map(p => p.email))
+
+  // Protokoll-Anlagen: standardmäßig alle mitsenden, einzeln abwählbar.
+  const protocolAttachments = protocol.attachments ?? []
+  const [attachIds, setAttachIds] = useState(() => protocolAttachments.map(a => a.id))
+  const toggleAttachment = (id) =>
+    setAttachIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
+  const attachSize = protocolAttachments
+    .filter(a => attachIds.includes(a.id))
+    .reduce((s, a) => s + (a.size || 0), 0)
+
   const [customEmail, setCustomEmail] = useState('')
   const [subject,     setSubject]     = useState(
     isReview ? `Protokoll zur Freigabe: ${protocolNo}` : `Protokoll: ${protocolNo}`)
@@ -68,7 +85,11 @@ export default function ProtocolEmailModal({ protocol, protocolNo, logoDataUrl, 
 
       const res = await fetch(`/api/protocols/${protocol.id}/send-email`, {
         method: 'POST', headers: apiHeaders(),
-        body: JSON.stringify({ to: allTo.join(', '), subject, pdfBase64, pdfFilename, mode, deadline: deadline || undefined }),
+        body: JSON.stringify({
+          to: allTo.join(', '), subject, pdfBase64, pdfFilename, mode,
+          deadline: deadline || undefined,
+          attachmentIds: attachIds,
+        }),
       })
       if (!res.ok) { const d = await res.json().catch(() => ({})); setError(d.error || 'Fehler beim Senden.'); return }
       setSent(true)
@@ -128,6 +149,40 @@ export default function ProtocolEmailModal({ protocol, protocolNo, logoDataUrl, 
               </div>
             )}
           </div>
+
+          {/* Protokoll-Anlagen – als eigene Dateien an die E-Mail angehängt */}
+          {protocolAttachments.length > 0 && (
+            <div>
+              <p className="text-xs font-medium text-gray-700 mb-2">
+                Anlagen des Protokolls
+                <span className="text-gray-400 font-normal ml-1">
+                  – werden der E-Mail angehängt ({attachIds.length}/{protocolAttachments.length}
+                  {attachSize > 0 ? `, ${formatFileSize(attachSize)}` : ''})
+                </span>
+              </p>
+              <div className="border border-gray-200 divide-y divide-gray-100 max-h-36 overflow-y-auto">
+                {protocolAttachments.map((a, i) => (
+                  <label key={a.id} className="flex items-center gap-3 px-3 py-2 hover:bg-gray-50 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      className="w-4 h-4 accent-brand-600 flex-shrink-0"
+                      checked={attachIds.includes(a.id)}
+                      onChange={() => toggleAttachment(a.id)}
+                    />
+                    <Paperclip size={12} className="text-brand-600 flex-shrink-0" />
+                    <span className="text-xs text-gray-400 flex-shrink-0">Anlage {i + 1}</span>
+                    <span className="text-sm text-gray-900 flex-1 min-w-0 truncate">{a.name}</span>
+                    <span className="text-xs text-gray-400 flex-shrink-0">{formatFileSize(a.size)}</span>
+                  </label>
+                ))}
+              </div>
+              {attachSize > 20 * 1024 * 1024 && (
+                <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 px-3 py-1.5 mt-1.5">
+                  Die Anlagen sind zusammen {formatFileSize(attachSize)} groß – viele Postfächer lehnen E-Mails über ca. 20 MB ab.
+                </p>
+              )}
+            </div>
+          )}
 
           {/* Teilnehmer mit E-Mail */}
           {recipientCandidates.length > 0 && (

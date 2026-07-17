@@ -3900,7 +3900,7 @@ app.post('/api/protocols/:id/send-email', requireAuth, async (req, res) => {
         return res.status(403).json({ error: 'Kein Zugriff auf dieses Protokoll.' })
     }
 
-    const { to, subject, pdfBase64, pdfFilename, mode, deadline } = req.body
+    const { to, subject, pdfBase64, pdfFilename, mode, deadline, attachmentIds } = req.body
     const isReview = mode === 'freigabe'
     if (!to) return res.status(400).json({ error: '"to" erwartet.' })
     if (!mailer.mailerStatus().configured) return res.status(400).json({ error: 'E-Mail-Versand nicht konfiguriert.' })
@@ -3926,6 +3926,26 @@ app.post('/api/protocols/:id/send-email', requireAuth, async (req, res) => {
     const protoVars = { project: projStr, date: protoDate || '', date_sep: protoDate ? ' – ' : '' }
     const mailSubject = subject || applyTpl(tpl.subject, protoVars)
     const introText   = applyTpl(tpl.intro, protoVars)
+
+    // Protokoll-Anlagen: es werden ausschließlich Anlagen dieses Protokolls
+    // berücksichtigt (IDs stammen aus dem Datensatz, nicht aus dem Request) –
+    // der Client wählt daraus nur aus.
+    const ownAttachments = Array.isArray(protocol.attachments) ? protocol.attachments : []
+    const wanted = Array.isArray(attachmentIds)
+      ? ownAttachments.filter(a => attachmentIds.includes(a.id))
+      : ownAttachments
+
+    const attachHtml = wanted.length > 0
+      ? `<tr><td style="padding:8px 36px 0 36px;color:#4B5563;font-size:14px;">
+           <strong>Anlagen zu diesem Protokoll:</strong>
+           <ul style="margin:6px 0 0 0;padding-left:18px;color:#4B5563;font-size:13px;">
+             ${wanted.map(a => `<li>${esc(a.name || 'Anlage')}</li>`).join('')}
+           </ul>
+         </td></tr>`
+      : ''
+    const attachText = wanted.length > 0
+      ? ['', 'Anlagen zu diesem Protokoll:', ...wanted.map(a => `- ${a.name || 'Anlage'}`)]
+      : []
 
     // Mittelteil unterscheidet sich: Standard = nächster Termin/Aufgaben,
     // Freigabe = Frist-/Freigabehinweis (Rückmeldung erbeten).
@@ -3970,6 +3990,7 @@ app.post('/api/protocols/:id/send-email', requireAuth, async (req, res) => {
           <p style="margin:10px 0 0 0;color:#4B5563;">${esc(tpl.detail)}</p>
         </td></tr>
         ${midHtml}
+        ${attachHtml}
         <tr><td style="padding:16px 36px 28px 36px;color:#4B5563;font-size:14px;">
           ${esc(isReview ? '' : tpl.reply_note)}
         </td></tr>
@@ -3990,20 +4011,36 @@ app.post('/api/protocols/:id/send-email', requireAuth, async (req, res) => {
       introText,
       tpl.detail,
       ...midText,
+      ...attachText,
       ...(isReview ? [] : ['', tpl.reply_note]),
       '', tpl.footer,
     ].filter(l => l !== undefined).join('\n')
 
-    const attachments = []
+    const mailAttachments = []
     if (pdfBase64) {
-      attachments.push({
+      mailAttachments.push({
         filename:    pdfFilename || `Protokoll_${projStr}.pdf`,
         content:     Buffer.from(pdfBase64, 'base64'),
         contentType: 'application/pdf',
       })
     }
 
-    await mailer.sendMail({ from: fromAddress, to, replyTo, subject: mailSubject, html, text, attachments })
+    // Protokoll-Anlagen als eigene Dateien anhängen.
+    const missing = []
+    for (const a of wanted) {
+      const data = await attachments.load(a.id)
+      if (!data) { missing.push(a.name || a.id); continue }
+      mailAttachments.push({
+        filename:    a.name || `Anlage_${a.id}`,
+        content:     Buffer.from(data, 'base64'),
+        contentType: a.mimeType || 'application/octet-stream',
+      })
+    }
+    if (missing.length > 0) {
+      return res.status(400).json({ error: `Anlage(n) nicht mehr im Speicher gefunden: ${missing.join(', ')}` })
+    }
+
+    await mailer.sendMail({ from: fromAddress, to, replyTo, subject: mailSubject, html, text, attachments: mailAttachments })
     logEvent(isReview ? 'PROTOCOL_REVIEW_SENT' : 'PROTOCOL_EMAIL_SENT', req, `to=${to} project=${projStr} sender=${senderName || req.user}`)
 
     // Freigabe-Versand am Protokoll vermerken

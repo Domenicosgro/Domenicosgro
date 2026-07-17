@@ -120,26 +120,39 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
   const [showProtocolEmail,    setShowProtocolEmail]    = useState(false)
   const [emailMode,            setEmailMode]            = useState('send')   // 'send' | 'freigabe'
   const [printAttachmentData,  setPrintAttachmentData]  = useState({})  // attId → base64
+  const [notesOpen,            setNotesOpen]            = useState(false)
   const attachInputRef = useRef(null)
   const [attachBusy, setAttachBusy] = useState(false)
 
-  // ── Protokoll-Anlagen (werden dem versendeten PDF angehängt) ─────────────────
-  const addProtocolAttachment = async (file) => {
-    if (!file) return
-    const okType = file.type === 'application/pdf' || file.type.startsWith('image/')
-    if (!okType) { alert('Nur PDF- oder Bilddateien sind als Anlage möglich.'); return }
-    if (file.size > 25 * 1024 * 1024) { alert('Datei ist zu groß (max. 25 MB).'); return }
+  // ── Protokoll-Anlagen ───────────────────────────────────────────────────────
+  // Beliebige Dateien; sie werden dem E-Mail-Versand (Protokoll + Freigabe)
+  // als eigene Anhänge beigefügt und im Anlagenverzeichnis gelistet.
+  const MAX_ATTACHMENT_SIZE = 25 * 1024 * 1024
+
+  const addProtocolAttachments = async (fileList) => {
+    const files = Array.from(fileList ?? [])
+    if (files.length === 0) return
+    const tooBig = files.filter(f => f.size > MAX_ATTACHMENT_SIZE)
+    if (tooBig.length > 0) {
+      alert(`Zu groß (max. 25 MB je Datei):\n${tooBig.map(f => f.name).join('\n')}`)
+    }
+    const usable = files.filter(f => f.size <= MAX_ATTACHMENT_SIZE)
+    if (usable.length === 0) return
     setAttachBusy(true)
     try {
-      const base64 = await new Promise((resolve, reject) => {
-        const r = new FileReader()
-        r.onload  = () => resolve(String(r.result).split(',')[1])
-        r.onerror = reject
-        r.readAsDataURL(file)
-      })
-      const id = uid()
-      await attachmentStore.save(id, base64)
-      change({ attachments: [...(protocol.attachments ?? []), { id, name: file.name, mimeType: file.type || 'application/octet-stream', size: file.size }] })
+      const added = []
+      for (const file of usable) {
+        const base64 = await new Promise((resolve, reject) => {
+          const r = new FileReader()
+          r.onload  = () => resolve(String(r.result).split(',')[1])
+          r.onerror = reject
+          r.readAsDataURL(file)
+        })
+        const id = uid()
+        await attachmentStore.save(id, base64)
+        added.push({ id, name: file.name, mimeType: file.type || 'application/octet-stream', size: file.size })
+      }
+      change({ attachments: [...(protocol.attachments ?? []), ...added] })
     } catch {
       alert('Anlage konnte nicht gespeichert werden.')
     } finally {
@@ -480,7 +493,9 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
   )
 
   return (
-    <div className="flex items-start gap-2 px-4 sm:px-6 lg:px-10 py-4 justify-center print:block">
+    // Bei offenem Notizpanel wird rechts Platz freigehalten, damit das Protokoll
+    // nicht verdeckt und weiterhin parallel bearbeitbar ist.
+    <div className={`flex items-start gap-2 px-4 sm:px-6 lg:px-10 py-4 justify-center print:block transition-[padding] ${notesOpen ? 'md:pr-[25rem] print:pr-0' : ''}`}>
     {onCreateNote && (
       <ProtocolNotesPanel
         protocol={protocol}
@@ -490,6 +505,8 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
         onCreateNote={onCreateNote}
         onUpdateNote={onUpdateNote}
         onDeleteNote={onDeleteNote}
+        open={notesOpen}
+        onOpenChange={setNotesOpen}
       />
     )}
     <div className="flex-1 min-w-0 max-w-[1400px] space-y-0">
@@ -876,15 +893,14 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
           />
         </div>
 
-        {/* Protokoll-Anlagen (Bildschirm) – werden dem versendeten PDF angehängt */}
+        {/* Protokoll-Anlagen (Bildschirm) – werden dem E-Mail-Versand angehängt */}
         <div className="py-6 no-print">
           <div className="flex items-center justify-between flex-wrap gap-2 pb-2 border-b border-gray-200">
             <h2 className="section-title"><Paperclip size={16} /> Anlagen</h2>
             {!isClosed && (
               <>
-                <input ref={attachInputRef} type="file" className="hidden"
-                  accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg"
-                  onChange={e => { addProtocolAttachment(e.target.files?.[0]); e.target.value = '' }} />
+                <input ref={attachInputRef} type="file" className="hidden" multiple
+                  onChange={e => { addProtocolAttachments(e.target.files); e.target.value = '' }} />
                 <button className="btn-secondary btn-sm" disabled={attachBusy} onClick={() => attachInputRef.current?.click()}>
                   {attachBusy ? <Loader size={13} className="animate-spin" /> : <Plus size={13} />} Anlage hinzufügen
                 </button>
@@ -893,7 +909,8 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
           </div>
           {(protocol.attachments ?? []).length === 0 ? (
             <p className="text-sm text-gray-400 italic py-2">
-              Keine Anlagen. PDF- und Bilddateien werden dem versendeten Protokoll-PDF angehängt und im Anlagenverzeichnis gelistet.
+              Keine Anlagen. Beliebige Dateien (max. 25 MB) werden beim Versand des Protokolls
+              und beim Versand zur Freigabe als E-Mail-Anhang mitgeschickt und im Anlagenverzeichnis gelistet.
             </p>
           ) : (
             <ul className="mt-2 space-y-1">
@@ -935,7 +952,7 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
               </tbody>
             </table>
             <p style={{ fontSize: '8pt', color: '#555', marginTop: '3mm', fontFamily: 'Arial, sans-serif' }}>
-              Die Anlagen sind dem per E-Mail versendeten Protokoll-PDF beigefügt.
+              Die Anlagen sind der E-Mail zu diesem Protokoll als eigene Dateien beigefügt.
             </p>
           </div>
         )}
