@@ -21,7 +21,7 @@ function formatFileSize(bytes) {
 // mode='send'     → reguläres Protokoll (nächster Termin, Aufgabenhinweis)
 // mode='freigabe' → Protokoll vorab zur Freigabe, Rückmeldung erbeten
 // Der E-Mail-Text wird serverseitig aus den Protokolldaten + Vorlage erzeugt.
-export default function ProtocolEmailModal({ protocol, protocolNo, logoDataUrl, clientLogoDataUrl, projectContacts = [], mode = 'send', buildPdf, onClose, onSent }) {
+export default function ProtocolEmailModal({ protocol, protocolNo, logoDataUrl, clientLogoDataUrl, projectContacts = [], distribution = [], mode = 'send', buildPdf, onClose, onSent }) {
   const isReview = mode === 'freigabe'
 
   // Teilnehmer der Besprechung – bei Freigabe immer im Verteiler vorbelegt
@@ -29,6 +29,13 @@ export default function ProtocolEmailModal({ protocol, protocolNo, logoDataUrl, 
     () => (protocol.participants ?? []).filter(p => p.email),
     [protocol.participants]
   )
+  // Empfänger aus dem Projekt-Verteiler (Kanal protocol bzw. freigabe)
+  const distEmails = useMemo(
+    () => (distribution ?? []).map(d => (d.email || '').toLowerCase()).filter(Boolean),
+    [distribution]
+  )
+  const distEmailSet = useMemo(() => new Set(distEmails), [distEmails])
+
   // Weitere wählbare Empfänger aus den Projektkontakten (nicht schon Teilnehmer)
   const contactCandidates = useMemo(() => {
     const known = new Set(recipientCandidates.map(p => (p.email || '').toLowerCase()))
@@ -36,12 +43,36 @@ export default function ProtocolEmailModal({ protocol, protocolNo, logoDataUrl, 
       .filter(c => c.email && !known.has(c.email.toLowerCase()))
   }, [projectContacts, recipientCandidates])
 
+  // Verteiler-Empfänger, die weder Teilnehmer noch Projektkontakt sind (z. B.
+  // freie Adressen) – als eigene Auswahlgruppe sichtbar machen.
+  const distExtraCandidates = useMemo(() => {
+    const known = new Set([
+      ...recipientCandidates.map(p => (p.email || '').toLowerCase()),
+      ...contactCandidates.map(c => (c.email || '').toLowerCase()),
+    ])
+    const seen = new Set()
+    return (distribution ?? []).filter(d => {
+      const e = (d.email || '').toLowerCase()
+      if (!e || known.has(e) || seen.has(e)) return false
+      seen.add(e); return true
+    })
+  }, [distribution, recipientCandidates, contactCandidates])
+
   const participantsWithoutEmail = (protocol.participants ?? []).filter(p => !p.email)
 
-  // Vorauswahl: Freigabe → nur Anwesende (Teilnehmer der Besprechung);
-  //             Versand   → alle Eingeladenen mit E-Mail.
-  const [recipients,  setRecipients]  = useState(() =>
-    recipientCandidates.filter(p => (isReview ? p.present : true)).map(p => p.email))
+  // Vorauswahl: Teilnehmer (Freigabe → nur Anwesende, Versand → alle mit E-Mail)
+  // ergänzt um die Empfänger aus dem Projekt-Verteiler.
+  const [recipients,  setRecipients]  = useState(() => {
+    const base = recipientCandidates
+      .filter(p => (isReview ? p.present : true))
+      .map(p => p.email)
+    const distReal = [
+      ...(projectContacts ?? []).filter(c => c.email && distEmailSet.has(c.email.toLowerCase())).map(c => c.email),
+      ...recipientCandidates.filter(p => distEmailSet.has((p.email || '').toLowerCase())).map(p => p.email),
+      ...(distribution ?? []).map(d => d.email),
+    ].filter(Boolean)
+    return [...new Set([...base, ...distReal])]
+  })
 
   // Protokoll-Anlagen: standardmäßig alle mitsenden, einzeln abwählbar.
   const protocolAttachments = protocol.attachments ?? []
@@ -221,12 +252,40 @@ export default function ProtocolEmailModal({ protocol, protocolNo, logoDataUrl, 
             </p>
           )}
 
+          {/* Empfänger aus dem Projekt-Verteiler (freie Adressen / App-Nutzer) */}
+          {distExtraCandidates.length > 0 && (
+            <div>
+              <p className="text-xs font-medium text-gray-700 mb-2">
+                Aus dem Projekt-Verteiler
+                <span className="text-amber-600 font-normal ml-1">– vorausgewählt</span>
+              </p>
+              <div className="border border-gray-200 divide-y divide-gray-100 max-h-36 overflow-y-auto">
+                {distExtraCandidates.map(d => (
+                  <label key={d.email} className="flex items-center gap-3 px-3 py-2 hover:bg-gray-50 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      className="w-4 h-4 accent-brand-600 flex-shrink-0"
+                      checked={recipients.includes(d.email)}
+                      onChange={() => toggle(d.email)}
+                    />
+                    <div className="flex-1 min-w-0">
+                      <span className="text-sm text-gray-900">{d.name || d.email}</span>
+                      <span className="text-xs text-gray-400 ml-1.5">{d.email}</span>
+                    </div>
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Weitere Empfänger aus den Projektkontakten */}
           {contactCandidates.length > 0 && (
             <div>
               <p className="text-xs font-medium text-gray-700 mb-2">Weitere Projektkontakte</p>
               <div className="border border-gray-200 divide-y divide-gray-100 max-h-36 overflow-y-auto">
-                {contactCandidates.map(c => (
+                {contactCandidates.map(c => {
+                  const inDist = distEmailSet.has((c.email || '').toLowerCase())
+                  return (
                   <label key={c.id || c.email} className="flex items-center gap-3 px-3 py-2 hover:bg-gray-50 cursor-pointer">
                     <input
                       type="checkbox"
@@ -236,11 +295,12 @@ export default function ProtocolEmailModal({ protocol, protocolNo, logoDataUrl, 
                     />
                     <div className="flex-1 min-w-0">
                       <span className="text-sm text-gray-900">{c.name || c.company || c.email}</span>
+                      {inDist && <span className="badge-blue text-[10px] ml-1.5">Verteiler</span>}
                       {c.company && c.name && <span className="text-xs text-gray-400 ml-1.5">{c.company}</span>}
                       <span className="text-xs text-gray-400 ml-1.5">{c.email}</span>
                     </div>
                   </label>
-                ))}
+                )})}
               </div>
             </div>
           )}

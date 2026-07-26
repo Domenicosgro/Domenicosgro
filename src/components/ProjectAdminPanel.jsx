@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react'
-import { X, ShieldCheck, Loader, Link2, Copy, Trash2, UserCog, Image as ImageIcon } from 'lucide-react'
+import { X, ShieldCheck, Loader, Link2, Copy, Trash2, UserCog, Image as ImageIcon, Send } from 'lucide-react'
 import { formatDate } from '../utils'
 import LogoUpload from './LogoUpload'
+import ProjectDistribution from './ProjectDistribution'
 
 function apiHeaders() {
   const h = { 'Content-Type': 'application/json' }
@@ -20,6 +21,7 @@ export default function ProjectAdminPanel({ project, serverUser, onClose, onSave
   const [isAccessControlled, setIsAccessControlled] = useState(project.isAccessControlled ?? false)
   const [allowedUsers,       setAllowedUsers]       = useState(project.allowedUsers ?? [])
   const [projectAdmins,      setProjectAdmins]      = useState(project.projectAdmins ?? [])
+  const [distRecipients,     setDistRecipients]     = useState(project.distribution?.recipients ?? [])
   const [tokens,             setTokens]             = useState([])
   const [error,              setError]              = useState('')
   const [copied,             setCopied]             = useState('')
@@ -84,7 +86,10 @@ export default function ProjectAdminPanel({ project, serverUser, onClose, onSave
     try {
       const res = await fetch(`/api/projects/${project.id}/access`, {
         method: 'PATCH', headers: apiHeaders(),
-        body: JSON.stringify({ isAccessControlled, allowedUsers, projectAdmins }),
+        body: JSON.stringify({
+          isAccessControlled, allowedUsers, projectAdmins,
+          distribution: { recipients: distRecipients },
+        }),
       })
       if (!res.ok) { const d = await res.json(); setError(d.error || 'Fehler.'); return }
       onSaved?.()
@@ -108,13 +113,19 @@ export default function ProjectAdminPanel({ project, serverUser, onClose, onSave
   }
 
   const nameOf = (username) => users.find(u => u.username === username)?.display_name || username
+  // App-Nutzer mit Projektbezug (Admins + freigegebene Autoren + Ersteller) als
+  // Verteiler-Kandidaten – nur solche mit E-Mail sind später verwertbar.
+  const distUserCandidates = (() => {
+    const rel = new Set([creator, ...projectAdmins, ...allowedUsers].filter(Boolean))
+    return users.filter(u => u.email && (rel.has(u.username) || u.role === 'admin'))
+  })()
   const sysAdmins      = users.filter(u => u.username !== creator && u.role === 'admin')
   const candidates     = users.filter(u => u.username !== creator && u.role !== 'admin')
   const authorCandidates = candidates.filter(u => !projectAdmins.includes(u.username))
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="bg-white w-full max-w-md border border-gray-200 flex flex-col max-h-[88vh]">
+      <div className="bg-white w-full max-w-3xl border border-gray-200 flex flex-col max-h-[88vh]">
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200">
           <h3 className="font-semibold text-gray-900 flex items-center gap-2">
             <UserCog size={16} className="text-brand-600" /> Projekt-Admin-Panel
@@ -209,6 +220,19 @@ export default function ProjectAdminPanel({ project, serverUser, onClose, onSave
                 </p>
               </div>
             )}
+          </div>
+
+          {/* Verteiler – Nachrichten-Terminal je Projekt */}
+          <div>
+            <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2 flex items-center gap-1.5">
+              <Send size={13} className="text-brand-600" /> Verteiler – wer erhält welche Nachrichten
+            </p>
+            <ProjectDistribution
+              recipients={distRecipients}
+              onChange={setDistRecipients}
+              projectContacts={project.contacts ?? []}
+              projectUsers={distUserCandidates}
+            />
           </div>
 
           {/* Freimelde-Links */}

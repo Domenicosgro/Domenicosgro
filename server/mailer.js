@@ -101,7 +101,7 @@ function toGraphAttachments(attachments = []) {
 }
 
 // ── Versand über Microsoft Graph ──────────────────────────────────────────────
-async function sendViaGraph(cfg, { from, to, subject, html, text, replyTo, attachments }) {
+async function sendViaGraph(cfg, { from, to, cc, subject, html, text, replyTo, attachments }) {
   const token    = await getGraphToken(cfg)
   const fromAddr = parseAddress(from)
 
@@ -113,6 +113,7 @@ async function sendViaGraph(cfg, { from, to, subject, html, text, replyTo, attac
     },
     toRecipients: toRecipients(to),
   }
+  if (cc) message.ccRecipients = toRecipients(cc)
   // Anzeigename überschreiben (Adresse bleibt das authentifizierte Postfach)
   if (fromAddr?.name) {
     message.from = { emailAddress: { address: cfg.sender, name: fromAddr.name } }

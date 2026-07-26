@@ -848,20 +848,28 @@ app.post('/api/actions/send-email', requireAuth, async (req, res) => {
       '', taskTpl.footer,
     ].join('\n')
 
+    // Verteiler-Empfänger des Kanals "actions" als Kopie (CC) – z. B. die
+    // Projektleitung, die über jede Aufgabenzustellung informiert sein soll.
+    // Der/die eigentliche(n) Empfänger (to) werden nicht dupliziert.
+    const proj    = projectId ? db.projects.get(projectId) : null
+    const toSet   = new Set(String(to).split(',').map(s => s.trim().toLowerCase()).filter(Boolean))
+    const ccList  = distributionFor(proj, 'actions').map(r => r.email).filter(e => !toSet.has(e.toLowerCase()))
+    const cc      = [...new Set(ccList)]
+
     await mailer.sendMail({
       from: fromAddress,
       to,
       subject,
       html,
       text,
+      ...(cc.length ? { cc: cc.join(', ') } : {}),
       ...(replyTo ? { replyTo } : {}),
     })
-    logEvent('ACTIONS_EMAIL_SENT', req, `to=${to} responsible=${responsible} project=${projStr} count=${items.length} sender=${senderName || req.user}`)
+    logEvent('ACTIONS_EMAIL_SENT', req, `to=${to} cc=${cc.join(';') || '–'} responsible=${responsible} project=${projStr} count=${items.length} sender=${senderName || req.user}`)
 
     // Bestätigungs-E-Mail an Projektadministratoren
     if (projectId) {
       try {
-        const proj = db.projects.get(projectId)
         if (proj) {
           const adminUsernames = [...new Set([
             proj.projectAdminUser,
@@ -2084,6 +2092,54 @@ app.delete('/api/learning-videos/:id', requireAuth, requireAdmin, writeLimiter, 
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
+// ── Verteiler (Nachrichten-Terminal je Projekt) ──────────────────────────────
+const DISTRIBUTION_CHANNEL_KEYS = ['report', 'protocol', 'freigabe', 'actions']
+
+// Bereinigt die vom Client gelieferten Verteiler-Empfänger: nur valide E-Mail,
+// bekannte Kanäle, nach E-Mail dedupliziert. Vertraut keinen Client-Feldern.
+function sanitizeDistributionRecipients(list) {
+  const out = []
+  const seen = new Set()
+  for (const r of list) {
+    const email = String(r?.email || '').trim()
+    if (!email || !email.includes('@')) continue
+    const key = email.toLowerCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+    const channels = {}
+    for (const k of DISTRIBUTION_CHANNEL_KEYS) channels[k] = !!r?.channels?.[k]
+    out.push({
+      id:        typeof r?.id === 'string' ? r.id.slice(0, 64) : require('crypto').randomBytes(8).toString('hex'),
+      name:      String(r?.name || '').trim().slice(0, 200),
+      email,
+      contactId: r?.contactId ? String(r.contactId).slice(0, 64) : null,
+      username:  r?.username ? String(r.username).slice(0, 64) : null,
+      scope:     r?.scope === 'full' ? 'full' : 'short',
+      channels,
+    })
+  }
+  return out
+}
+
+// Empfänger eines Kanals (valide E-Mail, Kanal aktiv, dedupliziert).
+// Spiegelbild von distributionFor() in src/utils.js.
+function distributionFor(project, channel) {
+  const list = project?.distribution?.recipients
+  if (!Array.isArray(list)) return []
+  const seen = new Set()
+  const out = []
+  for (const r of list) {
+    const email = String(r?.email || '').trim()
+    if (!email || !email.includes('@')) continue
+    if (!r?.channels?.[channel]) continue
+    const key = email.toLowerCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+    out.push({ name: String(r?.name || '').trim(), email, scope: r?.scope === 'full' ? 'full' : 'short' })
+  }
+  return out
+}
+
 // ── Projektzugang – Hilfsfunktionen ──────────────────────────────────────────
 function isProjectAdmin(project, username) {
   if (!project || !username) return false
@@ -3211,14 +3267,8 @@ async function sendWeeklyReleaseReports({ appUrl } = {}) {
   const allPlans    = db.bimPlans.list()
   const allNotes    = db.notes.list()
   const superseded  = supersededActionIds(protocols)
-
-  // System-Admins mit E-Mail – erhalten immer die interne Vollversion
-  const adminRecipients = new Map()
-  for (const u of db.users.list()) {
-    if (u.role === 'admin' && u.email) {
-      adminRecipients.set(u.email.trim().toLowerCase(), u.email.trim())
-    }
-  }
+  // Empfänger stammen ausschließlich aus dem Projekt-Verteiler (siehe unten) –
+  // keine automatische Ableitung aus Admins/Kontakten mehr.
 
   // Daten je Projekt sammeln
   const emptyData = () => ({
@@ -3385,57 +3435,47 @@ async function sendWeeklyReleaseReports({ appUrl } = {}) {
       continue
     }
 
-    // Interne Empfänger: System-Admins + Projektadmins (mit E-Mail)
-    const internalRecipients = new Map(adminRecipients)
-    const adminUsernames = [project.projectAdminUser, ...(project.projectAdmins ?? [])].filter(Boolean)
-    for (const username of adminUsernames) {
-      const u = db.users.get(username)
-      if (u?.email) internalRecipients.set(u.email.trim().toLowerCase(), u.email.trim())
-    }
-
-    // Externe Empfänger: Projektkontakte mit E-Mail, die nicht schon intern bedient werden
-    const externalRecipients = new Map()
-    for (const c of (project.contacts ?? [])) {
-      const email = (c.email || '').trim().toLowerCase()
-      if (email && !internalRecipients.has(email)) externalRecipients.set(email, c.email.trim())
-    }
-
-    if (internalRecipients.size === 0 && externalRecipients.size === 0) {
-      console.warn(`[reporting] ${projName}: keine Empfänger – übersprungen`)
-      skippedProjects.push({ id: projectId, name: projName, reason: 'no-recipients' })
+    // Empfänger kommen ausschließlich aus dem Projekt-Verteiler (Kanal "report").
+    // Ohne konfigurierten Verteiler wird KEIN Bericht versendet (bewusste Wahl:
+    // volle Kontrolle darüber, wer Berichte erhält). Umfang je Empfänger:
+    //   scope 'full'  → interne Vollversion (alle Abschnitte)
+    //   scope 'short' → gekürzte externe Fassung (ohne interne Abschnitte)
+    const reportRecipients = distributionFor(project, 'report')
+    if (reportRecipients.length === 0) {
+      console.log(`[reporting] ${projName}: kein Verteiler-Empfänger für "Bericht" – übersprungen`)
+      skippedProjects.push({ id: projectId, name: projName, reason: 'no-distribution' })
       continue
     }
+    const fullTo  = reportRecipients.filter(r => r.scope === 'full').map(r => r.email)
+    const shortTo = reportRecipients.filter(r => r.scope === 'short').map(r => r.email)
 
     const subject = applyTpl(weeklyTpl.subject, { project: projName })
     let sentAny = false
 
-    // Interne Vollversion
-    if (internalRecipients.size > 0) {
+    // Vollversion (intern) an scope='full'
+    if (fullTo.length > 0) {
       const html = buildProjectStatusHtml(projName, data, weeklyTpl, internalSections)
       const text = buildProjectStatusText(projName, data, weeklyTpl, internalSections)
-      const to   = Array.from(internalRecipients.values()).join(', ')
-      console.log(`[reporting] "${projName}" intern an ${internalRecipients.size} Empfänger`)
+      console.log(`[reporting] "${projName}" voll an ${fullTo.length} Empfänger`)
       try {
-        await mailer.sendMail({ from, to, subject, html, text })
+        await mailer.sendMail({ from, to: fullTo.join(', '), subject, html, text })
         sentAny = true
       } catch (e) {
-        console.warn(`[reporting] "${projName}" (intern) fehlgeschlagen:`, e.message)
+        console.warn(`[reporting] "${projName}" (voll) fehlgeschlagen:`, e.message)
         skippedProjects.push({ id: projectId, name: projName, reason: 'send-error', detail: e.message })
       }
     }
 
-    // Gekürzte externe Version (abschaltbar)
-    if (weeklyTpl.send_external !== false && externalRecipients.size > 0
-        && Object.values(externalSections).some(Boolean)) {
+    // Gekürzte Fassung an scope='short' (nur wenn extern etwas zu berichten ist)
+    if (shortTo.length > 0 && Object.values(externalSections).some(Boolean)) {
       const html = buildProjectStatusHtml(projName, data, weeklyTpl, externalSections)
       const text = buildProjectStatusText(projName, data, weeklyTpl, externalSections)
-      const to   = Array.from(externalRecipients.values()).join(', ')
-      console.log(`[reporting] "${projName}" extern an ${externalRecipients.size} Empfänger`)
+      console.log(`[reporting] "${projName}" kurz an ${shortTo.length} Empfänger`)
       try {
-        await mailer.sendMail({ from, to, subject, html, text })
+        await mailer.sendMail({ from, to: shortTo.join(', '), subject, html, text })
         sentAny = true
       } catch (e) {
-        console.warn(`[reporting] "${projName}" (extern) fehlgeschlagen:`, e.message)
+        console.warn(`[reporting] "${projName}" (kurz) fehlgeschlagen:`, e.message)
       }
     }
 
@@ -4145,7 +4185,7 @@ app.get('/api/projects/:id/access', requireAuth, (req, res) => {
 // Eigenschaften ist optional – nur übergebene Felder werden geändert.
 app.patch('/api/projects/:id/access', requireAuth, writeLimiter, (req, res) => {
   try {
-    const { isAccessControlled, allowedUsers, projectAdmins } = req.body
+    const { isAccessControlled, allowedUsers, projectAdmins, distribution } = req.body
     const p = db.projects.get(req.params.id)
     if (!p) return res.status(404).json({ error: 'Nicht gefunden.' })
     if (!isProjectManager(p, req.user)) return res.status(403).json({ error: 'Nur Projektadministratoren können Zugriffsrechte ändern.' })
@@ -4162,6 +4202,9 @@ app.patch('/api/projects/:id/access', requireAuth, writeLimiter, (req, res) => {
       if (Array.isArray(projectAdmins)) {
         // Co-Admins: gültige Nutzer, nicht der Ersteller, dedupliziert
         next.projectAdmins = [...new Set(projectAdmins.filter(u => validUsernames.has(u) && u !== base.projectAdminUser))]
+      }
+      if (distribution && Array.isArray(distribution.recipients)) {
+        next.distribution = { recipients: sanitizeDistributionRecipients(distribution.recipients) }
       }
       return next
     }

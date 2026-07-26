@@ -149,10 +149,49 @@ export const emptyContact = () => ({
   category: '',
 })
 
+// ── Verteiler (Nachrichten-Terminal je Projekt) ───────────────────────────────
+// Steuert je Empfänger, welche Nachrichtenarten er erhält. Zentrale Definition
+// der Kanäle – von UI, Speicher-Validierung und Versand gemeinsam genutzt.
+export const DISTRIBUTION_CHANNELS = [
+  { key: 'report',   label: 'Bericht',   hint: 'Wochen- / Statusbericht (automatisch)' },
+  { key: 'protocol', label: 'Protokoll', hint: 'Protokoll-Versand – Vorauswahl im Dialog' },
+  { key: 'freigabe', label: 'Freigabe',  hint: 'Protokoll zur Freigabe – Vorauswahl im Dialog' },
+  { key: 'actions',  label: 'Aufgaben',  hint: 'Aufgaben-/Maßnahmenversand – als Kopie (CC)' },
+]
+
+export const emptyDistributionRecipient = () => ({
+  id: uid(),
+  name: '',
+  email: '',
+  contactId: null,       // optional: verknüpfter Projektkontakt
+  username: null,        // optional: verknüpfter App-Benutzer
+  scope: 'short',        // 'full' = vollständiger Bericht (intern), 'short' = gekürzt (extern)
+  channels: { report: false, protocol: false, freigabe: false, actions: false },
+})
+
+// Empfänger eines Kanals: valide E-Mail, Kanal aktiv, nach E-Mail dedupliziert.
+export const distributionFor = (project, channel) => {
+  const list = project?.distribution?.recipients
+  if (!Array.isArray(list)) return []
+  const seen = new Set()
+  const out = []
+  for (const r of list) {
+    const email = (r.email || '').trim()
+    if (!email || !email.includes('@')) continue
+    if (!r.channels?.[channel]) continue
+    const key = email.toLowerCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+    out.push({ name: (r.name || '').trim(), email, scope: r.scope === 'full' ? 'full' : 'short' })
+  }
+  return out
+}
+
 export const emptyProject = () => ({
   id: uid(),
   name: '',
   contacts: [],
+  distribution: { recipients: [] },   // Nachrichten-Verteiler (Terminal je Projekt)
   passwordHash: null,        // legacy SHA-256 hex – null after migration to AES-GCM
   isEncrypted: false,
   encryptedContacts: null,   // base64 AES-GCM ciphertext

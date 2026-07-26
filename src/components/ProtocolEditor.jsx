@@ -9,7 +9,7 @@ import ProtocolEmailModal from './ProtocolEmailModal'
 import ProtocolItems    from './ProtocolItems'
 import ActionItems      from './ActionItems'
 import NotesSection     from './NotesSection'
-import { formatDate, buildProtocolNo, getChainNo, uid, emptyAgendaItem } from '../utils'
+import { formatDate, buildProtocolNo, getChainNo, uid, emptyAgendaItem, distributionFor } from '../utils'
 import { exportDocx } from '../exportDocx'
 import { attachmentStore } from '../attachmentStore'
 import GesamtprotokollModal from './GesamtprotokollModal'
@@ -1042,6 +1042,7 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
           logoDataUrl={logoDataUrl}
           clientLogoDataUrl={clientLogoDataUrl}
           projectContacts={enrichedProjectContacts}
+          distribution={distributionFor(linkedProject, emailMode === 'freigabe' ? 'freigabe' : 'protocol')}
           mode={emailMode}
           buildPdf={buildServerPdf}
           onClose={() => setShowProtocolEmail(false)}
