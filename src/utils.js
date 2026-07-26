@@ -285,6 +285,7 @@ export const emptyProtocol = () => ({
   predecessorId: null,
   phase: null,           // 'planung' | 'bau' | null
   itemCarriedFrom: null, // Vorgänger-ID, dessen Protokollpunkte bereits auto-übernommen wurden
+  actionCarriedFrom: null, // Vorgänger-ID, dessen offene Maßnahmen bereits auto-übernommen wurden
   isClosed: false,       // protocol is finalized / locked
   closedAt: null,
   participants: [],

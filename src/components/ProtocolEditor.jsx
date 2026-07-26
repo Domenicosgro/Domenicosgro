@@ -168,7 +168,8 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
 
   // Tracks which predecessorId we have already initiated item-carryover for.
   // Prevents double-firing (React Strict Mode, rapid predecessor switches, etc.)
-  const carriedForRef = useRef(null)
+  const carriedForRef       = useRef(null)
+  const actionCarriedForRef = useRef(null)   // dito für Maßnahmen
 
   const chainNo     = getChainNo(protocol, protocols ?? [])
   const protocolNo  = buildProtocolNo(protocol.projectName, protocol.date, chainNo, protocol.meetingType)
@@ -184,7 +185,9 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
   const pendingActionCarryover = useMemo(() => {
     if (!predecessor) return []
     const already = new Set((protocol.actionItems ?? []).map(a => a.carriedFromId).filter(Boolean))
-    return predecessor.actionItems.filter(a => a.status !== 'erledigt' && !already.has(a.id))
+    return predecessor.actionItems.filter(
+      a => a.status !== 'erledigt' && !a.bimIssueId && !a.planReviewId && !already.has(a.id)
+    )
   }, [predecessor, protocol.actionItems])
 
   const pendingItemCarryover = useMemo(() => {
@@ -201,13 +204,18 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
 
   const handleActionCarryover = () => {
     if (!predecessor) return
+    // Dopplungsschutz: nur Maßnahmen übernehmen, deren Vorgänger-ID noch NICHT als
+    // carriedFromId im aktuellen Protokoll steht. Spiegel-Einträge (BIM/Planprüfung)
+    // werden nicht übernommen – ihr Status wird in der Datenquelle gepflegt.
     const already = new Set((protocol.actionItems ?? []).map(a => a.carriedFromId).filter(Boolean))
     const toCarry = (predecessor.actionItems ?? []).filter(
-      a => a.status !== 'erledigt' && !already.has(a.id)
+      a => a.status !== 'erledigt' && !a.bimIssueId && !a.planReviewId && !already.has(a.id)
     )
     if (toCarry.length === 0) return
     const carried = toCarry.map(a => ({ ...a, id: uid(), carriedFromId: a.id, completedAt: null }))
-    change({ actionItems: [...(protocol.actionItems ?? []), ...carried] })
+    // actionCarriedFrom persistiert, dass für diesen Vorgänger bereits automatisch
+    // übernommen wurde → gelöschte Maßnahmen tauchen beim Wieder-Öffnen nicht erneut auf.
+    change({ actionItems: [...(protocol.actionItems ?? []), ...carried], actionCarriedFrom: predecessor.id })
   }
 
   const handleItemCarryover = () => {
@@ -245,6 +253,24 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
     carriedForRef.current = predecessor.id
     handleItemCarryover()
   }, [predecessor?.id, protocol.itemCarriedFrom]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Auto-carry OFFENE MASSNAHMEN from predecessor – ohne Nachfrage, dopplungssicher.
+  // Identisches Schutzmuster wie bei den Protokollpunkten:
+  //   – persistenter Marker actionCarriedFrom (verhindert Wiederauftauchen gelöschter)
+  //   – Ref-Guard (Strict Mode / schneller Vorgänger-Wechsel)
+  //   – Legacy-Check für Bestandsprotokolle ohne Marker
+  //   – handleActionCarryover dedupliziert zusätzlich über carriedFromId
+  useEffect(() => {
+    if (!predecessor?.id || isClosed) return
+    if (protocol.actionCarriedFrom === predecessor.id) return
+    if (actionCarriedForRef.current === predecessor.id) return
+    const predActionIds  = new Set((predecessor.actionItems ?? []).map(a => a.id))
+    const alreadyCarried = (protocol.actionItems ?? []).some(a => a.carriedFromId && predActionIds.has(a.carriedFromId))
+    if (alreadyCarried) { actionCarriedForRef.current = predecessor.id; return }
+    if (pendingActionCarryover.length === 0) return
+    actionCarriedForRef.current = predecessor.id
+    handleActionCarryover()
+  }, [predecessor?.id, protocol.actionCarriedFrom]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Phase inheritance: auto-inherit phase from predecessor when not already set
   useEffect(() => {
@@ -794,17 +820,8 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
         <span>{protocolNo}{isClosed ? ' · Abgeschlossen' : ''}</span>
       </div>
 
-      {/* ── Carryover banners ── */}
-      {pendingActionCarryover.length > 0 && !isClosed && (
-        <div className="no-print flex items-center gap-3 bg-blue-50 border border-blue-200 rounded-lg p-4 text-sm text-blue-800 mb-4">
-          <AlertCircle size={18} className="flex-shrink-0 text-blue-500" />
-          <div className="flex-1">
-            <strong>{pendingActionCarryover.length} offene Maßnahme{pendingActionCarryover.length !== 1 ? 'n' : ''}</strong>{' '}
-            aus dem Vorgänger noch nicht übernommen.
-          </div>
-          <button className="btn-primary text-xs" onClick={handleActionCarryover}><RefreshCw size={14} /> Übernehmen</button>
-        </div>
-      )}
+      {/* Offene Maßnahmen aus dem Vorgänger werden automatisch übernommen (ohne
+          Nachfrage, dopplungssicher). Kein manuelles Banner mehr nötig. */}
 
       {/* ════════════════════════════════════════
           SCREEN: flat protocol document
