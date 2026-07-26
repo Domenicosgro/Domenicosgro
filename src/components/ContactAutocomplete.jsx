@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react'
 import { createPortal } from 'react-dom'
+import { useContactUsage } from '../contactUsage'
 
 // Wiederverwendbares Namensfeld mit smarter Suche: Bei Eingabe der ersten
 // Buchstaben werden passende Kontakte vorgeschlagen (Treffer in Name/Firma/
@@ -32,6 +33,8 @@ export default function ContactAutocomplete({
   const inputRef = useRef(null)
   const listRef  = useRef(null)
 
+  const { scoreOf, record } = useContactUsage()
+
   const q = (value || '').toLowerCase().trim()
 
   const rank = useCallback((c) => {
@@ -58,19 +61,32 @@ export default function ContactAutocomplete({
     const seen = new Set()
     return contacts
       .filter(hit)
-      .map(c => ({ c, label: labelOf(c) }))
+      .map(c => ({ c, label: labelOf(c), score: scoreOf(c) }))
       .filter(({ label }) => label && !seen.has(label) && seen.add(label))
-      .sort((a, b) => rank(a.c) - rank(b.c) || a.label.localeCompare(b.label, 'de'))
-      .slice(0, 8)
-  }, [contacts, q, rank])
+      // Ohne Suchtext: meistgenutzte zuerst. Mit Suchtext: Treffergüte zuerst,
+      // Nutzungshäufigkeit als Tiebreak – so werden Vorschläge trotzdem konkreter.
+      .sort((a, b) =>
+        (q ? rank(a.c) - rank(b.c) : 0)
+        || b.score - a.score
+        || a.label.localeCompare(b.label, 'de'))
+      .slice(0, 10)
+  }, [contacts, q, rank, scoreOf])
 
-  // Feste Auswahleinträge zuerst, danach die Kontakttreffer.
-  const options = useMemo(() => [
-    ...extraOptions
+  // Feste Auswahleinträge zuerst, danach – ohne Suchtext gruppiert – die Kontakte:
+  // „Häufig genutzt" (score > 0) vor „Weitere Kontakte".
+  const options = useMemo(() => {
+    const extra = extraOptions
       .filter(o => !q || o.value.toLowerCase().includes(q))
-      .map(o => ({ kind: 'extra', label: o.value, hint: o.hint })),
-    ...matches.map(({ c, label }) => ({ kind: 'contact', label, c })),
-  ], [extraOptions, q, matches])
+      .map(o => ({ kind: 'extra', label: o.value, hint: o.hint }))
+    const contactRows = matches.map(({ c, label, score }) => ({ kind: 'contact', label, c, score }))
+    if (q) return [...extra, ...contactRows]
+    const frequent = contactRows.filter(r => r.score > 0)
+    const rest     = contactRows.filter(r => r.score <= 0)
+    const out = [...extra]
+    if (frequent.length) { out.push({ kind: 'header', label: '★ Häufig genutzt' }); out.push(...frequent) }
+    if (rest.length)     { if (frequent.length) out.push({ kind: 'header', label: 'Weitere Kontakte' }); out.push(...rest) }
+    return out
+  }, [extraOptions, q, matches])
 
   const place = useCallback(() => {
     const el = inputRef.current
@@ -80,7 +96,20 @@ export default function ContactAutocomplete({
   const openMenu = () => { if (contacts.length || extraOptions.length) { place(); setHi(-1); setOpen(true) } }
   const close    = () => { setOpen(false); setHi(-1) }
 
-  const choose = (label) => { onChange(label); close(); inputRef.current?.focus() }
+  const choose = (opt) => {
+    // opt kann ein Options-Objekt (mit Kontakt) oder ein reiner Label-String sein.
+    const label = typeof opt === 'string' ? opt : opt.label
+    if (typeof opt === 'object' && opt.kind === 'contact') record(opt.c)
+    onChange(label); close(); inputRef.current?.focus()
+  }
+
+  const isSelectable = (o) => o && o.kind !== 'header'
+  const firstSelectable = (from, dir) => {
+    for (let i = from; i >= 0 && i < options.length; i += dir) {
+      if (isSelectable(options[i])) return i
+    }
+    return -1
+  }
 
   // Außerhalb klicken / scrollen / Größe ändern → schließen bzw. neu positionieren
   useEffect(() => {
@@ -103,9 +132,9 @@ export default function ContactAutocomplete({
   const onKeyDown = (e) => {
     if (!open && (e.key === 'ArrowDown')) { openMenu(); return }
     if (!open) return
-    if (e.key === 'ArrowDown')      { e.preventDefault(); setHi(h => Math.min(h + 1, options.length - 1)) }
-    else if (e.key === 'ArrowUp')   { e.preventDefault(); setHi(h => Math.max(h - 1, 0)) }
-    else if (e.key === 'Enter')     { if (hi >= 0 && options[hi]) { e.preventDefault(); choose(options[hi].label) } }
+    if (e.key === 'ArrowDown')      { e.preventDefault(); setHi(h => { const n = firstSelectable(h + 1, +1); return n === -1 ? h : n }) }
+    else if (e.key === 'ArrowUp')   { e.preventDefault(); setHi(h => { const n = firstSelectable(h - 1, -1); return n === -1 ? h : n }) }
+    else if (e.key === 'Enter')     { if (hi >= 0 && isSelectable(options[hi])) { e.preventDefault(); choose(options[hi]) } }
     else if (e.key === 'Escape')    { close() }
   }
 
@@ -131,12 +160,18 @@ export default function ContactAutocomplete({
           style={{ top: rect.bottom + 2, left: rect.left, width: Math.max(rect.width, 220) }}
         >
           {options.map((o, i) => (
+            o.kind === 'header' ? (
+              <div key={`h-${o.label}-${i}`}
+                className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-gray-400 bg-gray-50 sticky top-0">
+                {o.label}
+              </div>
+            ) : (
             <button
               key={`${o.kind}-${o.label}-${i}`}
               type="button"
               className={`w-full text-left px-3 py-1.5 flex flex-col ${i === hi ? 'bg-brand-50' : 'hover:bg-gray-50'} ${
                 o.kind === 'extra' ? 'border-l-2 border-sky bg-sky/5' : ''}`}
-              onMouseDown={e => { e.preventDefault(); choose(o.label) }}
+              onMouseDown={e => { e.preventDefault(); choose(o) }}
               onMouseEnter={() => setHi(i)}
             >
               {o.kind === 'extra' ? (
@@ -153,6 +188,7 @@ export default function ContactAutocomplete({
                 </>
               )}
             </button>
+            )
           ))}
         </div>,
         document.body,

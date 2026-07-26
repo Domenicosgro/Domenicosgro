@@ -1,7 +1,8 @@
 import React, { useState, useMemo } from 'react'
-import { X, Mail, Send, Check, Loader, Calendar, Paperclip, Info, ClipboardCheck } from 'lucide-react'
+import { X, Mail, Send, Check, Loader, Calendar, Paperclip, Info, ClipboardCheck, UserPlus } from 'lucide-react'
 import { formatDate } from '../utils'
 import { buildProtocolPdf } from '../protocolPdf'
+import { useContactUsage } from '../contactUsage'
 
 function apiHeaders() {
   const h = { 'Content-Type': 'application/json' }
@@ -21,8 +22,9 @@ function formatFileSize(bytes) {
 // mode='send'     → reguläres Protokoll (nächster Termin, Aufgabenhinweis)
 // mode='freigabe' → Protokoll vorab zur Freigabe, Rückmeldung erbeten
 // Der E-Mail-Text wird serverseitig aus den Protokolldaten + Vorlage erzeugt.
-export default function ProtocolEmailModal({ protocol, protocolNo, logoDataUrl, clientLogoDataUrl, projectContacts = [], distribution = [], mode = 'send', buildPdf, onClose, onSent }) {
+export default function ProtocolEmailModal({ protocol, protocolNo, logoDataUrl, clientLogoDataUrl, projectContacts = [], distribution = [], mode = 'send', buildPdf, onSaveContact, onClose, onSent }) {
   const isReview = mode === 'freigabe'
+  const { scoreOf, record } = useContactUsage()
 
   // Teilnehmer der Besprechung – bei Freigabe immer im Verteiler vorbelegt
   const recipientCandidates = useMemo(
@@ -36,12 +38,15 @@ export default function ProtocolEmailModal({ protocol, protocolNo, logoDataUrl, 
   )
   const distEmailSet = useMemo(() => new Set(distEmails), [distEmails])
 
-  // Weitere wählbare Empfänger aus den Projektkontakten (nicht schon Teilnehmer)
+  // Weitere wählbare Empfänger aus den Projektkontakten (nicht schon Teilnehmer),
+  // meistgenutzte zuerst.
   const contactCandidates = useMemo(() => {
     const known = new Set(recipientCandidates.map(p => (p.email || '').toLowerCase()))
     return (projectContacts ?? [])
       .filter(c => c.email && !known.has(c.email.toLowerCase()))
-  }, [projectContacts, recipientCandidates])
+      .sort((a, b) => scoreOf(b) - scoreOf(a)
+        || (a.name || a.company || '').localeCompare(b.name || b.company || '', 'de'))
+  }, [projectContacts, recipientCandidates, scoreOf])
 
   // Verteiler-Empfänger, die weder Teilnehmer noch Projektkontakt sind (z. B.
   // freie Adressen) – als eigene Auswahlgruppe sichtbar machen.
@@ -107,6 +112,24 @@ export default function ProtocolEmailModal({ protocol, protocolNo, logoDataUrl, 
   const allTo      = [...new Set(recipients)]
   const hasActions = (protocol.actionItems ?? []).length > 0
 
+  // Bereits im Projekt bekannte Adressen (Kontakte + Teilnehmer)
+  const knownEmails = useMemo(() => {
+    const s = new Set()
+    for (const c of (projectContacts ?? [])) if (c.email) s.add(c.email.trim().toLowerCase())
+    for (const p of (protocol.participants ?? [])) if (p.email) s.add(p.email.trim().toLowerCase())
+    return s
+  }, [projectContacts, protocol.participants])
+
+  // Gewählte Empfänger, die noch kein Projektkontakt sind → zum Speichern anbieten
+  const [savedEmails, setSavedEmails] = useState(() => new Set())
+  const unknownRecipients = allTo.filter(e =>
+    !knownEmails.has(e.toLowerCase()) && !savedEmails.has(e.toLowerCase()))
+
+  const saveAsContact = (email) => {
+    onSaveContact?.({ email })
+    setSavedEmails(prev => new Set(prev).add(email.toLowerCase()))
+  }
+
   const handleSend = async () => {
     if (allTo.length === 0) { setError('Bitte mindestens einen Empfänger angeben.'); return }
     setSending(true); setError('')
@@ -125,6 +148,8 @@ export default function ProtocolEmailModal({ protocol, protocolNo, logoDataUrl, 
         }),
       })
       if (!res.ok) { const d = await res.json().catch(() => ({})); setError(d.error || 'Fehler beim Senden.'); return }
+      // Nutzungshäufigkeit je tatsächlichem Empfänger erhöhen (per E-Mail).
+      allTo.forEach(email => record(email))
       setSent(true)
       onSent?.()
       setTimeout(onClose, 1500)
@@ -323,6 +348,25 @@ export default function ProtocolEmailModal({ protocol, protocolNo, logoDataUrl, 
           {allTo.length > 0 && (
             <div className="bg-gray-50 border border-gray-200 px-3 py-2 text-xs text-gray-700">
               <strong>An:</strong> {allTo.join(', ')}
+            </div>
+          )}
+
+          {/* Unbekannte Empfänger als Projektkontakt übernehmen */}
+          {onSaveContact && unknownRecipients.length > 0 && (
+            <div className="border border-brand-100 bg-brand-50/60 px-3 py-2 space-y-1.5">
+              <p className="text-xs text-gray-600 flex items-center gap-1.5">
+                <UserPlus size={12} className="text-brand-600" />
+                Nicht im Projekt gespeichert – als Kontakt übernehmen?
+              </p>
+              {unknownRecipients.map(e => (
+                <div key={e} className="flex items-center gap-2">
+                  <span className="text-sm text-gray-800 flex-1 min-w-0 truncate">{e}</span>
+                  <button className="btn-ghost text-xs text-brand-700 hover:bg-brand-100 px-2 py-1"
+                    onClick={() => saveAsContact(e)}>
+                    <UserPlus size={12} /> Als Kontakt speichern
+                  </button>
+                </div>
+              ))}
             </div>
           )}
 

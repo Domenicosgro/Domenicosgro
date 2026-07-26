@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { Plus, Trash2, Users, FolderOpen, RefreshCw, AlertCircle, Search, X, Database } from 'lucide-react'
 import { emptyParticipant, uid } from '../utils'
+import { useContactUsage } from '../contactUsage'
 
 // ── Globale Kontaktsuche ──────────────────────────────────────────────────────
 // Dedup-Schlüssel identisch zur zentralen Kontaktdatenbank (App.jsx allContacts)
@@ -11,6 +12,7 @@ const contactKey = (c) =>
 function ContactSearchPanel({ projectContacts = [], allContacts, participants, onAdd, onClose }) {
   const [q, setQ] = useState('')
   const inputRef  = useRef(null)
+  const { scoreOf } = useContactUsage()
 
   useEffect(() => { inputRef.current?.focus() }, [])
 
@@ -43,8 +45,10 @@ function ContactSearchPanel({ projectContacts = [], allContacts, participants, o
     if (name.includes(term))    return 3
     return 4
   }
+  // Ohne Suchtext: meistgenutzte zuerst. Mit Suchtext: Treffergüte, dann Nutzung.
   const byRank = (a, b) =>
-    rank(a) - rank(b) ||
+    (term ? rank(a) - rank(b) : 0) ||
+    scoreOf(b) - scoreOf(a) ||
     (a.name || a.company || '').localeCompare(b.name || b.company || '', 'de')
 
   // Gruppe 1: Kontakte des konkreten Projekts. Gruppe 2: übrige Datenbank.
@@ -143,6 +147,7 @@ function ContactSearchPanel({ projectContacts = [], allContacts, participants, o
 // ── Hauptkomponente ───────────────────────────────────────────────────────────
 export default function ParticipantsList({ participants, onChange, readOnly, projectContacts, allContacts = [] }) {
   const [showSearch, setShowSearch] = useState(false)
+  const { record } = useContactUsage()
 
   const importFromProject = () => {
     const existing = new Set(participants.map(p => p.email).filter(Boolean))
@@ -158,10 +163,12 @@ export default function ParticipantsList({ participants, onChange, readOnly, pro
         contactId: c.id,
       }))
     if (toAdd.length === 0) return
+    toAdd.forEach(record)
     onChange([...participants, ...toAdd])
   }
 
   const addFromDb = (c) => {
+    record(c)
     onChange([...participants, {
       ...emptyParticipant(),
       id:      uid(),

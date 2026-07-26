@@ -1000,6 +1000,37 @@ app.put('/api/auth/users/:username/settings', requireAuth, (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
+// ── Kontakt-Nutzungshäufigkeit (pro Nutzer, isoliert von den User-Settings) ────
+// Speichert je Nutzer eine Map { key: { count, last } } im app_state. Dient nur
+// der Sortierung „meistgenutzte Kontakte zuerst" und ist rein persönlich.
+const contactUsageKey = (user) => `contact_usage:${user}`
+app.get('/api/contact-usage', requireAuth, (req, res) => {
+  try {
+    const raw = db.appState.get(contactUsageKey(req.user))
+    let usage = {}
+    if (raw) { try { usage = JSON.parse(raw) } catch {} }
+    res.json({ usage })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+app.put('/api/contact-usage', requireAuth, writeLimiter, (req, res) => {
+  try {
+    const usage = req.body?.usage
+    if (typeof usage !== 'object' || usage === null || Array.isArray(usage)) {
+      return res.status(400).json({ error: '"usage"-Objekt erwartet.' })
+    }
+    // Nur { count:Number, last:Number } je Schlüssel, gedeckelt auf 500 Einträge.
+    const clean = {}
+    for (const [k, v] of Object.entries(usage).slice(0, 500)) {
+      if (typeof k !== 'string' || !k) continue
+      const count = Number(v?.count); const last = Number(v?.last)
+      if (!Number.isFinite(count) || count <= 0) continue
+      clean[k.slice(0, 200)] = { count: Math.min(count, 1e6), last: Number.isFinite(last) ? last : 0 }
+    }
+    db.appState.set(contactUsageKey(req.user), JSON.stringify(clean))
+    res.json({ ok: true })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
 // ── Attachment API ────────────────────────────────────────────────────────────
 // ID validation helper used in all three routes.
 function validAttachmentId(id) {

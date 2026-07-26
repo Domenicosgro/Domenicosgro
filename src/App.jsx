@@ -148,6 +148,11 @@ export default function App() {
     handleRefresh()
   }
 
+  // Kontakt-Nutzungshäufigkeit (Provider in main.jsx) nach Auth-Wechsel neu laden.
+  useEffect(() => {
+    if (typeof window !== 'undefined') window.dispatchEvent(new Event('kp-auth-changed'))
+  }, [serverUser?.username])
+
   const handleLogout = async () => {
     const token = localStorage.getItem('kp_session_token')
     try {
