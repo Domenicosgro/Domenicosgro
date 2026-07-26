@@ -1,6 +1,6 @@
 # Komplizen Protokolle – Vollständige Entwicklungsdokumentation
 
-> Stand: 2026-07-10 · Branch: `claude/protocol-tool-meetings-tIoZX`
+> Stand: 2026-07-26 · Branch: `claude/protocol-tool-meetings-tIoZX`
 
 ---
 
@@ -33,16 +33,22 @@
 **Kernfunktionen:**
 - Projekte mit verschlüsselter Kontaktdatenbank (AES-GCM)
 - Protokolle erstellen, abschließen und in Reihen (Vorgänger-Kette) verknüpfen
-- Protokollpunkte mit Rich-Text, Anhängen, Hierarchie (3 Ebenen), eigener **Frist** und Ein-/Ausklappen
+- Protokoll-**Untertitel** (Protokollbezeichnung) – in Kopf, Ausdruck, PDF, Word und E-Mail
+- Protokollpunkte mit Rich-Text, Anhängen, Hierarchie (3 Ebenen), eigener **Frist**,
+  Ein-/Ausklappen, **geerbtem Titel** vom übergeordneten Punkt und Zuständigkeit inkl. „**Info**"
 - Maßnahmen/Aufgaben mit **Titel**, **Art** (Planung/Ausführung/AG/GP), Status, Priorität, Deadline
-- Protokoll-**Anlagen** (PDF/Bilder) inkl. **Anlagenverzeichnis**
+- Protokoll-**Anlagen** (beliebige Dateien) inkl. **Anlagenverzeichnis** – als E-Mail-Anhang mitsendbar
+- **Notizpanel** neben dem Protokoll – parallel bearbeitbar (kein Overlay)
 - Tagesordnungs-Entwurf (optionale Uhrzeit je Thema, Drag&Drop in Hauptthemen,
   abgeleitete Nummerierung) und Einladungs-E-Mail (SMTP, CID-Logo, PWA-Anleitung)
 - Projektübergreifendes Maßnahmen-Dashboard (Anlegen, Auswahl-Versand, Fortschritts-Diagramm,
   eigener „Erledigt"-Bereich – auch für BIM-Issues und Planprüfung)
+- **Verteiler-Terminal je Projekt**: Matrix Empfänger × Nachrichtenart steuert, wer welche
+  Nachrichten erhält (Bericht, Protokoll, Freigabe, Aufgaben)
+- Automatische **Wochen-/Statusberichte** (freitags) – Empfänger ausschließlich aus dem Verteiler
 - **Kontakt-Sync**: Kontakte der Kategorie „Eigene Organisation" werden automatisch als
   Mitarbeiter (Personalplanung) und login-freie Benutzer gespiegelt
-- **Admin-Vorschau** „Als Anwender ansehen" (rein clientseitig)
+- **Admin-Vorschau** „Als Anwender ansehen" (rein clientseitig) + **laufende Software-Version** im Adminbereich
 - Gesamtprotokoll über gesamte Sitzungsreihe drucken
 - Export als Word (.docx), **PDF (serverseitig via Chrome – identisch für Druck & Versand)** und CSV
 - PWA-Installation (Edge ohne HTTPS, Chrome mit HTTPS)
@@ -99,9 +105,11 @@ npm run electron:build:mac   # macOS DMG
 │   ├── sw.js                      ← Service Worker (network-first)
 │   └── de.aff / de.dic            ← Deutsche Wörterbücher
 ├── server/                        ← Express-Backend (Server-Modus)
-│   ├── index.js                   ← REST-API, Auth, SMTP, SSE
+│   ├── index.js                   ← REST-API, Auth, SMTP, SSE, Reporting, Verteiler
 │   ├── db.js                      ← SQLite-Setup + Migrationen
 │   ├── auth.js                    ← Session-Token-Auth (crypto.randomBytes, 8h TTL), Benutzer-CRUD
+│   ├── mailer.js                  ← Versand Graph (bevorzugt) / SMTP, cc-fähig
+│   ├── pdfRender.js               ← Serverseitiges Chromium-PDF (puppeteer-core), SSRF-sicher
 │   ├── attachments.js             ← Datei-Upload/-Download
 │   └── package.json               ← Nur Server-Abhängigkeiten
 ├── electron/                      ← Electron-Hauptprozess
@@ -121,14 +129,19 @@ npm run electron:build:mac   # macOS DMG
     ├── exportParticipantsList.js  ← Word-Export Beteiligtenliste
     ├── spellcheck.worker.js       ← Web Worker für nspell
     ├── components/
-    │   ├── ProjectsHome.jsx        ← Startseite: Favoriten-Ansicht, HOAI-Karte, PWA-Install
-    │   ├── ProjectDashboard.jsx    ← Projekt-Dashboard: HOAI-Schieberegler + Synology-Links  ← NEU
-    │   ├── TileSidebar.jsx         ← Kachel-Leiste im ProtocolEditor (fixed rechts, no-print) ← NEU
+    │   ├── ProjectsHome.jsx        ← Startseite: Favoriten, Projektkacheln (einheitl. Kennzahlen)
+    │   ├── ProjectDashboard.jsx    ← Projekt-Dashboard: HOAI-Schieberegler + Synology-Links
+    │   ├── ProjectAdminPanel.jsx   ← Projekt-Terminal: Zugang, Co-Admins, Verteiler, Portal, Logos
+    │   ├── ProjectDistribution.jsx ← Verteiler-Matrix (Empfänger × Nachrichtenart)  ← NEU
+    │   ├── TileSidebar.jsx         ← Kachel-Leiste im ProtocolEditor (fixed rechts, no-print)
     │   ├── ProjectManager.jsx      ← Kontaktverwaltung
+    │   ├── ContactAutocomplete.jsx ← Namensfeld mit smarter Suche (Portal-Dropdown, extraOptions)
     │   ├── BeteiligtenModal.jsx    ← Projektbeteiligtenliste (Druck/Export)
-    │   ├── ProtocolList.jsx        ← Protokollliste (+ updatedBy-Anzeige)
+    │   ├── ProtocolList.jsx        ← Protokollliste: nach Art gruppiert, neuestes zuoberst, ausblendbar
     │   ├── ProtocolEditor.jsx      ← Protokoll-Editor (Hauptkomponente)
-    │   ├── MeetingHeader.jsx       ← Metadaten des Protokolls
+    │   ├── ProtocolNotesPanel.jsx  ← Andockendes Notizpanel (parallel bedienbar)  ← NEU
+    │   ├── ProtocolEmailModal.jsx  ← Protokoll-/Freigabe-Versand (Empfängerwahl, Anlagen, Verteiler)
+    │   ├── MeetingHeader.jsx       ← Metadaten des Protokolls (inkl. Untertitel)
     │   ├── ParticipantsList.jsx    ← Teilnehmerliste im Protokoll
     │   ├── AgendaDraft.jsx         ← Tagesordnungs-Entwurf
     │   ├── AgendaEmailModal.jsx    ← Agenda-E-Mail-Dialog
@@ -138,11 +151,11 @@ npm run electron:build:mac   # macOS DMG
     │   ├── NotesSection.jsx        ← Allgemeine Bemerkungen
     │   ├── RichTextEditor.jsx      ← Tiptap-Editor-Komponente
     │   ├── SpellCheckTextarea.jsx  ← Textarea mit Rechtschreibprüfung
-    │   ├── MassnahmenDashboard.jsx ← Projektübergreifende Maßnahmen-Übersicht
+    │   ├── MassnahmenDashboard.jsx ← Projektübergreifende Maßnahmen-Übersicht (+ Erstellen, Versand, Donut)
     │   ├── GesamtprotokollModal.jsx ← Gesamtprotokoll Druck/Vorschau
     │   ├── LogoUpload.jsx          ← Logo hochladen/löschen
     │   ├── LoginScreen.jsx         ← Login-Maske (Server-Modus)
-    │   └── AdminPanel.jsx          ← Benutzerverwaltung (Server-Modus)
+    │   └── AdminPanel.jsx          ← Benutzerverwaltung + laufende Software-Version (Server-Modus)
     └── hooks/
         ├── useProtocols.js         ← CRUD Protokolle + syncProjectName + refetchProtocols
         ├── useProjects.js         ← CRUD Projekte + refetchProjects
@@ -171,10 +184,36 @@ Alle Modelle sind in `src/utils.js` als `empty*()` Fabrik-Funktionen definiert.
   cryptoIv:          null,       // base64 12-Byte AES-GCM IV
   hoaiServices:      [],         // HOAI-Leistungsbilder (siehe 4.1.1) – default []
   linkedFolders:     [],         // verknüpfte Synology-URLs (siehe 4.1.2) – default []
+  distribution:      { recipients: [] },  // Nachrichten-Verteiler (siehe 4.1.3)
+  isAccessControlled: false,     // Projektzugang eingeschränkt?
+  allowedUsers:      [],         // freigegebene Autoren (Usernamen)
+  projectAdmins:     [],         // Co-Administratoren (Usernamen)
+  projectAdminUser:  null,       // Ersteller/Eigentümer
   createdAt:         ISO-String,
   updatedAt:         ISO-String,
 }
 ```
+
+#### 4.1.3 Verteiler-Empfänger (distribution.recipients[])
+
+```js
+{
+  id:        uid(),
+  name:      '',
+  email:     '',            // Pflicht; ohne @ ignoriert
+  contactId: null,          // optional: verknüpfter Projektkontakt
+  username:  null,          // optional: verknüpfter App-Benutzer
+  scope:     'short',       // 'full' = interner Vollbericht · 'short' = gekürzte Fassung
+  channels:  { report: false, protocol: false, freigabe: false, actions: false },
+}
+```
+
+Kanäle (`DISTRIBUTION_CHANNELS` in utils): **report** (Wochen-/Statusbericht),
+**protocol** / **freigabe** (Vorauswahl im Versanddialog), **actions** (Kopie/CC beim
+Aufgabenversand). Serverseitig durch `sanitizeDistributionRecipients()` bereinigt
+(valide Mail, bekannte Kanäle, nach E-Mail dedupliziert). Abgefragt via
+`distributionFor(project, channel)` (Client **und** Server, spiegelbildlich).
+**Ohne report-Empfänger sendet der automatische Bericht für dieses Projekt nichts.**
 
 #### 4.1.1 HOAI-Leistungsbild (hoaiServices[])
 
@@ -216,6 +255,7 @@ Nur Web-URLs (https://…). Windows-Pfade (\\server\...) werden vom Browser bloc
 {
   id:              uid(),
   meetingType:     '',     // 'Baubesprechung' | 'Team-Besprechung' | … | custom
+  subtitle:        '',     // freier Untertitel = Protokollbezeichnung (Kopf, Ausdruck, E-Mail)
   projectName:     '',     // denorm. Kopie von project.name (wird bei Rename gesynct)
   projectId:       null,   // Fremdschlüssel auf project.id
   date:            today(),
@@ -236,6 +276,9 @@ Nur Web-URLs (https://…). Windows-Pfade (\\server\...) werden vom Browser bloc
   agendaItems:     [],     // Protokollpunkte, siehe 4.6
   actionItems:     [],     // Maßnahmen, siehe 4.7
   tiles:           [],     // Kacheln in der Sidebar (Dokument-/URL-Links), siehe 4.8
+  attachments:     [],     // Protokoll-Anlagen, siehe 4.9
+  reviewSentAt:    null,    // Zeitpunkt „zur Freigabe versendet"
+  reviewDeadline:  null,    // optionale Rückmeldefrist
   createdAt:       ISO-String,
   updatedAt:       ISO-String,
 }
@@ -344,8 +387,26 @@ Kacheln werden in `TileSidebar.jsx` gerendert (fixed rechts, no-print). Klick ö
 ```js
 { id, name, mimeType, size }   // Bytes liegen im attachmentStore (Server: /api/attachments)
 ```
-PDF/PNG/JPG. Werden im **Anlagenverzeichnis** am Protokollende gelistet; im pdf-lib-Fallback
-zusätzlich physisch angehängt (PDF-Seiten gemergt, Bilder ganzseitig).
+**Beliebige Dateitypen** (max. 25 MB/Datei, Mehrfachauswahl). Werden im **Anlagenverzeichnis**
+am Protokollende gelistet und beim E-Mail-Versand (Protokoll **und** Freigabe) als **eigene
+Dateien** angehängt – der Server lädt sie aus dem Attachment-Store, berücksichtigt nur Anlagen
+des jeweiligen Protokolls (IDs aus dem Datensatz, nicht aus dem Request), im Dialog einzeln abwählbar.
+
+### 4.10 Maßnahmen-Übernahme & Spiegel-Einträge (wichtig!)
+
+Zwei Sonderfälle, die **projektweite Zählungen** verfälschen, wenn nicht gefiltert wird:
+
+- **Übernommene Maßnahme:** Wird eine offene Maßnahme in ein Folgeprotokoll übernommen,
+  entsteht dort eine Kopie mit `carriedFromId` → ID des Originals. Das Original bleibt im
+  Vorgänger stehen (historischer Beleg). In Übersichten/Berichten zählt **nur die jüngste Kopie**.
+- **Spiegel-Eintrag:** BIM-Issues und Planprüfungen werden als Maßnahme ins Protokoll gespiegelt
+  (`bimIssueId` bzw. `planReviewId`). Ihr Status bleibt dauerhaft „offen" (gepflegt wird er in
+  der Datenquelle) → sie zählen **nie** als reguläre Maßnahme.
+
+Zentrale Helfer (utils, spiegelbildlich auf dem Server): `isMirrorAction(a)`,
+`supersededActionIds(protocols)`, `liveActionItems(protos, allProtocols)`. Angewendet in
+Maßnahmen-Dashboard, Projektkachel, Projekt-Dashboard, Protokollkarten, Bericht, Bauherren-Portal
+und Freimelde-Seite – damit zählen alle Ansichten **gleich**.
 
 ---
 
@@ -744,6 +805,20 @@ priorityBadge(val)                 // → { value, label, color } aus PRIORITIES
 // Agenda-E-Mail
 buildAgendaEmailBody(protocol)     // → Plaintext für mailto:
 
+// Maßnahmen-Filter (projektweite Zählungen, siehe 4.10)
+isMirrorAction(a)                  // → true für BIM-/Planprüfungs-Spiegel
+supersededActionIds(protocols)     // → Set der von einer Folge-Kopie abgelösten IDs
+liveActionItems(protos, all?)      // → reguläre, aktuelle Maßnahmen (ohne Spiegel/abgelöst)
+
+// Verteiler
+DISTRIBUTION_CHANNELS              // [{ key, label, hint }] – report/protocol/freigabe/actions
+emptyDistributionRecipient()       // → { id, name, email, contactId, username, scope, channels }
+distributionFor(project, channel)  // → Empfänger [{ name, email, scope }] (valide, dedup)
+
+// Maßnahmen-Art
+ACTION_ARTEN                       // [{ value, label }] planung/ausfuehrung/ag/gp
+artBadge(val)                      // → Badge-Objekt der Art
+
 // HOAI
 HOAI_LEISTUNGSBILDER                      // 5 Einträge { type, label }
 HOAI_PHASEN                               // { 1: 'Grundlagenermittlung', … 9: 'Objektbetreuung' }
@@ -751,14 +826,15 @@ emptyHoaiService(type?)                   // → { id, type, label, phases{1..9:
 calcProjectProgress(hoaiServices)         // → Ø Fortschritt 0–100
 
 // Fabrik-Funktionen
-emptyProject()                            // incl. hoaiServices: [], linkedFolders: []
+emptyProject()                            // incl. hoaiServices, linkedFolders, distribution
 emptyContact()
-emptyProtocol()                           // incl. tiles: []
+emptyProtocol()                           // incl. subtitle, tiles, attachments
 emptyParticipant()
 emptyAgendaDraftItem()
 emptyAgendaItem(level)
-emptyActionItem()
+emptyActionItem()                         // incl. title, art
 emptyTile(color?)                         // → { id, label:'', kind:'url', url:'', color }
+emptyDistributionRecipient()
 ```
 
 **Konstanten:**
@@ -968,6 +1044,42 @@ Zeigt sich am unteren Rand der App:
 
 ---
 
+## 12a. Server: E-Mail, Reporting & Verteiler
+
+### Versandwege (`server/mailer.js`)
+Microsoft **Graph** (bevorzugt, wenn `GRAPH_*` gesetzt), sonst **SMTP** (`SMTP_HOST` …).
+`sendMail({ from, to, cc?, subject, html, text, replyTo?, attachments? })` – **cc** wird in
+**beiden** Pfaden unterstützt (Graph: `ccRecipients`).
+
+### Nachrichtenarten & Empfänger
+| Nachricht | Auslöser | Empfänger |
+|---|---|---|
+| Protokoll-Versand / Freigabe | Dialog (`ProtocolEmailModal`) | Teilnehmer + Verteiler (protocol/freigabe) **vorausgewählt**, frei anpassbar |
+| Aufgaben-/Maßnahmenversand | `EmailModal` je Verantwortlichem | `to` = Verantwortliche(r); **cc** = Verteiler-Kanal `actions` |
+| Wochen-/Statusbericht | Cron (Fr 10:00) + `POST /api/admin/release-report-test` | **ausschließlich** Verteiler-Kanal `report` |
+
+### Automatischer Bericht (`sendWeeklyReleaseReports`)
+- Empfänger **nur** aus `distributionFor(project, 'report')`. **Kein report-Empfänger → Projekt
+  übersprungen** (bewusste Entscheidung „ohne Verteiler nichts senden").
+- Umfang je Empfänger: `scope:'full'` → interne Vollversion (alle Abschnitte),
+  `scope:'short'` → gekürzte externe Fassung (ohne interne Abschnitte).
+- Ampel & Zähler blenden Spiegel-Einträge und abgelöste Vorgänger aus (siehe 4.10).
+- Auch das **Bauherren-Portal** (`collectProjectStatus`) und die **Freimelde-Seite**
+  (`openTasksFor`) filtern Spiegel/abgelöste Maßnahmen.
+
+### Speicherung
+`PATCH /api/projects/:id/access` nimmt `{ isAccessControlled, allowedUsers, projectAdmins,
+distribution }` entgegen; `sanitizeDistributionRecipients()` verwirft ungültige Mails/Kanäle
+und dedupliziert. Nur Projekt-Manager dürfen speichern.
+
+### Laufende Version im Adminbereich
+`GET /api/system-info` (Admin): `version`, `buildId` (aus `dist/version.json`), `startedAt`,
+`uptimeSec`, `node`, `platform`. Die **Build-ID** (Zeitstempel aus `vite.config.mjs`)
+identifiziert den ausgerollten Stand; weicht sie von `__BUILD_ID__` im geladenen Bundle ab,
+zeigt der Adminkopf „Oberfläche veraltet – neu laden".
+
+---
+
 ## 13. Wichtige Muster & gelöste Bugs
 
 ### 13.1 React Strict Mode – Doppelter Effect
@@ -1107,6 +1219,37 @@ Ergänzend: `express.json` auf 100 MB begrenzt (große Uploads laufen über eige
 Vor lokalen Server-/Node-Tests: `npm rebuild better-sqlite3`, ggf. fehlende Deps
 (`nodemailer`, `pdf-lib`) nachinstallieren. Für Node-Tests von ESM-Modulen mit
 extensionslosen Imports: vorher mit `esbuild --bundle` bündeln.
+`src/utils.js` hat **keine** Fremd-Importe → Helfer (z. B. `liveActionItems`,
+`distributionFor`) lassen sich direkt per `node --input-type=module` gegen die echte Datei testen.
+
+### 13.13 Doppelt gezählte Maßnahmen (Übersichten & Berichte)
+
+**Problem:** Projektweite Ansichten zählten Maßnahmen ungefiltert → dieselbe Maßnahme
+erschien je Protokoll der Vorgänger-Kette erneut, und BIM-/Planprüfungs-Spiegel (Status
+dauerhaft „offen") wurden als offene/überfällige Aufgaben mitgezählt.
+**Lösung:** Eine gemeinsame Definition „reguläre, aktuelle Maßnahme" (`liveActionItems`,
+`isMirrorAction`, `supersededActionIds` – siehe 4.10), angewendet in **allen** zählenden
+Ansichten (Client + Server). Die einzelnen Protokolle zeigen ihre Maßnahmen unverändert
+vollständig; die Entdopplung wirkt nur projektweit.
+
+### 13.14 Notizpanel blockierte das Protokoll
+
+**Problem:** Das Notizfenster war ein Modal mit unsichtbarem Backdrop (`fixed inset-0`),
+der jeden Klick ins Protokoll abfing → nicht parallel bedienbar.
+**Lösung:** `ProtocolNotesPanel` dockt ohne Backdrop seitlich an; der Editor hält den
+Offen-Zustand und hält per `md:pr-[25rem]` Platz frei (im Druck via `print:pr-0` zurückgesetzt).
+
+### 13.15 Projektkachel wich von Maßnahmenbereich/Protokoll ab
+
+**Problem:** Die Projektkachel zählte Aufgaben völlig ungefiltert; Null-Werte ließen Zeilen
+ganz verschwinden → Kacheln waren nicht vergleichbar.
+**Lösung:** `liveActionItems` auch hier; jede Kachel zeigt dieselben vier Zeilen, Null-Werte
+als ruhiges graues Badge (statt zu verschwinden), Grammatik „1 Aufgabe offen".
+
+### 13.16 PowerShell zerlegt mehrzeilige Commit-Nachrichten
+
+Mehrzeilige `-m`-Nachrichten scheitern in Windows PowerShell. **Lösung:** Nachricht in eine
+Datei schreiben und `git commit -F <datei>` verwenden.
 
 ---
 
@@ -1123,17 +1266,20 @@ git push -u origin claude/protocol-tool-meetings-tIoZX
 ```
 
 **Bei Push-Fehlern:** bis zu 4 Retries mit exponentiellem Backoff (2s → 4s → 8s → 16s).
+Mehrzeilige Commit-Nachrichten unter Windows-PowerShell via `git commit -F <datei>` (siehe 13.16).
 
-**Commit-Chronik (aktuell):**
+**Commit-Chronik (jüngste zuerst):**
 ```
-99fac4d  Add CLAUDE.md with project context
-31787cc  Switch UI to flat design: no rounded corners, no shadows
-ae323f3  Sync project name to all linked protocols on rename
-90d0cb0  Fix duplicate protocol items when closing a protocol
-e4dc396  Add Gewerk column, sortable headers, and drag-and-drop reordering
-1629d64  Add CSV export for project contact list
-b9c2a5f  Add rich-text editing to protocol items and notes fields
-e1ff583  Harden carryover: prevent duplicate protocol items
-a9db604  Add refresh button, Gesamtprotokoll print, always-visible item dates
-04968f4  Fix white screen: restore ParticipantsList, rename contacts modal
+7bd019c  Verteiler-Management je Projekt: Kontrolle wer welche Nachrichten erhaelt
+2b6df01  Projektkachel: einheitliche Kennzahlen, Null-Werte werden angezeigt
+a17c410  Adminbereich zeigt die laufende Software-Version
+1afc249  Bugfix: Projektkachel zaehlt Aufgaben wie Massnahmenbereich und Protokoll
+ec925ea  Bugfix: uebernommene Massnahmen nicht mehr doppelt zaehlen
+e6f61be  Bugfix: Projektbericht zeigte erledigte BIM-Issues/Planpruefungen als offen
+d5ed839  Protokoll-Untertitel (Protokollbezeichnung) ergaenzt
+c991fd9  Zustaendigkeit im Protokollpunkt: Auswahl Info ergaenzt
+cbe90eb  Protokoll-Anlagen per E-Mail versenden, Notizpanel parallel bedienbar
+a1c8b5a  Protokolluebersicht: Kategorien je Besprechungsart, aeltere ausblendbar
+ef2fbae  Protokollliste: nach Besprechungsart gruppiert, neuestes Protokoll zuerst
+ec39e24  Protokollpunkte: jeder Unterpunkt erbt den Titel des uebergeordneten Punkts
 ```
