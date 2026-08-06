@@ -1,6 +1,6 @@
 import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react'
 import { flushSync } from 'react-dom'
-import { ArrowLeft, Printer, Download, Send, RefreshCw, AlertCircle, Lock, Unlock, FileText, RotateCcw, Layers, Loader, Eye, EyeOff, Users, Box, ClipboardCheck, Paperclip, Trash2, Plus } from 'lucide-react'
+import { ArrowLeft, Printer, Download, Send, RefreshCw, AlertCircle, Lock, Unlock, FileText, RotateCcw, Layers, Loader, Eye, EyeOff, Users, Box, ClipboardCheck, Paperclip, Trash2, Plus, Upload } from 'lucide-react'
 import MeetingHeader    from './MeetingHeader'
 import ParticipantsList from './ParticipantsList'
 import AgendaDraft      from './AgendaDraft'
@@ -936,45 +936,50 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
           />
         </div>
 
-        {/* Protokoll-Anlagen (Bildschirm) – werden dem E-Mail-Versand angehängt.
-            Dateien können per Klick ODER Drag & Drop hinzugefügt werden. */}
-        <div
-          className={`py-6 no-print transition-shadow ${attachDragOver ? 'ring-2 ring-brand-300 ring-inset bg-brand-50/30' : ''}`}
-          onDragOver={!isClosed ? (e => { e.preventDefault(); if (!attachDragOver) setAttachDragOver(true) }) : undefined}
-          onDragLeave={!isClosed ? (e => { if (!e.currentTarget.contains(e.relatedTarget)) setAttachDragOver(false) }) : undefined}
-          onDrop={!isClosed ? (e => {
-            e.preventDefault(); setAttachDragOver(false)
-            if (e.dataTransfer?.files?.length) addProtocolAttachments(e.dataTransfer.files)
-          }) : undefined}
-        >
+        {/* Protokoll-Anlagen (Bildschirm) – werden dem E-Mail-Versand angehängt. */}
+        <div className="py-6 no-print">
           <div className="flex items-center justify-between flex-wrap gap-2 pb-2 border-b border-gray-200">
             <h2 className="section-title"><Paperclip size={16} /> Anlagen</h2>
-            {!isClosed && (
-              <>
-                <input ref={attachInputRef} type="file" className="hidden" multiple
-                  onChange={e => { addProtocolAttachments(e.target.files); e.target.value = '' }} />
-                <button className="btn-secondary btn-sm" disabled={attachBusy} onClick={() => attachInputRef.current?.click()}>
-                  {attachBusy ? <Loader size={13} className="animate-spin" /> : <Plus size={13} />} Anlage hinzufügen
-                </button>
-              </>
-            )}
           </div>
+
+          {!isClosed && (
+            <>
+              <input ref={attachInputRef} type="file" className="hidden" multiple
+                onChange={e => { addProtocolAttachments(e.target.files); e.target.value = '' }} />
+              {/* Immer sichtbares Drop-Feld: klickbar (Dateiauswahl) UND Ablagefläche
+                  für Drag & Drop. preventDefault auf dragenter/dragover ist zwingend,
+                  sonst öffnet der Browser die Datei statt sie anzunehmen. */}
+              <button
+                type="button"
+                onClick={() => attachInputRef.current?.click()}
+                onDragEnter={e => { e.preventDefault(); setAttachDragOver(true) }}
+                onDragOver={e => { e.preventDefault(); if (!attachDragOver) setAttachDragOver(true) }}
+                onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget)) setAttachDragOver(false) }}
+                onDrop={e => {
+                  e.preventDefault(); setAttachDragOver(false)
+                  if (e.dataTransfer?.files?.length) addProtocolAttachments(e.dataTransfer.files)
+                }}
+                className={`mt-3 w-full border-2 border-dashed px-4 py-6 flex flex-col items-center text-center transition-colors ${
+                  attachDragOver ? 'border-brand-500 bg-brand-50' : 'border-gray-300 hover:border-brand-400 hover:bg-gray-50'}`}
+              >
+                {attachBusy
+                  ? <Loader size={22} className="mb-2 text-brand-600 animate-spin" />
+                  : <Upload size={22} className={`mb-2 ${attachDragOver ? 'text-brand-600' : 'text-gray-400'}`} />}
+                <span className="text-sm font-medium text-gray-700">
+                  {attachDragOver ? 'Datei hier ablegen…' : 'Datei hierher ziehen oder klicken zum Auswählen'}
+                </span>
+                <span className="text-xs text-gray-400 mt-1">
+                  Beliebige Dateien, mehrere möglich, max. 25 MB je Datei – werden beim Versand
+                  des Protokolls und zur Freigabe angehängt und im Anlagenverzeichnis gelistet.
+                </span>
+              </button>
+            </>
+          )}
+
           {(protocol.attachments ?? []).length === 0 ? (
-            <div className={`mt-2 border-2 border-dashed px-4 py-8 text-center transition-colors ${
-              attachDragOver ? 'border-brand-400 bg-brand-50' : 'border-gray-200'}`}>
-              <Paperclip size={20} className={`mx-auto mb-2 ${attachDragOver ? 'text-brand-600' : 'text-gray-300'}`} />
-              <p className="text-sm text-gray-500">
-                {attachDragOver
-                  ? 'Dateien hier ablegen…'
-                  : 'Dateien hierher ziehen oder „Anlage hinzufügen".'}
-              </p>
-              <p className="text-xs text-gray-400 mt-1">
-                Beliebige Dateien (max. 25 MB) – werden beim Versand des Protokolls und zur Freigabe
-                als E-Mail-Anhang mitgeschickt und im Anlagenverzeichnis gelistet.
-              </p>
-            </div>
+            isClosed && <p className="text-sm text-gray-400 italic py-2">Keine Anlagen.</p>
           ) : (
-            <ul className="mt-2 space-y-1">
+            <ul className="mt-3 space-y-1">
               {(protocol.attachments ?? []).map((a, i) => (
                 <li key={a.id} className="flex items-center gap-2 text-sm">
                   <span className="text-gray-400 w-16 flex-shrink-0">Anlage {i + 1}</span>
