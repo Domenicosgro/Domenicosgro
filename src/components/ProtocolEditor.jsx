@@ -539,7 +539,27 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
         onOpenChange={setNotesOpen}
       />
     )}
-    <div className="flex-1 min-w-0 max-w-[1400px] space-y-0">
+    <div
+      className="flex-1 min-w-0 max-w-[1400px] space-y-0"
+      // Datei-Drops ÜBERALL im Protokoll annehmen → landen als Anlage.
+      // Ohne preventDefault würde der Browser die Datei stattdessen öffnen.
+      // Nur echte Datei-Drags behandeln; interne Agenda-DnD (text/plain) bleibt unberührt.
+      onDragOver={!isClosed ? (e => {
+        if (Array.from(e.dataTransfer?.types || []).includes('Files')) {
+          e.preventDefault(); e.dataTransfer.dropEffect = 'copy'
+          if (!attachDragOver) setAttachDragOver(true)
+        }
+      }) : undefined}
+      onDragLeave={!isClosed ? (e => {
+        if (!e.currentTarget.contains(e.relatedTarget)) setAttachDragOver(false)
+      }) : undefined}
+      onDrop={!isClosed ? (e => {
+        if (Array.from(e.dataTransfer?.types || []).includes('Files')) {
+          e.preventDefault(); setAttachDragOver(false)
+          if (e.dataTransfer.files?.length) addProtocolAttachments(e.dataTransfer.files)
+        }
+      }) : undefined}
+    >
 
       {/* ── Top bar ── */}
       <div className="flex items-center justify-between mb-4 no-print flex-wrap gap-2">
@@ -946,20 +966,23 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
             <>
               <input ref={attachInputRef} type="file" className="hidden" multiple
                 onChange={e => { addProtocolAttachments(e.target.files); e.target.value = '' }} />
-              {/* Immer sichtbares Drop-Feld: klickbar (Dateiauswahl) UND Ablagefläche
-                  für Drag & Drop. preventDefault auf dragenter/dragover ist zwingend,
-                  sonst öffnet der Browser die Datei statt sie anzunehmen. */}
-              <button
-                type="button"
+              {/* Immer sichtbares Drop-Feld: klickbar (Dateiauswahl) UND Ablagefläche.
+                  Bewusst ein <div> (kein <button>) – manche Browser lehnen Datei-Drops
+                  auf Formular-Steuerelementen ab. stopPropagation verhindert, dass der
+                  editorweite Drop-Handler dieselbe Datei ein zweites Mal hinzufügt. */}
+              <div
+                role="button"
+                tabIndex={0}
                 onClick={() => attachInputRef.current?.click()}
-                onDragEnter={e => { e.preventDefault(); setAttachDragOver(true) }}
-                onDragOver={e => { e.preventDefault(); if (!attachDragOver) setAttachDragOver(true) }}
-                onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget)) setAttachDragOver(false) }}
+                onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); attachInputRef.current?.click() } }}
+                onDragEnter={e => { e.preventDefault(); e.stopPropagation(); setAttachDragOver(true) }}
+                onDragOver={e => { e.preventDefault(); e.stopPropagation(); if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy'; if (!attachDragOver) setAttachDragOver(true) }}
+                onDragLeave={e => { e.stopPropagation(); if (!e.currentTarget.contains(e.relatedTarget)) setAttachDragOver(false) }}
                 onDrop={e => {
-                  e.preventDefault(); setAttachDragOver(false)
+                  e.preventDefault(); e.stopPropagation(); setAttachDragOver(false)
                   if (e.dataTransfer?.files?.length) addProtocolAttachments(e.dataTransfer.files)
                 }}
-                className={`mt-3 w-full border-2 border-dashed px-4 py-6 flex flex-col items-center text-center transition-colors ${
+                className={`mt-3 w-full border-2 border-dashed px-4 py-6 flex flex-col items-center text-center cursor-pointer transition-colors ${
                   attachDragOver ? 'border-brand-500 bg-brand-50' : 'border-gray-300 hover:border-brand-400 hover:bg-gray-50'}`}
               >
                 {attachBusy
@@ -972,7 +995,7 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
                   Beliebige Dateien, mehrere möglich, max. 25 MB je Datei – werden beim Versand
                   des Protokolls und zur Freigabe angehängt und im Anlagenverzeichnis gelistet.
                 </span>
-              </button>
+              </div>
             </>
           )}
 
