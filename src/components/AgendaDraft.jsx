@@ -56,16 +56,15 @@ export default function AgendaDraft({ agenda, agendaGreeting, agendaSentAt, prot
     setDragId(null); setDragOverId(null)
   }
 
-  // Punkt exakt an eine Position innerhalb SEINES Hauptthemas setzen (Auswahl).
-  // afterId = null → an 1. Stelle; sonst direkt hinter den Punkt mit dieser ID.
-  // Es werden nur die Slots dieses Hauptthemas im globalen agenda-Array permutiert;
-  // Punkte anderer Hauptthemen bleiben an Ort und Stelle.
-  const repositionItem = (sectionAgenda, item, afterId) => {
-    const ids    = sectionAgenda.map(a => a.id)
-    const others = ids.filter(id => id !== item.id)
-    const insertAt = afterId == null ? 0 : others.indexOf(afterId) + 1
-    const newOrder = [...others.slice(0, insertAt), item.id, ...others.slice(insertAt)]
-    if (newOrder.join('|') === ids.join('|')) return   // keine Änderung
+  // Punkt exakt an die gewählte Position (0-basiert) innerhalb SEINES Hauptthemas
+  // setzen. Es werden nur die Slots dieses Hauptthemas im globalen agenda-Array
+  // permutiert; Punkte anderer Hauptthemen bleiben an Ort und Stelle.
+  const repositionToIndex = (sectionAgenda, item, targetIndex) => {
+    const ids  = sectionAgenda.map(a => a.id)
+    const from = ids.indexOf(item.id)
+    if (from === targetIndex) return
+    const others   = ids.filter(id => id !== item.id)
+    const newOrder = [...others.slice(0, targetIndex), item.id, ...others.slice(targetIndex)]
     const idSet = new Set(ids)
     const byId  = new Map(agenda.map(a => [a.id, a]))
     let k = 0
@@ -155,10 +154,25 @@ export default function AgendaDraft({ agenda, agendaGreeting, agendaSentAt, prot
                       {section.items.map((item, i) => (
                         <tr key={item.id} className={dragId === item.id ? 'opacity-40' : ''}>
                           <td className="py-2 pl-3 pr-2 align-top">
-                            <span className="block w-12 text-center text-xs font-semibold text-gray-600 pt-1.5"
-                              title="Automatisch aus Hauptpunkt und Position abgeleitet">
-                              {section.no ? `${section.no}.${i + 1}` : String(i + 1)}
-                            </span>
+                            {section.items.length > 1 ? (
+                              <select
+                                className="select py-1 text-xs font-semibold w-[4.75rem]"
+                                title="Position dieses Punkts unterhalb des Hauptpunkts – hier ändern"
+                                value={i}
+                                onChange={e => repositionToIndex(section.items, item, Number(e.target.value))}
+                              >
+                                {section.items.map((_, pos) => (
+                                  <option key={pos} value={pos}>
+                                    {section.no ? `${section.no}.${pos + 1}` : `${pos + 1}.`}
+                                  </option>
+                                ))}
+                              </select>
+                            ) : (
+                              <span className="block w-12 text-center text-xs font-semibold text-gray-600 pt-1.5"
+                                title="Automatisch aus Hauptpunkt und Position abgeleitet">
+                                {section.no ? `${section.no}.${i + 1}` : String(i + 1)}
+                              </span>
+                            )}
                           </td>
                           <td className="py-2 pr-2 align-top">
                             <input className="input py-1 text-xs w-20" type="time"
@@ -195,23 +209,6 @@ export default function AgendaDraft({ agenda, agendaGreeting, agendaSentAt, prot
                                 onDragStart={e => { setDragId(item.id); e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', item.id) }}
                                 onDragEnd={() => { setDragId(null); setDragOverId(null) }}
                               ><GripVertical size={14} /></span>
-                              {/* Genaue Position unterhalb des Hauptpunkts auswählen */}
-                              {section.items.length > 1 && (
-                                <select
-                                  className="select py-0.5 text-xs max-w-[8.5rem]"
-                                  title="Position dieses Punkts unterhalb des Hauptpunkts wählen"
-                                  value={i === 0 ? '__front__' : section.items[i - 1].id}
-                                  onChange={e => repositionItem(section.items, item, e.target.value === '__front__' ? null : e.target.value)}
-                                >
-                                  <option value="__front__">an 1. Stelle</option>
-                                  {section.items.map((sib, j) => sib.id === item.id ? null : (
-                                    <option key={sib.id} value={sib.id}>
-                                      nach {section.no ? `${section.no}.${j + 1}` : (j + 1)}
-                                      {sib.topic ? ` – ${sib.topic.slice(0, 24)}` : ''}
-                                    </option>
-                                  ))}
-                                </select>
-                              )}
                               <button className="btn-ghost p-1.5 text-red-400 hover:text-red-600"
                                 onClick={() => remove(item.id)}><Trash2 size={13} /></button>
                             </div>
