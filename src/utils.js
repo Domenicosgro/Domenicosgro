@@ -284,6 +284,7 @@ export const emptyProtocol = () => ({
   notes: '',
   predecessorId: null,
   phase: null,           // 'planung' | 'bau' | null
+  hideAgenda: false,     // Agenda im Editor ausblenden + NICHT mitdrucken (nur Protokoll)
   itemCarriedFrom: null, // Vorgänger-ID, dessen Protokollpunkte bereits auto-übernommen wurden
   actionCarriedFrom: null, // Vorgänger-ID, dessen offene Maßnahmen bereits auto-übernommen wurden
   isClosed: false,       // protocol is finalized / locked

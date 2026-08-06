@@ -123,6 +123,7 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
   const [notesOpen,            setNotesOpen]            = useState(false)
   const attachInputRef = useRef(null)
   const [attachBusy, setAttachBusy] = useState(false)
+  const [attachDragOver, setAttachDragOver] = useState(false)
 
   // ── Protokoll-Anlagen ───────────────────────────────────────────────────────
   // Beliebige Dateien; sie werden dem E-Mail-Versand (Protokoll + Freigabe)
@@ -656,6 +657,7 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
           PRINT: AGENDA PAGE
           ════════════════════════════════════════ */}
       {(() => {
+        if (protocol.hideAgenda) return null   // Agenda ausgeblendet → nur Protokoll drucken
         const agendaItems   = protocol.agenda ?? []
         const sectionItems  = (protocol.agendaItems ?? []).filter(
           it => it.topic && (it.level ?? 1) === 1 && !it.linkedFromAgendaId
@@ -858,9 +860,28 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
           )}
         </div>
 
-        {/* Agenda draft + controls – screen only; print version is above as hidden print:block */}
+        {/* Agenda draft + controls – screen only; print version is above as hidden print:block.
+            Über "hideAgenda" aus-/einblendbar; ausgeblendet erscheint die Agenda auch NICHT im Druck. */}
         {!isClosed && (
+          protocol.hideAgenda ? (
+            <div className="my-4 no-print flex items-center justify-between gap-3 border border-dashed border-gray-200 px-4 py-2.5">
+              <span className="text-sm text-gray-400 flex items-center gap-2">
+                <EyeOff size={14} /> Agenda ausgeblendet – erscheint nicht im Ausdruck.
+              </span>
+              <button className="btn-ghost btn-sm text-gray-500 hover:text-gray-800"
+                onClick={() => change({ hideAgenda: false })}>
+                <Eye size={13} /> Agenda einblenden
+              </button>
+            </div>
+          ) : (
           <div className="py-6 space-y-4 no-print">
+            <div className="flex items-center justify-end">
+              <button className="btn-ghost btn-sm text-gray-400 hover:text-gray-700"
+                title="Agenda ausblenden – sie erscheint dann auch nicht im Ausdruck"
+                onClick={() => change({ hideAgenda: true })}>
+                <EyeOff size={13} /> Agenda ausblenden
+              </button>
+            </div>
             <AgendaDraft
               agenda={protocol.agenda ?? []}
               agendaGreeting={protocol.agendaGreeting ?? ''}
@@ -878,6 +899,7 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
               <span className="text-xs text-gray-400">Verknüpfte Agendapunkte erscheinen sofort als Unterpunkt im Protokoll.</span>
             </div>
           </div>
+          )
         )}
 
         {/* Protocol points */}
@@ -914,8 +936,17 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
           />
         </div>
 
-        {/* Protokoll-Anlagen (Bildschirm) – werden dem E-Mail-Versand angehängt */}
-        <div className="py-6 no-print">
+        {/* Protokoll-Anlagen (Bildschirm) – werden dem E-Mail-Versand angehängt.
+            Dateien können per Klick ODER Drag & Drop hinzugefügt werden. */}
+        <div
+          className={`py-6 no-print transition-shadow ${attachDragOver ? 'ring-2 ring-brand-300 ring-inset bg-brand-50/30' : ''}`}
+          onDragOver={!isClosed ? (e => { e.preventDefault(); if (!attachDragOver) setAttachDragOver(true) }) : undefined}
+          onDragLeave={!isClosed ? (e => { if (!e.currentTarget.contains(e.relatedTarget)) setAttachDragOver(false) }) : undefined}
+          onDrop={!isClosed ? (e => {
+            e.preventDefault(); setAttachDragOver(false)
+            if (e.dataTransfer?.files?.length) addProtocolAttachments(e.dataTransfer.files)
+          }) : undefined}
+        >
           <div className="flex items-center justify-between flex-wrap gap-2 pb-2 border-b border-gray-200">
             <h2 className="section-title"><Paperclip size={16} /> Anlagen</h2>
             {!isClosed && (
@@ -929,10 +960,19 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
             )}
           </div>
           {(protocol.attachments ?? []).length === 0 ? (
-            <p className="text-sm text-gray-400 italic py-2">
-              Keine Anlagen. Beliebige Dateien (max. 25 MB) werden beim Versand des Protokolls
-              und beim Versand zur Freigabe als E-Mail-Anhang mitgeschickt und im Anlagenverzeichnis gelistet.
-            </p>
+            <div className={`mt-2 border-2 border-dashed px-4 py-8 text-center transition-colors ${
+              attachDragOver ? 'border-brand-400 bg-brand-50' : 'border-gray-200'}`}>
+              <Paperclip size={20} className={`mx-auto mb-2 ${attachDragOver ? 'text-brand-600' : 'text-gray-300'}`} />
+              <p className="text-sm text-gray-500">
+                {attachDragOver
+                  ? 'Dateien hier ablegen…'
+                  : 'Dateien hierher ziehen oder „Anlage hinzufügen".'}
+              </p>
+              <p className="text-xs text-gray-400 mt-1">
+                Beliebige Dateien (max. 25 MB) – werden beim Versand des Protokolls und zur Freigabe
+                als E-Mail-Anhang mitgeschickt und im Anlagenverzeichnis gelistet.
+              </p>
+            </div>
           ) : (
             <ul className="mt-2 space-y-1">
               {(protocol.attachments ?? []).map((a, i) => (
