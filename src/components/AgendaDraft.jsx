@@ -56,23 +56,20 @@ export default function AgendaDraft({ agenda, agendaGreeting, agendaSentAt, prot
     setDragId(null); setDragOverId(null)
   }
 
-  const moveUp = (sectionAgenda, item) => {
-    const si = sectionAgenda.findIndex(a => a.id === item.id)
-    if (si === 0) return
-    const gi  = agenda.findIndex(a => a.id === item.id)
-    const gp  = agenda.findIndex(a => a.id === sectionAgenda[si - 1].id)
-    const next = [...agenda];
-    [next[gp], next[gi]] = [next[gi], next[gp]]
-    onChange(next)
-  }
-
-  const moveDown = (sectionAgenda, item) => {
-    const si = sectionAgenda.findIndex(a => a.id === item.id)
-    if (si === sectionAgenda.length - 1) return
-    const gi  = agenda.findIndex(a => a.id === item.id)
-    const gn  = agenda.findIndex(a => a.id === sectionAgenda[si + 1].id)
-    const next = [...agenda];
-    [next[gi], next[gn]] = [next[gn], next[gi]]
+  // Punkt exakt an eine Position innerhalb SEINES Hauptthemas setzen (Auswahl).
+  // afterId = null → an 1. Stelle; sonst direkt hinter den Punkt mit dieser ID.
+  // Es werden nur die Slots dieses Hauptthemas im globalen agenda-Array permutiert;
+  // Punkte anderer Hauptthemen bleiben an Ort und Stelle.
+  const repositionItem = (sectionAgenda, item, afterId) => {
+    const ids    = sectionAgenda.map(a => a.id)
+    const others = ids.filter(id => id !== item.id)
+    const insertAt = afterId == null ? 0 : others.indexOf(afterId) + 1
+    const newOrder = [...others.slice(0, insertAt), item.id, ...others.slice(insertAt)]
+    if (newOrder.join('|') === ids.join('|')) return   // keine Änderung
+    const idSet = new Set(ids)
+    const byId  = new Map(agenda.map(a => [a.id, a]))
+    let k = 0
+    const next = agenda.map(a => idSet.has(a.id) ? byId.get(newOrder[k++]) : a)
     onChange(next)
   }
 
@@ -198,10 +195,23 @@ export default function AgendaDraft({ agenda, agendaGreeting, agendaSentAt, prot
                                 onDragStart={e => { setDragId(item.id); e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', item.id) }}
                                 onDragEnd={() => { setDragId(null); setDragOverId(null) }}
                               ><GripVertical size={14} /></span>
-                              <button className="btn-ghost p-1 text-gray-400 disabled:opacity-30"
-                                onClick={() => moveUp(section.items, item)} disabled={i === 0}>↑</button>
-                              <button className="btn-ghost p-1 text-gray-400 disabled:opacity-30"
-                                onClick={() => moveDown(section.items, item)} disabled={i === section.items.length - 1}>↓</button>
+                              {/* Genaue Position unterhalb des Hauptpunkts auswählen */}
+                              {section.items.length > 1 && (
+                                <select
+                                  className="select py-0.5 text-xs max-w-[8.5rem]"
+                                  title="Position dieses Punkts unterhalb des Hauptpunkts wählen"
+                                  value={i === 0 ? '__front__' : section.items[i - 1].id}
+                                  onChange={e => repositionItem(section.items, item, e.target.value === '__front__' ? null : e.target.value)}
+                                >
+                                  <option value="__front__">an 1. Stelle</option>
+                                  {section.items.map((sib, j) => sib.id === item.id ? null : (
+                                    <option key={sib.id} value={sib.id}>
+                                      nach {section.no ? `${section.no}.${j + 1}` : (j + 1)}
+                                      {sib.topic ? ` – ${sib.topic.slice(0, 24)}` : ''}
+                                    </option>
+                                  ))}
+                                </select>
+                              )}
                               <button className="btn-ghost p-1.5 text-red-400 hover:text-red-600"
                                 onClick={() => remove(item.id)}><Trash2 size={13} /></button>
                             </div>
