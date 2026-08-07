@@ -6,34 +6,36 @@ import ContactAutocomplete from './ContactAutocomplete'
 
 export default function AgendaDraft({ agenda, agendaGreeting, agendaSentAt, protocolItems, projectContacts, onChange, onChangeGreeting }) {
 
-  // Only "real" Hauptpunkte as sections — not auto-created ones (linkedFromAgendaId set)
-  const sectionItems = useMemo(
-    () => (protocolItems ?? []).filter(it => it.topic && (it.level ?? 1) === 1 && !it.linkedFromAgendaId),
+  // Echte Protokollpunkte ALLER Ebenen (Haupt- UND Unterpunkte) als Zuordnungsziele –
+  // nur die aus dem Agenda-Entwurf auto-erzeugten (linkedFromAgendaId) ausgenommen.
+  const targetPoints = useMemo(
+    () => (protocolItems ?? []).filter(it => it.topic && !it.linkedFromAgendaId),
     [protocolItems]
   )
 
-  // Group agenda items by linkedProtocolItemId
+  // Gruppiert die Agendapunkte nach ihrem verknüpften Protokollpunkt (beliebige Ebene).
   const sections = useMemo(() => {
-    const linked = sectionItems.map(pi => ({
+    const linked = targetPoints.map(pi => ({
       id: pi.id,
       no: pi.no,
+      level: pi.level ?? 1,
       topic: pi.topic,
       label: `${pi.no ? pi.no + ' – ' : ''}${pi.topic}`,
       items: agenda.filter(a => a.linkedProtocolItemId === pi.id),
     }))
     const newItems = agenda.filter(a =>
-      !a.linkedProtocolItemId || !sectionItems.find(pi => pi.id === a.linkedProtocolItemId)
+      !a.linkedProtocolItemId || !targetPoints.find(pi => pi.id === a.linkedProtocolItemId)
     )
-    return [...linked, { id: '__new__', no: null, label: null, items: newItems }]
-  }, [agenda, sectionItems])
+    return [...linked, { id: '__new__', no: null, level: 1, label: null, items: newItems }]
+  }, [agenda, targetPoints])
 
   const totalMin = agenda.reduce((s, a) => s + (parseInt(a.duration) || 0), 0)
 
   const addToSection = (parentId) => {
-    const pi = parentId === '__new__' ? null : sectionItems.find(p => p.id === parentId)
+    const pi = parentId === '__new__' ? null : targetPoints.find(p => p.id === parentId)
     onChange([...agenda, {
       ...emptyAgendaDraftItem(),
-      topic: pi?.topic || '',   // erbt zunächst den Titel des Hauptpunkts (bleibt änderbar)
+      topic: pi?.topic || '',   // erbt zunächst den Titel des Zielpunkts (bleibt änderbar)
       linkedProtocolItemId: parentId === '__new__' ? null : parentId,
     }])
   }
@@ -43,7 +45,7 @@ export default function AgendaDraft({ agenda, agendaGreeting, agendaSentAt, prot
 
   const remove = (id) => onChange(agenda.filter(it => it.id !== id))
 
-  // ── Drag & Drop: Agenda-Punkt einem anderen Hauptthema (Section) zuordnen ────
+  // ── Drag & Drop: Agenda-Punkt einem anderen Protokollpunkt zuordnen ──────────
   const [dragId,     setDragId]     = useState(null)
   const [dragOverId, setDragOverId] = useState(null)
   const handleDropOnSection = (sectionId) => {
@@ -56,32 +58,17 @@ export default function AgendaDraft({ agenda, agendaGreeting, agendaSentAt, prot
     setDragId(null); setDragOverId(null)
   }
 
-  // Punkt einem Hauptthema UND einer genauen Position darunter zuweisen (Auswahl).
-  // targetSectionId '__new__' = ohne Hauptthema; afterId null = an 1. Stelle,
-  // sonst direkt hinter den Punkt mit dieser ID. Setzt bei Bedarf auch die
-  // Hauptthema-Verknüpfung (linkedProtocolItemId) um.
-  const assignTo = (item, targetSectionId, afterId) => {
-    const targetLink = targetSectionId === '__new__' ? null : targetSectionId
-    const moved      = { ...item, linkedProtocolItemId: targetLink }
-    const without    = agenda.filter(a => a.id !== item.id)
-    const sameSection = (a) => (a.linkedProtocolItemId ?? null) === (targetLink ?? null)
-    let globalInsert
-    if (afterId == null) {
-      const firstIdx = without.findIndex(sameSection)
-      globalInsert = firstIdx === -1 ? without.length : firstIdx
-    } else {
-      const afterIdx = without.findIndex(a => a.id === afterId)
-      globalInsert = afterIdx === -1 ? without.length : afterIdx + 1
-    }
-    onChange([...without.slice(0, globalInsert), moved, ...without.slice(globalInsert)])
-  }
-
-  // Aktuelle Zuordnung eines Punkts als Dropdown-Wert "sectionId::afterId|front".
-  const assignValueOf = (item) => {
-    const sec = sections.find(s => s.items.some(a => a.id === item.id)) || sections[sections.length - 1]
-    const idx = sec.items.findIndex(a => a.id === item.id)
-    const after = idx <= 0 ? 'front' : sec.items[idx - 1].id
-    return `${sec.id}::${after}`
+  // Agendapunkt einem Protokollpunkt zuweisen: verknüpfen und ans ENDE dieses
+  // Punkts anhängen. targetId '__none__' = ohne Zuordnung (neue Punkte).
+  const assignToPoint = (item, targetId) => {
+    const link    = targetId === '__none__' ? null : targetId
+    const moved   = { ...item, linkedProtocolItemId: link }
+    const without = agenda.filter(a => a.id !== item.id)
+    // Index nach dem letzten Punkt derselben Gruppe (oder ans Ende).
+    let lastIdx = -1
+    without.forEach((a, idx) => { if ((a.linkedProtocolItemId ?? null) === (link ?? null)) lastIdx = idx })
+    const insertAt = lastIdx === -1 ? without.length : lastIdx + 1
+    onChange([...without.slice(0, insertAt), moved, ...without.slice(insertAt)])
   }
 
   return (
@@ -97,11 +84,9 @@ export default function AgendaDraft({ agenda, agendaGreeting, agendaSentAt, prot
           )}
           {totalMin > 0 && <span className="text-xs text-gray-400">Geplant: {totalMin} min</span>}
         </div>
-        {sectionItems.length === 0 && (
-          <button className="btn-primary no-print" onClick={() => addToSection('__new__')}>
-            <Plus size={14} /> Neuer Hauptpunkt
-          </button>
-        )}
+        <button className="btn-primary no-print" onClick={() => addToSection('__new__')}>
+          <Plus size={14} /> Agendapunkt hinzufügen
+        </button>
       </div>
 
       {/* Greeting */}
@@ -114,16 +99,20 @@ export default function AgendaDraft({ agenda, agendaGreeting, agendaSentAt, prot
           value={agendaGreeting} onChange={e => onChangeGreeting(e.target.value)} />
       </div>
 
-      {agenda.length === 0 && sectionItems.length === 0 && (
-        <p className="text-sm text-gray-400 italic">Noch keine Agendapunkte erfasst.</p>
+      {agenda.length === 0 && (
+        <p className="text-sm text-gray-400 italic">
+          Noch keine Agendapunkte. „Agendapunkt hinzufügen" klicken und über „Zuordnen zu"
+          einem Protokollpunkt zuweisen.
+        </p>
       )}
 
-      {/* Sections */}
+      {/* Sections – gerendert werden Protokollpunkte MIT Agendapunkten sowie die
+          nicht zugeordneten (neuen) Punkte. Zuweisung erfolgt über das Dropdown. */}
       <div className="space-y-3">
         {sections.map(section => {
           const isNew = section.id === '__new__'
-          // Skip the "new" section entirely if it's empty and there are existing sections
-          if (isNew && section.items.length === 0 && sectionItems.length > 0) return null
+          // Nur Gruppen mit Punkten rendern (bzw. den Neu-Bereich, wenn er welche hat).
+          if (section.items.length === 0) return null
 
           return (
             <div
@@ -138,9 +127,9 @@ export default function AgendaDraft({ agenda, agendaGreeting, agendaSentAt, prot
                 isNew ? 'bg-gray-50' : 'bg-brand-50 border-b border-brand-100'
               }`}>
                 <span className={`text-sm font-semibold ${isNew ? 'text-gray-500 italic' : 'text-brand-700'}`}>
-                  {isNew ? 'Neuer Hauptpunkt' : section.label}
+                  {isNew ? 'Nicht zugeordnete Punkte' : section.label}
                 </span>
-                {(!isNew || sectionItems.length === 0) && (
+                {!isNew && (
                   <button className="btn-ghost py-0.5 px-2 text-xs no-print" onClick={() => addToSection(section.id)}>
                     <Plus size={12} /> Punkt hinzufügen
                   </button>
@@ -172,25 +161,21 @@ export default function AgendaDraft({ agenda, agendaGreeting, agendaSentAt, prot
                               {section.no ? `${section.no}.${i + 1}` : String(i + 1)}
                             </span>
                           </td>
-                          {/* Immer sichtbare Auswahl: Punkt einem Hauptthema + Position darunter zuweisen */}
+                          {/* Auswahl: Agendapunkt einem echten Protokollpunkt (Haupt- ODER
+                              Unterpunkt) zuweisen → wird ans Ende dieses Punkts angehängt. */}
                           <td className="py-2 pr-2 align-top no-print">
                             <select
                               className="select py-1 text-xs w-44"
-                              title="Diesen Agendapunkt einem Hauptthema und einer Position darunter zuweisen"
-                              value={assignValueOf(item)}
-                              onChange={e => { const [sid, aft] = e.target.value.split('::'); assignTo(item, sid, aft === 'front' ? null : aft) }}
+                              title="Diesen Agendapunkt einem Protokollpunkt zuordnen (wird ans Ende angehängt)"
+                              value={item.linkedProtocolItemId ?? '__none__'}
+                              onChange={e => assignToPoint(item, e.target.value)}
                             >
-                              {sections.map(sec => (
-                                <optgroup key={sec.id} label={sec.label || 'Ohne Hauptthema'}>
-                                  <option value={`${sec.id}::front`}>
-                                    {sec.no ? `${sec.no}.1` : '1.'} – an 1. Stelle
-                                  </option>
-                                  {sec.items.map((m, j) => m.id === item.id ? null : (
-                                    <option key={m.id} value={`${sec.id}::${m.id}`}>
-                                      nach {sec.no ? `${sec.no}.${j + 1}` : `${j + 1}`}{m.topic ? ` – ${m.topic.slice(0, 20)}` : ''}
-                                    </option>
-                                  ))}
-                                </optgroup>
+                              <option value="__none__">– ohne Zuordnung –</option>
+                              {targetPoints.map(pt => (
+                                <option key={pt.id} value={pt.id}>
+                                  {' '.repeat(((pt.level ?? 1) - 1) * 2)}
+                                  {pt.no ? `${pt.no} – ` : ''}{pt.topic}
+                                </option>
                               ))}
                             </select>
                           </td>
