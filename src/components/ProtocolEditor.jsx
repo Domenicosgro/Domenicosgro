@@ -191,10 +191,13 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
     )
   }, [predecessor, protocol.actionItems])
 
+  // Aus dem Vorgänger werden NUR die Hauptpunkte (Ebene 1) übernommen. Unterpunkte
+  // entstehen im neuen Protokoll frisch – direkt in der Agenda oder im Protokoll.
   const pendingItemCarryover = useMemo(() => {
     if (!predecessor) return []
     const already = new Set((protocol.agendaItems ?? []).map(i => i.carriedFromId).filter(Boolean))
     return predecessor.agendaItems.filter(it => {
+      if ((it.level ?? 1) !== 1) return false
       if (it.status === 'erledigt' && it.carriedGray === true) return false
       return !already.has(it.id)
     })
@@ -222,7 +225,9 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
   const handleItemCarryover = () => {
     if (!predecessor) return
     const already = new Set((protocol.agendaItems ?? []).map(i => i.carriedFromId).filter(Boolean))
+    // Nur Hauptpunkte (Ebene 1) übernehmen – Unterpunkte werden neu erstellt.
     const toCarry = (predecessor.agendaItems ?? []).filter(it => {
+      if ((it.level ?? 1) !== 1) return false
       if (it.status === 'erledigt' && it.carriedGray === true) return false
       return !already.has(it.id)
     })
