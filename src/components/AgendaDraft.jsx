@@ -106,17 +106,19 @@ export default function AgendaDraft({ agenda, agendaGreeting, agendaSentAt, prot
         </p>
       )}
 
-      {/* Sections – gerendert werden Protokollpunkte MIT Agendapunkten sowie die
-          nicht zugeordneten (neuen) Punkte. Zuweisung erfolgt über das Dropdown. */}
+      {/* Sections – die Agenda SPIEGELT die Protokollstruktur: JEDER Protokollpunkt
+          (Haupt- und Unterpunkt, inkl. der aus dem Vorgänger übernommenen) erscheint
+          als Abschnitt – auch ohne Agenda-Detail. Der Neu-Bereich nur, wenn er welche hat. */}
       <div className="space-y-3">
         {sections.map(section => {
           const isNew = section.id === '__new__'
-          // Nur Gruppen mit Punkten rendern (bzw. den Neu-Bereich, wenn er welche hat).
-          if (section.items.length === 0) return null
+          if (isNew && section.items.length === 0) return null   // leeren Neu-Bereich ausblenden
 
+          const indent = isNew ? 0 : ((section.level ?? 1) - 1) * 20
           return (
             <div
               key={section.id}
+              style={indent ? { marginLeft: indent } : undefined}
               className={`border transition-colors ${dragOverId === section.id ? 'border-brand-400 ring-2 ring-brand-200' : 'border-gray-200'}`}
               onDragOver={e => { if (dragId) { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; if (dragOverId !== section.id) setDragOverId(section.id) } }}
               onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget)) setDragOverId(prev => (prev === section.id ? null : prev)) }}
@@ -124,9 +126,9 @@ export default function AgendaDraft({ agenda, agendaGreeting, agendaSentAt, prot
             >
               {/* Section header */}
               <div className={`flex items-center justify-between px-3 py-2 ${
-                isNew ? 'bg-gray-50' : 'bg-brand-50 border-b border-brand-100'
+                isNew ? 'bg-gray-50' : (section.level ?? 1) === 1 ? 'bg-brand-50 border-b border-brand-100' : 'bg-gray-50 border-b border-gray-100'
               }`}>
-                <span className={`text-sm font-semibold ${isNew ? 'text-gray-500 italic' : 'text-brand-700'}`}>
+                <span className={`text-sm font-semibold ${isNew ? 'text-gray-500 italic' : (section.level ?? 1) === 1 ? 'text-brand-700' : 'text-gray-600'}`}>
                   {isNew ? 'Nicht zugeordnete Punkte' : section.label}
                 </span>
                 {!isNew && (
