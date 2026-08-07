@@ -56,20 +56,32 @@ export default function AgendaDraft({ agenda, agendaGreeting, agendaSentAt, prot
     setDragId(null); setDragOverId(null)
   }
 
-  // Punkt exakt an die gewählte Position (0-basiert) innerhalb SEINES Hauptthemas
-  // setzen. Es werden nur die Slots dieses Hauptthemas im globalen agenda-Array
-  // permutiert; Punkte anderer Hauptthemen bleiben an Ort und Stelle.
-  const repositionToIndex = (sectionAgenda, item, targetIndex) => {
-    const ids  = sectionAgenda.map(a => a.id)
-    const from = ids.indexOf(item.id)
-    if (from === targetIndex) return
-    const others   = ids.filter(id => id !== item.id)
-    const newOrder = [...others.slice(0, targetIndex), item.id, ...others.slice(targetIndex)]
-    const idSet = new Set(ids)
-    const byId  = new Map(agenda.map(a => [a.id, a]))
-    let k = 0
-    const next = agenda.map(a => idSet.has(a.id) ? byId.get(newOrder[k++]) : a)
-    onChange(next)
+  // Punkt einem Hauptthema UND einer genauen Position darunter zuweisen (Auswahl).
+  // targetSectionId '__new__' = ohne Hauptthema; afterId null = an 1. Stelle,
+  // sonst direkt hinter den Punkt mit dieser ID. Setzt bei Bedarf auch die
+  // Hauptthema-Verknüpfung (linkedProtocolItemId) um.
+  const assignTo = (item, targetSectionId, afterId) => {
+    const targetLink = targetSectionId === '__new__' ? null : targetSectionId
+    const moved      = { ...item, linkedProtocolItemId: targetLink }
+    const without    = agenda.filter(a => a.id !== item.id)
+    const sameSection = (a) => (a.linkedProtocolItemId ?? null) === (targetLink ?? null)
+    let globalInsert
+    if (afterId == null) {
+      const firstIdx = without.findIndex(sameSection)
+      globalInsert = firstIdx === -1 ? without.length : firstIdx
+    } else {
+      const afterIdx = without.findIndex(a => a.id === afterId)
+      globalInsert = afterIdx === -1 ? without.length : afterIdx + 1
+    }
+    onChange([...without.slice(0, globalInsert), moved, ...without.slice(globalInsert)])
+  }
+
+  // Aktuelle Zuordnung eines Punkts als Dropdown-Wert "sectionId::afterId|front".
+  const assignValueOf = (item) => {
+    const sec = sections.find(s => s.items.some(a => a.id === item.id)) || sections[sections.length - 1]
+    const idx = sec.items.findIndex(a => a.id === item.id)
+    const after = idx <= 0 ? 'front' : sec.items[idx - 1].id
+    return `${sec.id}::${after}`
   }
 
   return (
@@ -142,37 +154,45 @@ export default function AgendaDraft({ agenda, agendaGreeting, agendaSentAt, prot
                     <thead>
                       <tr className="border-b border-gray-100 text-xs text-gray-500">
                         <th className="text-left py-1.5 pl-3 pr-2 w-10">Nr.</th>
+                        <th className="text-left py-1.5 pr-2 w-44 no-print">Zuordnen zu</th>
                         <th className="text-left py-1.5 pr-2 w-20">Uhrzeit</th>
                         <th className="text-left py-1.5 pr-2">Thema</th>
                         <th className="text-left py-1.5 pr-2 w-24">Dauer (min)</th>
                         <th className="text-left py-1.5 pr-2 w-36">Zuständig</th>
                         <th className="text-left py-1.5 pr-2 w-40">Unterlagen</th>
-                        <th className="py-1.5 w-20 no-print" />
+                        <th className="py-1.5 w-16 no-print" />
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-50">
                       {section.items.map((item, i) => (
                         <tr key={item.id} className={dragId === item.id ? 'opacity-40' : ''}>
                           <td className="py-2 pl-3 pr-2 align-top">
-                            {section.items.length > 1 ? (
-                              <select
-                                className="select py-1 text-xs font-semibold w-[4.75rem]"
-                                title="Position dieses Punkts unterhalb des Hauptpunkts – hier ändern"
-                                value={i}
-                                onChange={e => repositionToIndex(section.items, item, Number(e.target.value))}
-                              >
-                                {section.items.map((_, pos) => (
-                                  <option key={pos} value={pos}>
-                                    {section.no ? `${section.no}.${pos + 1}` : `${pos + 1}.`}
+                            <span className="block w-12 text-center text-xs font-semibold text-gray-600 pt-1.5"
+                              title="Automatisch aus Hauptpunkt und Position abgeleitet">
+                              {section.no ? `${section.no}.${i + 1}` : String(i + 1)}
+                            </span>
+                          </td>
+                          {/* Immer sichtbare Auswahl: Punkt einem Hauptthema + Position darunter zuweisen */}
+                          <td className="py-2 pr-2 align-top no-print">
+                            <select
+                              className="select py-1 text-xs w-44"
+                              title="Diesen Agendapunkt einem Hauptthema und einer Position darunter zuweisen"
+                              value={assignValueOf(item)}
+                              onChange={e => { const [sid, aft] = e.target.value.split('::'); assignTo(item, sid, aft === 'front' ? null : aft) }}
+                            >
+                              {sections.map(sec => (
+                                <optgroup key={sec.id} label={sec.label || 'Ohne Hauptthema'}>
+                                  <option value={`${sec.id}::front`}>
+                                    {sec.no ? `${sec.no}.1` : '1.'} – an 1. Stelle
                                   </option>
-                                ))}
-                              </select>
-                            ) : (
-                              <span className="block w-12 text-center text-xs font-semibold text-gray-600 pt-1.5"
-                                title="Automatisch aus Hauptpunkt und Position abgeleitet">
-                                {section.no ? `${section.no}.${i + 1}` : String(i + 1)}
-                              </span>
-                            )}
+                                  {sec.items.map((m, j) => m.id === item.id ? null : (
+                                    <option key={m.id} value={`${sec.id}::${m.id}`}>
+                                      nach {sec.no ? `${sec.no}.${j + 1}` : `${j + 1}`}{m.topic ? ` – ${m.topic.slice(0, 20)}` : ''}
+                                    </option>
+                                  ))}
+                                </optgroup>
+                              ))}
+                            </select>
                           </td>
                           <td className="py-2 pr-2 align-top">
                             <input className="input py-1 text-xs w-20" type="time"
