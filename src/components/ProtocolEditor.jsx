@@ -9,12 +9,13 @@ import ProtocolEmailModal from './ProtocolEmailModal'
 import ProtocolItems    from './ProtocolItems'
 import ActionItems      from './ActionItems'
 import NotesSection     from './NotesSection'
-import { formatDate, buildProtocolNo, getChainNo, uid, emptyAgendaItem, distributionFor, emptyContact } from '../utils'
+import { formatDate, buildProtocolNo, getChainNo, uid, emptyAgendaItem, distributionFor, emptyContact, isMirrorAction } from '../utils'
 import { exportDocx } from '../exportDocx'
 import { attachmentStore } from '../attachmentStore'
 import GesamtprotokollModal from './GesamtprotokollModal'
 import TileSidebar from './TileSidebar'
 import ProtocolNotesPanel from './ProtocolNotesPanel'
+import ProtocolActionsPanel from './ProtocolActionsPanel'
 
 const isElectron = typeof window !== 'undefined' && !!window.electronAPI
 const isServer   = typeof window !== 'undefined' && !!window.__SERVER_MODE__
@@ -121,6 +122,12 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
   const [emailMode,            setEmailMode]            = useState('send')   // 'send' | 'freigabe'
   const [printAttachmentData,  setPrintAttachmentData]  = useState({})  // attId → base64
   const [notesOpen,            setNotesOpen]            = useState(false)
+  const [actionsOpen,          setActionsOpen]          = useState(false)
+  // Beide Seitenpanels teilen sich den rechten Rand → sich gegenseitig ausschließen.
+  const openNotes   = (v) => { setNotesOpen(v); if (v) setActionsOpen(false) }
+  const openActions = (v) => { setActionsOpen(v); if (v) setNotesOpen(false) }
+  const openActionCount = (protocol.actionItems ?? [])
+    .filter(a => !isMirrorAction(a) && (a.status === 'offen' || a.status === 'in_arbeit')).length
   const attachInputRef = useRef(null)
   const [attachBusy, setAttachBusy] = useState(false)
   const [attachDragOver, setAttachDragOver] = useState(false)
@@ -528,9 +535,10 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
   )
 
   return (
-    // Bei offenem Notizpanel wird rechts Platz freigehalten, damit das Protokoll
-    // nicht verdeckt und weiterhin parallel bearbeitbar ist.
-    <div className={`flex items-start gap-2 px-4 sm:px-6 lg:px-10 py-4 justify-center print:block transition-[padding] ${notesOpen ? 'md:pr-[25rem] print:pr-0' : ''}`}>
+    // Bei offenem Seitenpanel (Notizen/Maßnahmen) wird rechts Platz freigehalten,
+    // damit das Protokoll nicht verdeckt und weiterhin parallel bearbeitbar ist.
+    <div className={`flex items-start gap-2 px-4 sm:px-6 lg:px-10 py-4 justify-center print:block transition-[padding] ${
+      actionsOpen ? 'md:pr-[29rem] print:pr-0' : notesOpen ? 'md:pr-[25rem] print:pr-0' : ''}`}>
     {onCreateNote && (
       <ProtocolNotesPanel
         protocol={protocol}
@@ -541,9 +549,22 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
         onUpdateNote={onUpdateNote}
         onDeleteNote={onDeleteNote}
         open={notesOpen}
-        onOpenChange={setNotesOpen}
+        onOpenChange={openNotes}
       />
     )}
+    {/* Maßnahmen als rechtsseitiges Panel (Bildschirm-Editor); der Druck kommt
+        aus der weiter unten eingebetteten, bildschirmseitig ausgeblendeten ActionItems. */}
+    <ProtocolActionsPanel open={actionsOpen} onOpenChange={openActions} openCount={openActionCount}>
+      <ActionItems
+        items={protocol.actionItems ?? []}
+        onChange={actionItems => change({ actionItems })}
+        agendaItems={protocol.agendaItems ?? []}
+        projectContacts={enrichedProjectContacts}
+        protocolId={protocol.id}
+        canManageRelease={canManageRelease}
+        onOpenBimIssue={onOpenBimIssue}
+      />
+    </ProtocolActionsPanel>
     <div
       className="flex-1 min-w-0 max-w-[1400px] space-y-0"
       // Datei-Drops ÜBERALL im Protokoll annehmen → landen als Anlage.
@@ -939,8 +960,9 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
           />
         </div>
 
-        {/* Action items */}
-        <div className="py-6">
+        {/* Maßnahmen – am Bildschirm über das rechte Panel bearbeitbar; hier nur
+            für den DRUCK eingebettet (Bedienelemente sind ohnehin no-print). */}
+        <div className="py-6 hidden print:block">
           <ActionItems
             items={protocol.actionItems ?? []}
             onChange={actionItems => change({ actionItems })}
