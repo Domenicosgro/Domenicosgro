@@ -6,10 +6,10 @@ import ContactAutocomplete from './ContactAutocomplete'
 
 export default function AgendaDraft({ agenda, agendaGreeting, agendaSentAt, protocolItems, projectContacts, onChange, onChangeGreeting }) {
 
-  // Echte Protokollpunkte ALLER Ebenen (Haupt- UND Unterpunkte) als Zuordnungsziele –
-  // nur die aus dem Agenda-Entwurf auto-erzeugten (linkedFromAgendaId) ausgenommen.
+  // Die Agenda zeigt/verwaltet NUR die Hauptpunkte (Ebene 1). Unterpunkte gehören
+  // in den Protokollbereich; auto-aus dem Agenda-Entwurf erzeugte Punkte ausgenommen.
   const targetPoints = useMemo(
-    () => (protocolItems ?? []).filter(it => it.topic && !it.linkedFromAgendaId),
+    () => (protocolItems ?? []).filter(it => it.topic && (it.level ?? 1) === 1 && !it.linkedFromAgendaId),
     [protocolItems]
   )
 
