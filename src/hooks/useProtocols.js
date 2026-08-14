@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { emptyProtocol, uid } from '../utils'
 import { attachmentStore } from '../attachmentStore'
 import { subscribeToServerEvents } from '../serverEvents'
+import { assertSaveOk } from '../serverSaveError'
 
 const STORAGE_KEY = 'bb_protocols_v1'
 const API_PATH    = '/api/protocols'
@@ -61,58 +62,41 @@ async function serverSave(protocols) {
   // Creates + Updates
   for (const p of protocols) {
     if (!_sk.has(p.id)) {
-      // New record
+      // New record. Netzwerk-Aussetzer tolerieren (fetch wirft) – Server-Antworten
+      // NICHT verschlucken: eine 401 (Sitzung abgelaufen) muss sichtbar werden.
+      let res
       try {
-        const res = await fetch(API_PATH, {
-          method:  'POST',
-          headers: apiHeaders(),
-          body:    JSON.stringify(p),
-        })
-        if (res.ok) {
-          const { version } = await res.json()
-          _sk.add(p.id)
-          _sv.set(p.id, version)
-          _st.set(p.id, p.updatedAt)
-        } else if (res.status === 409) {
-          // ID exists on server (e.g. from another session) — treat as update
-          const { serverVersion } = await res.json()
-          _sk.add(p.id)
-          _sv.set(p.id, serverVersion)
-          // fall through to update path on next save cycle
-        }
-      } catch (e) {
-        console.warn(`[server] POST Protokoll ${p.id}:`, e.message)
+        res = await fetch(API_PATH, { method: 'POST', headers: apiHeaders(), body: JSON.stringify(p) })
+      } catch (e) { console.warn(`[server] POST Protokoll ${p.id}:`, e.message); continue }
+      if (res.ok) {
+        const { version } = await res.json()
+        _sk.add(p.id); _sv.set(p.id, version); _st.set(p.id, p.updatedAt)
+      } else if (res.status === 409) {
+        const { serverVersion } = await res.json()
+        _sk.add(p.id); _sv.set(p.id, serverVersion)
+      } else {
+        assertSaveOk(res, 'Protokoll speichern')   // wirft → wird als Speicherfehler gemeldet
       }
     } else if (p.updatedAt !== _st.get(p.id)) {
       // Modified record
+      const version = _sv.get(p.id) || 1
+      let res
       try {
-        const version = _sv.get(p.id) || 1
-        const res = await fetch(`${API_PATH}/${p.id}`, {
-          method:  'PATCH',
-          headers: apiHeaders(),
-          body:    JSON.stringify({ data: p, version }),
-        })
-        if (res.status === 409) {
-          // Conflict: server has newer version — retry once with server version (client wins)
-          const { serverVersion } = await res.json()
-          _sv.set(p.id, serverVersion)
-          const res2 = await fetch(`${API_PATH}/${p.id}`, {
-            method:  'PATCH',
-            headers: apiHeaders(),
-            body:    JSON.stringify({ data: p, version: serverVersion }),
-          })
-          if (res2.ok) {
-            const { version: v2 } = await res2.json()
-            _sv.set(p.id, v2)
-            _st.set(p.id, p.updatedAt)
-          }
-        } else if (res.ok) {
-          const { version: newVersion } = await res.json()
-          _sv.set(p.id, newVersion)
-          _st.set(p.id, p.updatedAt)
-        }
-      } catch (e) {
-        console.warn(`[server] PATCH Protokoll ${p.id}:`, e.message)
+        res = await fetch(`${API_PATH}/${p.id}`, { method: 'PATCH', headers: apiHeaders(), body: JSON.stringify({ data: p, version }) })
+      } catch (e) { console.warn(`[server] PATCH Protokoll ${p.id}:`, e.message); continue }
+      if (res.status === 409) {
+        const { serverVersion } = await res.json()
+        _sv.set(p.id, serverVersion)
+        const res2 = await fetch(`${API_PATH}/${p.id}`, { method: 'PATCH', headers: apiHeaders(), body: JSON.stringify({ data: p, version: serverVersion }) })
+        if (res2.ok) {
+          const { version: v2 } = await res2.json()
+          _sv.set(p.id, v2); _st.set(p.id, p.updatedAt)
+        } else { assertSaveOk(res2, 'Protokoll speichern') }
+      } else if (res.ok) {
+        const { version: newVersion } = await res.json()
+        _sv.set(p.id, newVersion); _st.set(p.id, p.updatedAt)
+      } else {
+        assertSaveOk(res, 'Protokoll speichern')
       }
     }
   }
@@ -160,10 +144,11 @@ async function migrateAttachments(protocols) {
 }
 
 function buildSaveErrorMessage(err) {
+  if (err?.authExpired) return err.message   // Sitzung abgelaufen – konkrete Anleitung durchreichen
   if (err instanceof DOMException && err.name === 'QuotaExceededError') {
     return 'Speicher voll – Protokolle konnten nicht gespeichert werden. Bitte löschen Sie alte Protokolle oder Anhänge.'
   }
-  return 'Protokolle konnten nicht gespeichert werden – Daten sind möglicherweise nicht gesichert.'
+  return err?.message || 'Protokolle konnten nicht gespeichert werden – Daten sind möglicherweise nicht gesichert.'
 }
 
 // ── Hook ──────────────────────────────────────────────────────────────────────

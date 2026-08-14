@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { emptyProject, uid } from '../utils'
 import { subscribeToServerEvents } from '../serverEvents'
+import { assertSaveOk } from '../serverSaveError'
 
 const STORAGE_KEY = 'bb_projects_v1'
 const API_PATH    = '/api/projects'
@@ -60,53 +61,40 @@ async function serverSave(projects) {
   // Creates + Updates
   for (const p of projects) {
     if (!_sk.has(p.id)) {
+      // Netzwerk-Aussetzer tolerieren (fetch wirft) – Server-Antworten NICHT
+      // verschlucken: eine 401 (Sitzung abgelaufen) muss sichtbar werden.
+      let res
       try {
-        const res = await fetch(API_PATH, {
-          method:  'POST',
-          headers: apiHeaders(),
-          body:    JSON.stringify(p),
-        })
-        if (res.ok) {
-          const { version } = await res.json()
-          _sk.add(p.id)
-          _sv.set(p.id, version)
-          _st.set(p.id, p.updatedAt)
-        } else if (res.status === 409) {
-          const { serverVersion } = await res.json()
-          _sk.add(p.id)
-          _sv.set(p.id, serverVersion)
-        }
-      } catch (e) {
-        console.warn(`[server] POST Projekt ${p.id}:`, e.message)
+        res = await fetch(API_PATH, { method: 'POST', headers: apiHeaders(), body: JSON.stringify(p) })
+      } catch (e) { console.warn(`[server] POST Projekt ${p.id}:`, e.message); continue }
+      if (res.ok) {
+        const { version } = await res.json()
+        _sk.add(p.id); _sv.set(p.id, version); _st.set(p.id, p.updatedAt)
+      } else if (res.status === 409) {
+        const { serverVersion } = await res.json()
+        _sk.add(p.id); _sv.set(p.id, serverVersion)
+      } else {
+        assertSaveOk(res, 'Projekt speichern')   // wirft → wird als Speicherfehler gemeldet
       }
     } else if (p.updatedAt !== _st.get(p.id)) {
+      const version = _sv.get(p.id) || 1
+      let res
       try {
-        const version = _sv.get(p.id) || 1
-        const res = await fetch(`${API_PATH}/${p.id}`, {
-          method:  'PATCH',
-          headers: apiHeaders(),
-          body:    JSON.stringify({ data: p, version }),
-        })
-        if (res.status === 409) {
-          const { serverVersion } = await res.json()
-          _sv.set(p.id, serverVersion)
-          const res2 = await fetch(`${API_PATH}/${p.id}`, {
-            method:  'PATCH',
-            headers: apiHeaders(),
-            body:    JSON.stringify({ data: p, version: serverVersion }),
-          })
-          if (res2.ok) {
-            const { version: v2 } = await res2.json()
-            _sv.set(p.id, v2)
-            _st.set(p.id, p.updatedAt)
-          }
-        } else if (res.ok) {
-          const { version: newVersion } = await res.json()
-          _sv.set(p.id, newVersion)
-          _st.set(p.id, p.updatedAt)
-        }
-      } catch (e) {
-        console.warn(`[server] PATCH Projekt ${p.id}:`, e.message)
+        res = await fetch(`${API_PATH}/${p.id}`, { method: 'PATCH', headers: apiHeaders(), body: JSON.stringify({ data: p, version }) })
+      } catch (e) { console.warn(`[server] PATCH Projekt ${p.id}:`, e.message); continue }
+      if (res.status === 409) {
+        const { serverVersion } = await res.json()
+        _sv.set(p.id, serverVersion)
+        const res2 = await fetch(`${API_PATH}/${p.id}`, { method: 'PATCH', headers: apiHeaders(), body: JSON.stringify({ data: p, version: serverVersion }) })
+        if (res2.ok) {
+          const { version: v2 } = await res2.json()
+          _sv.set(p.id, v2); _st.set(p.id, p.updatedAt)
+        } else { assertSaveOk(res2, 'Projekt speichern') }
+      } else if (res.ok) {
+        const { version: newVersion } = await res.json()
+        _sv.set(p.id, newVersion); _st.set(p.id, p.updatedAt)
+      } else {
+        assertSaveOk(res, 'Projekt speichern')
       }
     }
   }
@@ -131,10 +119,11 @@ async function localSave(projects) {
 }
 
 function buildSaveErrorMessage(err) {
+  if (err?.authExpired) return err.message   // Sitzung abgelaufen – konkrete Anleitung durchreichen
   if (err instanceof DOMException && err.name === 'QuotaExceededError') {
     return 'Speicher voll – Projekte konnten nicht gespeichert werden. Bitte löschen Sie nicht mehr benötigte Daten.'
   }
-  return 'Projekte konnten nicht gespeichert werden – Daten sind möglicherweise nicht gesichert.'
+  return err?.message || 'Projekte konnten nicht gespeichert werden – Daten sind möglicherweise nicht gesichert.'
 }
 
 // ── Hook ──────────────────────────────────────────────────────────────────────
