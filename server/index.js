@@ -20,6 +20,7 @@ const express   = require('express')
 const cors      = require('cors')
 const helmet    = require('helmet')
 const rateLimit = require('express-rate-limit')
+const { ipKeyGenerator } = require('express-rate-limit')
 const path      = require('path')
 const fs        = require('fs')
 const http      = require('http')
@@ -78,17 +79,33 @@ app.use(cors({
 }))
 
 // ── Rate limiting ─────────────────────────────────────────────────────────────
+// Die Limits müssen ARBEITSTAUGLICH sein: beim Bearbeiten eines Protokolls
+// entstehen laufend Speichervorgänge (Auto-Save). Zu strenge Limits führten zu
+// 429-Antworten und damit zu nicht gespeicherter Arbeit.
+// Gezählt wird pro ANGEMELDETEM NUTZER (Token) – sonst teilen sich alle
+// Mitarbeiter hinter derselben IP/NAT ein gemeinsames Kontingent.
+const perUserKey = (req, res) => {
+  const auth = req.headers['authorization']
+  if (auth?.startsWith('Bearer ')) return `u:${auth.slice(7, 71)}`
+  if (req.headers['x-api-key'])    return `k:${String(req.headers['x-api-key']).slice(0, 64)}`
+  return ipKeyGenerator(req, res)   // IPv6-sicher
+}
+
 app.use('/api/', rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 300,
+  max: 6000,                       // ~400/min je Nutzer – deckt aktives Arbeiten ab
   standardHeaders: true,
   legacyHeaders: false,
-  message: { error: 'Zu viele Anfragen – bitte in 15 Minuten erneut versuchen.' },
+  keyGenerator: perUserKey,
+  message: { error: 'Zu viele Anfragen – bitte kurz warten.' },
 }))
 
 const writeLimiter = rateLimit({
   windowMs: 60 * 1000,
-  max: 120,
+  max: 600,                        // Auto-Save beim Tippen darf nicht anschlagen
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: perUserKey,
   message: { error: 'Zu viele Schreiboperationen – bitte kurz warten.' },
 })
 

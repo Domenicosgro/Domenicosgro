@@ -132,6 +132,11 @@ export function useProjects() {
   const [loaded, setLoaded]     = useState(false)
   const [saveError, setSaveError] = useState(null)
   const saveTimer               = useRef(null)
+  // Automatischer Wiederholungsversuch bei fehlgeschlagenem Speichern (429, 5xx,
+  // abgelaufene Sitzung) – sonst bliebe die Änderung dauerhaft ungespeichert.
+  const [retryTick, setRetryTick] = useState(0)
+  const retryTimer = useRef(null)
+  const retryCount = useRef(0)
 
   useEffect(() => {
     if (isServer) {
@@ -156,13 +161,22 @@ export function useProjects() {
         } else {
           await localSave(projects)
         }
+        clearTimeout(retryTimer.current)
+        retryCount.current = 0
         setSaveError(null)
       } catch (err) {
         setSaveError(buildSaveErrorMessage(err))
+        // Automatisch erneut versuchen (3s → 30s), bis das Speichern klappt.
+        clearTimeout(retryTimer.current)
+        const delay = Math.min(3000 * 2 ** retryCount.current, 30000)
+        retryCount.current += 1
+        retryTimer.current = setTimeout(() => setRetryTick(t => t + 1), delay)
       }
-    }, 400)
+    }, 900)
     return () => clearTimeout(saveTimer.current)
-  }, [projects, loaded])
+  }, [projects, loaded, retryTick])
+
+  useEffect(() => () => clearTimeout(retryTimer.current), [])
 
   // SSE: live updates from other sessions/users
   useEffect(() => {

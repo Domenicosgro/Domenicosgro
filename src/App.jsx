@@ -58,6 +58,15 @@ export default function App() {
   const activeSaveError    = protocolSaveError || projectSaveError || logoSaveError
   const clearActiveSaveError = () => { clearProtocolError(); clearProjectError(); clearLogoError() }
 
+  // Schutz vor Datenverlust: solange etwas NICHT gespeichert werden konnte, beim
+  // Schließen/Neuladen des Tabs warnen (die Änderungen liegen dann nur im Tab).
+  useEffect(() => {
+    if (!activeSaveError) return
+    const warn = (e) => { e.preventDefault(); e.returnValue = '' }
+    window.addEventListener('beforeunload', warn)
+    return () => window.removeEventListener('beforeunload', warn)
+  }, [activeSaveError])
+
   const [view,              setView]              = useState('home')
   const [selectedProjectId, setSelectedProjectId] = useState(null)
   const [selectedPhase,     setSelectedPhase]     = useState(null)   // 'planung' | 'bau' | null

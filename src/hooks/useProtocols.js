@@ -157,6 +157,12 @@ export function useProtocols() {
   const [loaded, setLoaded]       = useState(false)
   const [saveError, setSaveError] = useState(null)
   const saveTimer                  = useRef(null)
+  // Automatischer Wiederholungsversuch: schlägt das Speichern fehl (429, 5xx,
+  // abgelaufene Sitzung), wird es erneut versucht – sonst bliebe die Arbeit
+  // ungespeichert, sobald der Nutzer aufhört zu tippen.
+  const [retryTick, setRetryTick] = useState(0)
+  const retryTimer  = useRef(null)
+  const retryCount  = useRef(0)
 
   useEffect(() => {
     if (isServer) {
@@ -186,13 +192,25 @@ export function useProtocols() {
         } else {
           await localSave(protocols)
         }
+        clearTimeout(retryTimer.current)
+        retryCount.current = 0
         setSaveError(null)
       } catch (err) {
         setSaveError(buildSaveErrorMessage(err))
+        // Solange nicht gespeichert werden konnte: automatisch erneut versuchen.
+        // Wachsender Abstand (3s → 30s), damit ein ausgelasteter Server nicht
+        // zusätzlich belastet wird. Läuft weiter, bis das Speichern klappt.
+        clearTimeout(retryTimer.current)
+        const delay = Math.min(3000 * 2 ** retryCount.current, 30000)
+        retryCount.current += 1
+        retryTimer.current = setTimeout(() => setRetryTick(t => t + 1), delay)
       }
-    }, 400)
+    }, 900)   // Auto-Save nach kurzer Tipp-Pause (weniger Requests als 400 ms)
     return () => clearTimeout(saveTimer.current)
-  }, [protocols, loaded])
+  }, [protocols, loaded, retryTick])
+
+  // Aufräumen beim Verlassen
+  useEffect(() => () => clearTimeout(retryTimer.current), [])
 
   // SSE: live updates from other sessions/users
   useEffect(() => {
