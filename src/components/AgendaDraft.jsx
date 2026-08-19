@@ -18,16 +18,21 @@ export default function AgendaDraft({ agenda, agendaGreeting, agendaSentAt, prot
     [protocolItems]
   )
 
-  // Gruppiert die Agendapunkte nach ihrem verknüpften Protokollpunkt (beliebige Ebene).
+  // Abschnitte der Agenda: übernommen werden NUR die HAUPTPUNKTE (Ebene 1) –
+  // die Agenda bleibt damit die schlanke Gliederung der Besprechung.
+  // Ein Unterpunkt erscheint nur dann als eigener Abschnitt, wenn ihm bereits
+  // ein Agendapunkt zugeordnet wurde (sonst wäre der Punkt unsichtbar).
   const sections = useMemo(() => {
-    const linked = targetPoints.map(pi => ({
-      id: pi.id,
-      no: pi.no,
-      level: pi.level ?? 1,
-      topic: pi.topic,
-      label: `${pi.no ? pi.no + ' – ' : ''}${pi.topic}`,
-      items: agenda.filter(a => a.linkedProtocolItemId === pi.id),
-    }))
+    const linked = targetPoints
+      .map(pi => ({
+        id: pi.id,
+        no: pi.no,
+        level: pi.level ?? 1,
+        topic: pi.topic,
+        label: `${pi.no ? pi.no + ' – ' : ''}${pi.topic}`,
+        items: agenda.filter(a => a.linkedProtocolItemId === pi.id),
+      }))
+      .filter(sec => sec.level === 1 || sec.items.length > 0)
     const newItems = agenda.filter(a =>
       !a.linkedProtocolItemId || !targetPoints.find(pi => pi.id === a.linkedProtocolItemId)
     )
