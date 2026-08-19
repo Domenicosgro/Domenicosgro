@@ -198,15 +198,14 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
     )
   }, [predecessor, protocol.actionItems])
 
-  // Aus dem Vorgänger werden NUR die Hauptpunkte (Ebene 1) übernommen – inkl.
-  // ihrer Inhalte (Diskussion/Ergebnis). Unterpunkte werden im neuen Protokoll
-  // frisch erstellt (im Protokoll oder über einen Agendapunkt).
-  // Freigemeldete (erledigt + carriedGray) bleiben wie bisher außen vor.
+  // Ins neue PROTOKOLL werden ALLE offenen Punkte des Vorgängers übernommen –
+  // Haupt- und Unterpunkte inkl. ihrer Inhalte (Diskussion/Ergebnis), damit die
+  // Fortschreibung vollständig ist. Freigemeldete (erledigt + carriedGray)
+  // bleiben außen vor. Die AGENDA gliedert davon unabhängig nach Hauptthemen.
   const pendingItemCarryover = useMemo(() => {
     if (!predecessor) return []
     const already = new Set((protocol.agendaItems ?? []).map(i => i.carriedFromId).filter(Boolean))
     return predecessor.agendaItems.filter(it => {
-      if ((it.level ?? 1) !== 1) return false
       if (it.status === 'erledigt' && it.carriedGray === true) return false
       return !already.has(it.id)
     })
@@ -234,9 +233,8 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
   const handleItemCarryover = () => {
     if (!predecessor) return
     const already = new Set((protocol.agendaItems ?? []).map(i => i.carriedFromId).filter(Boolean))
-    // Nur Hauptpunkte (Ebene 1) inkl. ihrer Inhalte übernehmen – keine Unterpunkte.
+    // ALLE offenen Punkte (Haupt- + Unterpunkte) inkl. Inhalten übernehmen.
     const toCarry = (predecessor.agendaItems ?? []).filter(it => {
-      if ((it.level ?? 1) !== 1) return false
       if (it.status === 'erledigt' && it.carriedGray === true) return false
       return !already.has(it.id)
     })
