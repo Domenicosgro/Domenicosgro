@@ -6,10 +6,15 @@ import ContactAutocomplete from './ContactAutocomplete'
 
 export default function AgendaDraft({ agenda, agendaGreeting, agendaSentAt, protocolItems, projectContacts, onChange, onChangeGreeting }) {
 
-  // Die Agenda zeigt/verwaltet NUR die Hauptpunkte (Ebene 1). Unterpunkte gehören
-  // in den Protokollbereich; auto-aus dem Agenda-Entwurf erzeugte Punkte ausgenommen.
+  // Zwei-Wege-Synchronisierung: die Agenda spiegelt ALLE Protokollpunkte
+  // (Haupt-, Unter- und Unterunterpunkte) als Abschnitte und Zuordnungsziele.
+  // Ein im Protokoll erzeugter Punkt erscheint damit sofort in der Agenda, und
+  // ein Agendapunkt kann jedem Punkt beliebiger Ebene zugeordnet werden
+  // (handleAgendaChange erzeugt dann das Kind auf Ebene parent+1, max. 3).
+  // Nur die aus dem Agenda-Entwurf auto-erzeugten Punkte (linkedFromAgendaId)
+  // sind ausgenommen – sie sind selbst schon das Sync-Ergebnis.
   const targetPoints = useMemo(
-    () => (protocolItems ?? []).filter(it => it.topic && (it.level ?? 1) === 1 && !it.linkedFromAgendaId),
+    () => (protocolItems ?? []).filter(it => it.topic && !it.linkedFromAgendaId),
     [protocolItems]
   )
 
