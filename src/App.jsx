@@ -14,6 +14,7 @@ import ProjectDashboard      from './components/ProjectDashboard'
 import NotesList             from './components/NotesList'
 import ContactDatabase       from './components/ContactDatabase'
 import LoginScreen           from './components/LoginScreen'
+import SessionExpiredModal   from './components/SessionExpiredModal'
 import AdminPanel            from './components/AdminPanel'
 import BimViewerPopup        from './components/BimViewerPopup'
 import LearningPlatform      from './components/LearningPlatform'
@@ -66,6 +67,37 @@ export default function App() {
     window.addEventListener('beforeunload', warn)
     return () => window.removeEventListener('beforeunload', warn)
   }, [activeSaveError])
+
+  // ── Abgelaufene Anmeldung: sofort zur Neuanmeldung auffordern ───────────────
+  // Als Overlay (nicht Login-Screen), damit ungespeicherte Eingaben erhalten
+  // bleiben. Ausgelöst durch (a) einen 401 beim Speichern und (b) eine aktive
+  // Prüfung, sobald der Tab wieder in den Vordergrund kommt – so erscheint die
+  // Aufforderung sofort und nicht erst beim nächsten Speicherversuch.
+  const [sessionExpired, setSessionExpired] = useState(false)
+
+  useEffect(() => {
+    if (!isServer) return
+    const onExpired = () => setSessionExpired(true)
+    window.addEventListener('kp-auth-expired', onExpired)
+
+    const checkSession = async () => {
+      if (document.visibilityState !== 'visible') return
+      if (!localStorage.getItem('kp_session_token')) return
+      try {
+        const res = await fetch('/api/auth/me', {
+          headers: { Authorization: `Bearer ${localStorage.getItem('kp_session_token')}` },
+        })
+        if (res.status === 401) setSessionExpired(true)
+      } catch {}
+    }
+    document.addEventListener('visibilitychange', checkSession)
+    const iv = setInterval(checkSession, 5 * 60 * 1000)   // zusätzlich alle 5 Minuten
+    return () => {
+      window.removeEventListener('kp-auth-expired', onExpired)
+      document.removeEventListener('visibilitychange', checkSession)
+      clearInterval(iv)
+    }
+  }, [])
 
   const [view,              setView]              = useState('home')
   const [selectedProjectId, setSelectedProjectId] = useState(null)
@@ -413,7 +445,21 @@ export default function App() {
     return null
   }
 
+  // Wird zusammen mit dem SaveErrorBanner überall gerendert → das Overlay ist in
+  // jeder Ansicht sichtbar, ohne die Ansicht (und damit den Editor-Zustand) zu wechseln.
   const SaveErrorBanner = () => {
+    if (sessionExpired) {
+      return (
+        <SessionExpiredModal
+          username={serverUser?.username}
+          onSuccess={(user) => {
+            setSessionExpired(false)
+            if (user) setServerUser(user)
+            clearActiveSaveError()
+          }}
+        />
+      )
+    }
     if (!activeSaveError) return null
     return (
       <div className="fixed top-0 inset-x-0 z-50 flex items-center justify-between gap-4 bg-red-700 text-white px-5 py-3 text-sm no-print">
