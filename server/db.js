@@ -405,23 +405,34 @@ const users = {
 }
 
 // ── Sessions ──────────────────────────────────────────────────────────────────
-const _sGet          = db.prepare("SELECT token, username, expires_at FROM sessions WHERE token = ? AND expires_at > datetime('now')")
+// WICHTIG: expires_at wird als ISO-String gespeichert ("2026-08-13T18:00:00.000Z").
+// datetime('now') liefert dagegen "2026-08-13 18:00:00" (Leerzeichen statt T).
+// Ein String-Vergleich beider Formate ist FALSCH: das 'T' (0x54) sortiert immer
+// hinter dem Leerzeichen (0x20). Dadurch blieb eine Sitzung bis Tagesende gültig
+// und war am nächsten Kalendertag schlagartig ungültig – unabhängig von der
+// tatsächlichen Laufzeit. Deshalb wird auf identisches ISO-Format verglichen.
+const NOW_ISO = "strftime('%Y-%m-%dT%H:%M:%fZ','now')"
+const _sGet          = db.prepare(`SELECT token, username, expires_at FROM sessions WHERE token = ? AND expires_at > ${NOW_ISO}`)
 const _sInsert       = db.prepare('INSERT INTO sessions (token, username, expires_at) VALUES (@token, @username, @expiresAt)')
 const _sDelete       = db.prepare('DELETE FROM sessions WHERE token = ?')
-const _sExpire       = db.prepare("DELETE FROM sessions WHERE expires_at <= datetime('now')")
+const _sExpire       = db.prepare(`DELETE FROM sessions WHERE expires_at <= ${NOW_ISO}`)
 // _sDeleteUser already declared above in the users section
 const _sListActive   = db.prepare(`
   SELECT s.token, s.username, s.created_at, s.expires_at,
          u.display_name, u.role, u.source
   FROM sessions s
   LEFT JOIN users u ON u.username = s.username
-  WHERE s.expires_at > datetime('now')
+  WHERE s.expires_at > ${NOW_ISO}
   ORDER BY s.created_at DESC
 `)
+
+const _sTouch = db.prepare('UPDATE sessions SET expires_at = @expiresAt WHERE token = @token')
 
 const sessions = {
   get(token)                         { return _sGet.get(token) || null },
   create(token, username, expiresAt) { _sInsert.run({ token, username, expiresAt }) },
+  // Gleitende Verlängerung: setzt das Ablaufdatum bei aktiver Nutzung neu.
+  touch(token, expiresAt)            { _sTouch.run({ token, expiresAt }) },
   delete(token)                      { _sDelete.run(token) },
   deleteByUser(username)             { _sDeleteUser.run(username) },
   listActive()                       { return _sListActive.all() },

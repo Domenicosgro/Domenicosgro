@@ -155,10 +155,23 @@ app.use(express.json({ limit: '100mb' }))
 const API_KEY = process.env.API_KEY
 
 // Resolves a token string to a username or null.
+// Gleitende Verlängerung: Wer aktiv arbeitet, bleibt angemeldet. Die Sitzung
+// läuft nur ab, wenn das Programm SESSION_HOURS lang gar nicht genutzt wurde –
+// so ist man am nächsten Arbeitstag nicht plötzlich abgemeldet (was zuvor zu
+// "Speichern fehlgeschlagen" mitten in der Arbeit führte).
+// Geschrieben wird nur, wenn weniger als die halbe Laufzeit übrig ist
+// (spart Schreibzugriffe bei jedem Request).
 function resolveToken(token) {
   if (!token) return null
   const session = db.sessions.get(token)
   if (!session) return null
+  try {
+    const fullMs = auth.SESSION_HOURS * 60 * 60 * 1000
+    const msLeft = new Date(session.expires_at).getTime() - Date.now()
+    if (Number.isNaN(msLeft) || msLeft < fullMs / 2) {
+      db.sessions.touch(token, new Date(Date.now() + fullMs).toISOString())
+    }
+  } catch {}
   db.users.updateLastLogin(session.username)
   return session.username
 }
