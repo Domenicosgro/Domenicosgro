@@ -136,10 +136,28 @@ Domenicosgro/
 │   │   ├── GesamtprotokollModal.jsx # Gesamtprotokoll-Druck über Vorgänger-Kette
 │   │   ├── ProtocolEmailModal.jsx # Protokoll als PDF-Anhang versenden
 │   │   ├── LogoUpload.jsx         # Logo hochladen/löschen
+│   │   ├── KostenView.jsx         # Kostenermittlung: Liste, Editor-Shell, CSV-Export
+│   │   ├── kosten/                # Reiter des Kosteneditors
+│   │   │   ├── cells.jsx          # Eingabezellen (blau) mit Formel-/Fehleranzeige
+│   │   │   ├── UebersichtTab.jsx  # Abgabeblatt 2. Ebene + BKI-Plausibilisierung
+│   │   │   ├── PositionenTab.jsx  # KG 300 (3. Ebene) und KG 200-700 (2. Ebene)
+│   │   │   ├── ParameterTab.jsx   # Bezugsgrößen und Mengen mit Formelnamen
+│   │   │   ├── VariantenTab.jsx   # Variantenverwaltung + Variantendifferenz-Analyse
+│   │   │   ├── AnnahmenTab.jsx    # Annahmen/offene Punkte + Planerstand
+│   │   │   ├── QuellenTab.jsx     # Quellenregister
+│   │   │   └── KopfdatenTab.jsx   # Stufe, Rechenfaktoren, Budget, BKI-Referenzwerte
 │   │   ├── LoginScreen.jsx        # Login-Maske (Server-Modus, DSM-Login)
 │   │   └── AdminPanel.jsx         # Benutzerverwaltung, Synology-Import, E-Mail-Status, Backups
 │   │
+│   ├── kosten/                    # Kostenermittlung nach DIN 276 (gekapseltes Modul)
+│   │   ├── formula.js             # Formel-Parser/-Auswerter ("=PERIMETER*AF_STREIFEN")
+│   │   ├── din276.js              # KG-Katalog: 2. Ebene KG 100-800, 3. Ebene KG 300
+│   │   ├── model.js               # Datenmodell, Fabriken, Stufen/Ansatztypen/Reifegrade
+│   │   ├── calc.js                # Rechenkern: Varianten, Summen, Prozentpositionen
+│   │   └── templates.js           # Vorlagen: leere DIN-Struktur / Sporthalle BKI Q2-2026
+│   │
 │   └── hooks/
+│       ├── useKosten.js           # CRUD Kostenermittlungen + entprellter Editor-Entwurf
 │       ├── useProtocols.js        # CRUD + syncProjectName + refetchProtocols
 │       ├── useProjects.js         # CRUD Projekte + importProject + refetchProjects
 │       ├── useNotes.js            # CRUD Aktennotizen
@@ -312,6 +330,7 @@ Ein-Befehl-Deploy, komplett passwortlos via SSH-Key:
 | `reset_requests` | Passwort-Zurücksetzen-Anfragen |
 | `deletion_requests` | Projekt-Löschanfragen (Admin-Freigabe per Link) |
 | `release_tokens` | Login-freie Freimelde-Links je Verantwortlicher + Projekt |
+| `cost_estimates` | Kostenermittlungen nach DIN 276 (JSON je Zeile, projektbezogen) |
 | `app_state` | Key-Value-Speicher (z.B. Scheduler-Zeitstempel) |
 | `store` | Generischer Key-Value-Store (Logo etc.) |
 
@@ -416,6 +435,7 @@ GET/POST/PATCH/DELETE  /api/projects[/:id]
 GET                    /api/projects/:id/access            Zugriffs-/Admin-Konfiguration
 PATCH                  /api/projects/:id/access            isAccessControlled, allowedUsers, projectAdmins
 POST                   /api/projects/:id/request-delete    Löschanfrage (Admin-Freigabe nötig)
+GET/POST/PATCH/DELETE  /api/projects/:id/kostenermittlung[/:itemId]  Kostenermittlungen (DIN 276)
 GET/POST/PATCH/DELETE  /api/protocols[/:id]
 GET/POST/PATCH/DELETE  /api/notes[/:id]
 POST                   /api/protocols/:id/send-email       Protokoll als PDF
@@ -621,6 +641,54 @@ unveränderbare Abschnitte; neue Punkte hängen über `linkedProtocolItemId` dar
 `promoteAgenda()` übernimmt beim Abschließen nur ungelinkte Punkte (Dedup über
 `existingLinkedIds`).
 
+### Kostenermittlung nach DIN 276 (src/kosten/)
+Projekt-Dashboard-Kachel „Kostenermittlung" → `KostenView.jsx`. Je Projekt sind
+mehrere Kostenstände möglich (Kostenrahmen … Kostenfeststellung).
+
+**Rechenlogik (BKI-Kennwerte sind brutto):**
+```text
+Nettokosten Variante = Menge × gewählter Bruttokennwert ÷ (1 + USt) × Regionalfaktor × Preisindex
+```
+Prozentpositionen (typisch KG 700) rechnen auf eine Bezugssumme. Bezugsbasis sind
+**nur die nicht-prozentualen Positionen** des Bereichs – so bleibt die Rechnung
+zirkelfrei.
+
+**Formeln:** Mengen, Kennwerte und Parameter dürfen mit `=` beginnen und andere
+Parameter über ihren Formelnamen referenzieren (`=PERIMETER*AF_STREIFEN`).
+`src/kosten/formula.js` löst rekursiv mit Zyklusschutz auf; Grundrechenarten,
+Klammern sowie `MIN`, `MAX`, `ROUND`, `SUM`, `WENN`. Deutsche Dezimalkommata
+werden in Zahlwerten akzeptiert.
+
+**Methodische Leitplanken** (bewusst so umgesetzt, nicht „vergessen"):
+- Erstbefüllung mit dem **unteren** BKI-Wert, wo Leistung und Einheit passen –
+  als reproduzierbare Regel, nicht als Prognose. Das ▸ neben einem BKI-Wert
+  überträgt ihn in alle Variantenspalten.
+- Wo BKI keinen passenden Kennwert liefert, **keine Scheingenauigkeit**: Ansatztyp
+  `Projektansatz`/`Marktansatz` statt erfundener BKI-Untergliederung.
+- BKI-Gesamtkennwerte dienen nur der **Plausibilisierung**. Die Summe der Unterwerte
+  der 2./3. Ebene muss den Unterwert der übergeordneten Kostengruppe **nicht**
+  treffen (unterschiedliche Vergleichsobjekte).
+- Varianten werden über **eigene sichtbare Kennwert-/Mengenspalten** verglichen,
+  nie über versteckte Zuschläge. Der Reiter „Varianten" listet auf, wo sie sich
+  tatsächlich unterscheiden.
+- Offene Punkte bleiben sichtbar: jede Position trägt einen Reifegrad
+  (BKI-basiert · Mengen prüfen · Marktanfrage · Konzept offen · Schadstoffmengen
+  offen · gesichert), die Übersicht zählt sie aus.
+
+**Vorlagen** (`templates.js`): „Leere DIN-276-Struktur" (KG 200–700, 2. Ebene) und
+„Sporthalle – Modernisierung (BKI Q2/2026)" mit 88 Positionen, 40 Parametern,
+vier Varianten, Annahmen, Planerständen und Quellenregister. Die Werte der
+zweiten Vorlage sind Startwerte eines konkreten Projekts und für ein neues
+Projekt zu ersetzen.
+
+**Zugriff:** Lesen darf jeder Projektberechtigte, Bearbeiten nur System- und
+Projektadministratoren (`readOnly`-Prop in `App.jsx`).
+
+**Speicherung:** Server-Modus → `cost_estimates` über
+`/api/projects/:id/kostenermittlung` mit optimistischer Versionierung; lokal →
+`localStorage`. Der Editor arbeitet auf einem Entwurf und speichert entprellt
+(`useKostenDraft`).
+
 ### Projektkontakte-Verschlüsselung (crypto.js)
 PBKDF2 → AES-GCM; Salt/IV im Projekt, entschlüsselte Kontakte nur im
 `decryptedContacts`-State (nie persistiert), Schlüssel pro Projekt im Speicher.
@@ -651,6 +719,10 @@ Print/PDF (`window.print()`, `@page A4`).
 11. **DSM-Login braucht erreichbares `SYNOLOGY_URL`** (Port 5000/5001); fällt die NAS-API aus, schlägt der Login fehl.
 12. **SMTP Microsoft 365** mit Sicherheitsstandards gesperrt → Graph nutzen.
 13. **ParticipantsList** (Teilnehmer im Protokoll) ≠ **BeteiligtenModal** (Projektbeteiligtenliste).
+14. **Kostenermittlung:** Kennwerte sind **brutto**; die Nettoumrechnung passiert im Rechenkern. Ein netto vorliegender Betrag (Angebot, Fachplanung) braucht die Rechenart „Nettobetrag direkt", sonst wird er ein zweites Mal entsteuert.
+15. **Prozentpositionen** rechnen nur auf nicht-prozentuale Positionen – eine KG-700-Position kann sich nicht selbst als Basis nehmen.
+16. **Parameter-Formelnamen** müssen eindeutig sein; doppelte Namen lösen den zuletzt gefundenen Wert auf (das Parameterblatt warnt).
+17. **Speichern ohne `projectId`** würde eine Kostenermittlung aus der Projektliste fallen lassen – `useKosten.save` setzt das Feld deshalb immer.
 
 ---
 

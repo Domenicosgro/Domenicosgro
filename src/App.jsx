@@ -19,6 +19,7 @@ import AdminPanel            from './components/AdminPanel'
 import BimViewerPopup        from './components/BimViewerPopup'
 import LearningPlatform      from './components/LearningPlatform'
 import BautagebuchView       from './components/BautagebuchView'
+import KostenView            from './components/KostenView'
 import MaengelView           from './components/MaengelView'
 import PersonalplanungView   from './components/PersonalplanungView'
 import DateiablageView       from './components/DateiablageView'
@@ -804,6 +805,7 @@ export default function App() {
           onOpenMassnahmen={() => setView('project-massnahmen')}
           onOpenBim={() => { setBimReturnView('project-dashboard'); setView('project-bim') }}
           onOpenBautagebuch={() => setView('project-bautagebuch')}
+          onOpenKosten={() => setView('project-kosten')}
           onOpenMaengel={() => setView('project-maengel')}
           onOpenDateiablage={isServer ? () => setView('project-dateiablage') : undefined}
           onOpenProjektdaten={() => setView('project-daten')}
@@ -903,6 +905,26 @@ export default function App() {
         <BautagebuchView
           project={project}
           serverUser={effectiveUser}
+          onBack={() => setView('project-dashboard')}
+        />
+        <UpdateBanner /><SaveErrorBanner />
+      </>
+    )
+  }
+
+  if (view === 'project-kosten') {
+    const project = projectsWithContacts.find(p => p.id === selectedProjectId)
+    if (!project) { setView('home'); return null }
+    // Kostenermittlungen bearbeiten dürfen System- und Projektadministratoren
+    const canEditKosten = !isServer || effectiveUser?.role === 'admin'
+      || project.projectAdminUser === serverUser?.username
+      || project.projectAdmins?.includes(serverUser?.username)
+    return wrap(
+      <>
+        <KostenView
+          project={project}
+          serverUser={effectiveUser}
+          readOnly={!canEditKosten}
           onBack={() => setView('project-dashboard')}
         />
         <UpdateBanner /><SaveErrorBanner />

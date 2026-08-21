@@ -1654,6 +1654,7 @@ function mountProjectStore(route, store, label) {
 }
 mountProjectStore('diary',   db.diaryEntries, 'diary')
 mountProjectStore('defects', db.defects,      'defect')
+mountProjectStore('kostenermittlung', db.costEstimates, 'cost')
 
 // ── Dateiablage: Synology File Station je Projekt (project.fsPath) ───────────
 const fileStation = require('./fileStation')

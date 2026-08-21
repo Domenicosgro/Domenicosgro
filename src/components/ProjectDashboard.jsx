@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { ArrowLeft, FileText, Users, HardHat, Pencil, NotebookPen, ChevronRight, BarChart2, UserCog, BookOpen, Box, AlertOctagon, HardDrive, Database } from 'lucide-react'
+import { ArrowLeft, FileText, Users, HardHat, Pencil, NotebookPen, ChevronRight, BarChart2, UserCog, BookOpen, Box, AlertOctagon, HardDrive, Database, Calculator } from 'lucide-react'
 import ProjectAdminPanel from './ProjectAdminPanel'
 import { lphRange } from './ProjektdatenView'
 import { liveActionItems } from '../utils'
@@ -64,7 +64,7 @@ function DashboardTile({ icon, title, subtitle, accent, onClick, stat1, stat2, c
 export default function ProjectDashboard({
   project, protocols, notes, serverUser, globalLogoDataUrl,
   onUpdateProject, onBack, onOpenProtocols, onOpenNotes, onManageContacts, onOpenMassnahmen, onOpenBim,
-  onOpenBautagebuch, onOpenMaengel, onOpenDateiablage, onOpenProjektdaten, onSaved,
+  onOpenBautagebuch, onOpenMaengel, onOpenDateiablage, onOpenProjektdaten, onOpenKosten, onSaved,
 }) {
   const [showAdminPanel, setShowAdminPanel] = useState(false)
   const [bimIssues,      setBimIssues]      = useState([])
@@ -247,6 +247,17 @@ export default function ProjectDashboard({
               : 'NAS-Projektordner durchsuchen und Dateien herunterladen'}
             accent="border-gray-400"
             onClick={onOpenDateiablage}
+          />
+        )}
+
+        {/* Kostenermittlung */}
+        {onOpenKosten && (
+          <DashboardTile
+            icon={<Calculator size={20} />}
+            title="Kostenermittlung"
+            subtitle="Kostenschätzung und -berechnung nach DIN 276 mit BKI-Kennwerten und Variantenvergleich"
+            accent="border-indigo-400"
+            onClick={onOpenKosten}
           />
         )}
 
