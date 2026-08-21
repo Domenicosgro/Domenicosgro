@@ -185,6 +185,7 @@ function PasswordModal({ mode, projectName, onConfirm, onCancel }) {
 
 // ── Main component ─────────────────────────────────────────────────────────────
 export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, onDelete, onOpenProject,
+                                       onOpenKostendatenbank,
                                        onOpenProjectDashboard, onUnlock, onSetPassword, onRemovePassword,
                                        onOpenContactDatabase, onImportProject, onOpenPersonalplanung,
                                        onOpenLearning, onArchiveProject, onUnarchiveProject,
@@ -510,6 +511,27 @@ export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, 
                 <span className="text-xs text-gray-400 italic">Wochenmatrix öffnen · nur Admin</span>
               </div>
             </button>
+            )}
+
+            {/* Kostendatenbanken – büroweite Kennwertquellen */}
+            {onOpenKostendatenbank && (
+              <button
+                onClick={onOpenKostendatenbank}
+                className="card w-full text-left flex flex-col min-h-[110px] p-4 hover:border-brand-300 hover:bg-gray-50 transition-colors group border-l-4 border-indigo-400"
+              >
+                <div className="flex items-center gap-2 mb-1.5">
+                  <span className="text-brand-600 group-hover:text-brand-700 transition-colors flex-shrink-0"><Database size={20} /></span>
+                  <h3 className="font-semibold text-sm text-gray-900 group-hover:text-brand-700 transition-colors truncate">Kostendatenbanken</h3>
+                </div>
+                <p className="text-xs text-gray-500 line-clamp-3">
+                  BKI, eigene Kostenermittlungen und externe Quellen – mit nachweisbarem Kostenstand
+                </p>
+                <div className="flex gap-4 mt-auto pt-2">
+                  <span className="text-xs text-gray-400 italic">
+                    {serverUser?.role === 'admin' ? 'Pflege: Admins' : 'Nur lesen'}
+                  </span>
+                </div>
+              </button>
             )}
 
             {/* Learning-Plattform – Schulungsvideos */}

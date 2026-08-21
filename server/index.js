@@ -1656,6 +1656,69 @@ mountProjectStore('diary',   db.diaryEntries, 'diary')
 mountProjectStore('defects', db.defects,      'defect')
 mountProjectStore('kostenermittlung', db.costEstimates, 'cost')
 
+// ── Kostendatenbanken (bueroweit, projektuebergreifend) ─────────────────────
+// Lesen darf jeder angemeldete Nutzer, Pflege ist Systemadministratoren
+// vorbehalten. Je Datenbank werden mehrere Kostenstaende (Versionen) mit
+// ihren Nachweisdokumenten gefuehrt.
+
+app.get('/api/kostendatenbanken', requireAuth, (_req, res) => {
+  try {
+    res.json(db.costDatabases.list())
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.get('/api/kostendatenbanken/:id', requireAuth, (req, res) => {
+  try {
+    const entry = db.costDatabases.get(req.params.id)
+    if (!entry) return res.status(404).json({ error: 'Kostendatenbank nicht gefunden.' })
+    res.json(entry)
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.post('/api/kostendatenbanken', requireAuth, requireAdmin, writeLimiter, (req, res) => {
+  try {
+    const id  = require('crypto').randomBytes(12).toString('base64url')
+    const now = new Date().toISOString()
+    const data = {
+      ...req.body, id,
+      createdBy: planDisplayName(req.user), createdAt: now, updatedAt: now,
+    }
+    db.costDatabases.create(data, req.user)
+    broadcast('costdb', 'create', id, now)
+    logEvent('COSTDB_CREATE', req, `${data.name ?? id}`)
+    res.status(201).json(data)
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.patch('/api/kostendatenbanken/:id', requireAuth, requireAdmin, writeLimiter, (req, res) => {
+  try {
+    const { data, version } = req.body
+    const updated = { ...data, id: req.params.id, updatedAt: new Date().toISOString() }
+    const result  = db.costDatabases.update(req.params.id, updated, version, req.user)
+    if (result.notFound) return res.status(404).json({ error: 'Kostendatenbank nicht gefunden.' })
+    if (result.conflict) return res.status(409).json({ conflict: true, ...result })
+    broadcast('costdb', 'update', req.params.id, updated.updatedAt)
+    res.json({ ok: true, version: result.version })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.delete('/api/kostendatenbanken/:id', requireAuth, requireAdmin, writeLimiter, async (req, res) => {
+  try {
+    const entry = db.costDatabases.get(req.params.id)
+    if (!entry) return res.status(404).json({ error: 'Kostendatenbank nicht gefunden.' })
+    // Nachweisdokumente aller Kostenstaende mit entfernen
+    for (const v of entry.versions ?? []) {
+      for (const doc of v.documents ?? []) {
+        if (doc.attachmentId) { try { await attachments.remove(doc.attachmentId) } catch {} }
+      }
+    }
+    db.costDatabases.delete(req.params.id)
+    broadcast('costdb', 'delete', req.params.id, new Date().toISOString())
+    logEvent('COSTDB_DELETE', req, `${entry.name ?? req.params.id}`)
+    res.json({ ok: true })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
 // ── Dateiablage: Synology File Station je Projekt (project.fsPath) ───────────
 const fileStation = require('./fileStation')
 

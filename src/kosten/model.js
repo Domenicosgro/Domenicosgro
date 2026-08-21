@@ -11,6 +11,7 @@
 //     Projekt-/Marktansatz verwendet statt Scheingenauigkeit.
 
 import { uid } from '../utils'
+import { tiefeFromProfil } from './tiefe'
 
 // ── Kostenermittlungsstufen nach DIN 276 ─────────────────────────────────────
 export const STUFEN = [
@@ -112,6 +113,7 @@ export const emptyPosition = (kg1 = 300) => ({
   status: 'bki',
   source: '',             // Quellen-/Herleitungshinweis
   note: '',
+  dbRef: null,            // { dbId, versionId, entryId } – Herkunft der BKI-Spalten
 })
 
 export const emptyAssumption = () => ({
@@ -167,6 +169,8 @@ export const emptyKostenermittlung = (projectId = null, projectName = '') => ({
   budgetKg: 300,                  // Kostengruppe, gegen die das Budget läuft
   bezugKennzahl: 'BGF_GES',       // Parameter für die €/m²-Kennzahl der Übersicht
   bezugKennzahlUnit: 'm² BGF',
+  tiefe: tiefeFromProfil('kostenschaetzung'),   // Kostentiefe je Leistungsphase
+  datenquellen: [],               // gebundene Kostendatenbank-Stände (siehe datenquelle())
   variants: [emptyVariant()],
   parameters: [],
   bkiRef: [],                     // BKI-Gesamtkennwerte zur Plausibilisierung
@@ -189,4 +193,27 @@ export const emptyBkiRef = (kg = 300) => ({
   bezug: 'BGF_GES',       // Parametername der Bezugsgröße
   unit: '€/m² BGF brutto',
   note: '',
+})
+
+/**
+ * Bindung einer Kostenermittlung an einen Kostenstand einer Kostendatenbank.
+ *
+ * Name, Stand und Datum werden als Kopie mitgeführt und nicht nur referenziert:
+ * Die Ermittlung soll auch dann noch aussagen, mit welcher Datenbasis sie
+ * gerechnet wurde, wenn die Datenbank später umbenannt oder aufgeräumt wird.
+ */
+export const datenquelle = (database, version, { primary = false } = {}) => ({
+  id: uid(),
+  dbId:         database.id,
+  dbName:       database.name,
+  dbKind:       database.kind,
+  publisher:    database.publisher ?? '',
+  objektart:    database.objektart ?? '',
+  versionId:    version.id,
+  versionLabel: version.label,
+  stand:        version.stand ?? '',
+  gebiet:       version.gebiet ?? '',
+  ustHinweis:   version.ustHinweis ?? '',
+  primary,                        // Leitquelle für die Erstbefüllung
+  gebundenAm:   new Date().toISOString(),
 })

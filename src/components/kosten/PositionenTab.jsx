@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react'
-import { Plus, Trash2, Copy, ChevronDown, ChevronRight, Search, Percent, Euro, Sigma } from 'lucide-react'
+import { Plus, Trash2, Copy, ChevronDown, ChevronRight, Search, Percent, Euro, Sigma, Database } from 'lucide-react'
 import {
   emptyPosition, ANSATZ_TYPEN, POS_STATUS, POS_MODES, PERCENT_BASES,
   ansatzBadge, posStatusBadge,
@@ -341,6 +341,12 @@ export default function PositionenTab({ draft, result, mutate, lookup }) {
                         {/* Quelle */}
                         <td className="px-1 py-0.5">
                           <TextCell value={p.source} onChange={v => setPos(p.id, { source: v })} placeholder="Quelle / Herleitung" />
+                          {p.dbRef && (
+                            <div className="text-[10px] text-brand-600 px-1.5 flex items-center gap-1" title="Vergleichswerte stammen aus einer gebundenen Kostendatenbank">
+                              <Database size={9} className="flex-shrink-0" />
+                              {dbLabel(draft, p.dbRef)}
+                            </div>
+                          )}
                           <SelectCell
                             className="mt-0.5"
                             value={p.mode}
@@ -411,4 +417,11 @@ export default function PositionenTab({ draft, result, mutate, lookup }) {
       </div>
     </div>
   )
+}
+
+/** Kurzvermerk, aus welchem Kostenstand die Vergleichswerte einer Position stammen. */
+function dbLabel(draft, ref) {
+  const q = (draft.datenquellen ?? []).find(x => x.dbId === ref.dbId)
+  if (!q) return 'Kostendatenbank'
+  return `${q.dbName}${q.versionLabel ? ' · ' + q.versionLabel : ''}`
 }

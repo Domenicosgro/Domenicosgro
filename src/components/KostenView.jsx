@@ -7,6 +7,7 @@ import { useKosten, useKostenDraft } from '../hooks/useKosten'
 import { calcEstimate, buildLookup, fmtEur, fmtNum, maturity } from '../kosten/calc'
 import { TEMPLATES, buildFromTemplate } from '../kosten/templates'
 import { STUFEN, stufeLabel, docStatusBadge } from '../kosten/model'
+import { TIEFENPROFILE, tiefeFromProfil } from '../kosten/tiefe'
 import { uid, formatDate } from '../utils'
 import UebersichtTab from './kosten/UebersichtTab'
 import PositionenTab from './kosten/PositionenTab'
@@ -15,12 +16,14 @@ import VariantenTab  from './kosten/VariantenTab'
 import AnnahmenTab   from './kosten/AnnahmenTab'
 import QuellenTab    from './kosten/QuellenTab'
 import KopfdatenTab  from './kosten/KopfdatenTab'
+import DatenquellenTab from './kosten/DatenquellenTab'
 
 const TABS = [
   { id: 'uebersicht', label: 'Übersicht' },
   { id: 'positionen', label: 'Positionen' },
   { id: 'parameter',  label: 'Parameter' },
   { id: 'varianten',  label: 'Varianten' },
+  { id: 'datenquellen', label: 'Datenquellen' },
   { id: 'annahmen',   label: 'Annahmen & Planerstand' },
   { id: 'quellen',    label: 'Quellen' },
   { id: 'kopfdaten',  label: 'Kopfdaten' },
@@ -50,6 +53,7 @@ export default function KostenView({ project, serverUser, onBack, readOnly = fal
         key={current.id}
         estimate={current}
         project={project}
+        serverUser={serverUser}
         saving={saving}
         error={error}
         readOnly={readOnly}
@@ -112,9 +116,14 @@ export default function KostenView({ project, serverUser, onBack, readOnly = fal
         <NewEstimateModal
           project={project}
           onClose={() => setShowNew(false)}
-          onCreate={async (templateId, name) => {
+          onCreate={async (templateId, name, profilId) => {
             const est = buildFromTemplate(templateId, project.id, project.name)
             if (name) est.name = name
+            if (profilId) {
+              est.tiefe = tiefeFromProfil(profilId)
+              const p = TIEFENPROFILE.find(x => x.id === profilId)
+              if (p) est.stufe = p.stufe
+            }
             const saved = await create(est)
             setShowNew(false)
             setOpenId(saved.id)
@@ -187,7 +196,7 @@ function EstimateCard({ estimate, onOpen, onDuplicate, onDelete, readOnly }) {
 
 // ── Editor ───────────────────────────────────────────────────────────────────
 
-function Editor({ estimate, project, saving, error, readOnly, onSave, onBack }) {
+function Editor({ estimate, project, serverUser, saving, error, readOnly, onSave, onBack }) {
   const [tab, setTab] = useState('uebersicht')
   const { draft, dirty, mutate, patch, flush } = useKostenDraft(estimate, onSave)
 
@@ -263,6 +272,9 @@ function Editor({ estimate, project, saving, error, readOnly, onSave, onBack }) 
       {tab === 'positionen' && <PositionenTab draft={draft} result={result} mutate={guard(mutate)} lookup={lookup} />}
       {tab === 'parameter'  && <ParameterTab  draft={draft} mutate={guard(mutate)} lookup={lookup} />}
       {tab === 'varianten'  && <VariantenTab  draft={draft} result={result} mutate={guard(mutate)} />}
+      {tab === 'datenquellen' && (
+        <DatenquellenTab draft={draft} result={result} mutate={guard(mutate)} readOnly={readOnly} serverUser={serverUser} />
+      )}
       {tab === 'annahmen'   && <AnnahmenTab   draft={draft} mutate={guard(mutate)} />}
       {tab === 'quellen'    && <QuellenTab    draft={draft} mutate={guard(mutate)} />}
       {tab === 'kopfdaten'  && <KopfdatenTab  draft={draft} patch={guard(patch)} mutate={guard(mutate)} lookup={lookup} result={result} />}
@@ -274,8 +286,11 @@ function Editor({ estimate, project, saving, error, readOnly, onSave, onBack }) 
 
 function NewEstimateModal({ project, onClose, onCreate }) {
   const [templateId, setTemplateId] = useState('leer')
+  const [profilId,   setProfilId]   = useState('kostenschaetzung')
   const [name,       setName]       = useState('Kostenschätzung Vorplanung')
   const [busy,       setBusy]       = useState(false)
+
+  const profil = TIEFENPROFILE.find(p => p.id === profilId)
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
@@ -289,6 +304,23 @@ function NewEstimateModal({ project, onClose, onCreate }) {
           <label className="block">
             <span className="text-xs font-medium text-gray-600">Bezeichnung</span>
             <input className="input mt-0.5" value={name} onChange={e => setName(e.target.value)} />
+          </label>
+
+          <label className="block">
+            <span className="text-xs font-medium text-gray-600">Stufe und Kostentiefe</span>
+            <select
+              className="select mt-0.5"
+              value={profilId}
+              onChange={e => {
+                setProfilId(e.target.value)
+                const p = TIEFENPROFILE.find(x => x.id === e.target.value)
+                // Bezeichnung mitziehen, solange sie noch einem Profilnamen entspricht
+                if (p && TIEFENPROFILE.some(x => name.startsWith(x.name))) setName(p.name)
+              }}
+            >
+              {TIEFENPROFILE.map(p => <option key={p.id} value={p.id}>{p.name} · {p.lph}</option>)}
+            </select>
+            {profil && <p className="text-xs text-gray-500 mt-1 leading-relaxed">{profil.hint}</p>}
           </label>
 
           <div className="space-y-2">
@@ -319,7 +351,7 @@ function NewEstimateModal({ project, onClose, onCreate }) {
         <div className="px-4 py-3 border-t border-concrete flex justify-end gap-2">
           <button className="btn-secondary" onClick={onClose}>Abbrechen</button>
           <button className="btn-primary" disabled={busy}
-                  onClick={async () => { setBusy(true); try { await onCreate(templateId, name) } finally { setBusy(false) } }}>
+                  onClick={async () => { setBusy(true); try { await onCreate(templateId, name, profilId) } finally { setBusy(false) } }}>
             {busy ? <Loader size={14} className="animate-spin" /> : <Plus size={14} />} Anlegen
           </button>
         </div>

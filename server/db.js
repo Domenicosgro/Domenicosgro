@@ -190,6 +190,15 @@ db.exec(`
     updated_by TEXT
   );
 
+  CREATE TABLE IF NOT EXISTS cost_databases (
+    id         TEXT    PRIMARY KEY,
+    project_id TEXT,
+    data       TEXT    NOT NULL,
+    version    INTEGER NOT NULL DEFAULT 1,
+    updated_at TEXT    NOT NULL DEFAULT (datetime('now')),
+    updated_by TEXT
+  );
+
   CREATE TABLE IF NOT EXISTS notifications (
     id         TEXT PRIMARY KEY,
     username   TEXT NOT NULL,
@@ -539,6 +548,7 @@ module.exports = {
   staffPlan:    makeStore('staff_plan'),
   staffMembers: makeStore('staff_members'),
   costEstimates: makeStore('cost_estimates'),
+  costDatabases: makeStore('cost_databases'),
   users,
   sessions,
   resetRequests,

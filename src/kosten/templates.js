@@ -12,6 +12,7 @@ import {
   emptyKostenermittlung, emptyVariant, emptyParameter, emptyPosition,
   emptyAssumption, emptySource, emptyPlannerState, emptyBkiRef,
 } from './model'
+import { tiefeFromProfil } from './tiefe'
 
 // ── Hilfsfabriken ────────────────────────────────────────────────────────────
 
@@ -59,6 +60,7 @@ const all4 = (v) => ({ V1: de(v), V2A: de(v), V2B: de(v), V3: de(v) })
 
 function buildLeer(projectId, projectName) {
   const est = emptyKostenermittlung(projectId, projectName)
+  est.tiefe = tiefeFromProfil('kostenschaetzung')
   est.variants = [{ ...emptyVariant('V1', 'Variante 1') }]
   est.parameters = [
     param('Geometrie', 'BGF gesamt',        'BGF_GES',   'Brutto-Grundfläche nach DIN 277', '', 'm²',    'Planstand eintragen'),
@@ -86,6 +88,10 @@ function buildSporthalle(projectId, projectName) {
   const est = emptyKostenermittlung(projectId, projectName)
   est.name        = 'Kostenschätzung Vorplanung'
   est.stufe       = 'kostenschaetzung'
+  // KG 300 wird auf der 3. Ebene geführt, die übrigen Gruppen auf der 2. –
+  // genau das Profil der vertieften Kostenschätzung.
+  est.tiefe       = tiefeFromProfil('kostenschaetzung-vertieft')
+  est.tiefe.byKg1 = { 300: 3 }
   est.kostenstand = 'Q2/2026'
   est.bkiQuelle   = 'BKI Modernisierungen Sporthallen 2026 (Objektgruppe 023), Kostenstand Q2/2026, Bundesdurchschnitt, inkl. 19 % MwSt.'
   est.ust             = '0,19'

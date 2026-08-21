@@ -20,6 +20,7 @@ import BimViewerPopup        from './components/BimViewerPopup'
 import LearningPlatform      from './components/LearningPlatform'
 import BautagebuchView       from './components/BautagebuchView'
 import KostenView            from './components/KostenView'
+import KostendatenbankView   from './components/KostendatenbankView'
 import MaengelView           from './components/MaengelView'
 import PersonalplanungView   from './components/PersonalplanungView'
 import DateiablageView       from './components/DateiablageView'
@@ -912,6 +913,19 @@ export default function App() {
     )
   }
 
+  if (view === 'kostendatenbanken') {
+    return wrap(
+      <>
+        <KostendatenbankView
+          serverUser={effectiveUser}
+          canEdit={!isServer || effectiveUser?.role === 'admin'}
+          onBack={() => setView('home')}
+        />
+        <UpdateBanner /><SaveErrorBanner />
+      </>
+    )
+  }
+
   if (view === 'project-kosten') {
     const project = projectsWithContacts.find(p => p.id === selectedProjectId)
     if (!project) { setView('home'); return null }
@@ -1044,6 +1058,7 @@ export default function App() {
         onRemovePassword={handleRemoveProjectPassword}
         onOpenContactDatabase={() => setView('contact-database')}
         onOpenLearning={() => setView('learning')}
+        onOpenKostendatenbank={() => setView('kostendatenbanken')}
         onOpenPersonalplanung={() => setView('personalplanung')}
         onOpenProjektdatenbank={() => setView('projektdatenbank')}
         onImportProject={handleImportProject}

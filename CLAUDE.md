@@ -136,6 +136,7 @@ Domenicosgro/
 │   │   ├── GesamtprotokollModal.jsx # Gesamtprotokoll-Druck über Vorgänger-Kette
 │   │   ├── ProtocolEmailModal.jsx # Protokoll als PDF-Anhang versenden
 │   │   ├── LogoUpload.jsx         # Logo hochladen/löschen
+│   │   ├── KostendatenbankView.jsx # Büroweite Kostendatenbanken (Startseiten-Kachel)
 │   │   ├── KostenView.jsx         # Kostenermittlung: Liste, Editor-Shell, CSV-Export
 │   │   ├── kosten/                # Reiter des Kosteneditors
 │   │   │   ├── cells.jsx          # Eingabezellen (blau) mit Formel-/Fehleranzeige
@@ -143,9 +144,10 @@ Domenicosgro/
 │   │   │   ├── PositionenTab.jsx  # KG 300 (3. Ebene) und KG 200-700 (2. Ebene)
 │   │   │   ├── ParameterTab.jsx   # Bezugsgrößen und Mengen mit Formelnamen
 │   │   │   ├── VariantenTab.jsx   # Variantenverwaltung + Variantendifferenz-Analyse
+│   │   │   ├── DatenquellenTab.jsx # Bindung an Kostenstände + Referenzobjekt-Übernahme
 │   │   │   ├── AnnahmenTab.jsx    # Annahmen/offene Punkte + Planerstand
 │   │   │   ├── QuellenTab.jsx     # Quellenregister
-│   │   │   └── KopfdatenTab.jsx   # Stufe, Rechenfaktoren, Budget, BKI-Referenzwerte
+│   │   │   └── KopfdatenTab.jsx   # Stufe, Kostentiefe, Rechenfaktoren, Budget, BKI-Referenzwerte
 │   │   ├── LoginScreen.jsx        # Login-Maske (Server-Modus, DSM-Login)
 │   │   └── AdminPanel.jsx         # Benutzerverwaltung, Synology-Import, E-Mail-Status, Backups
 │   │
@@ -154,10 +156,13 @@ Domenicosgro/
 │   │   ├── din276.js              # KG-Katalog: 2. Ebene KG 100-800, 3. Ebene KG 300
 │   │   ├── model.js               # Datenmodell, Fabriken, Stufen/Ansatztypen/Reifegrade
 │   │   ├── calc.js                # Rechenkern: Varianten, Summen, Prozentpositionen
+│   │   ├── datenbank.js           # Kostendatenbanken: Kostenstände, Kennwerte, Referenzobjekte
+│   │   ├── tiefe.js               # Kostentiefe je Leistungsphase (DIN-Minimum vs. Zieltiefe)
 │   │   └── templates.js           # Vorlagen: leere DIN-Struktur / Sporthalle BKI Q2-2026
 │   │
 │   └── hooks/
 │       ├── useKosten.js           # CRUD Kostenermittlungen + entprellter Editor-Entwurf
+│       ├── useKostendatenbanken.js # CRUD Kostendatenbanken + Dokument-Upload
 │       ├── useProtocols.js        # CRUD + syncProjectName + refetchProtocols
 │       ├── useProjects.js         # CRUD Projekte + importProject + refetchProjects
 │       ├── useNotes.js            # CRUD Aktennotizen
@@ -331,6 +336,7 @@ Ein-Befehl-Deploy, komplett passwortlos via SSH-Key:
 | `deletion_requests` | Projekt-Löschanfragen (Admin-Freigabe per Link) |
 | `release_tokens` | Login-freie Freimelde-Links je Verantwortlicher + Projekt |
 | `cost_estimates` | Kostenermittlungen nach DIN 276 (JSON je Zeile, projektbezogen) |
+| `cost_databases` | Büroweite Kostendatenbanken inkl. Kostenstände, Kennwerte und Dokumentverweise |
 | `app_state` | Key-Value-Speicher (z.B. Scheduler-Zeitstempel) |
 | `store` | Generischer Key-Value-Store (Logo etc.) |
 
@@ -436,6 +442,8 @@ GET                    /api/projects/:id/access            Zugriffs-/Admin-Konfi
 PATCH                  /api/projects/:id/access            isAccessControlled, allowedUsers, projectAdmins
 POST                   /api/projects/:id/request-delete    Löschanfrage (Admin-Freigabe nötig)
 GET/POST/PATCH/DELETE  /api/projects/:id/kostenermittlung[/:itemId]  Kostenermittlungen (DIN 276)
+GET                    /api/kostendatenbanken[/:id]        Kostendatenbanken (alle Angemeldeten)
+POST/PATCH/DELETE      /api/kostendatenbanken[/:id]        Pflege – nur Rolle `admin`
 GET/POST/PATCH/DELETE  /api/protocols[/:id]
 GET/POST/PATCH/DELETE  /api/notes[/:id]
 POST                   /api/protocols/:id/send-email       Protokoll als PDF
@@ -689,6 +697,63 @@ Projektadministratoren (`readOnly`-Prop in `App.jsx`).
 `localStorage`. Der Editor arbeitet auf einem Entwurf und speichert entprellt
 (`useKostenDraft`).
 
+### Kostendatenbanken (src/kosten/datenbank.js)
+Startseiten-Kachel „Kostendatenbanken" → `KostendatenbankView.jsx`. Büroweit und
+projektübergreifend: einmal gepflegt, für alle Projekte verfügbar. Lesen darf
+jeder Angemeldete, Pflege ist Systemadministratoren vorbehalten.
+
+**Drei Arten:** `bki` (statistische Kennwerte), `eigen` (aus abgeschlossenen
+eigenen Projekten abgeleitet), `extern` (Herstellerlisten, Fachplanerkennwerte,
+Förderrichtwerte).
+
+**Kostenstand = Version.** Eine Datenbank besteht aus mehreren Kostenständen mit
+Bezeichnung, Datum, Gebietsstand, Steuerhinweis, Status
+(`entwurf` · `freigegeben` · `abgeloest`) und Vermerk, wer wann eingespielt hat.
+Bestehende Werte werden **nie überschrieben**: ein neuer Preisstand ist ein neuer
+Kostenstand; beim Freigeben wird der bisher freigegebene automatisch abgelöst.
+„Aus letztem Stand" übernimmt die Struktur und leert die Werte.
+
+**Dokumente sind Teil des Kostenstands.** PDF, Excel, CSV, Word, ZIP oder Bild
+werden am Kostenstand hinterlegt (Ablage über `/api/attachments` im
+`/data/attachments`-Volume) und sind aus der Kostenermittlung heraus direkt zu
+öffnen. Ohne Beleg ist ein Kostenstand fachlich nicht nachvollziehbar.
+
+**Kennwerte** je Kostengruppe (1.–3. Ebene) mit Leistungsabgrenzung, Bezugsgröße,
+von/Mittel/bis und Quellenangabe. Erfassung von Hand oder über „Aus Tabelle
+einfügen" (Excel-Zwischenablage oder CSV; Trennzeichen und Kopfzeile werden
+erkannt).
+
+**Bindung an eine Kostenermittlung** (Reiter „Datenquellen"): Die Ermittlung
+rechnet mit genau dem gebundenen Kostenstand. Bezeichnung, Stand und Datum werden
+als **Kopie** mitgeführt – die Datenbasis bleibt nachweisbar, auch wenn die
+Datenbank später umbenannt oder aufgeräumt wird. Erscheint ein neuerer
+freigegebener Stand, meldet der Editor das; übernommen wird er erst auf
+Anweisung, damit eine abgegebene Kostenermittlung ihre Zahlen behält.
+`fillFromVersion()` füllt die Vergleichsspalten je Kostengruppe (exakter Treffer,
+sonst nächsthöhere Ebene) und vermerkt die Herkunft in `position.dbRef`. Passt
+kein Kennwert, bleibt die Position unangetastet – es wird nichts erfunden.
+
+**Rückfluss:** „Als Referenzobjekt übernehmen" leitet aus einer Kostenermittlung
+Kennwerte ab (Nettokosten ÷ Bezugsgröße, auf brutto hochgerechnet) und legt sie
+als neuen Kostenstand in einer `eigen`-Datenbank an – Status `entwurf`, vor
+Verwendung zu prüfen. Die Bezugsgröße ist **je Hauptkostengruppe** wählbar
+(KG 500 gegen AF, KG 200 gegen GF, sonst BGF); Kostengruppen ohne hinterlegte
+Bezugsgröße werden übersprungen statt gegen eine unpassende Größe gerechnet.
+
+### Kostentiefe je Leistungsphase (src/kosten/tiefe.js)
+Zwei getrennte Größen:
+- **`minDin`** – die von DIN 276 verlangte Mindesttiefe (Kostenrahmen/-schätzung
+  1. Ebene, Kostenberechnung 2. Ebene, Kostenanschlag/-feststellung 3. Ebene).
+  Wird sie unterschritten, meldet die Übersicht das rot.
+- **`ziel`** – die Tiefe, die das Büro in diesem Projekt anstrebt, **je
+  Hauptkostengruppe** einstellbar (`byKg1`).
+
+Daraus entsteht die **vertiefte Kostenschätzung**: Profil
+`kostenschaetzung-vertieft` gibt Abgabe auf der 2. Ebene vor, KG 300 und KG 400
+aber auf der 3. Ebene. Die Profile in `TIEFENPROFILE` sind Startwerte – die
+Tiefe bleibt in den Kopfdaten frei änderbar. `tiefeCheck()` wertet aus, welche
+Kostengruppe ihre Zieltiefe erreicht; Übersicht und Kopfdaten zeigen es an.
+
 ### Projektkontakte-Verschlüsselung (crypto.js)
 PBKDF2 → AES-GCM; Salt/IV im Projekt, entschlüsselte Kontakte nur im
 `decryptedContacts`-State (nie persistiert), Schlüssel pro Projekt im Speicher.
@@ -723,6 +788,10 @@ Print/PDF (`window.print()`, `@page A4`).
 15. **Prozentpositionen** rechnen nur auf nicht-prozentuale Positionen – eine KG-700-Position kann sich nicht selbst als Basis nehmen.
 16. **Parameter-Formelnamen** müssen eindeutig sein; doppelte Namen lösen den zuletzt gefundenen Wert auf (das Parameterblatt warnt).
 17. **Speichern ohne `projectId`** würde eine Kostenermittlung aus der Projektliste fallen lassen – `useKosten.save` setzt das Feld deshalb immer.
+18. **Kostenstände nie überschreiben.** Neuer Preisstand = neuer Kostenstand. Sonst ändern sich rückwirkend die Zahlen bereits abgegebener Kostenermittlungen.
+19. **Die Bindung an einen Kostenstand ist eine Kopie**, keine Referenz: `datenquelle()` schreibt Name, Stand und Datum in die Ermittlung. Ein Umbenennen der Datenbank ändert eine gebundene Ermittlung deshalb nicht.
+20. **Referenzobjekte brauchen die richtige Bezugsgröße je Kostengruppe** – KG 500 gegen AF, KG 200 gegen GF. Alles gegen BGF zu rechnen erzeugt Kennwerte, die mit keiner Quelle vergleichbar sind.
+21. **Kostendatenbanken pflegen nur Systemadministratoren** (`requireAdmin`); die Oberfläche blendet die Bearbeitung sonst aus.
 
 ---
 

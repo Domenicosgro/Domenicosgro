@@ -1,9 +1,10 @@
 import React, { useMemo, useState } from 'react'
-import { ChevronDown, ChevronRight, TrendingUp, Target, ShieldAlert, Info } from 'lucide-react'
+import { ChevronDown, ChevronRight, TrendingUp, Target, ShieldAlert, Info, Database, Layers3, AlertTriangle, Check } from 'lucide-react'
 import { fmtEur, fmtNum, fmtPct, maturity, budgetCheck } from '../../kosten/calc'
 import { evaluate, toNumber } from '../../kosten/formula'
 import { kg1Label, kg1Of } from '../../kosten/din276'
 import { POS_STATUS } from '../../kosten/model'
+import { tiefeCheck, ebeneLabel } from '../../kosten/tiefe'
 import { ErrorList } from './cells'
 
 // Blatt „Übersicht“ – das Abgabeblatt auf der 2. Ebene DIN 276.
@@ -86,6 +87,45 @@ export default function UebersichtTab({ draft, result, lookup }) {
           </div>
         </div>
       )}
+
+      {/* ── Datenbasis und Kostentiefe ───────────────────────────────────── */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+        <div className="card p-3">
+          <h3 className="text-sm font-semibold text-night flex items-center gap-1.5">
+            <Database size={14} className="text-brand-600" /> Datenbasis
+          </h3>
+          {(draft.datenquellen ?? []).length === 0 ? (
+            <p className="text-xs text-gray-500 mt-1">
+              {draft.bkiQuelle
+                ? draft.bkiQuelle
+                : 'Keine Kostendatenbank gebunden – die Vergleichswerte werden von Hand gepflegt.'}
+            </p>
+          ) : (
+            <ul className="text-xs text-gray-600 mt-1 space-y-1">
+              {draft.datenquellen.map(q => (
+                <li key={q.id} className="flex items-start gap-1.5">
+                  <span className="text-gray-300 mt-0.5">·</span>
+                  <span>
+                    <b className="text-night">{q.dbName}</b>
+                    {q.versionLabel && <> · Kostenstand {q.versionLabel}</>}
+                    {q.stand && <> ({q.stand})</>}
+                    {q.gebiet && <> · {q.gebiet}</>}
+                    {q.ustHinweis && <> · {q.ustHinweis}</>}
+                    {q.primary && <span className="badge-blue ml-1.5">Leitquelle</span>}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
+        <div className="card p-3">
+          <h3 className="text-sm font-semibold text-night flex items-center gap-1.5">
+            <Layers3 size={14} className="text-brand-600" /> Kostentiefe
+          </h3>
+          <TiefeZusammenfassung draft={draft} />
+        </div>
+      </div>
 
       {/* ── Kostenübersicht 2. Ebene ─────────────────────────────────────── */}
       <div className="card overflow-x-auto">
@@ -264,6 +304,50 @@ function StatCard({ icon, label, value, sub, accent = 'border-l-brand-500' }) {
       <div className="flex items-center gap-1.5 text-gray-500 text-xs">{icon}<span className="truncate">{label}</span></div>
       <div className="text-lg font-bold text-night mt-1 tabular-nums">{value}</div>
       {sub && <div className="text-[11px] text-gray-400 mt-0.5 truncate" title={sub}>{sub}</div>}
+    </div>
+  )
+}
+
+/** Kompakte Tiefenauswertung für das Abgabeblatt. */
+function TiefeZusammenfassung({ draft }) {
+  const check = tiefeCheck(draft)
+  const t     = draft.tiefe
+  if (!check.rows.length) {
+    return <p className="text-xs text-gray-400 mt-1">Noch keine Positionen erfasst.</p>
+  }
+  return (
+    <div className="mt-1 space-y-1">
+      <p className="text-xs text-gray-500">
+        Zieltiefe {ebeneLabel(t?.ziel ?? 2)} · DIN-Mindesttiefe {ebeneLabel(t?.minDin ?? 1)}
+      </p>
+      <div className="flex flex-wrap gap-1.5">
+        {check.rows.map(r => (
+          <span
+            key={r.kg1}
+            className={r.unterDin ? 'badge-red' : r.unterZiel ? 'badge-yellow' : 'badge-green'}
+            title={`Zieltiefe ${ebeneLabel(r.ziel)} · erfasst bis ${ebeneLabel(r.erreicht)}`}
+          >
+            KG {r.kg1}: {r.erreicht}. Eb.
+          </span>
+        ))}
+      </div>
+      {check.unterDin.length > 0 && (
+        <p className="text-xs text-red-700 flex items-start gap-1.5">
+          <AlertTriangle size={11} className="mt-0.5 flex-shrink-0" />
+          {check.unterDin.length} Kostengruppe(n) unterschreiten die DIN-Mindesttiefe.
+        </p>
+      )}
+      {check.unterZiel.length > 0 && (
+        <p className="text-xs text-amber-700 flex items-start gap-1.5">
+          <AlertTriangle size={11} className="mt-0.5 flex-shrink-0" />
+          {check.unterZiel.map(r => `KG ${r.kg1}`).join(', ')} erreichen die Zieltiefe noch nicht.
+        </p>
+      )}
+      {check.ok && (
+        <p className="text-xs text-green-700 flex items-center gap-1.5">
+          <Check size={11} /> Zieltiefe erreicht.
+        </p>
+      )}
     </div>
   )
 }
