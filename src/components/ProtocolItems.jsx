@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { Plus, Trash2, FileText, IndentIncrease, IndentDecrease, Search, X,
          CheckCircle2, Circle, User, Calendar, Paperclip, ExternalLink, GripVertical,
          ChevronRight, ChevronDown, CalendarClock, Info } from 'lucide-react'
@@ -134,9 +134,11 @@ function isHiddenByCollapse(items, idx, collapsed) {
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-export default function ProtocolItems({ items, onChange, allTasks = [], onTasksChange = () => {}, readOnly, projectContacts }) {
+export default function ProtocolItems({ items, onChange, allTasks = [], onTasksChange = () => {}, readOnly, projectContacts, protocolDate }) {
   const [search,        setSearch]        = useState('')
   const [showCompleted, setShowCompleted] = useState(true)
+  // Neu angelegter Punkt: Ansicht springt dorthin und der Titel wird fokussiert.
+  const [focusId, setFocusId] = useState(null)
   // Drag-and-drop state
   const [dragId,  setDragId]  = useState(null)   // id of item being dragged
   const [dropIdx, setDropIdx] = useState(null)   // insert-before index in `items`
@@ -150,11 +152,38 @@ export default function ProtocolItems({ items, onChange, allTasks = [], onTasksC
     return idx >= 0 && idx + 1 < items.length && (items[idx + 1].level ?? 1) > (items[idx].level ?? 1)
   }
 
+  // Nach dem Anlegen: zum neuen Punkt scrollen und dessen Titelfeld fokussieren,
+  // damit man sofort weiterschreiben kann (auch bei langen Protokollen).
+  useEffect(() => {
+    if (!focusId) return
+    const el = document.querySelector(`[data-item-id="${focusId}"]`)
+    if (!el) return
+    // Erst fokussieren OHNE eigenes Scrollen des Browsers (preventScroll), sonst
+    // konkurriert dessen Sprung mit dem sanften Scrollen und das Ziel wird verfehlt.
+    el.querySelector('input[data-topic-input]')?.focus({ preventScroll: true })
+    // Bewusst 'auto' (Sofortsprung) statt 'smooth': sanftes Scrollen wird bei
+    // aktivierter Systemeinstellung "Bewegung reduzieren" unterdrückt – der
+    // Sprung zum neuen Punkt muss aber immer stattfinden.
+    el.scrollIntoView({ behavior: 'auto', block: 'center' })
+    setFocusId(null)
+  }, [focusId, items])
+
   // ── Mutations ──────────────────────────────────────────────────────────────
+
+  // Ein Protokollpunkt trägt das Datum der BESPRECHUNG, nicht den Zeitpunkt der
+  // Eingabe – sonst stünde bei Vor-/Nachbereitung ein irreführendes Datum am Punkt.
+  const newItem = (level) => {
+    const base = emptyAgendaItem(level)
+    return protocolDate
+      ? { ...base, createdAt: `${protocolDate}T12:00:00.000Z` }
+      : base
+  }
 
   const addTop = () => {
     if (readOnly) return
-    onChange([...items, { ...emptyAgendaItem(1), no: suggestTopNo(items) }])
+    const item = { ...newItem(1), no: suggestTopNo(items) }
+    onChange([...items, item])
+    setFocusId(item.id)
   }
 
   const addChild = (parentId) => {
@@ -169,8 +198,12 @@ export default function ProtocolItems({ items, onChange, allTasks = [], onTasksC
     // Jeder Unterpunkt übernimmt zunächst den Titel des übergeordneten Punkts
     // (Ebene 2 vom Hauptpunkt, Ebene 3 vom Unterpunkt) – bleibt frei änderbar.
     const topic      = parent.topic || ''
-    next.splice(insertAt, 0, { ...emptyAgendaItem(childLevel), no, topic })
+    const item       = { ...newItem(childLevel), no, topic }
+    next.splice(insertAt, 0, item)
     onChange(next)
+    setFocusId(item.id)
+    // Eltern aufklappen, damit der neue Unterpunkt auch sichtbar ist
+    setCollapsed(prev => { const n = new Set(prev); n.delete(parentId); return n })
   }
 
   const update = (id, field, value) => {
@@ -446,7 +479,7 @@ export default function ProtocolItems({ items, onChange, allTasks = [], onTasksC
           const collapsedCount = collapsed.has(item.id) ? subtreeEnd(items, realIdx) - realIdx - 1 : 0
 
           return (
-            <div key={item.id} className={`protocol-item ${isDragging ? 'opacity-40' : ''} ${hiddenByCollapse ? 'hidden print:block' : ''}`}>
+            <div key={item.id} data-item-id={item.id} className={`protocol-item ${isDragging ? 'opacity-40' : ''} ${hiddenByCollapse ? 'hidden print:block' : ''}`}>
               <div
                 className={`${s.indent} print-level-${lvl} rounded-lg ${s.borderL} pl-2 pr-3 py-3 space-y-2
                   ${gray ? 'bg-gray-50 opacity-60' : done ? 'bg-green-50' : isNew ? 'bg-amber-50 protocol-item-new' : 'bg-white'}`}
@@ -525,6 +558,7 @@ export default function ProtocolItems({ items, onChange, allTasks = [], onTasksC
                     {readOnly || gray
                       ? <span className={`${s.label} ${done ? 'line-through text-gray-400' : ''}`}>{item.topic || '–'}</span>
                       : <input className={`input py-0.5 ${s.label} ${done ? 'line-through text-gray-400' : ''}`}
+                          data-topic-input
                           placeholder="Thema…" value={item.topic}
                           onChange={e => update(item.id, 'topic', e.target.value)} />
                     }

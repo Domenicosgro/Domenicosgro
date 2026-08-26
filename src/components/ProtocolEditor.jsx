@@ -335,6 +335,7 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
           ...agendaItems,
           {
             ...emptyAgendaItem(1),
+            ...(protocol.date ? { createdAt: `${protocol.date}T12:00:00.000Z` } : {}),
             no:                 String(topMax + 1),
             topic:              newItem.topic,
             assignedTo:         newItem.responsible || '',
@@ -363,6 +364,7 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
             ...agendaItems.slice(0, insertAt),
             {
               ...emptyAgendaItem(childLevel),
+              ...(protocol.date ? { createdAt: `${protocol.date}T12:00:00.000Z` } : {}),
               no:                 `${prefix}.${maxSuffix + 1}`,
               topic:              newItem.topic,
               assignedTo:         newItem.responsible || '',
@@ -957,6 +959,7 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
             onTasksChange={actionItems => change({ actionItems })}
             readOnly={isClosed}
             projectContacts={projectContacts ?? []}
+            protocolDate={protocol.date}
           />
         </div>
 
