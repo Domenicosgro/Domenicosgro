@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { ArrowLeft, Plus, Camera, Trash2, Pencil, X, Loader, AlertCircle, Printer,
          Sun, Cloud, CloudRain, Snowflake, BookOpen, CloudOff, RefreshCw, CloudSun,
          Building2, MapPin } from 'lucide-react'
-import { formatDate, uid, emptyContact } from '../utils'
+import { formatDate, uid, emptyContact, diaryConfigFor } from '../utils'
 import { compressToBase64, savePhotoBase64, loadPhotoUrl, removePhoto } from '../photoUtils'
 import { outboxAdd, outboxList, outboxRemove } from '../offlineStore'
 import ContactAutocomplete from './ContactAutocomplete'
@@ -109,10 +109,17 @@ function PhotoPlate({ photo, no, entry }) {
   )
 }
 
-function EntryForm({ entry, onSave, onCancel, projectId, firmOptions = [], onAddFirmToProject, lastProgress = '' }) {
+function EntryForm({ entry, onSave, onCancel, projectId, firmOptions = [], onAddFirmToProject,
+                     lastProgress = '', cfg = {}, contacts = [] }) {
   const [form, setForm] = useState({
     // Gesamt-Baufortschritt in % – neue Einträge starten beim zuletzt erfassten Wert
     progress:    entry?.progress    ?? lastProgress,
+    // Bausteine je Projekt (Projekt-Admin): Behinderungen, Abnahmen/Prüfungen
+    obstrFrom:   entry?.obstrFrom   || '',
+    obstrTo:     entry?.obstrTo     || '',
+    obstructions: entry?.obstructions || '',
+    inspections: entry?.inspections || '',
+    inspectedBy: entry?.inspectedBy || '',
     date:        entry?.date        || new Date().toISOString().slice(0, 10),
     // Tageshälfte: bestimmt auch den Zeitraum der automatischen Wetterabfrage
     daytime:     entry?.daytime     || (new Date().getHours() < 12 ? 'vormittag' : 'nachmittag'),
@@ -326,10 +333,41 @@ function EntryForm({ entry, onSave, onCancel, projectId, firmOptions = [], onAdd
         <textarea className="input resize-y" rows={3} value={form.workDone} onChange={set('workDone')}
           placeholder="Welche Leistungen wurden heute erbracht?" />
       </div>
+      {/* Behinderungen: eigener Block, weil er im Streitfall die Bauzeit trägt */}
+      {cfg.obstructions && (
+        <div>
+          <label className="block text-xs font-medium text-gray-500 mb-1">Behinderungen / Stillstände</label>
+          <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+            <span className="text-xs text-gray-400">von</span>
+            <input type="time" className="input w-28" value={form.obstrFrom} onChange={set('obstrFrom')} />
+            <span className="text-xs text-gray-400">bis</span>
+            <input type="time" className="input w-28" value={form.obstrTo} onChange={set('obstrTo')} />
+          </div>
+          <textarea className="input resize-y" rows={2} value={form.obstructions} onChange={set('obstructions')}
+            placeholder="Ursache und Auswirkung, z. B. „Betonage entfallen – Dauerregen“, „keine Freigabe Bewehrung“" />
+        </div>
+      )}
+
+      {/* Abnahmen & Prüfungen */}
+      {cfg.inspections && (
+        <div className="grid grid-cols-1 sm:grid-cols-[1fr_220px] gap-3">
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">Abnahmen &amp; Prüfungen</label>
+            <textarea className="input resize-y" rows={2} value={form.inspections} onChange={set('inspections')}
+              placeholder="z. B. „Bewehrungsabnahme Decke 2. OG – ohne Beanstandung“" />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">Prüfer</label>
+            <ContactAutocomplete value={form.inspectedBy} onChange={v => setForm(f => ({ ...f, inspectedBy: v }))}
+              contacts={contacts} placeholder="Name oder Firma" />
+          </div>
+        </div>
+      )}
+
       <div>
         <label className="block text-xs font-medium text-gray-500 mb-1">Besondere Vorkommnisse / Bemerkungen</label>
         <textarea className="input resize-y" rows={2} value={form.remarks} onChange={set('remarks')}
-          placeholder="Behinderungen, Anordnungen, Besucher… (optional)" />
+          placeholder="Anordnungen, Besucher, sonstige Vorkommnisse… (optional)" />
       </div>
 
       {/* Fotos – je Foto eine eigene Bildunterschrift für den Fotoanhang.
@@ -393,6 +431,10 @@ export default function BautagebuchView({ project, serverUser, logoDataUrl, clie
   const [syncing, setSyncing] = useState(false)
   const [editing, setEditing] = useState(null)   // entry | 'new' | null
   const lsKey = `kp_diary_${project.id}`
+
+  // Berichtsbausteine des Projekts (Projekt-Admin, Voreinstellung nach Leistungsbild)
+  const cfg = useMemo(() => diaryConfigFor(project), [project])
+  const [printCover, setPrintCover] = useState(true)
 
   // Firmen aus der Projektdatenbank (Projektkontakte) – Auswahl im Eintrag
   const firmOptions = useMemo(() => firmsOfProject(project), [project])
@@ -580,8 +622,111 @@ export default function BautagebuchView({ project, serverUser, logoDataUrl, clie
     [sorted])
   const lastProgress = progressEntry?.progress ?? ''
 
+  // ── Auswertung für das Deckblatt ──────────────────────────────────────────
+  // Zählt Tage, nicht Einträge: pro Tag kann es Vormittag und Nachmittag geben.
+  const summary = useMemo(() => {
+    const dates = [...new Set(sorted.map(e => e.date).filter(Boolean))].sort()
+    const dayHas = (pred) => new Set(sorted.filter(pred).map(e => e.date).filter(Boolean)).size
+    const temps  = sorted.flatMap(e => [e.tempMin, e.tempMax])
+      .filter(v => v !== '' && v != null).map(Number).filter(v => !Number.isNaN(v))
+    const firms  = new Set()
+    for (const e of sorted) {
+      if (e.firmList?.length) e.firmList.forEach(f => f.company && firms.add(f.company.trim()))
+      else (e.firms || '').split('\n').map(l => l.trim()).filter(Boolean).forEach(l => firms.add(l))
+    }
+    return {
+      from: dates[0] || '', to: dates[dates.length - 1] || '',
+      days: dates.length,
+      entries: sorted.length,
+      rainDays:  dayHas(e => e.weather === 'regen'),
+      snowDays:  dayHas(e => e.weather === 'schnee'),
+      obstrDays: dayHas(e => (e.obstructions || '').trim()),
+      inspDays:  dayHas(e => (e.inspections  || '').trim()),
+      tempMin: temps.length ? Math.min(...temps) : null,
+      tempMax: temps.length ? Math.max(...temps) : null,
+      firms: [...firms].sort((a, b) => a.localeCompare(b, 'de')),
+      photos: photoPlates.length,
+    }
+  }, [sorted, photoPlates])
+
   return (
     <div className="app-page diary-report">
+      {/* ── Deckblatt: erste Berichtsseite mit Zeitraum und Auswertung ───────
+          Nur im Druck, nur wenn der Baustein im Projekt aktiv ist und der
+          Schalter in der Kopfzeile ihn für diesen Ausdruck einschließt. */}
+      {cfg.coverSheet && printCover && sorted.length > 0 && (
+        <div className="hidden print:block diary-cover">
+          <div className="flex items-end justify-between pb-3 border-b border-black mb-8">
+            <div className="flex-shrink-0 flex items-end gap-4">
+              {logoDataUrl
+                ? <img src={logoDataUrl} alt="Büro-Logo" className="h-14 max-w-[170px] object-contain" />
+                : <div className="h-14 w-8" />}
+              {clientLogoDataUrl && (
+                <img src={clientLogoDataUrl} alt="Auftraggeber-Logo" className="h-14 max-w-[170px] object-contain" />
+              )}
+            </div>
+          </div>
+
+          <div className="text-xs uppercase tracking-widest">Baudokumentation</div>
+          <div className="text-xl font-bold mb-1">{project.name}</div>
+          {(project.projectData?.bauherr?.city || project.projectData?.bauherr?.street) && (
+            <div className="text-sm">
+              {[project.projectData?.bauherr?.street,
+                [project.projectData?.bauherr?.zip, project.projectData?.bauherr?.city].filter(Boolean).join(' ')]
+                .filter(Boolean).join(' · ')}
+            </div>
+          )}
+          <div className="text-sm">
+            {[project.projectData?.nummer ? `Projekt-Nr. ${project.projectData.nummer}` : '',
+              project.projectData?.isGeneralplanung ? 'Generalplanung' : project.projectData?.vertrag || '',
+              project.projectData?.bauherr?.company ? `Bauherr: ${project.projectData.bauherr.company}` : '']
+              .filter(Boolean).join(' · ')}
+          </div>
+
+          <div className="text-base font-bold mt-8 mb-2 border-b border-black pb-1">
+            Berichtszeitraum {summary.from ? formatDate(summary.from) : '–'} bis {summary.to ? formatDate(summary.to) : '–'}
+          </div>
+          <table className="w-full text-sm">
+            <tbody>
+              <tr><td className="py-0.5 pr-4 w-1/2">Dokumentierte Tage</td><td className="font-semibold">{summary.days}</td></tr>
+              <tr><td className="py-0.5 pr-4">Einträge (Vor-/Nachmittag)</td><td className="font-semibold">{summary.entries}</td></tr>
+              <tr><td className="py-0.5 pr-4">Tage mit Regen</td><td className="font-semibold">{summary.rainDays}</td></tr>
+              <tr><td className="py-0.5 pr-4">Tage mit Schnee / Frost</td><td className="font-semibold">{summary.snowDays}</td></tr>
+              {cfg.obstructions && (
+                <tr><td className="py-0.5 pr-4">Tage mit Behinderungen</td><td className="font-semibold">{summary.obstrDays}</td></tr>
+              )}
+              {cfg.inspections && (
+                <tr><td className="py-0.5 pr-4">Tage mit Abnahmen / Prüfungen</td><td className="font-semibold">{summary.inspDays}</td></tr>
+              )}
+              {summary.tempMin != null && (
+                <tr><td className="py-0.5 pr-4">Temperaturspanne</td><td className="font-semibold">{summary.tempMin}° bis {summary.tempMax} °C</td></tr>
+              )}
+              <tr><td className="py-0.5 pr-4">Fotos im Anhang</td><td className="font-semibold">{summary.photos}</td></tr>
+              {lastProgress !== '' && (
+                <tr><td className="py-0.5 pr-4">Baufortschritt gesamt</td>
+                  <td className="font-semibold">{lastProgress} %{progressEntry?.date ? ` (Stand ${formatDate(progressEntry.date)})` : ''}</td></tr>
+              )}
+            </tbody>
+          </table>
+
+          {summary.firms.length > 0 && (
+            <>
+              <div className="text-base font-bold mt-6 mb-2 border-b border-black pb-1">
+                Beteiligte Firmen ({summary.firms.length})
+              </div>
+              <ul className="text-sm columns-2">
+                {summary.firms.map(f => <li key={f} className="mb-0.5">{f}</li>)}
+              </ul>
+            </>
+          )}
+
+          <div className="text-xs mt-10">
+            Erstellt am {formatDate(new Date().toISOString().slice(0, 10))}
+            {serverUser?.display_name || serverUser?.username ? ` · ${serverUser.display_name || serverUser.username}` : ''}
+          </div>
+        </div>
+      )}
+
       {/* ── Druckkopf: identisch zum Protokoll (Logos links, Titel rechts) ──
           Logos kommen aus dem Projekt (Projekt-Admin-Panel) mit Rückfall auf das
           globale Büro-Logo – dieselbe Quelle wie beim Protokoll. */}
@@ -636,7 +781,13 @@ export default function BautagebuchView({ project, serverUser, logoDataUrl, clie
             <p className="text-sm text-gray-500 mt-0.5">{project.name} · {entries.length} Eintr{entries.length === 1 ? 'ag' : 'äge'}</p>
           </div>
         </div>
-        <div className="flex gap-2 no-print">
+        <div className="flex gap-2 items-center no-print">
+          {sorted.length > 0 && cfg.coverSheet && (
+            <label className="flex items-center gap-1.5 text-sm text-gray-600 cursor-pointer mr-1" title="Deckblatt mit Zeitraum, Kennzahlen und Firmenliste">
+              <input type="checkbox" checked={printCover} onChange={e => setPrintCover(e.target.checked)} />
+              Deckblatt
+            </label>
+          )}
           {sorted.length > 0 && (
             <button className="btn-secondary" onClick={() => window.print()}><Printer size={15} /> Drucken</button>
           )}
@@ -676,6 +827,7 @@ export default function BautagebuchView({ project, serverUser, logoDataUrl, clie
       {editing && (
         <EntryForm entry={editing === 'new' ? null : editing} projectId={project.id}
           firmOptions={firmOptions} lastProgress={lastProgress}
+          cfg={cfg} contacts={project.contacts || []}
           onAddFirmToProject={canEditContacts ? addFirmToProject : null}
           onSave={save} onCancel={() => setEditing(null)} />
       )}
@@ -782,6 +934,28 @@ export default function BautagebuchView({ project, serverUser, logoDataUrl, clie
                 )}
                 {entry.workDone && (
                   <div><p className="text-xs font-medium text-gray-400 uppercase">Ausgeführte Arbeiten</p><p className="text-gray-700 whitespace-pre-wrap">{entry.workDone}</p></div>
+                )}
+                {entry.obstructions && (
+                  <div className="sm:col-span-2">
+                    <p className="text-xs font-medium text-gray-400 uppercase">
+                      Behinderungen / Stillstände
+                      {(entry.obstrFrom || entry.obstrTo) && (
+                        <span className="normal-case text-gray-500">
+                          {' '}({entry.obstrFrom || '–'} bis {entry.obstrTo || '–'} Uhr)
+                        </span>
+                      )}
+                    </p>
+                    <p className="text-gray-700 whitespace-pre-wrap">{entry.obstructions}</p>
+                  </div>
+                )}
+                {entry.inspections && (
+                  <div className="sm:col-span-2">
+                    <p className="text-xs font-medium text-gray-400 uppercase">Abnahmen &amp; Prüfungen</p>
+                    <p className="text-gray-700 whitespace-pre-wrap">
+                      {entry.inspections}
+                      {entry.inspectedBy ? ` (Prüfer: ${entry.inspectedBy})` : ''}
+                    </p>
+                  </div>
                 )}
                 {entry.remarks && (
                   <div className="sm:col-span-2"><p className="text-xs font-medium text-gray-400 uppercase">Bemerkungen</p><p className="text-gray-700 whitespace-pre-wrap">{entry.remarks}</p></div>

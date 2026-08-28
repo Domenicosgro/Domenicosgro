@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
-import { X, ShieldCheck, Loader, Link2, Copy, Trash2, UserCog, Image as ImageIcon, Send } from 'lucide-react'
-import { formatDate } from '../utils'
+import { X, ShieldCheck, Loader, Link2, Copy, Trash2, UserCog, Image as ImageIcon, Send, BookOpen } from 'lucide-react'
+import { formatDate, DIARY_BLOCKS, diaryConfigFor } from '../utils'
 import LogoUpload from './LogoUpload'
 import ProjectDistribution from './ProjectDistribution'
 
@@ -22,6 +22,7 @@ export default function ProjectAdminPanel({ project, serverUser, onClose, onSave
   const [allowedUsers,       setAllowedUsers]       = useState(project.allowedUsers ?? [])
   const [projectAdmins,      setProjectAdmins]      = useState(project.projectAdmins ?? [])
   const [distRecipients,     setDistRecipients]     = useState(project.distribution?.recipients ?? [])
+  const [diaryCfg,           setDiaryCfg]           = useState(() => diaryConfigFor(project))
   const [tokens,             setTokens]             = useState([])
   const [error,              setError]              = useState('')
   const [copied,             setCopied]             = useState('')
@@ -324,6 +325,36 @@ export default function ProjectAdminPanel({ project, serverUser, onClose, onSave
                     Erscheint neben dem Büro-Logo in Protokollen, Notizen, Druck, PDF und Word-Export.
                   </p>
                 </div>
+              </div>
+            </div>
+          )}
+
+          {/* Baudokumentation: welche Blöcke der Bericht führt.
+              Voreinstellung nach Leistungsbild, hier je Projekt änderbar. */}
+          {onUpdateProject && (
+            <div>
+              <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2 flex items-center gap-1.5">
+                <BookOpen size={13} className="text-brand-600" /> Baudokumentation – Berichtsbausteine
+              </p>
+              <p className="text-xs text-gray-500 mb-2">
+                Voreinstellung richtet sich nach dem Leistungsbild
+                {project.projectData?.isGeneralplanung ? ' (Generalplanung)' : ''} und gilt für Erfassung und Ausdruck.
+              </p>
+              <div className="space-y-1.5">
+                {DIARY_BLOCKS.map(b => (
+                  <label key={b.key} className="flex items-start gap-2 text-sm cursor-pointer">
+                    <input type="checkbox" className="mt-0.5" checked={!!diaryCfg[b.key]}
+                      onChange={e => {
+                        const next = { ...diaryCfg, [b.key]: e.target.checked }
+                        setDiaryCfg(next)
+                        onUpdateProject(project.id, { diaryConfig: next })
+                      }} />
+                    <span>
+                      <span className="text-gray-800">{b.label}</span>
+                      <span className="block text-xs text-gray-400">{b.hint}</span>
+                    </span>
+                  </label>
+                ))}
               </div>
             </div>
           )}

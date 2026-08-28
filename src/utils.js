@@ -149,6 +149,26 @@ export const emptyContact = () => ({
   category: '',
 })
 
+// ── Baudokumentation: Berichtsbausteine je Projekt ───────────────────────────
+// Welche Blöcke der Bericht führt, hängt vom Leistungsbild ab: ein General-
+// planer dokumentiert Abnahmen und Koordination, eine reine Objektplanung oft
+// nicht. Die Voreinstellung richtet sich nach den Projektdaten, der Projekt-
+// Admin kann sie je Projekt ändern.
+export const DIARY_BLOCKS = [
+  { key: 'obstructions', label: 'Behinderungen / Stillstände',
+    hint: 'Uhrzeit und Ursache – Grundlage für Bauzeitverlängerung' },
+  { key: 'inspections',  label: 'Abnahmen & Prüfungen',
+    hint: 'z. B. Bewehrungsabnahme, Betonierfreigabe – mit Prüfer und Ergebnis' },
+  { key: 'coverSheet',   label: 'Deckblatt mit Auswertung',
+    hint: 'Erste Berichtsseite mit Zeitraum, Regentagen, Firmen und Kennzahlen' },
+]
+
+export const diaryConfigFor = (project) => {
+  const gp  = !!project?.projectData?.isGeneralplanung
+  const def = { obstructions: true, inspections: gp, coverSheet: true }
+  return { ...def, ...(project?.diaryConfig || {}) }
+}
+
 // ── Verteiler (Nachrichten-Terminal je Projekt) ───────────────────────────────
 // Steuert je Empfänger, welche Nachrichtenarten er erhält. Zentrale Definition
 // der Kanäle – von UI, Speicher-Validierung und Versand gemeinsam genutzt.

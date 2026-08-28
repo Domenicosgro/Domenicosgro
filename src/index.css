@@ -234,6 +234,9 @@
     border: none !important;
   }
 
+  /* Deckblatt: eigene erste Seite, der Bericht beginnt danach neu */
+  .diary-cover { break-after: page; page-break-after: always; }
+
   /* Fotoanhang: eigene Seite, Tafeln nie über den Seitenrand hinweg trennen */
   .diary-appendix { break-before: page; page-break-before: always; }
   .diary-plate    { page-break-inside: avoid; break-inside: avoid; }
