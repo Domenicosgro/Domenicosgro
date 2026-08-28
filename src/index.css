@@ -210,6 +210,21 @@
     print-color-adjust: exact !important;
   }
 
+  /* Baudokumentation: größerer Satzspiegel als im Protokoll – der Bericht wird
+     auf der Baustelle gelesen. Die Regeln greifen nur innerhalb .diary-report,
+     der Protokollausdruck bleibt unverändert. */
+  .diary-report { font-size: 11pt; line-height: 1.4; }
+  .diary-report .text-\[9px\],
+  .diary-report .text-\[10px\],
+  .diary-report .text-\[11px\] { font-size: 9pt !important; }
+  .diary-report .text-xs       { font-size: 10pt !important; }
+  .diary-report .text-sm       { font-size: 11pt !important; }
+  .diary-report .text-base     { font-size: 13pt !important; }
+  .diary-report .text-lg       { font-size: 14pt !important; }
+  .diary-report .text-xl       { font-size: 17pt !important; }
+  .diary-report .diary-date    { font-size: 12.5pt !important; }
+  .diary-report .diary-caption { font-size: 10pt !important; }
+
   /* Baudokumentation: Einträge ohne die seitlichen Striche des Protokolls –
      der Bericht soll ruhig wirken. Nur der Umbruchschutz bleibt. */
   .diary-entry,

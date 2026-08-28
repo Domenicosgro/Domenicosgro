@@ -88,26 +88,31 @@ function PhotoThumb({ photoId, onRemove, no, size = 'w-20 h-20' }) {
   )
 }
 
-// Foto-Tafel im Anhang: großes Bild mit Bildunterschrift (nur im Ausdruck/PDF)
-function PhotoPlate({ photoId, no, entry }) {
+// Foto-Tafel im Anhang: großes Bild mit Bildunterschrift (nur im Ausdruck/PDF).
+// Eigene Bildunterschrift geht vor; ohne sie beschriftet der Anhang automatisch.
+function PhotoPlate({ photo, no, entry }) {
   const [url, setUrl] = useState(null)
-  useEffect(() => { cachedPhotoUrl(photoId).then(setUrl) }, [photoId])
+  useEffect(() => { cachedPhotoUrl(photo.id).then(setUrl) }, [photo.id])
+  const caption = (photo.caption || '').trim()
+    || (entry.workDone ? entry.workDone.split('\n')[0].slice(0, 90) : '')
   return (
     <figure className="diary-plate">
       {url
         ? <img src={url} alt="" className="w-full object-contain border border-gray-300" style={{ maxHeight: '78mm' }} />
         : <div className="w-full border border-gray-300" style={{ height: '40mm' }} />}
-      <figcaption className="text-[9pt] mt-1">
+      <figcaption className="diary-caption mt-1">
         <span className="font-semibold">Foto {no}</span>
         {' · '}{formatDate(entry.date)}{entry.daytime ? `, ${halfLabel(entry.daytime)}` : ''}
-        {entry.workDone ? ` · ${entry.workDone.split('\n')[0].slice(0, 70)}` : ''}
+        {caption ? ` · ${caption}` : ''}
       </figcaption>
     </figure>
   )
 }
 
-function EntryForm({ entry, onSave, onCancel, projectId, firmOptions = [], onAddFirmToProject }) {
+function EntryForm({ entry, onSave, onCancel, projectId, firmOptions = [], onAddFirmToProject, lastProgress = '' }) {
   const [form, setForm] = useState({
+    // Gesamt-Baufortschritt in % – neue Einträge starten beim zuletzt erfassten Wert
+    progress:    entry?.progress    ?? lastProgress,
     date:        entry?.date        || new Date().toISOString().slice(0, 10),
     // Tageshälfte: bestimmt auch den Zeitraum der automatischen Wetterabfrage
     daytime:     entry?.daytime     || (new Date().getHours() < 12 ? 'vormittag' : 'nachmittag'),
@@ -188,7 +193,7 @@ function EntryForm({ entry, onSave, onCancel, projectId, firmOptions = [], onAdd
     try {
       for (const file of Array.from(files || [])) {
         const base64 = await compressToBase64(file)
-        setNewPhotos(prev => [...prev, { base64, name: file.name || 'foto.jpg' }])
+        setNewPhotos(prev => [...prev, { base64, name: file.name || 'foto.jpg', caption: '' }])
       }
     } catch (e) { setError(`Foto konnte nicht verarbeitet werden: ${e.message}`) }
     finally { setUploading(false) }
@@ -303,6 +308,19 @@ function EntryForm({ entry, onSave, onCancel, projectId, firmOptions = [], onAdd
           <Plus size={13} /> Firma hinzufügen
         </button>
       </div>
+      {/* Gesamt-Baufortschritt: bezieht sich auf das Bauvorhaben insgesamt,
+          nicht auf die Tagesleistung – er wandert in den Berichtskopf. */}
+      <div className="flex items-end gap-3 flex-wrap">
+        <div className="w-40">
+          <label className="block text-xs font-medium text-gray-500 mb-1">Baufortschritt gesamt (%)</label>
+          <input type="number" min="0" max="100" className="input" value={form.progress}
+            onChange={set('progress')} placeholder="z. B. 35" />
+        </div>
+        {lastProgress !== '' && lastProgress != null && (
+          <span className="text-xs text-gray-400 pb-2">zuletzt erfasst: {lastProgress} %</span>
+        )}
+      </div>
+
       <div>
         <label className="block text-xs font-medium text-gray-500 mb-1">Ausgeführte Arbeiten</label>
         <textarea className="input resize-y" rows={3} value={form.workDone} onChange={set('workDone')}
@@ -314,26 +332,38 @@ function EntryForm({ entry, onSave, onCancel, projectId, firmOptions = [], onAdd
           placeholder="Behinderungen, Anordnungen, Besucher… (optional)" />
       </div>
 
-      {/* Fotos */}
+      {/* Fotos – je Foto eine eigene Bildunterschrift für den Fotoanhang.
+          Bleibt sie leer, beschriftet der Anhang das Foto automatisch mit
+          Datum, Tageszeit und der ersten Zeile der ausgeführten Arbeiten. */}
       <div>
-        <label className="block text-xs font-medium text-gray-500 mb-1">Fotos</label>
-        <div className="flex gap-2 flex-wrap items-center">
+        <label className="block text-xs font-medium text-gray-500 mb-1">
+          Fotos <span className="font-normal text-gray-400">· Bildunterschrift optional (z. B. „Achse C, 2. OG, Blick nach Norden“)</span>
+        </label>
+        <div className="flex gap-3 flex-wrap items-start">
           {photos.map((p, i) => (
-            <PhotoThumb key={p.id} photoId={p.id}
-              onRemove={() => { removePhoto(p.id); photoUrlCache.delete(p.id); setPhotos(prev => prev.filter((_, j) => j !== i)) }} />
+            <div key={p.id} className="w-36">
+              <PhotoThumb photoId={p.id} size="w-36 h-24"
+                onRemove={() => { removePhoto(p.id); photoUrlCache.delete(p.id); setPhotos(prev => prev.filter((_, j) => j !== i)) }} />
+              <input className="input text-xs mt-1" value={p.caption || ''} placeholder="Bildunterschrift"
+                onChange={e => setPhotos(prev => prev.map((x, j) => j === i ? { ...x, caption: e.target.value } : x))} />
+            </div>
           ))}
           {newPhotos.map((p, i) => (
-            <div key={i} className="relative w-20 h-20 flex-shrink-0 bg-gray-100 border border-gray-200 overflow-hidden group">
-              <img src={`data:image/jpeg;base64,${p.base64}`} alt="" className="w-full h-full object-cover" />
-              <button onClick={() => setNewPhotos(prev => prev.filter((_, j) => j !== i))}
-                className="absolute top-0 right-0 bg-black/50 text-white p-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                <X size={11} />
-              </button>
+            <div key={i} className="w-36">
+              <div className="relative w-36 h-24 bg-gray-100 border border-gray-200 overflow-hidden group">
+                <img src={`data:image/jpeg;base64,${p.base64}`} alt="" className="w-full h-full object-cover" />
+                <button onClick={() => setNewPhotos(prev => prev.filter((_, j) => j !== i))}
+                  className="absolute top-0 right-0 bg-black/50 text-white p-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <X size={11} />
+                </button>
+              </div>
+              <input className="input text-xs mt-1" value={p.caption || ''} placeholder="Bildunterschrift"
+                onChange={e => setNewPhotos(prev => prev.map((x, j) => j === i ? { ...x, caption: e.target.value } : x))} />
             </div>
           ))}
           <input ref={fileRef} type="file" accept="image/*" capture="environment" multiple className="hidden"
             onChange={e => { addPhotos(e.target.files); e.target.value = '' }} />
-          <button className="w-20 h-20 border-2 border-dashed border-gray-300 text-gray-400 hover:border-brand-400 hover:text-brand-500 transition-colors flex flex-col items-center justify-center gap-1"
+          <button className="w-36 h-24 border-2 border-dashed border-gray-300 text-gray-400 hover:border-brand-400 hover:text-brand-500 transition-colors flex flex-col items-center justify-center gap-1"
             onClick={() => fileRef.current?.click()} disabled={uploading}>
             {uploading ? <Loader size={16} className="animate-spin" /> : <Camera size={16} />}
             <span className="text-[10px]">Foto</span>
@@ -426,7 +456,7 @@ export default function BautagebuchView({ project, serverUser, logoDataUrl, clie
       for (const item of items) {
         const photos = []
         for (const p of (item.pendingPhotos || [])) {
-          photos.push(await savePhotoBase64(p.base64, p.name))
+          photos.push(await savePhotoBase64(p.base64, p.name).then(saved => ({ ...saved, caption: p.caption || "" })))
         }
         const res = await fetch(`/api/projects/${project.id}/diary`, {
           method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeaders() },
@@ -471,7 +501,7 @@ export default function BautagebuchView({ project, serverUser, logoDataUrl, clie
       if (editing !== 'new' && editing) {
         // Bearbeiten (nur online)
         const savedNew = []
-        for (const p of newPhotos) savedNew.push(await savePhotoBase64(p.base64, p.name))
+        for (const p of newPhotos) savedNew.push(await savePhotoBase64(p.base64, p.name).then(saved => ({ ...saved, caption: p.caption || "" })))
         const merged = { ...form, photos: [...(form.photos || []), ...savedNew] }
         if (isServer) {
           const { _version, _updatedAt, ...data } = editing
@@ -489,7 +519,7 @@ export default function BautagebuchView({ project, serverUser, logoDataUrl, clie
           if (!navigator.onLine) { await queueOffline(form, newPhotos); setEditing(null); return }
           try {
             const savedNew = []
-            for (const p of newPhotos) savedNew.push(await savePhotoBase64(p.base64, p.name))
+            for (const p of newPhotos) savedNew.push(await savePhotoBase64(p.base64, p.name).then(saved => ({ ...saved, caption: p.caption || "" })))
             const res = await fetch(`/api/projects/${project.id}/diary`, {
               method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeaders() },
               body: JSON.stringify({ ...form, photos: [...(form.photos || []), ...savedNew] }),
@@ -504,7 +534,7 @@ export default function BautagebuchView({ project, serverUser, logoDataUrl, clie
           }
         } else {
           const savedNew = []
-          for (const p of newPhotos) savedNew.push(await savePhotoBase64(p.base64, p.name))
+          for (const p of newPhotos) savedNew.push(await savePhotoBase64(p.base64, p.name).then(saved => ({ ...saved, caption: p.caption || "" })))
           persistLocal([{ ...form, photos: [...(form.photos || []), ...savedNew], id: uid(), createdAt: new Date().toISOString() }, ...entries])
         }
       }
@@ -544,8 +574,14 @@ export default function BautagebuchView({ project, serverUser, logoDataUrl, clie
     () => numbered.flatMap(({ entry, photos }) => photos.map(p => ({ p, entry }))),
     [numbered])
 
+  // Gesamt-Baufortschritt: der zuletzt erfasste Wert (neuester Eintrag mit Angabe)
+  const progressEntry = useMemo(
+    () => sorted.find(e => e.progress !== '' && e.progress != null) || null,
+    [sorted])
+  const lastProgress = progressEntry?.progress ?? ''
+
   return (
-    <div className="app-page">
+    <div className="app-page diary-report">
       {/* ── Druckkopf: identisch zum Protokoll (Logos links, Titel rechts) ──
           Logos kommen aus dem Projekt (Projekt-Admin-Panel) mit Rückfall auf das
           globale Büro-Logo – dieselbe Quelle wie beim Protokoll. */}
@@ -570,6 +606,21 @@ export default function BautagebuchView({ project, serverUser, logoDataUrl, clie
               </div>
             )}
             <div className="text-xs">{entries.length} Eintr{entries.length === 1 ? 'ag' : 'äge'} · Stand {formatDate(new Date().toISOString().slice(0, 10))}</div>
+            {/* Leistungsbild aus den Projektdaten – der Bericht weist aus, in
+                welcher Rolle er geführt wird (z. B. Generalplanung). */}
+            {(project.projectData?.isGeneralplanung || project.projectData?.vertrag || project.projectData?.nummer) && (
+              <div className="text-xs">
+                {[project.projectData?.nummer ? `Projekt-Nr. ${project.projectData.nummer}` : '',
+                  project.projectData?.isGeneralplanung ? 'Generalplanung' : project.projectData?.vertrag || '']
+                  .filter(Boolean).join(' · ')}
+              </div>
+            )}
+            {lastProgress !== '' && (
+              <div className="text-sm font-semibold">
+                Baufortschritt gesamt: {lastProgress} %
+                {progressEntry?.date ? ` (Stand ${formatDate(progressEntry.date)})` : ''}
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -624,7 +675,7 @@ export default function BautagebuchView({ project, serverUser, logoDataUrl, clie
 
       {editing && (
         <EntryForm entry={editing === 'new' ? null : editing} projectId={project.id}
-          firmOptions={firmOptions}
+          firmOptions={firmOptions} lastProgress={lastProgress}
           onAddFirmToProject={canEditContacts ? addFirmToProject : null}
           onSave={save} onCancel={() => setEditing(null)} />
       )}
@@ -673,12 +724,15 @@ export default function BautagebuchView({ project, serverUser, logoDataUrl, clie
             <div key={entry.id} className="card p-4 diary-entry">
               <div className="flex items-start justify-between gap-3 flex-wrap">
                 <div>
-                  <p className="font-semibold text-night">
+                  <p className="font-semibold text-night diary-date">
                     {formatDate(entry.date)}
                     {entry.daytime && (
                       <span className="text-xs font-normal text-gray-500 ml-2">
                         {halfLabel(entry.daytime)}
                       </span>
+                    )}
+                    {entry.progress !== '' && entry.progress != null && (
+                      <span className="badge badge-blue ml-2 align-middle">Baufortschritt {entry.progress} %</span>
                     )}
                   </p>
                   <p className="text-xs text-gray-500 mt-0.5">
@@ -738,7 +792,12 @@ export default function BautagebuchView({ project, serverUser, logoDataUrl, clie
                   {/* Bildschirm: Miniaturen mit Nummer. Im Ausdruck stehen die
                       Fotos großformatig im Anhang – hier nur der Verweis. */}
                   <div className="flex gap-2 flex-wrap mt-3 no-print">
-                    {photos.map(p => <PhotoThumb key={p.id} photoId={p.id} no={p.no} size="w-24 h-24" />)}
+                    {photos.map(p => (
+                      <div key={p.id} className="w-24">
+                        <PhotoThumb photoId={p.id} no={p.no} size="w-24 h-24" />
+                        {p.caption && <p className="text-[10px] text-gray-500 mt-0.5 leading-tight">{p.caption}</p>}
+                      </div>
+                    ))}
                   </div>
                   <p className="hidden print:block text-xs mt-2">
                     {photos.length === 1
@@ -763,7 +822,7 @@ export default function BautagebuchView({ project, serverUser, logoDataUrl, clie
           </h2>
           <div className="grid grid-cols-2 gap-4">
             {photoPlates.map(({ p, entry }) => (
-              <PhotoPlate key={p.id} photoId={p.id} no={p.no} entry={entry} />
+              <PhotoPlate key={p.id} photo={p} no={p.no} entry={entry} />
             ))}
           </div>
         </div>
