@@ -698,3 +698,44 @@ git pull origin claude/protocol-tool-meetings-tIoZX
 ```powershell
 .\update.ps1
 ```
+
+---
+
+## 14. Aktueller Stand
+
+> Stand: 2026-08-28 · Branch `claude/protocol-tool-meetings-tIoZX` · letzter Commit `271089e`
+
+### Deployment (PowerShell)
+- `update.ps1` = `git fetch/checkout/pull` + Aufruf von `deploy-nas.ps1`.
+- `deploy-nas.ps1`: `docker build` → `docker save` (.tar) → `scp -O` auf die NAS → per SSH `docker load` + `compose up -d`; .tar wird lokal wieder gelöscht.
+- **Kein** `Start-Process`, **keine** Stderr-Umleitung im Deployskript. Die Datenbank liegt im NAS-Volume und wird beim Deploy nicht angefasst; nur der Container wird getauscht.
+
+### Lokales Verifikationsmuster (nur für Claude-Testläufe)
+- Test-Server: `Start-Process node -ArgumentList "server/index.js" -PassThru -NoNewWindow -RedirectStandardOutput <scratch>\srvN.log -RedirectStandardError <scratch>\srvN.err`, eigener `DB_PATH`/`LOG_PATH` im Scratchpad, freier Port (3475–3482 genutzt).
+- PID in `srvN.pid` merken; nach dem Test Prozess stoppen und Scratch-Dateien löschen (`srvq2.err` etc. sind temporäre Testartefakte, gehören **nicht** zum Projekt).
+- Pipe an `Select-Object` beendet den Server sofort → Start immer ohne Pipe.
+- `node -e "require('better-sqlite3')(...)"` nur aus dem Projektverzeichnis (node_modules).
+
+### Zuletzt behobene Fehler (Ursache → Lösung)
+- **„Zu viele Anfragen" (429) beim Tippen** → Rate-Limits waren 300/15 min global und 120 Schreibvorgänge/min, geteilt pro IP. Jetzt 6000/15 min bzw. 600/min, gezählt **pro Nutzer** (Token, `ipKeyGenerator` als Fallback).
+- **Arbeitsverlust bei 401/429** → Server-Antworten wurden im Sync still verworfen (`console.warn`). Jetzt `assertSaveOk()` (`src/serverSaveError.js`) + **automatischer Wiederholungsversuch** (3 s → 30 s) in `useProjects`/`useProtocols`; Auto-Save-Debounce 400 → 900 ms; `beforeunload`-Warnung bei ungespeichertem Stand.
+- **Abmeldung über Nacht** → `expires_at` (ISO mit „T") wurde gegen `datetime('now')` (Leerzeichen) verglichen; Sitzung galt bis Tagesende und war am Folgetag ungültig. Jetzt identisches ISO-Format (`strftime('%Y-%m-%dT%H:%M:%fZ')`), `SESSION_HOURS` = 14 Tage **Inaktivität** + gleitende Verlängerung in `resolveToken()`.
+- **Wetter-Geocoding** → PLZ liefert keine Treffer (nur Ort verwenden); „Duesseldorf" wird nicht gefunden, „Düsseldorf" schon → Umlaut-Varianten werden probiert, Ergebnis gecacht.
+- **Sprung zum neuen Protokollpunkt** → `focus()` scrollt selbst und überstimmte `scrollIntoView`; jetzt `focus({ preventScroll: true })` zuerst. `behavior: 'smooth'` entfällt (wird bei „Bewegung reduzieren" unterdrückt), stattdessen `'auto'`.
+
+### Getroffene Entscheidungen
+- **Protokoll vs. Agenda:** Protokoll übernimmt **alle** offenen Punkte des Vorgängers inkl. Inhalten; die **Agenda zeigt nur Hauptpunkte** als Abschnitte (Unterpunkt nur, wenn ihm ein Agendapunkt zugeordnet ist). Das „Zuordnen zu"-Dropdown listet **alle** Ebenen.
+- **Verteiler:** Empfänger der Wochen-/Statusberichte kommen ausschließlich aus dem Projekt-Verteiler; **ohne Verteiler wird nichts versendet**.
+- **Maßnahmen-Zählung:** eine gemeinsame Definition (`liveActionItems`, `isMirrorAction`, `supersededActionIds`) – ohne BIM-/Planprüfungs-Spiegel und ohne ins Folgeprotokoll übernommene Vorgänger.
+- **Protokollpunkt-Datum** = Besprechungsdatum (nicht Eingabezeitpunkt).
+- **Wetter** über Open-Meteo, serverseitig, Standort = Ort der Bauherren-Anschrift, Zeitraum nach Tageshälfte (Vormittag 6–12, Nachmittag 12–18 Uhr).
+- **Sitzungsablauf** wird per Overlay (`SessionExpiredModal`) abgefangen – **nicht** über den Login-Screen, damit ungespeicherte Eingaben erhalten bleiben.
+
+### Offene Aufgaben
+- **Entscheidung ausstehend:** Konzept „Agenda = Ansicht auf die Protokollpunkte" (eine Datenquelle statt zwei Listen) – große Lösung vs. kleinere Variante; siehe Vorschlag im Verlauf.
+- `ENTWICKLUNG.md` ist auf Stand 2026-07-26 und deckt die seitdem erfolgten Änderungen nicht ab.
+- Freimelde-Seite (`openTasksFor`) filtert Spiegel-Einträge inzwischen, aber die Auswirkung auf bestehende Freimelde-Links ist nicht praktisch geprüft.
+- `ACTION_ARTEN` (Planung/Ausführung/AG/GP) noch fest im Code – konfigurierbar machen wurde angeboten, nicht beauftragt.
+- Baudokumentation/Mängel: kein Auto-Save (Speichern nur über Schaltfläche).
+- Docker-Image ohne Liberation-Fonts → PDF-Metrik weicht minimal von Arial ab.
+- Wetterabruf setzt Internetzugang der NAS und einen gepflegten **Ort** in den Projektdaten voraus.
