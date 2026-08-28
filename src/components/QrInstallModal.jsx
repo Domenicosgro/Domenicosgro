@@ -48,7 +48,7 @@ export default function QrInstallModal({ onClose }) {
               <li><strong>iPhone/Safari:</strong> Teilen-Symbol → „Zum Home-Bildschirm"</li>
             </ol>
             <p className="text-xs text-gray-400 pt-1">
-              Danach startet die App wie eine normale App vom Home-Bildschirm – ideal für Bautagebuch
+              Danach startet die App wie eine normale App vom Home-Bildschirm – ideal für Baudokumentation
               und Mängelerfassung mit Foto direkt von der Baustelle.
             </p>
           </div>

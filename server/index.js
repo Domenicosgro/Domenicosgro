@@ -1655,6 +1655,116 @@ function mountProjectStore(route, store, label) {
 mountProjectStore('diary',   db.diaryEntries, 'diary')
 mountProjectStore('defects', db.defects,      'defect')
 
+// ── Wetter für die Baudokumentation ──────────────────────────────────────────
+// Ermittelt das Wetter für Datum + Tageshälfte am Projektstandort (Anschrift des
+// Bauherrn aus den Projektdaten). Genutzt wird Open-Meteo: kostenlos, ohne
+// API-Schlüssel. Läuft bewusst serverseitig – so funktioniert es auch mobil und
+// die Adresse verlässt nicht den Browser des Nutzers.
+// Voraussetzung: Der Server hat Internetzugang. Ohne Zugang liefert die Route
+// einen erklärenden Fehler; die manuelle Auswahl bleibt davon unberührt.
+const GEO_CACHE = new Map()   // "plz ort" → { lat, lon, name }
+
+// Der Geocoder sucht nach ORTSNAMEN – eine vorangestellte PLZ liefert keine
+// Treffer. Ebenso wird "Duesseldorf" nicht gefunden, "Düsseldorf" schon.
+// Daher mehrere Schreibweisen der Reihe nach probieren.
+const umlautBack = (s) => s
+  .replace(/ue/gi, m => (m[0] === 'U' ? 'Ü' : 'ü'))
+  .replace(/oe/gi, m => (m[0] === 'O' ? 'Ö' : 'ö'))
+  .replace(/ae/gi, m => (m[0] === 'A' ? 'Ä' : 'ä'))
+
+async function geocodeOnce(name) {
+  const url = 'https://geocoding-api.open-meteo.com/v1/search'
+    + `?name=${encodeURIComponent(name)}&count=1&language=de&format=json`
+  const res = await fetch(url)
+  if (!res.ok) throw new Error(`Geocoding fehlgeschlagen (${res.status})`)
+  const hit = (await res.json())?.results?.[0]
+  return hit ? { lat: hit.latitude, lon: hit.longitude, name: [hit.name, hit.admin1].filter(Boolean).join(', ') } : null
+}
+
+async function geocode(city) {
+  const base = String(city || '').trim()
+  if (!base) return null
+  const key = base.toLowerCase()
+  if (GEO_CACHE.has(key)) return GEO_CACHE.get(key)
+
+  const varianten = [...new Set([base, umlautBack(base)])]
+  let out = null
+  for (const v of varianten) {
+    out = await geocodeOnce(v)
+    if (out) break
+  }
+  GEO_CACHE.set(key, out)
+  return out
+}
+
+// WMO-Wettercode → die vier Kategorien der Baudokumentation
+function wmoToWeather(code) {
+  if (code == null) return 'bewoelkt'
+  if (code >= 71 && code <= 77) return 'schnee'
+  if (code >= 85 && code <= 86) return 'schnee'
+  if (code >= 51 && code <= 67) return 'regen'
+  if (code >= 80 && code <= 82) return 'regen'
+  if (code >= 95)               return 'regen'   // Gewitter
+  if (code === 0 || code === 1) return 'sonnig'
+  return 'bewoelkt'
+}
+
+app.get('/api/projects/:id/weather', requireAuth, async (req, res) => {
+  try {
+    const project = getAccessibleProject(req, res)
+    if (!project) return
+
+    const date   = String(req.query.date || '').slice(0, 10)
+    const half   = req.query.half === 'nachmittag' ? 'nachmittag' : 'vormittag'
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return res.status(400).json({ error: 'Datum (YYYY-MM-DD) erwartet.' })
+
+    // Standort = Ort aus der Anschrift in den Projektdaten (Bauherr)
+    const bh   = project.projectData?.bauherr || {}
+    const city = String(bh.city || '').trim()
+    if (!city) {
+      return res.status(400).json({ error: 'Kein Projektstandort hinterlegt. Bitte in den Projektdaten den Ort der Anschrift eintragen.' })
+    }
+
+    const geo = await geocode(city)
+    if (!geo) return res.status(404).json({ error: `Ort „${city}" nicht gefunden – bitte Schreibweise in den Projektdaten prüfen.` })
+
+    // Vormittag 06–12 Uhr, Nachmittag 12–18 Uhr (Mittelwert über den Zeitraum)
+    const [from, to] = half === 'vormittag' ? [6, 12] : [12, 18]
+    const url = 'https://api.open-meteo.com/v1/forecast'
+      + `?latitude=${geo.lat}&longitude=${geo.lon}`
+      + '&hourly=temperature_2m,weather_code'
+      + `&start_date=${date}&end_date=${date}&timezone=Europe%2FBerlin`
+    const wres = await fetch(url)
+    if (!wres.ok) throw new Error(`Wetterdienst antwortete mit ${wres.status}`)
+    const w = await wres.json()
+
+    const times = w?.hourly?.time || []
+    const temps = w?.hourly?.temperature_2m || []
+    const codes = w?.hourly?.weather_code || []
+    const idx = times.map((t, i) => ({ h: Number(String(t).slice(11, 13)), i }))
+      .filter(x => x.h >= from && x.h < to).map(x => x.i)
+    if (idx.length === 0) {
+      return res.status(404).json({ error: 'Für dieses Datum liegen keine Wetterdaten vor (zu weit in der Zukunft oder Vergangenheit).' })
+    }
+
+    const vals = idx.map(i => temps[i]).filter(v => typeof v === 'number')
+    // Häufigster Wettercode im Zeitraum bestimmt die Kategorie
+    const counts = {}
+    for (const i of idx) { const c = codes[i]; if (c != null) counts[c] = (counts[c] || 0) + 1 }
+    const domCode = Object.entries(counts).sort((a, b) => b[1] - a[1])[0]?.[0]
+
+    res.json({
+      weather: wmoToWeather(domCode == null ? null : Number(domCode)),
+      tempMin: vals.length ? Math.round(Math.min(...vals)) : '',
+      tempMax: vals.length ? Math.round(Math.max(...vals)) : '',
+      location: geo.name,
+      half,
+    })
+  } catch (e) {
+    res.status(502).json({ error: `Wetterdaten nicht abrufbar: ${e.message}. Hat der Server Internetzugang?` })
+  }
+})
+
 // ── Dateiablage: Synology File Station je Projekt (project.fsPath) ───────────
 const fileStation = require('./fileStation')
 

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { ArrowLeft, Plus, Camera, Trash2, Pencil, X, Loader, AlertCircle, Printer,
-         Sun, Cloud, CloudRain, Snowflake, BookOpen, CloudOff, RefreshCw } from 'lucide-react'
+         Sun, Cloud, CloudRain, Snowflake, BookOpen, CloudOff, RefreshCw, CloudSun } from 'lucide-react'
 import { formatDate, uid } from '../utils'
 import { compressToBase64, savePhotoBase64, loadPhotoUrl, removePhoto } from '../photoUtils'
 import { outboxAdd, outboxList, outboxRemove } from '../offlineStore'
@@ -38,9 +38,11 @@ function PhotoThumb({ photoId, onRemove, size = 'w-20 h-20' }) {
   )
 }
 
-function EntryForm({ entry, onSave, onCancel }) {
+function EntryForm({ entry, onSave, onCancel, projectId }) {
   const [form, setForm] = useState({
     date:        entry?.date        || new Date().toISOString().slice(0, 10),
+    // Tageshälfte: bestimmt auch den Zeitraum der automatischen Wetterabfrage
+    daytime:     entry?.daytime     || (new Date().getHours() < 12 ? 'vormittag' : 'nachmittag'),
     weather:     entry?.weather     || 'sonnig',
     tempMin:     entry?.tempMin     ?? '',
     tempMax:     entry?.tempMax     ?? '',
@@ -48,6 +50,25 @@ function EntryForm({ entry, onSave, onCancel }) {
     workDone:    entry?.workDone    || '',
     remarks:     entry?.remarks     || '',
   })
+  const [wxBusy, setWxBusy] = useState(false)
+  const [wxInfo, setWxInfo] = useState(null)
+
+  // Wetter vom Projektstandort (Anschrift aus den Projektdaten) für Datum + Tageshälfte
+  const fetchWeather = async () => {
+    if (!isServer || !projectId) { setWxInfo({ err: 'Wetterabruf nur im Server-Modus verfügbar.' }); return }
+    setWxBusy(true); setWxInfo(null)
+    try {
+      const res = await fetch(
+        `/api/projects/${projectId}/weather?date=${form.date}&half=${form.daytime}`,
+        { headers: authHeaders() })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) { setWxInfo({ err: data.error || `Fehler ${res.status}` }); return }
+      setForm(f => ({ ...f, weather: data.weather, tempMin: data.tempMin, tempMax: data.tempMax }))
+      setWxInfo({ ok: `Übernommen für ${data.location} (${data.half === 'vormittag' ? 'Vormittag' : 'Nachmittag'})` })
+    } catch (e) {
+      setWxInfo({ err: `Nicht abrufbar: ${e.message}` })
+    } finally { setWxBusy(false) }
+  }
   const [photos,    setPhotos]    = useState(entry?.photos || [])   // bereits abgelegte Fotos {id,name}
   const [newPhotos, setNewPhotos] = useState([])                    // frisch aufgenommene {base64,name} – Ablage erst beim Speichern
   const [uploading, setUploading] = useState(false)
@@ -78,10 +99,17 @@ function EntryForm({ entry, onSave, onCancel }) {
         </p>
       )}
 
-      <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
         <div>
           <label className="block text-xs font-medium text-gray-500 mb-1">Datum</label>
           <input type="date" className="input" value={form.date} onChange={set('date')} />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-gray-500 mb-1">Tageszeit</label>
+          <select className="select w-full" value={form.daytime} onChange={set('daytime')}>
+            <option value="vormittag">Vormittag</option>
+            <option value="nachmittag">Nachmittag</option>
+          </select>
         </div>
         <div>
           <label className="block text-xs font-medium text-gray-500 mb-1">Wetter</label>
@@ -97,6 +125,16 @@ function EntryForm({ entry, onSave, onCancel }) {
           <label className="block text-xs font-medium text-gray-500 mb-1">Temp. max (°C)</label>
           <input type="number" className="input" value={form.tempMax} onChange={set('tempMax')} placeholder="z. B. 18" />
         </div>
+      </div>
+
+      {/* Wetter automatisch vom Projektstandort übernehmen */}
+      <div className="flex items-center gap-3 flex-wrap -mt-1">
+        <button className="btn-secondary btn-sm" onClick={fetchWeather} disabled={wxBusy}>
+          {wxBusy ? <Loader size={13} className="animate-spin" /> : <CloudSun size={13} />}
+          {wxBusy ? 'Wird abgerufen…' : 'Wetter vom Standort übernehmen'}
+        </button>
+        {wxInfo?.ok  && <span className="text-xs text-green-700">{wxInfo.ok}</span>}
+        {wxInfo?.err && <span className="text-xs text-amber-700">{wxInfo.err}</span>}
       </div>
 
       <div>
@@ -150,7 +188,7 @@ function EntryForm({ entry, onSave, onCancel }) {
   )
 }
 
-export default function BautagebuchView({ project, serverUser, onBack }) {
+export default function BautagebuchView({ project, serverUser, logoDataUrl, clientLogoDataUrl, onBack }) {
   const [entries, setEntries] = useState([])
   const [pending, setPending] = useState([])    // Offline-Warteschlange
   const [loading, setLoading] = useState(true)
@@ -310,13 +348,41 @@ export default function BautagebuchView({ project, serverUser, onBack }) {
 
   return (
     <div className="app-page">
+      {/* ── Druckkopf: identisch zum Protokoll (Logos links, Titel rechts) ──
+          Logos kommen aus dem Projekt (Projekt-Admin-Panel) mit Rückfall auf das
+          globale Büro-Logo – dieselbe Quelle wie beim Protokoll. */}
+      <div className="hidden print:block mb-4">
+        <div className="flex items-end justify-between pb-3 border-b border-black">
+          <div className="flex-shrink-0 flex items-end gap-4">
+            {logoDataUrl
+              ? <img src={logoDataUrl} alt="Büro-Logo" className="h-12 max-w-[150px] object-contain" />
+              : <div className="h-12 w-8" />}
+            {clientLogoDataUrl && (
+              <img src={clientLogoDataUrl} alt="Auftraggeber-Logo" className="h-12 max-w-[150px] object-contain" />
+            )}
+          </div>
+          <div className="text-right">
+            <div className="text-xs uppercase tracking-widest">Baudokumentation</div>
+            <div className="text-xl font-bold">{project.name}</div>
+            {(project.projectData?.bauherr?.city || project.projectData?.bauherr?.street) && (
+              <div className="text-sm">
+                {[project.projectData?.bauherr?.street,
+                  [project.projectData?.bauherr?.zip, project.projectData?.bauherr?.city].filter(Boolean).join(' ')]
+                  .filter(Boolean).join(' · ')}
+              </div>
+            )}
+            <div className="text-xs">{entries.length} Eintr{entries.length === 1 ? 'ag' : 'äge'} · Stand {formatDate(new Date().toISOString().slice(0, 10))}</div>
+          </div>
+        </div>
+      </div>
+
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3">
+      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3 no-print">
         <div className="flex items-end gap-3">
           <button className="btn-secondary no-print" onClick={onBack}><ArrowLeft size={16} /> Dashboard</button>
           <div>
             <h1 className="text-2xl font-bold text-night flex items-center gap-2">
-              <BookOpen size={22} className="text-brand-600" /> Bautagebuch
+              <BookOpen size={22} className="text-brand-600" /> Baudokumentation
             </h1>
             <p className="text-sm text-gray-500 mt-0.5">{project.name} · {entries.length} Eintr{entries.length === 1 ? 'ag' : 'äge'}</p>
           </div>
@@ -359,7 +425,8 @@ export default function BautagebuchView({ project, serverUser, onBack }) {
       )}
 
       {editing && (
-        <EntryForm entry={editing === 'new' ? null : editing} onSave={save} onCancel={() => setEditing(null)} />
+        <EntryForm entry={editing === 'new' ? null : editing} projectId={project.id}
+          onSave={save} onCancel={() => setEditing(null)} />
       )}
 
       {/* Wartende (offline erfasste) Einträge */}
@@ -406,12 +473,19 @@ export default function BautagebuchView({ project, serverUser, onBack }) {
             <div key={entry.id} className="card p-4 protocol-item">
               <div className="flex items-start justify-between gap-3 flex-wrap">
                 <div>
-                  <p className="font-semibold text-night">{formatDate(entry.date)}</p>
+                  <p className="font-semibold text-night">
+                    {formatDate(entry.date)}
+                    {entry.daytime && (
+                      <span className="text-xs font-normal text-gray-500 ml-2">
+                        {entry.daytime === 'nachmittag' ? 'Nachmittag' : 'Vormittag'}
+                      </span>
+                    )}
+                  </p>
                   <p className="text-xs text-gray-500 mt-0.5">
                     {weatherLabel(entry.weather)}
                     {(entry.tempMin !== '' && entry.tempMin != null) || (entry.tempMax !== '' && entry.tempMax != null)
                       ? ` · ${entry.tempMin ?? '–'}° bis ${entry.tempMax ?? '–'}°C` : ''}
-                    {entry.createdBy ? ` · ${entry.createdBy}` : ''}
+                    {entry.createdBy ? ` · erstellt von ${entry.createdBy}` : ''}
                   </p>
                 </div>
                 <div className="flex gap-1 no-print">

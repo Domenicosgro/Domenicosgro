@@ -219,7 +219,7 @@ export default function ProjectDashboard({
         {onOpenBautagebuch && (
           <DashboardTile
             icon={<BookOpen size={20} />}
-            title="Bautagebuch"
+            title="Baudokumentation"
             subtitle="Tägliche Baustellendokumentation: Wetter, Personal, Leistungen, Fotos"
             accent="border-orange-400"
             onClick={onOpenBautagebuch}

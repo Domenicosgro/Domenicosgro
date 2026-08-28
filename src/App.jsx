@@ -903,6 +903,8 @@ export default function App() {
         <BautagebuchView
           project={project}
           serverUser={effectiveUser}
+          logoDataUrl={project.logo || logoDataUrl}
+          clientLogoDataUrl={project.clientLogo || ''}
           onBack={() => setView('project-dashboard')}
         />
         <UpdateBanner /><SaveErrorBanner />
