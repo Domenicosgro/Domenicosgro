@@ -1709,6 +1709,40 @@ function wmoToWeather(code) {
   return 'bewoelkt'
 }
 
+// Wetterwerte einer Quelle für Datum + Tageszeit auswerten.
+// Liefert null, wenn die Quelle für den Zeitraum keine Stundenwerte hat.
+async function weatherFrom(baseUrl, geo, date, from, to) {
+  const url = baseUrl
+    + `?latitude=${geo.lat}&longitude=${geo.lon}`
+    + '&hourly=temperature_2m,weather_code'
+    + `&start_date=${date}&end_date=${date}&timezone=Europe%2FBerlin`
+  const wres = await fetch(url)
+  // 400 = Datum außerhalb des Zeitraums dieser Quelle → als "keine Daten" behandeln,
+  // damit die andere Quelle es versuchen kann.
+  if (wres.status === 400) return null
+  if (!wres.ok) throw new Error(`Wetterdienst antwortete mit ${wres.status}`)
+  const w = await wres.json()
+
+  const times = w?.hourly?.time || []
+  const temps = w?.hourly?.temperature_2m || []
+  const codes = w?.hourly?.weather_code || []
+  const idx = times.map((t, i) => ({ h: Number(String(t).slice(11, 13)), i }))
+    .filter(x => x.h >= from && x.h < to).map(x => x.i)
+  const vals = idx.map(i => temps[i]).filter(v => typeof v === 'number')
+  if (vals.length === 0) return null
+
+  // Häufigster Wettercode im Zeitraum bestimmt die Kategorie
+  const counts = {}
+  for (const i of idx) { const c = codes[i]; if (c != null) counts[c] = (counts[c] || 0) + 1 }
+  const domCode = Object.entries(counts).sort((a, b) => b[1] - a[1])[0]?.[0]
+
+  return {
+    weather: wmoToWeather(domCode == null ? null : Number(domCode)),
+    tempMin: Math.round(Math.min(...vals)),
+    tempMax: Math.round(Math.max(...vals)),
+  }
+}
+
 app.get('/api/projects/:id/weather', requireAuth, async (req, res) => {
   try {
     const project = getAccessibleProject(req, res)
@@ -1730,34 +1764,32 @@ app.get('/api/projects/:id/weather', requireAuth, async (req, res) => {
 
     // Vormittag 06–12 Uhr, Nachmittag 12–18 Uhr (Mittelwert über den Zeitraum)
     const [from, to] = half === 'vormittag' ? [6, 12] : [12, 18]
-    const url = 'https://api.open-meteo.com/v1/forecast'
-      + `?latitude=${geo.lat}&longitude=${geo.lon}`
-      + '&hourly=temperature_2m,weather_code'
-      + `&start_date=${date}&end_date=${date}&timezone=Europe%2FBerlin`
-    const wres = await fetch(url)
-    if (!wres.ok) throw new Error(`Wetterdienst antwortete mit ${wres.status}`)
-    const w = await wres.json()
 
-    const times = w?.hourly?.time || []
-    const temps = w?.hourly?.temperature_2m || []
-    const codes = w?.hourly?.weather_code || []
-    const idx = times.map((t, i) => ({ h: Number(String(t).slice(11, 13)), i }))
-      .filter(x => x.h >= from && x.h < to).map(x => x.i)
-    if (idx.length === 0) {
-      return res.status(404).json({ error: 'Für dieses Datum liegen keine Wetterdaten vor (zu weit in der Zukunft oder Vergangenheit).' })
+    // Das Wetter gehört zum Datum der Begehung – auch wenn diese länger zurückliegt.
+    // Der Vorhersagedienst deckt nur die letzten ~3 Monate ab, weiter zurück
+    // liefert das Archiv die Messwerte. Reihenfolge nach Alter des Datums,
+    // die jeweils andere Quelle springt ein, wenn die erste nichts hat.
+    const FORECAST = 'https://api.open-meteo.com/v1/forecast'
+    const ARCHIVE  = 'https://archive-api.open-meteo.com/v1/archive'
+    const today    = new Date().toISOString().slice(0, 10)
+    const ageDays  = Math.floor((Date.parse(`${today}T00:00:00Z`) - Date.parse(`${date}T00:00:00Z`)) / 86400000)
+    const sources  = ageDays > 80 ? [ARCHIVE, FORECAST] : [FORECAST, ARCHIVE]
+
+    let wx = null
+    let lastErr = null
+    for (const src of sources) {
+      try { wx = await weatherFrom(src, geo, date, from, to) } catch (e) { lastErr = e }
+      if (wx) break
+    }
+    if (!wx) {
+      if (lastErr) throw lastErr
+      return res.status(404).json({ error: `Für den ${date} liegen keine Wetterdaten vor – Vorhersage und Archiv decken dieses Datum nicht ab.` })
     }
 
-    const vals = idx.map(i => temps[i]).filter(v => typeof v === 'number')
-    // Häufigster Wettercode im Zeitraum bestimmt die Kategorie
-    const counts = {}
-    for (const i of idx) { const c = codes[i]; if (c != null) counts[c] = (counts[c] || 0) + 1 }
-    const domCode = Object.entries(counts).sort((a, b) => b[1] - a[1])[0]?.[0]
-
     res.json({
-      weather: wmoToWeather(domCode == null ? null : Number(domCode)),
-      tempMin: vals.length ? Math.round(Math.min(...vals)) : '',
-      tempMax: vals.length ? Math.round(Math.max(...vals)) : '',
+      ...wx,
       location: geo.name,
+      date,
       half,
     })
   } catch (e) {

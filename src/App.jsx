@@ -905,6 +905,7 @@ export default function App() {
           serverUser={effectiveUser}
           logoDataUrl={project.logo || logoDataUrl}
           clientLogoDataUrl={project.clientLogo || ''}
+          onUpdateProject={handleUpdateProject}
           onBack={() => setView('project-dashboard')}
         />
         <UpdateBanner /><SaveErrorBanner />

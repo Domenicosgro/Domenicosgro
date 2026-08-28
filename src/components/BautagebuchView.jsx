@@ -1,9 +1,11 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react'
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { ArrowLeft, Plus, Camera, Trash2, Pencil, X, Loader, AlertCircle, Printer,
-         Sun, Cloud, CloudRain, Snowflake, BookOpen, CloudOff, RefreshCw, CloudSun } from 'lucide-react'
-import { formatDate, uid } from '../utils'
+         Sun, Cloud, CloudRain, Snowflake, BookOpen, CloudOff, RefreshCw, CloudSun,
+         Building2, MapPin } from 'lucide-react'
+import { formatDate, uid, emptyContact } from '../utils'
 import { compressToBase64, savePhotoBase64, loadPhotoUrl, removePhoto } from '../photoUtils'
 import { outboxAdd, outboxList, outboxRemove } from '../offlineStore'
+import ContactAutocomplete from './ContactAutocomplete'
 
 const isServer = typeof window !== 'undefined' && !!window.__SERVER_MODE__
 const authHeaders = () => {
@@ -18,6 +20,43 @@ const WEATHER = [
   { value: 'schnee',    label: 'Schnee/Frost', Icon: Snowflake },
 ]
 const weatherLabel = (v) => WEATHER.find(w => w.value === v)?.label || v || '–'
+const halfLabel    = (v) => (v === 'nachmittag' ? 'Nachmittag' : 'Vormittag')
+
+// ── Firmen aus der Projektdatenbank ──────────────────────────────────────────
+// Die Firmen werden aus den Projektkontakten abgeleitet (je Firma ein Eintrag).
+// Ausführende Firmen stehen vorn – sie sind im Baustellenalltag die Regel.
+const CAT_RANK = { ausfuehrend: 0, planer: 1, auftraggeber: 2, nutzer: 3 }
+
+function firmsOfProject(project) {
+  const map = new Map()
+  for (const c of (project?.contacts ?? [])) {
+    const company = (c.company || '').trim()
+    if (!company) continue
+    const key  = company.toLowerCase()
+    const rank = CAT_RANK[c.category] ?? 9
+    const prev = map.get(key)
+    if (!prev) {
+      map.set(key, { id: c.id || key, name: '', company, gewerk: (c.gewerk || '').trim(), category: c.category || '', rank })
+    } else {
+      if (rank < prev.rank) { prev.rank = rank; prev.category = c.category || prev.category }
+      if (!prev.gewerk && c.gewerk) prev.gewerk = c.gewerk.trim()
+    }
+  }
+  return [...map.values()].sort((a, b) => a.rank - b.rank || a.company.localeCompare(b.company, 'de'))
+}
+
+const emptyFirmRow = () => ({ id: uid(), company: '', gewerk: '', workers: '', work: '' })
+
+// Klartext-Fassung der Firmenzeilen – hält das bisherige Feld `firms` aktuell,
+// damit Bestandsdaten, Ausdruck und Export unverändert weiterlaufen.
+const firmsToText = (list) => (list || [])
+  .filter(f => (f.company || '').trim())
+  .map(f => {
+    const meta = [f.gewerk, f.workers !== '' && f.workers != null ? `${f.workers} AK` : '']
+      .filter(Boolean).join(', ')
+    return `${f.company.trim()}${meta ? ` (${meta})` : ''}${f.work ? ` – ${f.work}` : ''}`
+  })
+  .join('\n')
 
 // Foto-Miniatur (lädt asynchron aus dem Anhang-Speicher)
 function PhotoThumb({ photoId, onRemove, size = 'w-20 h-20' }) {
@@ -38,7 +77,7 @@ function PhotoThumb({ photoId, onRemove, size = 'w-20 h-20' }) {
   )
 }
 
-function EntryForm({ entry, onSave, onCancel, projectId }) {
+function EntryForm({ entry, onSave, onCancel, projectId, firmOptions = [], onAddFirmToProject }) {
   const [form, setForm] = useState({
     date:        entry?.date        || new Date().toISOString().slice(0, 10),
     // Tageshälfte: bestimmt auch den Zeitraum der automatischen Wetterabfrage
@@ -46,16 +85,38 @@ function EntryForm({ entry, onSave, onCancel, projectId }) {
     weather:     entry?.weather     || 'sonnig',
     tempMin:     entry?.tempMin     ?? '',
     tempMax:     entry?.tempMax     ?? '',
-    firms:       entry?.firms       || '',
+    // Datum/Ort, für die die Wetterwerte gelten – hält die Werte am Begehungstag fest
+    weatherDate:     entry?.weatherDate     || '',
+    weatherLocation: entry?.weatherLocation || '',
     workDone:    entry?.workDone    || '',
     remarks:     entry?.remarks     || '',
   })
   const [wxBusy, setWxBusy] = useState(false)
   const [wxInfo, setWxInfo] = useState(null)
 
+  // ── Firmen (aus der Projektdatenbank oder als Freitext) ───────────────────
+  const [firmList, setFirmList] = useState(() => {
+    if (Array.isArray(entry?.firmList) && entry.firmList.length) return entry.firmList
+    // Bestandsdaten: bisheriges Textfeld zeilenweise in Zeilen überführen
+    return (entry?.firms || '').split('\n').map(l => l.trim()).filter(Boolean)
+      .map(l => ({ ...emptyFirmRow(), company: l }))
+  })
+  const knownFirm = useCallback(
+    (name) => firmOptions.find(f => f.company.toLowerCase() === (name || '').trim().toLowerCase()) || null,
+    [firmOptions])
+
+  const setFirm = (id, patch) => setFirmList(rows => rows.map(r => r.id === id ? { ...r, ...patch } : r))
+  const pickFirm = (id, value) => {
+    const hit = knownFirm(value)
+    setFirm(id, hit ? { company: hit.company, gewerk: hit.gewerk || '' } : { company: value })
+  }
+
   // Wetter vom Projektstandort (Anschrift aus den Projektdaten) für Datum + Tageshälfte
-  const fetchWeather = async () => {
-    if (!isServer || !projectId) { setWxInfo({ err: 'Wetterabruf nur im Server-Modus verfügbar.' }); return }
+  const fetchWeather = useCallback(async ({ auto = false } = {}) => {
+    if (!isServer || !projectId) {
+      if (!auto) setWxInfo({ err: 'Wetterabruf nur im Server-Modus verfügbar.' })
+      return
+    }
     setWxBusy(true); setWxInfo(null)
     try {
       const res = await fetch(
@@ -63,12 +124,29 @@ function EntryForm({ entry, onSave, onCancel, projectId }) {
         { headers: authHeaders() })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) { setWxInfo({ err: data.error || `Fehler ${res.status}` }); return }
-      setForm(f => ({ ...f, weather: data.weather, tempMin: data.tempMin, tempMax: data.tempMax }))
-      setWxInfo({ ok: `Übernommen für ${data.location} (${data.half === 'vormittag' ? 'Vormittag' : 'Nachmittag'})` })
+      setForm(f => ({
+        ...f,
+        weather: data.weather, tempMin: data.tempMin, tempMax: data.tempMax,
+        weatherDate: data.date || f.date, weatherLocation: data.location || '',
+      }))
+      setWxInfo({ ok: `${formatDate(data.date || form.date)}, ${halfLabel(data.half)} · ${data.location}` })
     } catch (e) {
       setWxInfo({ err: `Nicht abrufbar: ${e.message}` })
     } finally { setWxBusy(false) }
-  }
+  }, [projectId, form.date, form.daytime])
+
+  // Das Wetter gehört zum Datum der Begehung: bei jeder Änderung von Datum oder
+  // Tageszeit wird es neu abgerufen. Bestehende Einträge behalten beim Öffnen
+  // ihre gespeicherten Werte – erst eine Änderung löst den Abruf aus.
+  const firstRun = useRef(true)
+  useEffect(() => {
+    if (firstRun.current) {
+      firstRun.current = false
+      if (entry) return
+    }
+    const t = setTimeout(() => fetchWeather({ auto: true }), 350)
+    return () => clearTimeout(t)
+  }, [form.date, form.daytime])   // eslint-disable-line react-hooks/exhaustive-deps
   const [photos,    setPhotos]    = useState(entry?.photos || [])   // bereits abgelegte Fotos {id,name}
   const [newPhotos, setNewPhotos] = useState([])                    // frisch aufgenommene {base64,name} – Ablage erst beim Speichern
   const [uploading, setUploading] = useState(false)
@@ -127,20 +205,74 @@ function EntryForm({ entry, onSave, onCancel, projectId }) {
         </div>
       </div>
 
-      {/* Wetter automatisch vom Projektstandort übernehmen */}
+      {/* Wetter: gilt für Datum + Tageszeit der Begehung, wird bei deren
+          Änderung automatisch neu geholt; Button für den erneuten Abruf. */}
       <div className="flex items-center gap-3 flex-wrap -mt-1">
-        <button className="btn-secondary btn-sm" onClick={fetchWeather} disabled={wxBusy}>
+        <button className="btn-secondary btn-sm" onClick={() => fetchWeather()} disabled={wxBusy}>
           {wxBusy ? <Loader size={13} className="animate-spin" /> : <CloudSun size={13} />}
-          {wxBusy ? 'Wird abgerufen…' : 'Wetter vom Standort übernehmen'}
+          {wxBusy ? 'Wird abgerufen…' : 'Wetter erneut abrufen'}
         </button>
-        {wxInfo?.ok  && <span className="text-xs text-green-700">{wxInfo.ok}</span>}
+        {wxInfo?.ok  && <span className="text-xs text-green-700 flex items-center gap-1"><MapPin size={11} /> {wxInfo.ok}</span>}
         {wxInfo?.err && <span className="text-xs text-amber-700">{wxInfo.err}</span>}
+        {!wxInfo && form.weatherDate && (
+          <span className={`text-xs flex items-center gap-1 ${form.weatherDate === form.date ? 'text-gray-500' : 'text-amber-700'}`}>
+            <MapPin size={11} />
+            Werte vom {formatDate(form.weatherDate)}{form.weatherLocation ? `, ${form.weatherLocation}` : ''}
+          </span>
+        )}
       </div>
 
+      {/* Firmen: Auswahl aus der Projektdatenbank (Projektkontakte), Freitext bleibt möglich */}
       <div>
-        <label className="block text-xs font-medium text-gray-500 mb-1">Anwesende Firmen / Personal</label>
-        <textarea className="input resize-y" rows={2} value={form.firms} onChange={set('firms')}
-          placeholder="z. B. Rohbau Müller GmbH (4 AK), Elektro Schmidt (2 AK)…" />
+        <div className="flex items-center justify-between mb-1">
+          <label className="text-xs font-medium text-gray-500 flex items-center gap-1.5">
+            <Building2 size={12} /> Anwesende Firmen / Personal
+          </label>
+          <span className="text-[11px] text-gray-400">
+            {firmOptions.length > 0
+              ? `${firmOptions.length} Firm${firmOptions.length === 1 ? 'a' : 'en'} aus der Projektdatenbank`
+              : 'Keine Firmen in der Projektdatenbank hinterlegt'}
+          </span>
+        </div>
+        <div className="space-y-1.5">
+          {firmList.map(row => {
+            const isNew = (row.company || '').trim() && !knownFirm(row.company)
+            return (
+              <div key={row.id} className="grid grid-cols-[1fr_130px_70px_1fr_auto] gap-1.5 items-start">
+                <div>
+                  <ContactAutocomplete
+                    value={row.company}
+                    onChange={v => pickFirm(row.id, v)}
+                    contacts={firmOptions}
+                    placeholder="Firma – aus Projektdatenbank wählen oder eintippen"
+                  />
+                  {isNew && onAddFirmToProject && (
+                    <button type="button"
+                      className="mt-0.5 text-[11px] text-brand-600 hover:text-brand-800 flex items-center gap-1"
+                      onClick={() => onAddFirmToProject({ company: row.company.trim(), gewerk: row.gewerk })}>
+                      <Plus size={10} /> „{row.company.trim()}“ in die Projektdatenbank übernehmen
+                    </button>
+                  )}
+                </div>
+                <input className="input" value={row.gewerk} placeholder="Gewerk"
+                  onChange={e => setFirm(row.id, { gewerk: e.target.value })} />
+                <input type="number" min="0" className="input" value={row.workers} placeholder="AK"
+                  title="Anzahl Arbeitskräfte"
+                  onChange={e => setFirm(row.id, { workers: e.target.value })} />
+                <input className="input" value={row.work} placeholder="Tätigkeit (optional)"
+                  onChange={e => setFirm(row.id, { work: e.target.value })} />
+                <button type="button" className="btn-ghost p-1.5 text-gray-400 hover:text-red-600 mt-0.5"
+                  title="Zeile entfernen" onClick={() => setFirmList(rows => rows.filter(r => r.id !== row.id))}>
+                  <X size={14} />
+                </button>
+              </div>
+            )
+          })}
+        </div>
+        <button type="button" className="btn-secondary btn-sm mt-1.5"
+          onClick={() => setFirmList(rows => [...rows, emptyFirmRow()])}>
+          <Plus size={13} /> Firma hinzufügen
+        </button>
       </div>
       <div>
         <label className="block text-xs font-medium text-gray-500 mb-1">Ausgeführte Arbeiten</label>
@@ -182,13 +314,18 @@ function EntryForm({ entry, onSave, onCancel, projectId }) {
 
       <div className="flex gap-2 justify-end pt-1">
         <button className="btn-secondary" onClick={onCancel}>Abbrechen</button>
-        <button className="btn-primary" onClick={() => onSave({ ...form, photos }, newPhotos)}>Speichern</button>
+        <button className="btn-primary" onClick={() => onSave({
+          ...form,
+          firmList: firmList.filter(f => (f.company || '').trim()),
+          firms:    firmsToText(firmList),
+          photos,
+        }, newPhotos)}>Speichern</button>
       </div>
     </div>
   )
 }
 
-export default function BautagebuchView({ project, serverUser, logoDataUrl, clientLogoDataUrl, onBack }) {
+export default function BautagebuchView({ project, serverUser, logoDataUrl, clientLogoDataUrl, onUpdateProject, onBack }) {
   const [entries, setEntries] = useState([])
   const [pending, setPending] = useState([])    // Offline-Warteschlange
   const [loading, setLoading] = useState(true)
@@ -197,6 +334,23 @@ export default function BautagebuchView({ project, serverUser, logoDataUrl, clie
   const [syncing, setSyncing] = useState(false)
   const [editing, setEditing] = useState(null)   // entry | 'new' | null
   const lsKey = `kp_diary_${project.id}`
+
+  // Firmen aus der Projektdatenbank (Projektkontakte) – Auswahl im Eintrag
+  const firmOptions = useMemo(() => firmsOfProject(project), [project])
+  const canEditContacts = !!onUpdateProject && project.isUnlocked !== false
+
+  // Neue Firma direkt aus der Baudokumentation in die Projektdatenbank übernehmen
+  const addFirmToProject = useCallback(({ company, gewerk }) => {
+    const name = (company || '').trim()
+    if (!name) return
+    const exists = (project.contacts || []).some(c => (c.company || '').trim().toLowerCase() === name.toLowerCase())
+    if (exists) { setNotice(`„${name}“ ist bereits in der Projektdatenbank.`); return }
+    onUpdateProject(project.id, {
+      contacts: [...(project.contacts || []),
+        { ...emptyContact(), company: name, gewerk: (gewerk || '').trim(), category: 'ausfuehrend' }],
+    })
+    setNotice(`„${name}“ wurde als ausführende Firma in die Projektdatenbank übernommen.`)
+  }, [project.id, project.contacts, onUpdateProject])
 
   const loadPending = useCallback(async () => {
     try { setPending(await outboxList('diary', project.id)) } catch {}
@@ -426,6 +580,8 @@ export default function BautagebuchView({ project, serverUser, logoDataUrl, clie
 
       {editing && (
         <EntryForm entry={editing === 'new' ? null : editing} projectId={project.id}
+          firmOptions={firmOptions}
+          onAddFirmToProject={canEditContacts ? addFirmToProject : null}
           onSave={save} onCancel={() => setEditing(null)} />
       )}
 
@@ -477,7 +633,7 @@ export default function BautagebuchView({ project, serverUser, logoDataUrl, clie
                     {formatDate(entry.date)}
                     {entry.daytime && (
                       <span className="text-xs font-normal text-gray-500 ml-2">
-                        {entry.daytime === 'nachmittag' ? 'Nachmittag' : 'Vormittag'}
+                        {halfLabel(entry.daytime)}
                       </span>
                     )}
                   </p>
@@ -485,8 +641,17 @@ export default function BautagebuchView({ project, serverUser, logoDataUrl, clie
                     {weatherLabel(entry.weather)}
                     {(entry.tempMin !== '' && entry.tempMin != null) || (entry.tempMax !== '' && entry.tempMax != null)
                       ? ` · ${entry.tempMin ?? '–'}° bis ${entry.tempMax ?? '–'}°C` : ''}
+                    {/* Wetter gehört zum Begehungstag – Herkunft mit ausweisen */}
+                    {entry.weatherDate && entry.weatherDate === entry.date
+                      ? ` · gemessen am ${formatDate(entry.weatherDate)}${entry.weatherLocation ? `, ${entry.weatherLocation}` : ''}`
+                      : ''}
                     {entry.createdBy ? ` · erstellt von ${entry.createdBy}` : ''}
                   </p>
+                  {entry.weatherDate && entry.weatherDate !== entry.date && (
+                    <p className="text-xs text-amber-700 mt-0.5 flex items-center gap-1">
+                      <AlertCircle size={11} /> Wetterwerte stammen vom {formatDate(entry.weatherDate)} – Eintrag bearbeiten, um sie für den Begehungstag zu holen.
+                    </p>
+                  )}
                 </div>
                 <div className="flex gap-1 no-print">
                   <button className="btn-ghost p-1.5 text-gray-400 hover:text-brand-600" title="Bearbeiten" onClick={() => setEditing(entry)}><Pencil size={14} /></button>
@@ -494,8 +659,28 @@ export default function BautagebuchView({ project, serverUser, logoDataUrl, clie
                 </div>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2 mt-3 text-sm">
-                {entry.firms && (
-                  <div><p className="text-xs font-medium text-gray-400 uppercase">Firmen / Personal</p><p className="text-gray-700 whitespace-pre-wrap">{entry.firms}</p></div>
+                {(entry.firmList?.length > 0 || entry.firms) && (
+                  <div>
+                    <p className="text-xs font-medium text-gray-400 uppercase">Firmen / Personal</p>
+                    {entry.firmList?.length > 0 ? (
+                      <ul className="text-gray-700 space-y-0.5">
+                        {entry.firmList.map(f => (
+                          <li key={f.id}>
+                            <span className="font-medium">{f.company}</span>
+                            {[f.gewerk, (f.workers !== '' && f.workers != null) ? `${f.workers} AK` : '']
+                              .filter(Boolean).length > 0 && (
+                              <span className="text-gray-500">
+                                {' '}({[f.gewerk, (f.workers !== '' && f.workers != null) ? `${f.workers} AK` : ''].filter(Boolean).join(', ')})
+                              </span>
+                            )}
+                            {f.work && <span className="text-gray-600"> – {f.work}</span>}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="text-gray-700 whitespace-pre-wrap">{entry.firms}</p>
+                    )}
+                  </div>
                 )}
                 {entry.workDone && (
                   <div><p className="text-xs font-medium text-gray-400 uppercase">Ausgeführte Arbeiten</p><p className="text-gray-700 whitespace-pre-wrap">{entry.workDone}</p></div>
