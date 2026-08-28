@@ -210,6 +210,19 @@
     print-color-adjust: exact !important;
   }
 
+  /* Baudokumentation: Einträge ohne die seitlichen Striche des Protokolls –
+     der Bericht soll ruhig wirken. Nur der Umbruchschutz bleibt. */
+  .diary-entry,
+  .diary-entry > div {
+    page-break-inside: avoid;
+    break-inside: avoid;
+    border: none !important;
+  }
+
+  /* Fotoanhang: eigene Seite, Tafeln nie über den Seitenrand hinweg trennen */
+  .diary-appendix { break-before: page; page-break-before: always; }
+  .diary-plate    { page-break-inside: avoid; break-inside: avoid; }
+
   /* Ebenen im Druck dezent staffeln: Unterpunkte hellblau, Unterunterpunkte hellgrau */
   .protocol-item > div.print-level-2 {
     background-color: #eaf2fa !important;   /* light blue */

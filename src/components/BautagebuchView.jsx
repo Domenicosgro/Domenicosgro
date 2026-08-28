@@ -58,15 +58,26 @@ const firmsToText = (list) => (list || [])
   })
   .join('\n')
 
+// Fotos werden zweimal gebraucht (Miniatur im Eintrag + Tafel im Anhang) –
+// der Anhang-Speicher wird deshalb nur einmal je Foto gelesen.
+const photoUrlCache = new Map()
+const cachedPhotoUrl = (id) => {
+  if (!photoUrlCache.has(id)) photoUrlCache.set(id, loadPhotoUrl(id))
+  return photoUrlCache.get(id)
+}
+
 // Foto-Miniatur (lädt asynchron aus dem Anhang-Speicher)
-function PhotoThumb({ photoId, onRemove, size = 'w-20 h-20' }) {
+function PhotoThumb({ photoId, onRemove, no, size = 'w-20 h-20' }) {
   const [url, setUrl] = useState(null)
-  useEffect(() => { loadPhotoUrl(photoId).then(setUrl) }, [photoId])
+  useEffect(() => { cachedPhotoUrl(photoId).then(setUrl) }, [photoId])
   return (
     <div className={`relative ${size} flex-shrink-0 bg-gray-100 border border-gray-200 overflow-hidden group`}>
       {url
         ? <img src={url} alt="" className="w-full h-full object-cover cursor-pointer" onClick={() => url && window.open(url, '_blank')} />
         : <Loader size={14} className="animate-spin text-gray-300 absolute inset-0 m-auto" />}
+      {no != null && (
+        <span className="absolute bottom-0 left-0 bg-black/60 text-white text-[9px] px-1 leading-4">{no}</span>
+      )}
       {onRemove && (
         <button onClick={onRemove}
           className="absolute top-0 right-0 bg-black/50 text-white p-0.5 opacity-0 group-hover:opacity-100 transition-opacity no-print">
@@ -74,6 +85,24 @@ function PhotoThumb({ photoId, onRemove, size = 'w-20 h-20' }) {
         </button>
       )}
     </div>
+  )
+}
+
+// Foto-Tafel im Anhang: großes Bild mit Bildunterschrift (nur im Ausdruck/PDF)
+function PhotoPlate({ photoId, no, entry }) {
+  const [url, setUrl] = useState(null)
+  useEffect(() => { cachedPhotoUrl(photoId).then(setUrl) }, [photoId])
+  return (
+    <figure className="diary-plate">
+      {url
+        ? <img src={url} alt="" className="w-full object-contain border border-gray-300" style={{ maxHeight: '78mm' }} />
+        : <div className="w-full border border-gray-300" style={{ height: '40mm' }} />}
+      <figcaption className="text-[9pt] mt-1">
+        <span className="font-semibold">Foto {no}</span>
+        {' · '}{formatDate(entry.date)}{entry.daytime ? `, ${halfLabel(entry.daytime)}` : ''}
+        {entry.workDone ? ` · ${entry.workDone.split('\n')[0].slice(0, 70)}` : ''}
+      </figcaption>
+    </figure>
   )
 }
 
@@ -291,7 +320,7 @@ function EntryForm({ entry, onSave, onCancel, projectId, firmOptions = [], onAdd
         <div className="flex gap-2 flex-wrap items-center">
           {photos.map((p, i) => (
             <PhotoThumb key={p.id} photoId={p.id}
-              onRemove={() => { removePhoto(p.id); setPhotos(prev => prev.filter((_, j) => j !== i)) }} />
+              onRemove={() => { removePhoto(p.id); photoUrlCache.delete(p.id); setPhotos(prev => prev.filter((_, j) => j !== i)) }} />
           ))}
           {newPhotos.map((p, i) => (
             <div key={i} className="relative w-20 h-20 flex-shrink-0 bg-gray-100 border border-gray-200 overflow-hidden group">
@@ -487,7 +516,7 @@ export default function BautagebuchView({ project, serverUser, logoDataUrl, clie
   const remove = async (entry) => {
     if (!window.confirm(`Eintrag vom ${formatDate(entry.date)} wirklich löschen?`)) return
     try {
-      for (const p of (entry.photos || [])) removePhoto(p.id)
+      for (const p of (entry.photos || [])) { removePhoto(p.id); photoUrlCache.delete(p.id) }
       if (isServer) {
         const res = await fetch(`/api/projects/${project.id}/diary/${entry.id}`, { method: 'DELETE', headers: authHeaders() })
         if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `Fehler ${res.status}`)
@@ -498,7 +527,22 @@ export default function BautagebuchView({ project, serverUser, logoDataUrl, clie
     } catch (e) { setError(`Löschen fehlgeschlagen: ${e.message}`) }
   }
 
-  const sorted = [...entries].sort((a, b) => (b.date || '').localeCompare(a.date || ''))
+  const sorted = useMemo(
+    () => [...entries].sort((a, b) => (b.date || '').localeCompare(a.date || '')),
+    [entries])
+
+  // Durchlaufende Fotonummern über alle Einträge – gleiche Nummer am Eintrag
+  // und im Fotoanhang, damit die Zuordnung im PDF eindeutig bleibt.
+  const numbered = useMemo(() => {
+    let no = 0
+    return sorted.map(entry => ({
+      entry,
+      photos: (entry.photos || []).map(p => ({ ...p, no: ++no })),
+    }))
+  }, [sorted])
+  const photoPlates = useMemo(
+    () => numbered.flatMap(({ entry, photos }) => photos.map(p => ({ p, entry }))),
+    [numbered])
 
   return (
     <div className="app-page">
@@ -625,8 +669,8 @@ export default function BautagebuchView({ project, serverUser, logoDataUrl, clie
         </div>
       ) : (
         <div className="space-y-3">
-          {sorted.map(entry => (
-            <div key={entry.id} className="card p-4 protocol-item">
+          {numbered.map(({ entry, photos }) => (
+            <div key={entry.id} className="card p-4 diary-entry">
               <div className="flex items-start justify-between gap-3 flex-wrap">
                 <div>
                   <p className="font-semibold text-night">
@@ -689,13 +733,39 @@ export default function BautagebuchView({ project, serverUser, logoDataUrl, clie
                   <div className="sm:col-span-2"><p className="text-xs font-medium text-gray-400 uppercase">Bemerkungen</p><p className="text-gray-700 whitespace-pre-wrap">{entry.remarks}</p></div>
                 )}
               </div>
-              {(entry.photos || []).length > 0 && (
-                <div className="flex gap-2 flex-wrap mt-3">
-                  {entry.photos.map(p => <PhotoThumb key={p.id} photoId={p.id} size="w-24 h-24" />)}
-                </div>
+              {photos.length > 0 && (
+                <>
+                  {/* Bildschirm: Miniaturen mit Nummer. Im Ausdruck stehen die
+                      Fotos großformatig im Anhang – hier nur der Verweis. */}
+                  <div className="flex gap-2 flex-wrap mt-3 no-print">
+                    {photos.map(p => <PhotoThumb key={p.id} photoId={p.id} no={p.no} size="w-24 h-24" />)}
+                  </div>
+                  <p className="hidden print:block text-xs mt-2">
+                    {photos.length === 1
+                      ? `Foto ${photos[0].no}`
+                      : `Fotos ${photos[0].no}–${photos[photos.length - 1].no}`}
+                    {' '}– siehe Fotoanhang
+                  </p>
+                </>
               )}
             </div>
           ))}
+        </div>
+      )}
+
+      {/* ── Fotoanhang: nur im Ausdruck/PDF, auf eigener Seite ───────────────
+          Die Fotos gehören zum Bericht, sollen ihn aber nicht zerreißen –
+          deshalb großformatig hinten, über die laufende Nummer zugeordnet. */}
+      {photoPlates.length > 0 && (
+        <div className="hidden print:block diary-appendix">
+          <h2 className="text-base font-bold border-b border-black pb-1 mb-3">
+            Fotoanhang · {photoPlates.length} Foto{photoPlates.length === 1 ? '' : 's'}
+          </h2>
+          <div className="grid grid-cols-2 gap-4">
+            {photoPlates.map(({ p, entry }) => (
+              <PhotoPlate key={p.id} photoId={p.id} no={p.no} entry={entry} />
+            ))}
+          </div>
         </div>
       )}
     </div>
