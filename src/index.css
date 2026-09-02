@@ -211,19 +211,19 @@
   }
 
   /* Baudokumentation: größerer Satzspiegel als im Protokoll – der Bericht wird
-     auf der Baustelle gelesen. Die Regeln greifen nur innerhalb .diary-report,
-     der Protokollausdruck bleibt unverändert. */
-  .diary-report { font-size: 11pt; line-height: 1.4; }
-  .diary-report .text-\[9px\],
-  .diary-report .text-\[10px\],
-  .diary-report .text-\[11px\] { font-size: 9pt !important; }
-  .diary-report .text-xs       { font-size: 10pt !important; }
-  .diary-report .text-sm       { font-size: 11pt !important; }
-  .diary-report .text-base     { font-size: 13pt !important; }
-  .diary-report .text-lg       { font-size: 14pt !important; }
-  .diary-report .text-xl       { font-size: 17pt !important; }
-  .diary-report .diary-date    { font-size: 12.5pt !important; }
-  .diary-report .diary-caption { font-size: 10pt !important; }
+     auf der Baustelle gelesen. Bewusst NUR im Berichtsinhalt (Einträge und
+     Fotoanhang); Kopf- und Fußzeile behalten ihre Größen, damit der Kopf so
+     kompakt bleibt wie im Protokoll. */
+  .diary-entry, .diary-appendix { font-size: 11pt; line-height: 1.4; }
+  .diary-entry .text-\[9px\],
+  .diary-entry .text-\[10px\],
+  .diary-entry .text-\[11px\] { font-size: 9pt !important; }
+  .diary-entry .text-xs,
+  .diary-appendix .text-xs    { font-size: 10pt !important; }
+  .diary-entry .text-sm       { font-size: 11pt !important; }
+  .diary-appendix h2          { font-size: 13pt !important; }
+  .diary-date                 { font-size: 12.5pt !important; }
+  .diary-caption              { font-size: 10pt !important; }
 
   /* Baudokumentation: Einträge ohne die seitlichen Striche des Protokolls –
      der Bericht soll ruhig wirken. Nur der Umbruchschutz bleibt. */
@@ -233,9 +233,6 @@
     break-inside: avoid;
     border: none !important;
   }
-
-  /* Deckblatt: eigene erste Seite, der Bericht beginnt danach neu */
-  .diary-cover { break-after: page; page-break-after: always; }
 
   /* Fotoanhang: eigene Seite, Tafeln nie über den Seitenrand hinweg trennen */
   .diary-appendix { break-before: page; page-break-before: always; }

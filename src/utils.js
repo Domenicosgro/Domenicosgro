@@ -159,13 +159,11 @@ export const DIARY_BLOCKS = [
     hint: 'Uhrzeit und Ursache – Grundlage für Bauzeitverlängerung' },
   { key: 'inspections',  label: 'Abnahmen & Prüfungen',
     hint: 'z. B. Bewehrungsabnahme, Betonierfreigabe – mit Prüfer und Ergebnis' },
-  { key: 'coverSheet',   label: 'Deckblatt mit Auswertung',
-    hint: 'Erste Berichtsseite mit Zeitraum, Regentagen, Firmen und Kennzahlen' },
 ]
 
 export const diaryConfigFor = (project) => {
   const gp  = !!project?.projectData?.isGeneralplanung
-  const def = { obstructions: true, inspections: gp, coverSheet: true }
+  const def = { obstructions: true, inspections: gp }
   return { ...def, ...(project?.diaryConfig || {}) }
 }
 

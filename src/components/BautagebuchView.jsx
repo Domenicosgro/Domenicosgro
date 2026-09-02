@@ -434,7 +434,6 @@ export default function BautagebuchView({ project, serverUser, logoDataUrl, clie
 
   // Berichtsbausteine des Projekts (Projekt-Admin, Voreinstellung nach Leistungsbild)
   const cfg = useMemo(() => diaryConfigFor(project), [project])
-  const [printCover, setPrintCover] = useState(true)
 
   // Firmen aus der Projektdatenbank (Projektkontakte) – Auswahl im Eintrag
   const firmOptions = useMemo(() => firmsOfProject(project), [project])
@@ -622,111 +621,8 @@ export default function BautagebuchView({ project, serverUser, logoDataUrl, clie
     [sorted])
   const lastProgress = progressEntry?.progress ?? ''
 
-  // ── Auswertung für das Deckblatt ──────────────────────────────────────────
-  // Zählt Tage, nicht Einträge: pro Tag kann es Vormittag und Nachmittag geben.
-  const summary = useMemo(() => {
-    const dates = [...new Set(sorted.map(e => e.date).filter(Boolean))].sort()
-    const dayHas = (pred) => new Set(sorted.filter(pred).map(e => e.date).filter(Boolean)).size
-    const temps  = sorted.flatMap(e => [e.tempMin, e.tempMax])
-      .filter(v => v !== '' && v != null).map(Number).filter(v => !Number.isNaN(v))
-    const firms  = new Set()
-    for (const e of sorted) {
-      if (e.firmList?.length) e.firmList.forEach(f => f.company && firms.add(f.company.trim()))
-      else (e.firms || '').split('\n').map(l => l.trim()).filter(Boolean).forEach(l => firms.add(l))
-    }
-    return {
-      from: dates[0] || '', to: dates[dates.length - 1] || '',
-      days: dates.length,
-      entries: sorted.length,
-      rainDays:  dayHas(e => e.weather === 'regen'),
-      snowDays:  dayHas(e => e.weather === 'schnee'),
-      obstrDays: dayHas(e => (e.obstructions || '').trim()),
-      inspDays:  dayHas(e => (e.inspections  || '').trim()),
-      tempMin: temps.length ? Math.min(...temps) : null,
-      tempMax: temps.length ? Math.max(...temps) : null,
-      firms: [...firms].sort((a, b) => a.localeCompare(b, 'de')),
-      photos: photoPlates.length,
-    }
-  }, [sorted, photoPlates])
-
   return (
     <div className="app-page diary-report">
-      {/* ── Deckblatt: erste Berichtsseite mit Zeitraum und Auswertung ───────
-          Nur im Druck, nur wenn der Baustein im Projekt aktiv ist und der
-          Schalter in der Kopfzeile ihn für diesen Ausdruck einschließt. */}
-      {cfg.coverSheet && printCover && sorted.length > 0 && (
-        <div className="hidden print:block diary-cover">
-          <div className="flex items-end justify-between pb-3 border-b border-black mb-8">
-            <div className="flex-shrink-0 flex items-end gap-4">
-              {logoDataUrl
-                ? <img src={logoDataUrl} alt="Büro-Logo" className="h-14 max-w-[170px] object-contain" />
-                : <div className="h-14 w-8" />}
-              {clientLogoDataUrl && (
-                <img src={clientLogoDataUrl} alt="Auftraggeber-Logo" className="h-14 max-w-[170px] object-contain" />
-              )}
-            </div>
-          </div>
-
-          <div className="text-xs uppercase tracking-widest">Baudokumentation</div>
-          <div className="text-xl font-bold mb-1">{project.name}</div>
-          {(project.projectData?.bauherr?.city || project.projectData?.bauherr?.street) && (
-            <div className="text-sm">
-              {[project.projectData?.bauherr?.street,
-                [project.projectData?.bauherr?.zip, project.projectData?.bauherr?.city].filter(Boolean).join(' ')]
-                .filter(Boolean).join(' · ')}
-            </div>
-          )}
-          <div className="text-sm">
-            {[project.projectData?.nummer ? `Projekt-Nr. ${project.projectData.nummer}` : '',
-              project.projectData?.isGeneralplanung ? 'Generalplanung' : project.projectData?.vertrag || '',
-              project.projectData?.bauherr?.company ? `Bauherr: ${project.projectData.bauherr.company}` : '']
-              .filter(Boolean).join(' · ')}
-          </div>
-
-          <div className="text-base font-bold mt-8 mb-2 border-b border-black pb-1">
-            Berichtszeitraum {summary.from ? formatDate(summary.from) : '–'} bis {summary.to ? formatDate(summary.to) : '–'}
-          </div>
-          <table className="w-full text-sm">
-            <tbody>
-              <tr><td className="py-0.5 pr-4 w-1/2">Dokumentierte Tage</td><td className="font-semibold">{summary.days}</td></tr>
-              <tr><td className="py-0.5 pr-4">Einträge (Vor-/Nachmittag)</td><td className="font-semibold">{summary.entries}</td></tr>
-              <tr><td className="py-0.5 pr-4">Tage mit Regen</td><td className="font-semibold">{summary.rainDays}</td></tr>
-              <tr><td className="py-0.5 pr-4">Tage mit Schnee / Frost</td><td className="font-semibold">{summary.snowDays}</td></tr>
-              {cfg.obstructions && (
-                <tr><td className="py-0.5 pr-4">Tage mit Behinderungen</td><td className="font-semibold">{summary.obstrDays}</td></tr>
-              )}
-              {cfg.inspections && (
-                <tr><td className="py-0.5 pr-4">Tage mit Abnahmen / Prüfungen</td><td className="font-semibold">{summary.inspDays}</td></tr>
-              )}
-              {summary.tempMin != null && (
-                <tr><td className="py-0.5 pr-4">Temperaturspanne</td><td className="font-semibold">{summary.tempMin}° bis {summary.tempMax} °C</td></tr>
-              )}
-              <tr><td className="py-0.5 pr-4">Fotos im Anhang</td><td className="font-semibold">{summary.photos}</td></tr>
-              {lastProgress !== '' && (
-                <tr><td className="py-0.5 pr-4">Baufortschritt gesamt</td>
-                  <td className="font-semibold">{lastProgress} %{progressEntry?.date ? ` (Stand ${formatDate(progressEntry.date)})` : ''}</td></tr>
-              )}
-            </tbody>
-          </table>
-
-          {summary.firms.length > 0 && (
-            <>
-              <div className="text-base font-bold mt-6 mb-2 border-b border-black pb-1">
-                Beteiligte Firmen ({summary.firms.length})
-              </div>
-              <ul className="text-sm columns-2">
-                {summary.firms.map(f => <li key={f} className="mb-0.5">{f}</li>)}
-              </ul>
-            </>
-          )}
-
-          <div className="text-xs mt-10">
-            Erstellt am {formatDate(new Date().toISOString().slice(0, 10))}
-            {serverUser?.display_name || serverUser?.username ? ` · ${serverUser.display_name || serverUser.username}` : ''}
-          </div>
-        </div>
-      )}
-
       {/* ── Druckkopf: identisch zum Protokoll (Logos links, Titel rechts) ──
           Logos kommen aus dem Projekt (Projekt-Admin-Panel) mit Rückfall auf das
           globale Büro-Logo – dieselbe Quelle wie beim Protokoll. */}
@@ -750,22 +646,12 @@ export default function BautagebuchView({ project, serverUser, logoDataUrl, clie
                   .filter(Boolean).join(' · ')}
               </div>
             )}
-            <div className="text-xs">{entries.length} Eintr{entries.length === 1 ? 'ag' : 'äge'} · Stand {formatDate(new Date().toISOString().slice(0, 10))}</div>
-            {/* Leistungsbild aus den Projektdaten – der Bericht weist aus, in
-                welcher Rolle er geführt wird (z. B. Generalplanung). */}
-            {(project.projectData?.isGeneralplanung || project.projectData?.vertrag || project.projectData?.nummer) && (
-              <div className="text-xs">
-                {[project.projectData?.nummer ? `Projekt-Nr. ${project.projectData.nummer}` : '',
-                  project.projectData?.isGeneralplanung ? 'Generalplanung' : project.projectData?.vertrag || '']
-                  .filter(Boolean).join(' · ')}
-              </div>
-            )}
-            {lastProgress !== '' && (
-              <div className="text-sm font-semibold">
-                Baufortschritt gesamt: {lastProgress} %
-                {progressEntry?.date ? ` (Stand ${formatDate(progressEntry.date)})` : ''}
-              </div>
-            )}
+            {/* Eine Zeile wie bisher – der Gesamtfortschritt hängt sich an,
+                statt den Kopf um eine weitere Zeile wachsen zu lassen. */}
+            <div className="text-xs">
+              {entries.length} Eintr{entries.length === 1 ? 'ag' : 'äge'} · Stand {formatDate(new Date().toISOString().slice(0, 10))}
+              {lastProgress !== '' ? ` · Baufortschritt ${lastProgress} %` : ''}
+            </div>
           </div>
         </div>
       </div>
@@ -782,12 +668,6 @@ export default function BautagebuchView({ project, serverUser, logoDataUrl, clie
           </div>
         </div>
         <div className="flex gap-2 items-center no-print">
-          {sorted.length > 0 && cfg.coverSheet && (
-            <label className="flex items-center gap-1.5 text-sm text-gray-600 cursor-pointer mr-1" title="Deckblatt mit Zeitraum, Kennzahlen und Firmenliste">
-              <input type="checkbox" checked={printCover} onChange={e => setPrintCover(e.target.checked)} />
-              Deckblatt
-            </label>
-          )}
           {sorted.length > 0 && (
             <button className="btn-secondary" onClick={() => window.print()}><Printer size={15} /> Drucken</button>
           )}
@@ -1001,6 +881,14 @@ export default function BautagebuchView({ project, serverUser, logoDataUrl, clie
           </div>
         </div>
       )}
+
+      {/* ── Fußzeile auf jeder Druckseite (wie im Protokoll) ────────────────
+          Seitenzahlen kann der HTML-Druck nicht selbst setzen – dafür die
+          Kopf-/Fußzeilen-Option im Druckdialog des Browsers nutzen. */}
+      <div className="print-footer hidden print:flex">
+        <span className="font-bold">Baudokumentation · {project.name}</span>
+        <span>Stand {formatDate(new Date().toISOString().slice(0, 10))}</span>
+      </div>
     </div>
   )
 }
