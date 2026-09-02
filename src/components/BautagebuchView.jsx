@@ -6,6 +6,7 @@ import { formatDate, uid, emptyContact, diaryConfigFor } from '../utils'
 import { compressToBase64, savePhotoBase64, loadPhotoUrl, removePhoto } from '../photoUtils'
 import { outboxAdd, outboxList, outboxRemove } from '../offlineStore'
 import ContactAutocomplete from './ContactAutocomplete'
+import PrintSheet from './PrintSheet'
 
 const isServer = typeof window !== 'undefined' && !!window.__SERVER_MODE__
 const authHeaders = () => {
@@ -623,6 +624,7 @@ export default function BautagebuchView({ project, serverUser, logoDataUrl, clie
 
   return (
     <div className="app-page diary-report">
+    <PrintSheet>
       {/* ── Druckkopf: identisch zum Protokoll (Logos links, Titel rechts) ──
           Logos kommen aus dem Projekt (Projekt-Admin-Panel) mit Rückfall auf das
           globale Büro-Logo – dieselbe Quelle wie beim Protokoll. */}
@@ -881,6 +883,8 @@ export default function BautagebuchView({ project, serverUser, logoDataUrl, clie
           </div>
         </div>
       )}
+
+    </PrintSheet>
 
       {/* ── Fußzeile auf jeder Druckseite (wie im Protokoll) ────────────────
           Seitenzahlen kann der HTML-Druck nicht selbst setzen – dafür die

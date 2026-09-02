@@ -17,6 +17,7 @@ import TileSidebar from './TileSidebar'
 import ProtocolNotesPanel from './ProtocolNotesPanel'
 import ProtocolActionsPanel from './ProtocolActionsPanel'
 import ProtocolInfoPanel from './ProtocolInfoPanel'
+import PrintSheet from './PrintSheet'
 import InfoItemsList from './InfoItemsList'
 
 const isElectron = typeof window !== 'undefined' && !!window.electronAPI
@@ -608,6 +609,7 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
         }
       }) : undefined}
     >
+    <PrintSheet>
 
       {/* ── Top bar ── */}
       <div className="flex items-center justify-between mb-4 no-print flex-wrap gap-2">
@@ -1188,6 +1190,7 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
           onClose={() => setShowProtocolEmail(false)}
         />
       )}
+    </PrintSheet>
     </div>
 
     {/* Tile-Sidebar: sticky rechts neben der Protokollmaske, kein Druck */}

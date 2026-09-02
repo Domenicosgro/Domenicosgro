@@ -2,6 +2,7 @@ import React, { useMemo } from 'react'
 import { ArrowLeft, Info, Printer } from 'lucide-react'
 import { formatDate, infoItemsForProject } from '../utils'
 import InfoItemsList from './InfoItemsList'
+import PrintSheet from './PrintSheet'
 
 // ── Info-Liste je Projekt (eigene Ansicht) ───────────────────────────────────
 // Sammelt die Protokollpunkte mit der Zuständigkeit "Info" über alle Protokolle
@@ -16,6 +17,7 @@ export default function InfoListView({ project, protocols = [], allProtocols,
 
   return (
     <div className="app-page">
+    <PrintSheet>
       {/* Druckkopf wie in den übrigen Berichten (Logos links, Titel rechts) */}
       <div className="hidden print:block mb-4">
         <div className="flex items-end justify-between pb-3 border-b border-black">
@@ -57,6 +59,8 @@ export default function InfoListView({ project, protocols = [], allProtocols,
       <div className="card p-4">
         <InfoItemsList rows={rows} onOpenProtocol={onOpenProtocol} />
       </div>
+
+    </PrintSheet>
 
       {/* Fußzeile auf jeder Druckseite */}
       <div className="print-footer hidden print:flex">

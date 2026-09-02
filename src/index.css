@@ -155,9 +155,31 @@
   border: 1px solid #e5e7eb;
 }
 
+/* ── Druckbogen (PrintSheet) ─────────────────────────────────
+   Am Bildschirm verhält sich die Tabelle wie gewöhnliche Blöcke, damit sich
+   am bestehenden Layout nichts ändert. Erst im Druck wird daraus eine echte
+   Tabelle – nur so reserviert Chrome über <tfoot> auf JEDER Seite Platz für
+   die fixe Fußzeile. */
+table.print-sheet,
+.print-sheet > tbody,
+.print-sheet > tbody > tr,
+.print-sheet > tbody > tr > td { display: block; }
+.print-sheet > tfoot           { display: none; }
+
 /* ── Print ───────────────────────────────────────────────── */
 @media print {
   @page { size: A4; margin: 12mm 12mm 20mm 12mm; }
+
+  /* Druckbogen: Tabellenstruktur aktivieren → der Text bricht vor der
+     Fußzeile um, statt unter ihr zu verschwinden. */
+  table.print-sheet        { display: table; width: 100%; border-collapse: collapse; }
+  .print-sheet > tbody     { display: table-row-group; }
+  .print-sheet > tfoot     { display: table-footer-group; }
+  .print-sheet > tbody > tr,
+  .print-sheet > tfoot > tr { display: table-row; }
+  .print-sheet td          { display: table-cell; padding: 0; }
+  /* Höhe der Fußzeile (12mm) plus Abstand zum Text */
+  .print-footer-space      { height: 16mm; }
 
   html { font-size: 10px; font-family: Arial, sans-serif; }
   body { background: white !important; font-size: 9pt; }
