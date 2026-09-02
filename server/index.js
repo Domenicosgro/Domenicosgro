@@ -2296,7 +2296,7 @@ app.delete('/api/learning-videos/:id', requireAuth, requireAdmin, writeLimiter, 
 })
 
 // ── Verteiler (Nachrichten-Terminal je Projekt) ──────────────────────────────
-const DISTRIBUTION_CHANNEL_KEYS = ['report', 'protocol', 'freigabe', 'actions']
+const DISTRIBUTION_CHANNEL_KEYS = ['report', 'protocol', 'freigabe', 'actions', 'diary']
 
 // Bereinigt die vom Client gelieferten Verteiler-Empfänger: nur valide E-Mail,
 // bekannte Kanäle, nach E-Mail dedupliziert. Vertraut keinen Client-Feldern.
@@ -2872,6 +2872,12 @@ const EMAIL_DEFAULTS = {
     subject:  'Notizbuch – {project}',
     greeting: 'Guten Tag,',
     intro:    'anbei erhalten Sie einen Auszug aus dem Notizbuch zum Projekt {project}.',
+    footer:   'GHBA',
+  },
+  diary: {
+    subject:  'Baudokumentation – {project} – Stand {date}',
+    greeting: 'Guten Tag,',
+    intro:    'anbei erhalten Sie die Baudokumentation zum Projekt {project}.',
     footer:   'GHBA',
   },
   task_assignment: {
@@ -4782,6 +4788,101 @@ app.post('/api/notebooks/:projectId/send-email', requireAuth, async (req, res) =
     await mailer.sendMail({ from: fromAddress, to, replyTo, subject: mailSubject, html, attachments: atts })
     res.json({ ok: true })
   } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// ── Baudokumentation per E-Mail ───────────────────────────────────────────────
+// Versand mit PDF-Anhang; das PDF entsteht aus derselben Druckansicht wie beim
+// Drucken (siehe /api/projects/:id/render-pdf), damit Ausdruck und Anhang
+// identisch sind.
+app.post('/api/projects/:id/diary/send-email', requireAuth, async (req, res) => {
+  try {
+    const proj = db.projects.get(req.params.id)
+    if (!proj) return res.status(404).json({ error: 'Projekt nicht gefunden.' })
+    if (!canAccessProject(proj, req.user)) return res.status(403).json({ error: 'Kein Zugriff.' })
+    if (!mailer.mailerStatus().configured) return res.status(400).json({ error: 'E-Mail-Versand nicht konfiguriert.' })
+
+    const { to, subject, message, pdfBase64, pdfFilename, entryCount, periodFrom, periodTo } = req.body || {}
+    if (!to || (Array.isArray(to) && to.length === 0)) return res.status(400).json({ error: '"to" erwartet.' })
+
+    const tpl         = getEmailSettings().diary || {}
+    const from        = process.env.SMTP_FROM || process.env.GRAPH_SENDER || process.env.SMTP_USER || 'noreply@ghba'
+    const sender      = req.user !== '__apikey__' && req.user !== '__anonymous__' ? db.users.get(req.user) : null
+    const replyTo     = sender?.email || null
+    const fromAddress = sender?.display_name ? `"${sender.display_name} (GHBA)" <${from}>` : from
+    const todayLabel  = new Date().toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })
+    const creator     = sender?.display_name || null
+    const vars        = { project: proj.name || 'Projekt', date: todayLabel }
+    const mailSubject = subject || applyTpl(tpl.subject || 'Baudokumentation – {project}', vars)
+    const intro       = applyTpl(tpl.intro || '', vars)
+    const dateRange   = [periodFrom, periodTo].filter(Boolean).length === 2 && periodFrom !== periodTo
+      ? `${periodFrom} bis ${periodTo}`
+      : (periodTo || periodFrom || '')
+
+    const html = `<!DOCTYPE html>
+<html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#F0F0F0;font-family:Arial,sans-serif;font-size:14px;color:#1F2937;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#F0F0F0;padding:32px 16px;">
+    <tr><td align="center">
+      <table width="620" cellpadding="0" cellspacing="0" style="background:#FFF;border:1px solid #E5E7EB;max-width:620px;width:100%;">
+        <tr><td style="background:#000040;padding:28px 36px;">
+          <p style="margin:0;color:#8FBEFF;font-size:11px;letter-spacing:2px;text-transform:uppercase;">GHBA</p>
+          <p style="margin:6px 0 0 0;color:#FBFFE6;font-size:20px;font-weight:bold;">Baudokumentation</p>
+          <p style="margin:4px 0 0 0;color:#8FBEFF;font-size:14px;">${esc(proj.name || 'Projekt')}</p>
+        </td></tr>
+        <tr><td style="padding:28px 36px 12px 36px;">
+          <p style="margin:0;font-size:15px;color:#000040;">${esc(tpl.greeting || 'Guten Tag,')}</p>
+          <p style="margin:10px 0 0 0;color:#4B5563;">${esc(intro)}${creator ? ` Gesendet von <strong>${esc(creator)}</strong>.` : ''}</p>
+          ${message ? `<p style="margin:12px 0 0 0;color:#1F2937;white-space:pre-wrap;">${esc(message)}</p>` : ''}
+          ${pdfBase64 ? `<p style="margin:12px 0 0 0;color:#4B5563;">Die Baudokumentation ist dieser E-Mail als <strong>PDF-Anlage</strong> beigefügt.</p>` : ''}
+        </td></tr>
+        <tr><td style="padding:12px 36px 8px 36px;border-top:1px solid #E5E7EB;">
+          <p style="margin:0 0 8px 0;font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:#9CA3AF;">Umfang</p>
+          <p style="margin:0;color:#1F2937;">
+            ${Number(entryCount) > 0 ? `${esc(String(entryCount))} Eintr${Number(entryCount) === 1 ? 'ag' : 'äge'}` : 'Baudokumentation'}
+            ${dateRange ? ` · Zeitraum ${esc(dateRange)}` : ''}
+          </p>
+        </td></tr>
+        <tr><td style="padding:20px 36px;border-top:1px solid #E5E7EB;background:#F0F0F0;text-align:center;">
+          <p style="margin:0;color:#9CA3AF;font-size:12px;">${esc(tpl.footer || 'GHBA')}${creator ? ` · Gesendet von ${esc(creator)}` : ''} · ${todayLabel}</p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body></html>`
+
+    const atts = []
+    if (pdfBase64) {
+      atts.push({
+        filename: pdfFilename || 'Baudokumentation.pdf',
+        content: Buffer.from(pdfBase64, 'base64'),
+        contentType: 'application/pdf',
+      })
+    }
+    const recipients = Array.isArray(to) ? to.join(', ') : to
+    await mailer.sendMail({ from: fromAddress, to: recipients, replyTo, subject: mailSubject, html, attachments: atts })
+    logEvent('DIARY_EMAIL', req, `project=${proj.id} to=${recipients}`)
+    res.json({ ok: true })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// Druck-HTML einer Projektansicht (Baudokumentation, Info-Liste) zu PDF rendern
+app.post('/api/projects/:id/render-pdf', requireAuth, writeLimiter, async (req, res) => {
+  try {
+    const proj = db.projects.get(req.params.id)
+    if (!proj) return res.status(404).json({ error: 'Projekt nicht gefunden.' })
+    if (!canAccessProject(proj, req.user)) return res.status(403).json({ error: 'Kein Zugriff.' })
+    const { html } = req.body || {}
+    if (typeof html !== 'string' || html.length < 50) {
+      return res.status(400).json({ error: 'Kein Druck-HTML übergeben.' })
+    }
+    const { renderHtmlToPdf } = require('./pdfRender')
+    const pdf = await renderHtmlToPdf(html)
+    logEvent('RENDER_PDF', req, `project=${proj.id} bytes=${pdf.length}`)
+    res.json({ pdfBase64: Buffer.from(pdf).toString('base64') })
+  } catch (e) {
+    logEvent('RENDER_PDF_FAIL', req, e.message)
+    res.status(500).json({ error: 'PDF-Erzeugung fehlgeschlagen: ' + e.message })
+  }
 })
 
 // ── Backup ────────────────────────────────────────────────────────────────────

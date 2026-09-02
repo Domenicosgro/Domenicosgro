@@ -175,6 +175,7 @@ export const DISTRIBUTION_CHANNELS = [
   { key: 'protocol', label: 'Protokoll', hint: 'Protokoll-Versand – Vorauswahl im Dialog' },
   { key: 'freigabe', label: 'Freigabe',  hint: 'Protokoll zur Freigabe – Vorauswahl im Dialog' },
   { key: 'actions',  label: 'Aufgaben',  hint: 'Aufgaben-/Maßnahmenversand – als Kopie (CC)' },
+  { key: 'diary',    label: 'Baudoku',   hint: 'Baudokumentation – Vorauswahl im Versanddialog' },
 ]
 
 export const emptyDistributionRecipient = () => ({
@@ -184,7 +185,7 @@ export const emptyDistributionRecipient = () => ({
   contactId: null,       // optional: verknüpfter Projektkontakt
   username: null,        // optional: verknüpfter App-Benutzer
   scope: 'short',        // 'full' = vollständiger Bericht (intern), 'short' = gekürzt (extern)
-  channels: { report: false, protocol: false, freigabe: false, actions: false },
+  channels: { report: false, protocol: false, freigabe: false, actions: false, diary: false },
 })
 
 // Empfänger eines Kanals: valide E-Mail, Kanal aktiv, nach E-Mail dedupliziert.

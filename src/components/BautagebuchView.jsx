@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { ArrowLeft, Plus, Camera, Trash2, Pencil, X, Loader, AlertCircle, Printer,
          Sun, Cloud, CloudRain, Snowflake, BookOpen, CloudOff, RefreshCw, CloudSun,
-         Building2, MapPin } from 'lucide-react'
-import { formatDate, uid, emptyContact, diaryConfigFor } from '../utils'
+         Building2, MapPin, Mail } from 'lucide-react'
+import { formatDate, uid, emptyContact, diaryConfigFor, distributionFor } from '../utils'
 import { compressToBase64, savePhotoBase64, loadPhotoUrl, removePhoto } from '../photoUtils'
 import { outboxAdd, outboxList, outboxRemove } from '../offlineStore'
 import ContactAutocomplete from './ContactAutocomplete'
 import PrintSheet from './PrintSheet'
+import DiaryEmailModal from './DiaryEmailModal'
 
 const isServer = typeof window !== 'undefined' && !!window.__SERVER_MODE__
 const authHeaders = () => {
@@ -435,6 +436,24 @@ export default function BautagebuchView({ project, serverUser, logoDataUrl, clie
 
   // Berichtsbausteine des Projekts (Projekt-Admin, Voreinstellung nach Leistungsbild)
   const cfg = useMemo(() => diaryConfigFor(project), [project])
+  const [emailOpen, setEmailOpen] = useState(false)
+
+  // PDF aus der Druckansicht – serverseitiges Chrome, damit der Anhang exakt
+  // dem Ausdruck entspricht (gleiches Vorgehen wie beim Protokoll).
+  const buildPdf = useCallback(async () => {
+    const css = Array.from(document.styleSheets).map(s => {
+      try { return Array.from(s.cssRules).map(r => r.cssText).join('\n') } catch { return '' }
+    }).join('\n')
+    const body = document.body.innerHTML.replace(/<script[\s\S]*?<\/script>/gi, '')
+    const html = `<!doctype html><html lang="de"><head><meta charset="utf-8"><style>${css}</style></head>`
+      + `<body class="${document.body.className}">${body}</body></html>`
+    const res = await fetch(`/api/projects/${project.id}/render-pdf`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({ html }),
+    })
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `Fehler ${res.status}`)
+    return (await res.json()).pdfBase64
+  }, [project.id])
 
   // Firmen aus der Projektdatenbank (Projektkontakte) – Auswahl im Eintrag
   const firmOptions = useMemo(() => firmsOfProject(project), [project])
@@ -673,6 +692,9 @@ export default function BautagebuchView({ project, serverUser, logoDataUrl, clie
           {sorted.length > 0 && (
             <button className="btn-secondary" onClick={() => window.print()}><Printer size={15} /> Drucken</button>
           )}
+          {sorted.length > 0 && isServer && (
+            <button className="btn-secondary" onClick={() => setEmailOpen(true)}><Mail size={15} /> Per E-Mail</button>
+          )}
           {!editing && (
             <button className="btn-primary" onClick={() => setEditing('new')}><Plus size={15} /> Eintrag</button>
           )}
@@ -885,6 +907,23 @@ export default function BautagebuchView({ project, serverUser, logoDataUrl, clie
       )}
 
     </PrintSheet>
+
+      {emailOpen && (
+        <DiaryEmailModal
+          project={project}
+          entryCount={sorted.length}
+          periodFrom={sorted.length ? formatDate(sorted[sorted.length - 1].date) : ''}
+          periodTo={sorted.length ? formatDate(sorted[0].date) : ''}
+          projectContacts={project.contacts || []}
+          distribution={distributionFor(project, 'diary')}
+          buildPdf={buildPdf}
+          onSaveContact={canEditContacts ? (({ email }) => onUpdateProject(project.id, {
+            contacts: [...(project.contacts || []), { ...emptyContact(), email }],
+          })) : null}
+          onSent={() => setNotice('Baudokumentation wurde versendet.')}
+          onClose={() => setEmailOpen(false)}
+        />
+      )}
 
       {/* ── Fußzeile auf jeder Druckseite (wie im Protokoll) ────────────────
           Seitenzahlen kann der HTML-Druck nicht selbst setzen – dafür die
