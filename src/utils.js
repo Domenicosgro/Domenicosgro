@@ -499,6 +499,45 @@ export const liveActionItems = (protos, allProtocols) => {
     .filter(a => !isMirrorAction(a) && !superseded.has(a.id)))
 }
 
+// ── Info-Punkte (Zuständigkeit "Info") ───────────────────────────────────────
+// Ein Protokollpunkt mit der Zuständigkeit "Info" dient nur der Kenntnisnahme.
+// Er wandert durch die Folgeprotokolle, bis er freigemeldet ist – dann fällt er
+// aus dem Protokoll heraus und wäre nur noch im alten Protokoll auffindbar.
+// Diese Ableitung sammelt die Info-Punkte projektweit: je Information die
+// JÜNGSTE Fassung (übernommene Vorgänger fallen weg, wie bei den Maßnahmen),
+// mit der Herkunft aus dem Protokoll, in dem sie zuletzt stand.
+export const isInfoItem = (item) =>
+  (item?.assignedTo ?? '').trim().toLowerCase() === 'info'
+
+export const infoItemsForProject = (protos, allProtocols) => {
+  const all = allProtocols ?? protos ?? []
+  // In ein Folgeprotokoll übernommene Vorgänger nicht doppelt listen
+  const superseded = new Set()
+  for (const p of all) {
+    for (const it of (p.agendaItems ?? [])) {
+      if (it.carriedFromId) superseded.add(it.carriedFromId)
+    }
+  }
+  const rows = []
+  for (const p of (protos ?? [])) {
+    for (const it of (p.agendaItems ?? [])) {
+      if (!isInfoItem(it) || superseded.has(it.id)) continue
+      rows.push({
+        item: it,
+        protocolId:  p.id,
+        meetingType: p.meetingType ?? '',
+        subtitle:    p.subtitle ?? '',
+        date:        p.date ?? '',
+        // "Entfallen" = freigemeldet/erledigt → wird nicht mehr weitergetragen
+        closed: it.status === 'erledigt',
+      })
+    }
+  }
+  return rows.sort((a, b) =>
+    (b.date || '').localeCompare(a.date || '') ||
+    String(a.item.no || '').localeCompare(String(b.item.no || ''), 'de', { numeric: true }))
+}
+
 export const emptyTile = (color = 'night') => ({
   id: uid(),
   label: '',

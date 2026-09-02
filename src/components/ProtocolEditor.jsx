@@ -9,13 +9,15 @@ import ProtocolEmailModal from './ProtocolEmailModal'
 import ProtocolItems    from './ProtocolItems'
 import ActionItems      from './ActionItems'
 import NotesSection     from './NotesSection'
-import { formatDate, buildProtocolNo, getChainNo, uid, emptyAgendaItem, distributionFor, emptyContact, isMirrorAction } from '../utils'
+import { formatDate, buildProtocolNo, getChainNo, uid, emptyAgendaItem, distributionFor, emptyContact, isMirrorAction, infoItemsForProject } from '../utils'
 import { exportDocx } from '../exportDocx'
 import { attachmentStore } from '../attachmentStore'
 import GesamtprotokollModal from './GesamtprotokollModal'
 import TileSidebar from './TileSidebar'
 import ProtocolNotesPanel from './ProtocolNotesPanel'
 import ProtocolActionsPanel from './ProtocolActionsPanel'
+import ProtocolInfoPanel from './ProtocolInfoPanel'
+import InfoItemsList from './InfoItemsList'
 
 const isElectron = typeof window !== 'undefined' && !!window.electronAPI
 const isServer   = typeof window !== 'undefined' && !!window.__SERVER_MODE__
@@ -64,7 +66,7 @@ function promoteAgenda(agenda, existingItems) {
   ]
 }
 
-export default function ProtocolEditor({ protocol, protocols, projects, projectContacts, serverUser, logoDataUrl, clientLogoDataUrl, onUpdate, onUpdateProject, onBack, onRefresh, onOpenBim, onOpenBimIssue, notes = [], onCreateNote, onUpdateNote, onDeleteNote }) {
+export default function ProtocolEditor({ protocol, protocols, projects, projectContacts, serverUser, logoDataUrl, clientLogoDataUrl, onUpdate, onUpdateProject, onBack, onRefresh, onOpenBim, onOpenBimIssue, onOpenProtocol, notes = [], onCreateNote, onUpdateNote, onDeleteNote }) {
   const change = (patch) => onUpdate(protocol.id, patch)
   const linkedProject  = (projects ?? []).find(p => p.id === protocol.projectId) ?? null
   // Freimeldung genehmigen: Systemadmin oder Projektadmin (Ersteller/Co-Admin)
@@ -123,9 +125,11 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
   const [printAttachmentData,  setPrintAttachmentData]  = useState({})  // attId → base64
   const [notesOpen,            setNotesOpen]            = useState(false)
   const [actionsOpen,          setActionsOpen]          = useState(false)
-  // Beide Seitenpanels teilen sich den rechten Rand → sich gegenseitig ausschließen.
-  const openNotes   = (v) => { setNotesOpen(v); if (v) setActionsOpen(false) }
-  const openActions = (v) => { setActionsOpen(v); if (v) setNotesOpen(false) }
+  const [infoOpen,             setInfoOpen]             = useState(false)
+  // Die Seitenpanels teilen sich den rechten Rand → schließen sich gegenseitig aus.
+  const openNotes   = (v) => { setNotesOpen(v);   if (v) { setActionsOpen(false); setInfoOpen(false) } }
+  const openActions = (v) => { setActionsOpen(v); if (v) { setNotesOpen(false);   setInfoOpen(false) } }
+  const openInfo    = (v) => { setInfoOpen(v);    if (v) { setNotesOpen(false);   setActionsOpen(false) } }
   const openActionCount = (protocol.actionItems ?? [])
     .filter(a => !isMirrorAction(a) && (a.status === 'offen' || a.status === 'in_arbeit')).length
   const attachInputRef = useRef(null)
@@ -184,6 +188,17 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
   const hasChain    = chainNo !== null
   const createdDate = formatDate(protocol.createdAt?.slice(0, 10) ?? protocol.date)
   const isClosed    = !!protocol.isClosed
+
+  // Info-Punkte des gesamten Projekts (auch die bereits freigemeldeten, die aus
+  // dem Protokoll herausgefallen sind) – für das seitliche Info-Panel.
+  const projectProtocols = useMemo(
+    () => (protocols ?? []).filter(p => protocol.projectId
+      ? p.projectId === protocol.projectId
+      : p.id === protocol.id),
+    [protocols, protocol.projectId, protocol.id])
+  const infoRows = useMemo(
+    () => infoItemsForProject(projectProtocols, protocols ?? []),
+    [projectProtocols, protocols])
 
   const predecessor = useMemo(
     () => protocols.find(p => p.id === protocol.predecessorId) ?? null,
@@ -540,7 +555,7 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
     // Bei offenem Seitenpanel (Notizen/Maßnahmen) wird rechts Platz freigehalten,
     // damit das Protokoll nicht verdeckt und weiterhin parallel bearbeitbar ist.
     <div className={`flex items-start gap-2 px-4 sm:px-6 lg:px-10 py-4 justify-center print:block transition-[padding] ${
-      actionsOpen ? 'md:pr-[29rem] print:pr-0' : notesOpen ? 'md:pr-[25rem] print:pr-0' : ''}`}>
+      actionsOpen || infoOpen ? 'md:pr-[29rem] print:pr-0' : notesOpen ? 'md:pr-[25rem] print:pr-0' : ''}`}>
     {onCreateNote && (
       <ProtocolNotesPanel
         protocol={protocol}
@@ -567,6 +582,11 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
         onOpenBimIssue={onOpenBimIssue}
       />
     </ProtocolActionsPanel>
+    {/* Info-Punkte des Projekts – auch die nach der Freimeldung entfallenen */}
+    <ProtocolInfoPanel open={infoOpen} onOpenChange={openInfo} count={infoRows.length}>
+      <InfoItemsList rows={infoRows} compact
+        onOpenProtocol={onOpenProtocol && (id => { openInfo(false); onOpenProtocol(id) })} />
+    </ProtocolInfoPanel>
     <div
       className="flex-1 min-w-0 max-w-[1400px] space-y-0"
       // Datei-Drops ÜBERALL im Protokoll annehmen → landen als Anlage.

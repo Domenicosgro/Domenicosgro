@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react'
-import { ArrowLeft, FileText, Users, HardHat, Pencil, NotebookPen, ChevronRight, BarChart2, UserCog, BookOpen, Box, AlertOctagon, HardDrive, Database } from 'lucide-react'
+import { ArrowLeft, FileText, Users, HardHat, Pencil, NotebookPen, ChevronRight, BarChart2, UserCog, BookOpen, Box, AlertOctagon, HardDrive, Database, Info } from 'lucide-react'
 import ProjectAdminPanel from './ProjectAdminPanel'
 import { lphRange } from './ProjektdatenView'
-import { liveActionItems } from '../utils'
+import { liveActionItems, infoItemsForProject } from '../utils'
 
 const isServer = typeof window !== 'undefined' && !!window.__SERVER_MODE__
 
@@ -64,7 +64,7 @@ function DashboardTile({ icon, title, subtitle, accent, onClick, stat1, stat2, c
 export default function ProjectDashboard({
   project, protocols, notes, serverUser, globalLogoDataUrl,
   onUpdateProject, onBack, onOpenProtocols, onOpenNotes, onManageContacts, onOpenMassnahmen, onOpenBim,
-  onOpenBautagebuch, onOpenMaengel, onOpenDateiablage, onOpenProjektdaten, onSaved,
+  onOpenBautagebuch, onOpenMaengel, onOpenDateiablage, onOpenProjektdaten, onOpenInfos, onSaved,
 }) {
   const [showAdminPanel, setShowAdminPanel] = useState(false)
   const [bimIssues,      setBimIssues]      = useState([])
@@ -100,6 +100,10 @@ export default function ProjectDashboard({
   const openActions  = allActions.filter(a => a.status === 'offen' || a.status === 'in_arbeit').length
   const doneActions  = allActions.filter(a => a.status === 'erledigt').length
   const openBimIssues = bimIssues.filter(i => i.status === 'offen' || i.status === 'in_arbeit').length
+
+  // Info-Punkte (Zuständigkeit "Info") über alle Protokolle des Projekts
+  const infoRows   = infoItemsForProject(protos, protocols)
+  const infoClosed = infoRows.filter(r => r.closed).length
 
   return (
     <div className="app-page">
@@ -181,6 +185,20 @@ export default function ProjectDashboard({
           stat1={{ value: allActions.length, label: 'Maßnahmen' }}
           chart={<DoneOpenDonut done={doneActions} open={allActions.length - doneActions} />}
         />
+
+        {/* Info-Punkte: Protokollpunkte mit der Zuständigkeit "Info" – auch die,
+            die nach der Freimeldung aus dem Protokoll entfallen sind. */}
+        {onOpenInfos && (
+          <DashboardTile
+            icon={<Info size={20} />}
+            title="Info-Punkte"
+            subtitle="Punkte zur Kenntnisnahme aus allen Protokollen – auch nach der Freimeldung"
+            accent="border-sky-400"
+            onClick={onOpenInfos}
+            stat1={{ value: infoRows.length, label: 'Info-Punkte' }}
+            stat2={{ value: infoClosed, label: 'freigemeldet' }}
+          />
+        )}
 
 
         {/* BIM-Modell */}

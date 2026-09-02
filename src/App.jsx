@@ -19,6 +19,7 @@ import AdminPanel            from './components/AdminPanel'
 import BimViewerPopup        from './components/BimViewerPopup'
 import LearningPlatform      from './components/LearningPlatform'
 import BautagebuchView       from './components/BautagebuchView'
+import InfoListView          from './components/InfoListView'
 import MaengelView           from './components/MaengelView'
 import PersonalplanungView   from './components/PersonalplanungView'
 import DateiablageView       from './components/DateiablageView'
@@ -641,6 +642,7 @@ export default function App() {
           onUpdateProject={handleUpdateProject}
           onBack={handleBackFromEditor}
           onRefresh={handleRefresh}
+          onOpenProtocol={handleOpenProtocol}
           onOpenBim={linkedProject?.bimMeta ? () => { setBimReturnView('editor'); setView('project-bim') } : undefined}
           onOpenBimIssue={linkedProject?.bimMeta ? (viewpoint, title) => setBimPopup({ project: linkedProject, viewpoint, title }) : undefined}
           notes={notes}
@@ -807,6 +809,7 @@ export default function App() {
           onOpenMaengel={() => setView('project-maengel')}
           onOpenDateiablage={isServer ? () => setView('project-dateiablage') : undefined}
           onOpenProjektdaten={() => setView('project-daten')}
+          onOpenInfos={() => setView('project-infos')}
           onSaved={isServer ? handleRefresh : undefined}
         />
         <UpdateBanner /><SaveErrorBanner />
@@ -889,6 +892,25 @@ export default function App() {
           onUpdateProject={handleUpdateProject}
           serverUser={effectiveUser}
           onBack={() => setView('home')}
+        />
+        <UpdateBanner /><SaveErrorBanner />
+      </>
+    )
+  }
+
+  if (view === 'project-infos') {
+    const project = projectsWithContacts.find(p => p.id === selectedProjectId)
+    if (!project) { setView('home'); return null }
+    return wrap(
+      <>
+        <InfoListView
+          project={project}
+          protocols={protocols.filter(p => p.projectId === project.id)}
+          allProtocols={protocols}
+          logoDataUrl={project.logo || logoDataUrl}
+          clientLogoDataUrl={project.clientLogo || ''}
+          onOpenProtocol={handleOpenProtocol}
+          onBack={() => setView('project-dashboard')}
         />
         <UpdateBanner /><SaveErrorBanner />
       </>
