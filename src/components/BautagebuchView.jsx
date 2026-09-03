@@ -111,6 +111,29 @@ function PhotoPlate({ photo, no, entry }) {
   )
 }
 
+// Eine Berichtszeile: Beschriftung links, Inhalt rechts. Leere Angaben werden
+// mit "–" ausgewiesen, damit im Bericht erkennbar bleibt, dass zu diesem Punkt
+// nichts zu vermerken war (und nicht etwa die Eintragung vergessen wurde).
+function DiaryField({ label, note, children }) {
+  const empty = children == null || children === false
+    || (typeof children === 'string' && !children.trim())
+  return (
+    <tr>
+      <th className="diary-label">
+        {label}
+        {note ? <span className="diary-note"> ({note})</span> : null}:
+      </th>
+      <td className="diary-value">
+        {empty
+          ? <span className="text-gray-400">–</span>
+          : (typeof children === 'string'
+              ? <span className="whitespace-pre-wrap">{children}</span>
+              : children)}
+      </td>
+    </tr>
+  )
+}
+
 function EntryForm({ entry, onSave, onCancel, projectId, firmOptions = [], onAddFirmToProject,
                      lastProgress = '', cfg = {}, contacts = [] }) {
   const [form, setForm] = useState({
@@ -133,6 +156,7 @@ function EntryForm({ entry, onSave, onCancel, projectId, firmOptions = [], onAdd
     weatherLocation: entry?.weatherLocation || '',
     workDone:    entry?.workDone    || '',
     remarks:     entry?.remarks     || '',
+    special:     entry?.special     || '',
   })
   const [wxBusy, setWxBusy] = useState(false)
   const [wxInfo, setWxInfo] = useState(null)
@@ -366,10 +390,17 @@ function EntryForm({ entry, onSave, onCancel, projectId, firmOptions = [], onAdd
         </div>
       )}
 
-      <div>
-        <label className="block text-xs font-medium text-gray-500 mb-1">Besondere Vorkommnisse / Bemerkungen</label>
-        <textarea className="input resize-y" rows={2} value={form.remarks} onChange={set('remarks')}
-          placeholder="Anordnungen, Besucher, sonstige Vorkommnisse… (optional)" />
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div>
+          <label className="block text-xs font-medium text-gray-500 mb-1">Bemerkungen</label>
+          <textarea className="input resize-y" rows={2} value={form.remarks} onChange={set('remarks')}
+            placeholder="Allgemeine Anmerkungen zum Tag… (optional)" />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-gray-500 mb-1">Besonderheiten</label>
+          <textarea className="input resize-y" rows={2} value={form.special} onChange={set('special')}
+            placeholder="Besondere Vorkommnisse, Anordnungen, Besucher… (optional)" />
+        </div>
       </div>
 
       {/* Fotos – je Foto eine eigene Bildunterschrift für den Fotoanhang.
@@ -778,7 +809,7 @@ export default function BautagebuchView({ project, serverUser, logoDataUrl, clie
         <div className="space-y-3">
           {numbered.map(({ entry, photos }) => (
             <div key={entry.id} className="card p-4 diary-entry">
-              <div className="flex items-start justify-between gap-3 flex-wrap">
+              <div className="flex items-start justify-between gap-3 flex-wrap diary-head">
                 <div>
                   <p className="font-semibold text-night diary-date">
                     {formatDate(entry.date)}
@@ -812,12 +843,14 @@ export default function BautagebuchView({ project, serverUser, logoDataUrl, clie
                   <button className="btn-ghost p-1.5 text-gray-400 hover:text-red-600" title="Löschen" onClick={() => remove(entry)}><Trash2 size={14} /></button>
                 </div>
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2 mt-3 text-sm">
-                {(entry.firmList?.length > 0 || entry.firms) && (
-                  <div>
-                    <p className="text-xs font-medium text-gray-400 uppercase">Firmen / Personal</p>
+              {/* Berichtsformat: je Angabe eine Zeile mit Beschriftung links.
+                  Untereinander statt nebeneinander – das liest sich im Ausdruck
+                  wie ein Bericht und nicht wie ein gedrängtes Formular. */}
+              <table className="diary-fields">
+                <tbody>
+                  <DiaryField label="Firmen">
                     {entry.firmList?.length > 0 ? (
-                      <ul className="text-gray-700 space-y-0.5">
+                      <ul className="space-y-0.5">
                         {entry.firmList.map(f => (
                           <li key={f.id}>
                             <span className="font-medium">{f.company}</span>
@@ -831,59 +864,50 @@ export default function BautagebuchView({ project, serverUser, logoDataUrl, clie
                           </li>
                         ))}
                       </ul>
-                    ) : (
-                      <p className="text-gray-700 whitespace-pre-wrap">{entry.firms}</p>
-                    )}
-                  </div>
-                )}
-                {entry.workDone && (
-                  <div><p className="text-xs font-medium text-gray-400 uppercase">Ausgeführte Arbeiten</p><p className="text-gray-700 whitespace-pre-wrap">{entry.workDone}</p></div>
-                )}
-                {entry.obstructions && (
-                  <div className="sm:col-span-2">
-                    <p className="text-xs font-medium text-gray-400 uppercase">
-                      Behinderungen / Stillstände
-                      {(entry.obstrFrom || entry.obstrTo) && (
-                        <span className="normal-case text-gray-500">
-                          {' '}({entry.obstrFrom || '–'} bis {entry.obstrTo || '–'} Uhr)
-                        </span>
-                      )}
-                    </p>
-                    <p className="text-gray-700 whitespace-pre-wrap">{entry.obstructions}</p>
-                  </div>
-                )}
-                {entry.inspections && (
-                  <div className="sm:col-span-2">
-                    <p className="text-xs font-medium text-gray-400 uppercase">Abnahmen &amp; Prüfungen</p>
-                    <p className="text-gray-700 whitespace-pre-wrap">
-                      {entry.inspections}
-                      {entry.inspectedBy ? ` (Prüfer: ${entry.inspectedBy})` : ''}
-                    </p>
-                  </div>
-                )}
-                {entry.remarks && (
-                  <div className="sm:col-span-2"><p className="text-xs font-medium text-gray-400 uppercase">Bemerkungen</p><p className="text-gray-700 whitespace-pre-wrap">{entry.remarks}</p></div>
-                )}
-              </div>
+                    ) : entry.firms || null}
+                  </DiaryField>
+
+                  <DiaryField label="Ausgeführte Arbeiten">{entry.workDone}</DiaryField>
+
+                  {cfg.obstructions && (
+                    <DiaryField
+                      label="Behinderungen"
+                      note={(entry.obstrFrom || entry.obstrTo)
+                        ? `${entry.obstrFrom || '–'} bis ${entry.obstrTo || '–'} Uhr` : null}>
+                      {entry.obstructions}
+                    </DiaryField>
+                  )}
+
+                  {cfg.inspections && (
+                    <DiaryField label="Abnahmen & Prüfungen">
+                      {entry.inspections
+                        ? `${entry.inspections}${entry.inspectedBy ? ` (Prüfer: ${entry.inspectedBy})` : ''}`
+                        : null}
+                    </DiaryField>
+                  )}
+
+                  <DiaryField label="Bemerkungen">{entry.remarks}</DiaryField>
+                  <DiaryField label="Besonderheiten">{entry.special}</DiaryField>
+
+                  <DiaryField label="Fotoanlage">
+                    {photos.length > 0
+                      ? `${photos.length} Foto${photos.length === 1 ? '' : 's'} (Nr. ${photos[0].no}${photos.length > 1 ? `–${photos[photos.length - 1].no}` : ''})`
+                      : null}
+                  </DiaryField>
+                </tbody>
+              </table>
+
+              {/* Bildschirm: Miniaturen mit Nummer. Im Ausdruck stehen die
+                  Fotos großformatig im Fotoanhang. */}
               {photos.length > 0 && (
-                <>
-                  {/* Bildschirm: Miniaturen mit Nummer. Im Ausdruck stehen die
-                      Fotos großformatig im Anhang – hier nur der Verweis. */}
-                  <div className="flex gap-2 flex-wrap mt-3 no-print">
-                    {photos.map(p => (
-                      <div key={p.id} className="w-24">
-                        <PhotoThumb photoId={p.id} no={p.no} size="w-24 h-24" />
-                        {p.caption && <p className="text-[10px] text-gray-500 mt-0.5 leading-tight">{p.caption}</p>}
-                      </div>
-                    ))}
-                  </div>
-                  <p className="hidden print:block text-xs mt-2">
-                    {photos.length === 1
-                      ? `Foto ${photos[0].no}`
-                      : `Fotos ${photos[0].no}–${photos[photos.length - 1].no}`}
-                    {' '}– siehe Fotoanhang
-                  </p>
-                </>
+                <div className="flex gap-2 flex-wrap mt-3 no-print">
+                  {photos.map(p => (
+                    <div key={p.id} className="w-24">
+                      <PhotoThumb photoId={p.id} no={p.no} size="w-24 h-24" />
+                      {p.caption && <p className="text-[10px] text-gray-500 mt-0.5 leading-tight">{p.caption}</p>}
+                    </div>
+                  ))}
+                </div>
               )}
             </div>
           ))}

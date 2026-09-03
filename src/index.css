@@ -155,6 +155,22 @@
   border: 1px solid #e5e7eb;
 }
 
+/* ── Baudokumentation: Berichtsraster ────────────────────────
+   Je Angabe eine Zeile mit Beschriftung links und Inhalt rechts. */
+.diary-fields            { width: 100%; margin-top: 0.75rem; border-collapse: collapse; }
+.diary-fields .diary-label {
+  width: 11rem;
+  text-align: left;
+  vertical-align: top;
+  font-weight: 600;
+  color: #4B5563;
+  padding: 0.3rem 1rem 0.3rem 0;
+  white-space: nowrap;
+}
+.diary-fields .diary-value { vertical-align: top; padding: 0.3rem 0; color: #1F2937; }
+.diary-fields .diary-note  { font-weight: 400; color: #6B7280; }
+.diary-head                { padding-bottom: 0.5rem; border-bottom: 1px solid #F0F0F0; }
+
 /* ── Druckbogen (PrintSheet) ─────────────────────────────────
    Am Bildschirm verhält sich die Tabelle wie gewöhnliche Blöcke, damit sich
    am bestehenden Layout nichts ändert. Erst im Druck wird daraus eine echte
@@ -246,6 +262,29 @@ table.print-sheet,
   .diary-appendix h2          { font-size: 13pt !important; }
   .diary-date                 { font-size: 12.5pt !important; }
   .diary-caption              { font-size: 10pt !important; }
+
+  /* Berichtsraster im Druck: feste Beschriftungsspalte, luftige Zeilen.
+     Muss NACH ".print-sheet td" stehen, sonst gewinnt dessen padding: 0. */
+  .diary-fields                { margin-top: 4mm; }
+  .diary-fields .diary-label   {
+    width: 42mm;
+    padding: 1.2mm 4mm 1.2mm 0 !important;
+    vertical-align: top;
+    text-align: left;
+    font-weight: bold;
+    white-space: nowrap;
+  }
+  .diary-fields .diary-value   { padding: 1.2mm 0 !important; vertical-align: top; line-height: 1.4; }
+  .diary-fields .diary-note    { font-weight: normal; }
+  /* Jede Angabe zusammenhalten, aber lange Texte umbrechen lassen */
+  .diary-fields tr             { page-break-inside: auto; }
+  /* Spezifischer als die Rahmen-Rücknahme weiter unten, damit die Trennlinie
+     unter dem Eintragskopf erhalten bleibt. */
+  .diary-entry > div.diary-head {
+    padding-bottom: 2mm;
+    border-bottom: 0.5pt solid #000 !important;
+  }
+  .diary-entry                 { margin-bottom: 8mm !important; }
 
   /* Baudokumentation: Einträge ohne die seitlichen Striche des Protokolls –
      der Bericht soll ruhig wirken. Nur der Umbruchschutz bleibt. */
