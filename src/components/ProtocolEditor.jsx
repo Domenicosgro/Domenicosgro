@@ -423,7 +423,7 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
     try {
       // 2. Gesamtes CSS + Body einsammeln (Skripte und no-print-Elemente entfernt
       //    -> nur statisches Rendern, ohne unnoetigen Ballast)
-      const html = collectPrintHtml()
+      const { html } = await collectPrintHtml()
       // 3. Serverseitig rendern (Chrome, Print-Media)
       const token = typeof localStorage !== 'undefined' ? localStorage.getItem('kp_session_token') : null
       const res = await fetch(`/api/protocols/${protocol.id}/render-pdf`, {

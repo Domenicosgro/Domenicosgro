@@ -8,7 +8,7 @@ import { outboxAdd, outboxList, outboxRemove } from '../offlineStore'
 import ContactAutocomplete from './ContactAutocomplete'
 import PrintSheet from './PrintSheet'
 import DiaryEmailModal from './DiaryEmailModal'
-import { collectPrintHtml } from '../printHtml'
+import { collectPrintHtml, MAIL_IMAGE_BUDGET } from '../printHtml'
 
 const isServer = typeof window !== 'undefined' && !!window.__SERVER_MODE__
 const authHeaders = () => {
@@ -472,8 +472,11 @@ export default function BautagebuchView({ project, serverUser, logoDataUrl, clie
 
   // PDF aus der Druckansicht – serverseitiges Chrome, damit der Anhang exakt
   // dem Ausdruck entspricht (gleiches Vorgehen wie beim Protokoll).
+  // Die Fotos werden dabei auf ein gemeinsames Budget verkleinert, damit der
+  // Anhang unter der 3-MB-Grenze des Mailversands bleibt – auch bei Bestands-
+  // fotos aus größeren Ablagen.
   const buildPdf = useCallback(async () => {
-    const html = collectPrintHtml()
+    const { html } = await collectPrintHtml({ imageBudget: MAIL_IMAGE_BUDGET, imageSelector: '.diary-plate img' })
     const res = await fetch(`/api/projects/${project.id}/render-pdf`, {
       method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeaders() },
       body: JSON.stringify({ html }),
@@ -940,7 +943,7 @@ export default function BautagebuchView({ project, serverUser, logoDataUrl, clie
           onSaveContact={canEditContacts ? (({ email }) => onUpdateProject(project.id, {
             contacts: [...(project.contacts || []), { ...emptyContact(), email }],
           })) : null}
-          onSent={() => setNotice('Baudokumentation wurde versendet.')}
+          onSent={(mb) => setNotice(`Baudokumentation wurde versendet${mb ? ` (PDF ${mb} MB)` : ''}.`)}
           onClose={() => setEmailOpen(false)}
         />
       )}

@@ -93,6 +93,7 @@ export default function DiaryEmailModal({
     setSending(true); setError('')
     try {
       const pdfBase64 = await buildPdf()
+      const pdfMB = (pdfBase64.length * 3 / 4 / 1048576).toFixed(1)
       const res = await fetch(`/api/projects/${project.id}/diary/send-email`, {
         method: 'POST', headers: apiHeaders(),
         body: JSON.stringify({
@@ -107,7 +108,7 @@ export default function DiaryEmailModal({
       // Nutzungshäufigkeit der gewählten Kontakte fortschreiben
       for (const c of contactCandidates) if (allTo.includes(c.email)) record(c)
       setSent(true)
-      onSent?.()
+      onSent?.(pdfMB)
       setTimeout(onClose, 1200)
     } catch (e) {
       setError(e.message)
@@ -206,6 +207,7 @@ export default function DiaryEmailModal({
           <p className="text-xs text-gray-500 bg-gray-50 border border-gray-200 px-3 py-2">
             Die Baudokumentation wird als PDF-Anlage versendet – identisch zum Ausdruck.
             {entryCount > 0 ? ` ${entryCount} Eintr${entryCount === 1 ? 'ag' : 'äge'}.` : ''}
+            {' '}Die Fotos werden für den Versand so verkleinert, dass der Anhang unter 3 MB bleibt.
           </p>
 
           {error && <p className="text-sm text-red-600">{error}</p>}
