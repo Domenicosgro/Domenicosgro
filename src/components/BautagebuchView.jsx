@@ -1,11 +1,13 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import { flushSync } from 'react-dom'
 import { ArrowLeft, Plus, Camera, Trash2, Pencil, X, Loader, AlertCircle, Printer,
          Sun, Cloud, CloudRain, Snowflake, BookOpen, CloudOff, RefreshCw, CloudSun,
-         Building2, MapPin, Mail } from 'lucide-react'
+         Building2, MapPin, Mail, Lock, Unlock, ChevronDown, ChevronRight, Send, CheckCircle2 } from 'lucide-react'
 import { formatDate, uid, emptyContact, diaryConfigFor, distributionFor } from '../utils'
 import { compressToBase64, savePhotoBase64, loadPhotoUrl, removePhoto } from '../photoUtils'
 import { outboxAdd, outboxList, outboxRemove } from '../offlineStore'
 import ContactAutocomplete from './ContactAutocomplete'
+import RichTextEditor, { toHtml, stripHtml } from './RichTextEditor'
 import PrintSheet from './PrintSheet'
 import DiaryEmailModal from './DiaryEmailModal'
 import { collectPrintHtml, MAIL_IMAGE_BUDGET } from '../printHtml'
@@ -97,7 +99,7 @@ function PhotoPlate({ photo, no, entry }) {
   const [url, setUrl] = useState(null)
   useEffect(() => { cachedPhotoUrl(photo.id).then(setUrl) }, [photo.id])
   const caption = (photo.caption || '').trim()
-    || (entry.workDone ? entry.workDone.split('\n')[0].slice(0, 90) : '')
+    || (entry.workDone ? stripHtml(toHtml(entry.workDone)).split('\n')[0].trim().slice(0, 90) : '')
   return (
     <figure className="diary-plate">
       {url
@@ -115,9 +117,12 @@ function PhotoPlate({ photo, no, entry }) {
 // Eine Berichtszeile: Beschriftung links, Inhalt rechts. Leere Angaben werden
 // mit "–" ausgewiesen, damit im Bericht erkennbar bleibt, dass zu diesem Punkt
 // nichts zu vermerken war (und nicht etwa die Eintragung vergessen wurde).
+// Textangaben sind formatiert (RichText wie im Protokoll); Bestandsdaten in
+// Klartext werden beim Anzeigen in Absätze überführt.
 function DiaryField({ label, note, children }) {
+  const isText = typeof children === 'string'
   const empty = children == null || children === false
-    || (typeof children === 'string' && !children.trim())
+    || (isText && !stripHtml(toHtml(children)).trim())
   return (
     <tr>
       <th className="diary-label">
@@ -127,8 +132,8 @@ function DiaryField({ label, note, children }) {
       <td className="diary-value">
         {empty
           ? <span className="text-gray-400">–</span>
-          : (typeof children === 'string'
-              ? <span className="whitespace-pre-wrap">{children}</span>
+          : (isText
+              ? <div className="rich-text" dangerouslySetInnerHTML={{ __html: toHtml(children) }} />
               : children)}
       </td>
     </tr>
@@ -143,8 +148,8 @@ function EntryForm({ entry, onSave, onCancel, projectId, firmOptions = [], onAdd
     // Bausteine je Projekt (Projekt-Admin): Behinderungen, Abnahmen/Prüfungen
     obstrFrom:   entry?.obstrFrom   || '',
     obstrTo:     entry?.obstrTo     || '',
-    obstructions: entry?.obstructions || '',
-    inspections: entry?.inspections || '',
+    obstructions: toHtml(entry?.obstructions || ''),
+    inspections: toHtml(entry?.inspections || ''),
     inspectedBy: entry?.inspectedBy || '',
     date:        entry?.date        || new Date().toISOString().slice(0, 10),
     // Tageshälfte: bestimmt auch den Zeitraum der automatischen Wetterabfrage
@@ -155,9 +160,9 @@ function EntryForm({ entry, onSave, onCancel, projectId, firmOptions = [], onAdd
     // Datum/Ort, für die die Wetterwerte gelten – hält die Werte am Begehungstag fest
     weatherDate:     entry?.weatherDate     || '',
     weatherLocation: entry?.weatherLocation || '',
-    workDone:    entry?.workDone    || '',
-    remarks:     entry?.remarks     || '',
-    special:     entry?.special     || '',
+    workDone:    toHtml(entry?.workDone    || ''),
+    remarks:     toHtml(entry?.remarks     || ''),
+    special:     toHtml(entry?.special     || ''),
   })
   const [wxBusy, setWxBusy] = useState(false)
   const [wxInfo, setWxInfo] = useState(null)
@@ -357,8 +362,8 @@ function EntryForm({ entry, onSave, onCancel, projectId, firmOptions = [], onAdd
 
       <div>
         <label className="block text-xs font-medium text-gray-500 mb-1">Ausgeführte Arbeiten</label>
-        <textarea className="input resize-y" rows={3} value={form.workDone} onChange={set('workDone')}
-          placeholder="Welche Leistungen wurden heute erbracht?" />
+        <RichTextEditor value={form.workDone} onChange={html => setForm(f => ({ ...f, workDone: html }))}
+          placeholder="Welche Leistungen wurden heute erbracht? (- oder 1. für Listen, Strg+B für Fett)" />
       </div>
       {/* Behinderungen: eigener Block, weil er im Streitfall die Bauzeit trägt */}
       {cfg.obstructions && (
@@ -370,7 +375,7 @@ function EntryForm({ entry, onSave, onCancel, projectId, firmOptions = [], onAdd
             <span className="text-xs text-gray-400">bis</span>
             <input type="time" className="input w-28" value={form.obstrTo} onChange={set('obstrTo')} />
           </div>
-          <textarea className="input resize-y" rows={2} value={form.obstructions} onChange={set('obstructions')}
+          <RichTextEditor value={form.obstructions} onChange={html => setForm(f => ({ ...f, obstructions: html }))}
             placeholder="Ursache und Auswirkung, z. B. „Betonage entfallen – Dauerregen“, „keine Freigabe Bewehrung“" />
         </div>
       )}
@@ -380,7 +385,7 @@ function EntryForm({ entry, onSave, onCancel, projectId, firmOptions = [], onAdd
         <div className="grid grid-cols-1 sm:grid-cols-[1fr_220px] gap-3">
           <div>
             <label className="block text-xs font-medium text-gray-500 mb-1">Abnahmen &amp; Prüfungen</label>
-            <textarea className="input resize-y" rows={2} value={form.inspections} onChange={set('inspections')}
+            <RichTextEditor value={form.inspections} onChange={html => setForm(f => ({ ...f, inspections: html }))}
               placeholder="z. B. „Bewehrungsabnahme Decke 2. OG – ohne Beanstandung“" />
           </div>
           <div>
@@ -394,12 +399,12 @@ function EntryForm({ entry, onSave, onCancel, projectId, firmOptions = [], onAdd
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div>
           <label className="block text-xs font-medium text-gray-500 mb-1">Bemerkungen</label>
-          <textarea className="input resize-y" rows={2} value={form.remarks} onChange={set('remarks')}
+          <RichTextEditor value={form.remarks} onChange={html => setForm(f => ({ ...f, remarks: html }))}
             placeholder="Allgemeine Anmerkungen zum Tag… (optional)" />
         </div>
         <div>
           <label className="block text-xs font-medium text-gray-500 mb-1">Besonderheiten</label>
-          <textarea className="input resize-y" rows={2} value={form.special} onChange={set('special')}
+          <RichTextEditor value={form.special} onChange={html => setForm(f => ({ ...f, special: html }))}
             placeholder="Besondere Vorkommnisse, Anordnungen, Besucher… (optional)" />
         </div>
       </div>
@@ -470,13 +475,52 @@ export default function BautagebuchView({ project, serverUser, logoDataUrl, clie
   const cfg = useMemo(() => diaryConfigFor(project), [project])
   const [emailOpen, setEmailOpen] = useState(false)
 
+  // Abgeschlossene Berichte werden als Kachel gezeigt (Kopf + Kurzinfo);
+  // aufgeklappte merken wir uns je Sitzung.
+  const [expanded, setExpanded] = useState(() => new Set())
+  const toggleExpand = (id) => setExpanded(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n })
+  const isCollapsed  = (entry) => !!entry.closed && !expanded.has(entry.id)
+
+  // Für den Versand: nur die gewählten Berichte werden gerendert (Kopfzeile,
+  // Fotonummern und Anhang beziehen sich dann auf diese Auswahl).
+  const [printIds, setPrintIds] = useState(null)
+
+  // Teilfelder eines gespeicherten Eintrags ändern (Server: optimistisch versioniert)
+  const patchEntry = useCallback(async (entry, patch) => {
+    if (isServer) {
+      const { _version, _updatedAt, ...data } = entry
+      const res = await fetch(`/api/projects/${project.id}/diary/${entry.id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: JSON.stringify({ data: { ...data, ...patch }, version: _version }),
+      })
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `Fehler ${res.status}`)
+    } else {
+      persistLocal(entries.map(e => e.id === entry.id ? { ...e, ...patch } : e))
+    }
+  }, [project.id, entries])  // eslint-disable-line react-hooks/exhaustive-deps
+
+  const setClosed = async (entry, closed) => {
+    if (!closed && !window.confirm('Bericht wieder öffnen? Er kann danach geändert werden.')) return
+    try {
+      await patchEntry(entry, { closed, closedAt: closed ? new Date().toISOString() : null })
+      if (isServer) load()
+    } catch (e) { setError(`Speichern fehlgeschlagen: ${e.message}`) }
+  }
+
   // PDF aus der Druckansicht – serverseitiges Chrome, damit der Anhang exakt
   // dem Ausdruck entspricht (gleiches Vorgehen wie beim Protokoll).
   // Die Fotos werden dabei auf ein gemeinsames Budget verkleinert, damit der
   // Anhang unter der 3-MB-Grenze des Mailversands bleibt – auch bei Bestands-
   // fotos aus größeren Ablagen.
-  const buildPdf = useCallback(async () => {
-    const { html } = await collectPrintHtml({ imageBudget: MAIL_IMAGE_BUDGET, imageSelector: '.diary-plate img' })
+  const buildPdf = useCallback(async (ids) => {
+    // Ansicht auf die gewählten Berichte einschränken, HTML einsammeln, zurück
+    if (ids?.length) flushSync(() => setPrintIds(new Set(ids)))
+    let html
+    try {
+      ({ html } = await collectPrintHtml({ imageBudget: MAIL_IMAGE_BUDGET, imageSelector: '.diary-plate img' }))
+    } finally {
+      if (ids?.length) setPrintIds(null)
+    }
     const res = await fetch(`/api/projects/${project.id}/render-pdf`, {
       method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeaders() },
       body: JSON.stringify({ html }),
@@ -656,11 +700,11 @@ export default function BautagebuchView({ project, serverUser, logoDataUrl, clie
   // und im Fotoanhang, damit die Zuordnung im PDF eindeutig bleibt.
   const numbered = useMemo(() => {
     let no = 0
-    return sorted.map(entry => ({
+    return sorted.filter(e => !printIds || printIds.has(e.id)).map(entry => ({
       entry,
       photos: (entry.photos || []).map(p => ({ ...p, no: ++no })),
     }))
-  }, [sorted])
+  }, [sorted, printIds])
   const photoPlates = useMemo(
     () => numbered.flatMap(({ entry, photos }) => photos.map(p => ({ p, entry }))),
     [numbered])
@@ -700,7 +744,7 @@ export default function BautagebuchView({ project, serverUser, logoDataUrl, clie
             {/* Eine Zeile wie bisher – der Gesamtfortschritt hängt sich an,
                 statt den Kopf um eine weitere Zeile wachsen zu lassen. */}
             <div className="text-xs">
-              {entries.length} Eintr{entries.length === 1 ? 'ag' : 'äge'} · Stand {formatDate(new Date().toISOString().slice(0, 10))}
+              {numbered.length} Eintr{numbered.length === 1 ? 'ag' : 'äge'} · Stand {formatDate(new Date().toISOString().slice(0, 10))}
               {lastProgress !== '' ? ` · Baufortschritt ${lastProgress} %` : ''}
             </div>
           </div>
@@ -807,10 +851,18 @@ export default function BautagebuchView({ project, serverUser, logoDataUrl, clie
       ) : (
         <div className="space-y-3">
           {numbered.map(({ entry, photos }) => (
-            <div key={entry.id} className="card p-4 diary-entry">
+            <div key={entry.id} data-entry-id={entry.id}
+              className={`card p-4 diary-entry ${entry.closed ? 'border-l-4 border-l-green-600' : ''}`}>
               <div className="flex items-start justify-between gap-3 flex-wrap diary-head">
                 <div>
                   <p className="font-semibold text-night diary-date">
+                    {/* Abgeschlossene Berichte sind Kacheln: Kopf sichtbar, Inhalt aufklappbar */}
+                    {entry.closed && (
+                      <button className="btn-ghost p-0.5 mr-1 align-middle no-print" title={isCollapsed(entry) ? 'Bericht aufklappen' : 'Bericht zuklappen'}
+                        onClick={() => toggleExpand(entry.id)}>
+                        {isCollapsed(entry) ? <ChevronRight size={16} /> : <ChevronDown size={16} />}
+                      </button>
+                    )}
                     {formatDate(entry.date)}
                     {entry.daytime && (
                       <span className="text-xs font-normal text-gray-500 ml-2">
@@ -819,6 +871,15 @@ export default function BautagebuchView({ project, serverUser, logoDataUrl, clie
                     )}
                     {entry.progress !== '' && entry.progress != null && (
                       <span className="badge badge-blue ml-2 align-middle">Baufortschritt {entry.progress} %</span>
+                    )}
+                    {entry.closed && (
+                      <span className="badge badge-green ml-2 align-middle inline-flex items-center gap-1"><Lock size={10} /> Abgeschlossen</span>
+                    )}
+                    {entry.sentAt && (
+                      <span className="badge badge-gray ml-2 align-middle inline-flex items-center gap-1" title={(entry.sentTo || []).join(', ')}>
+                        <Send size={10} /> gesendet {formatDate(entry.sentAt.slice(0, 10))}
+                        {entry.sentTo?.length ? ` an ${entry.sentTo.length}` : ''}
+                      </span>
                     )}
                   </p>
                   <p className="text-xs text-gray-500 mt-0.5">
@@ -837,11 +898,33 @@ export default function BautagebuchView({ project, serverUser, logoDataUrl, clie
                     </p>
                   )}
                 </div>
-                <div className="flex gap-1 no-print">
-                  <button className="btn-ghost p-1.5 text-gray-400 hover:text-brand-600" title="Bearbeiten" onClick={() => setEditing(entry)}><Pencil size={14} /></button>
-                  <button className="btn-ghost p-1.5 text-gray-400 hover:text-red-600" title="Löschen" onClick={() => remove(entry)}><Trash2 size={14} /></button>
+                <div className="flex gap-1 items-center no-print">
+                  {entry.closed ? (
+                    <button className="btn-ghost text-xs text-amber-700" title="Bericht wieder öffnen" onClick={() => setClosed(entry, false)}>
+                      <Unlock size={13} /> Öffnen
+                    </button>
+                  ) : (
+                    <>
+                      <button className="btn-ghost p-1.5 text-gray-400 hover:text-brand-600" title="Bearbeiten" onClick={() => setEditing(entry)}><Pencil size={14} /></button>
+                      <button className="btn-ghost p-1.5 text-gray-400 hover:text-red-600" title="Löschen" onClick={() => remove(entry)}><Trash2 size={14} /></button>
+                      <button className="btn-ghost text-xs text-green-700" title="Bericht abschließen – danach nicht mehr änderbar"
+                        onClick={() => setClosed(entry, true)}>
+                        <Lock size={13} /> Abschließen
+                      </button>
+                    </>
+                  )}
                 </div>
               </div>
+              {/* Kachel-Kurzinfo bei zugeklapptem Bericht (nur Bildschirm) */}
+              {isCollapsed(entry) && (
+                <p className="text-xs text-gray-500 mt-2 no-print">
+                  {[entry.firmList?.length ? entry.firmList.map(f => f.company).join(', ') : entry.firms,
+                    stripHtml(toHtml(entry.workDone || '')).split('\n')[0].trim().slice(0, 100),
+                    photos.length ? `${photos.length} Foto${photos.length === 1 ? '' : 's'}` : null]
+                    .filter(Boolean).join(' · ')}
+                </p>
+              )}
+              <div className={isCollapsed(entry) ? 'hidden print:block' : ''}>
               {/* Berichtsformat: je Angabe eine Zeile mit Beschriftung links.
                   Untereinander statt nebeneinander – das liest sich im Ausdruck
                   wie ein Bericht und nicht wie ein gedrängtes Formular. */}
@@ -878,10 +961,8 @@ export default function BautagebuchView({ project, serverUser, logoDataUrl, clie
                   )}
 
                   {cfg.inspections && (
-                    <DiaryField label="Abnahmen & Prüfungen">
-                      {entry.inspections
-                        ? `${entry.inspections}${entry.inspectedBy ? ` (Prüfer: ${entry.inspectedBy})` : ''}`
-                        : null}
+                    <DiaryField label="Abnahmen & Prüfungen" note={entry.inspectedBy ? `Prüfer: ${entry.inspectedBy}` : null}>
+                      {entry.inspections}
                     </DiaryField>
                   )}
 
@@ -908,6 +989,7 @@ export default function BautagebuchView({ project, serverUser, logoDataUrl, clie
                   ))}
                 </div>
               )}
+              </div>
             </div>
           ))}
         </div>
@@ -934,16 +1016,28 @@ export default function BautagebuchView({ project, serverUser, logoDataUrl, clie
       {emailOpen && (
         <DiaryEmailModal
           project={project}
-          entryCount={sorted.length}
-          periodFrom={sorted.length ? formatDate(sorted[sorted.length - 1].date) : ''}
-          periodTo={sorted.length ? formatDate(sorted[0].date) : ''}
+          entries={sorted.map(e => ({
+            id: e.id, date: e.date, daytime: e.daytime, closed: !!e.closed, sentAt: e.sentAt || null,
+            photos: (e.photos || []).length,
+            summary: stripHtml(toHtml(e.workDone || '')).split('\n')[0].trim().slice(0, 80),
+          }))}
           projectContacts={project.contacts || []}
           distribution={distributionFor(project, 'diary')}
           buildPdf={buildPdf}
           onSaveContact={canEditContacts ? (({ email }) => onUpdateProject(project.id, {
             contacts: [...(project.contacts || []), { ...emptyContact(), email }],
           })) : null}
-          onSent={(mb) => setNotice(`Baudokumentation wurde versendet${mb ? ` (PDF ${mb} MB)` : ''}.`)}
+          onSent={async (mb, ids, recipients) => {
+            setNotice(`Baudokumentation wurde versendet${mb ? ` (PDF ${mb} MB)` : ''}.`)
+            // Versand am Bericht festhalten – danach ist er in der Übersicht als
+            // gesendet erkennbar und beim nächsten Versand nicht mehr vorausgewählt.
+            const now = new Date().toISOString()
+            for (const id of ids) {
+              const e = entries.find(x => x.id === id)
+              if (e) { try { await patchEntry(e, { sentAt: now, sentTo: recipients }) } catch {} }
+            }
+            if (isServer) load()
+          }}
           onClose={() => setEmailOpen(false)}
         />
       )}
