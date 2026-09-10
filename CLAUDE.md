@@ -508,8 +508,14 @@ Die App-Oberfläche bleibt „Komplizen" (neue CI noch nicht offiziell).
   löst eine **Bestätigungs-E-Mail an alle Projektadministratoren** aus.
 
 **Microsoft-Graph-Einrichtung (einmalig, Admin):** Entra → App-Registrierung →
-Client-Secret → API-Berechtigung `Mail.Send` (Anwendung) + Admin-Zustimmung →
-Werte in `docker-compose.yml`, Container neu erstellen, Test über AdminPanel.
+Client-Secret → API-Berechtigungen `Mail.Send` **und** `Mail.ReadWrite` (beide
+Anwendung) + Admin-Zustimmung → Werte in `docker-compose.yml`, Container neu
+erstellen, Test über AdminPanel.
+`Mail.ReadWrite` ist seit dem Versand großer Anhänge nötig (Baudokumentation
+mit Fotos, Protokolle mit Bildanlagen): Anhänge über 3 MB gehen nicht mehr
+über `sendMail`, sondern über Entwurf + Upload-Session – das läuft über die
+Postfach-API. Fehlt die Berechtigung, meldet Graph 403 „Access is denied";
+die App nennt dann im Fehlertext die fehlende Berechtigung.
 
 ---
 

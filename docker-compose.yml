@@ -32,7 +32,9 @@ services:
       # ── E-Mail-Versand via Microsoft Graph (OAuth2) ──────────────────────────
       # Bevorzugter Weg: kein Passwort, keine MFA, kein Konflikt mit den
       # Microsoft-365-Sicherheitsstandards. Werte aus der in Entra registrierten
-      # App (Anwendungsberechtigung "Mail.Send" mit Admin-Zustimmung).
+      # App (Anwendungsberechtigungen "Mail.Send" UND "Mail.ReadWrite" mit
+      # Admin-Zustimmung – letztere für Anhänge über 3 MB, z. B. Baudokumentation
+      # mit Fotos: die gehen über Entwurf + Upload-Session statt sendMail).
       # GRAPH_CLIENT_SECRET niemals in Git committen – nur lokal auf der NAS!
       GRAPH_TENANT_ID:     "DEINE-TENANT-ID-HIER"
       GRAPH_CLIENT_ID:     "DEINE-CLIENT-ID-HIER"

@@ -3,8 +3,11 @@
 // Hintergrund: Bei aktiven Microsoft-365-Sicherheitsstandards ist Basic-Auth-SMTP
 // gesperrt (MFA erzwungen, App-Kennwörter nicht verfügbar). Der moderne Weg ist
 // der OAuth2-Client-Credentials-Flow gegen Microsoft Graph: Eine in Entra
-// registrierte App mit Anwendungsberechtigung "Mail.Send" sendet ohne Passwort
-// und ohne MFA im Namen eines festen Postfachs (GRAPH_SENDER).
+// registrierte App sendet ohne Passwort und ohne MFA im Namen eines festen
+// Postfachs (GRAPH_SENDER). Benötigte Anwendungsberechtigungen:
+//   Mail.Send       – Versand über sendMail (Anhänge bis 3 MB)
+//   Mail.ReadWrite  – Anhänge über 3 MB: Entwurf anlegen, Upload-Session,
+//                     Entwurf senden (Baudokumentation mit Fotos, Bildanlagen)
 //
 // Aktivierung über Umgebungsvariablen (docker-compose.yml auf der NAS):
 //   GRAPH_TENANT_ID      Verzeichnis-(Mandanten-)ID aus Entra
@@ -200,24 +203,40 @@ async function sendViaGraph(cfg, { from, to, cc, subject, html, text, replyTo, a
     return
   }
 
-  // Großer Fall: Entwurf anlegen → Anhänge hochladen → Entwurf senden
-  const draft   = await graphFetch(token, `${userBase}/messages`, {
-    method: 'POST', body: JSON.stringify(message),
-  }).then(r => r.json())
-  const msgBase = `${userBase}/messages/${encodeURIComponent(draft.id)}`
+  // Großer Fall: Entwurf anlegen → Anhänge hochladen → Entwurf senden.
+  // Dieser Weg braucht mehr als "Mail.Send": Entwurf und Upload-Session laufen
+  // über die Postfach-API und verlangen die Anwendungsberechtigung
+  // "Mail.ReadWrite". Fehlt sie, antwortet Graph mit 403 – dann klar sagen,
+  // was zu tun ist, statt nur "Access is denied" durchzureichen.
+  const sizeMB = (totalSize / 1048576).toFixed(1)
+  try {
+    const draft   = await graphFetch(token, `${userBase}/messages`, {
+      method: 'POST', body: JSON.stringify(message),
+    }).then(r => r.json())
+    const msgBase = `${userBase}/messages/${encodeURIComponent(draft.id)}`
 
-  for (const att of (attachments || [])) {
-    const bytes = attachmentBuffer(att)
-    if (!bytes) continue
-    if (bytes.length > GRAPH_INLINE_LIMIT) {
-      await graphUploadAttachment(token, msgBase, att)
-    } else {
-      await graphFetch(token, `${msgBase}/attachments`, {
-        method: 'POST', body: JSON.stringify(toGraphAttachments([att])[0]),
-      })
+    for (const att of (attachments || [])) {
+      const bytes = attachmentBuffer(att)
+      if (!bytes) continue
+      if (bytes.length > GRAPH_INLINE_LIMIT) {
+        await graphUploadAttachment(token, msgBase, att)
+      } else {
+        await graphFetch(token, `${msgBase}/attachments`, {
+          method: 'POST', body: JSON.stringify(toGraphAttachments([att])[0]),
+        })
+      }
     }
+    await graphFetch(token, `${msgBase}/send`, { method: 'POST' })
+  } catch (e) {
+    if (/\(403\)/.test(e.message)) {
+      throw new Error(
+        `Anhang ist ${sizeMB} MB groß – Microsoft erlaubt beim direkten Versand nur 3 MB. `
+        + 'Größere Anhänge gehen über einen Nachrichtenentwurf, dafür fehlt der App-Registrierung '
+        + 'in Entra die Anwendungsberechtigung „Mail.ReadWrite“ (zusätzlich zu „Mail.Send“, mit Admin-Zustimmung). '
+        + `Ursprüngliche Meldung: ${e.message}`)
+    }
+    throw e
   }
-  await graphFetch(token, `${msgBase}/send`, { method: 'POST' })
 }
 
 // ── SMTP-Fallback (klassisch, nodemailer) ─────────────────────────────────────

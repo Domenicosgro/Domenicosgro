@@ -86,6 +86,7 @@ Unter **API-Berechtigungen** → „Berechtigung hinzufügen" → Microsoft Grap
 | Berechtigung          | Zweck                          |
 |-----------------------|-------------------------------|
 | `Mail.Send`           | Agenda und Protokoll versenden |
+| `Mail.ReadWrite`      | Anhänge über 3 MB (Baudokumentation mit Fotos) – Entwurf + Upload-Session |
 | `Calendars.ReadWrite` | Folgetermin anlegen            |
 | `User.Read`           | Angemeldeten Nutzer anzeigen   |
 
