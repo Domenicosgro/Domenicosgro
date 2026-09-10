@@ -8,6 +8,7 @@ import { outboxAdd, outboxList, outboxRemove } from '../offlineStore'
 import ContactAutocomplete from './ContactAutocomplete'
 import PrintSheet from './PrintSheet'
 import DiaryEmailModal from './DiaryEmailModal'
+import { collectPrintHtml } from '../printHtml'
 
 const isServer = typeof window !== 'undefined' && !!window.__SERVER_MODE__
 const authHeaders = () => {
@@ -472,12 +473,7 @@ export default function BautagebuchView({ project, serverUser, logoDataUrl, clie
   // PDF aus der Druckansicht – serverseitiges Chrome, damit der Anhang exakt
   // dem Ausdruck entspricht (gleiches Vorgehen wie beim Protokoll).
   const buildPdf = useCallback(async () => {
-    const css = Array.from(document.styleSheets).map(s => {
-      try { return Array.from(s.cssRules).map(r => r.cssText).join('\n') } catch { return '' }
-    }).join('\n')
-    const body = document.body.innerHTML.replace(/<script[\s\S]*?<\/script>/gi, '')
-    const html = `<!doctype html><html lang="de"><head><meta charset="utf-8"><style>${css}</style></head>`
-      + `<body class="${document.body.className}">${body}</body></html>`
+    const html = collectPrintHtml()
     const res = await fetch(`/api/projects/${project.id}/render-pdf`, {
       method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeaders() },
       body: JSON.stringify({ html }),

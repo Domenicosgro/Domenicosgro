@@ -18,6 +18,7 @@ import ProtocolNotesPanel from './ProtocolNotesPanel'
 import ProtocolActionsPanel from './ProtocolActionsPanel'
 import ProtocolInfoPanel from './ProtocolInfoPanel'
 import PrintSheet from './PrintSheet'
+import { collectPrintHtml } from '../printHtml'
 import InfoItemsList from './InfoItemsList'
 
 const isElectron = typeof window !== 'undefined' && !!window.electronAPI
@@ -420,12 +421,9 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
       if (Object.keys(resolved).length > 0) flushSync(() => setPrintAttachmentData(resolved))
     }
     try {
-      // 2. Gesamtes CSS + Body einsammeln (Skripte entfernen → nur statisches Rendern)
-      const css = Array.from(document.styleSheets).map(s => {
-        try { return Array.from(s.cssRules).map(r => r.cssText).join('\n') } catch { return '' }
-      }).join('\n')
-      const body = document.body.innerHTML.replace(/<script[\s\S]*?<\/script>/gi, '')
-      const html = `<!doctype html><html lang="de"><head><meta charset="utf-8"><style>${css}</style></head><body class="${document.body.className}">${body}</body></html>`
+      // 2. Gesamtes CSS + Body einsammeln (Skripte und no-print-Elemente entfernt
+      //    -> nur statisches Rendern, ohne unnoetigen Ballast)
+      const html = collectPrintHtml()
       // 3. Serverseitig rendern (Chrome, Print-Media)
       const token = typeof localStorage !== 'undefined' ? localStorage.getItem('kp_session_token') : null
       const res = await fetch(`/api/protocols/${protocol.id}/render-pdf`, {

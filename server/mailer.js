@@ -19,7 +19,10 @@ const fs         = require('fs')
 const nodemailer = require('nodemailer')
 
 const GRAPH_SCOPE      = 'https://graph.microsoft.com/.default'
-const GRAPH_BASE       = 'https://graph.microsoft.com/v1.0'
+// Basis-URLs überschreibbar, damit der Versandweg gegen eine Attrappe geprüft
+// werden kann (Testläufe ohne echtes Microsoft-365-Konto).
+const GRAPH_BASE       = process.env.GRAPH_BASE_URL  || 'https://graph.microsoft.com/v1.0'
+const GRAPH_LOGIN_BASE = process.env.GRAPH_LOGIN_URL || 'https://login.microsoftonline.com'
 
 function graphConfig() {
   const tenant = process.env.GRAPH_TENANT_ID
@@ -37,7 +40,7 @@ async function getGraphToken({ tenant, client, secret }) {
   const now = Date.now()
   if (_tokenCache.token && now < _tokenCache.expiresAt - 60_000) return _tokenCache.token
 
-  const url  = `https://login.microsoftonline.com/${encodeURIComponent(tenant)}/oauth2/v2.0/token`
+  const url  = `${GRAPH_LOGIN_BASE}/${encodeURIComponent(tenant)}/oauth2/v2.0/token`
   const body = new URLSearchParams({
     client_id:     client,
     client_secret: secret,
@@ -100,6 +103,69 @@ function toGraphAttachments(attachments = []) {
   }).filter(a => a.contentBytes)
 }
 
+// Rohdaten eines nodemailer-Anhangs als Buffer
+function attachmentBuffer(att) {
+  if (att.path && fs.existsSync(att.path)) return fs.readFileSync(att.path)
+  if (att.content) return Buffer.isBuffer(att.content) ? att.content : Buffer.from(att.content)
+  return null
+}
+
+// Microsoft begrenzt Anhänge, die direkt in sendMail eingebettet werden, auf
+// ~3 MB je Nachricht. Größere Dateien (Baudokumentation mit Fotos, Protokolle
+// mit Bildanlagen) müssen über eine Upload-Session an einen Entwurf gehängt
+// werden – in Blöcken, die ein Vielfaches von 320 KiB sind, bis 150 MB.
+const GRAPH_INLINE_LIMIT = 3 * 1024 * 1024
+const GRAPH_CHUNK        = 320 * 1024 * 10   // 3,2 MiB je Block
+
+async function graphFetch(token, url, init = {}) {
+  const res = await fetch(url, {
+    ...init,
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', ...(init.headers || {}) },
+  })
+  if (!res.ok && res.status !== 202) {
+    const data = await res.json().catch(() => ({}))
+    throw new Error(`Graph-Versand fehlgeschlagen (${res.status}): ${data.error?.message || 'unbekannt'}`)
+  }
+  return res
+}
+
+// Großen Anhang per Upload-Session an einen Nachrichtenentwurf hängen
+async function graphUploadAttachment(token, base, att) {
+  const bytes = attachmentBuffer(att)
+  const session = await graphFetch(token, `${base}/attachments/createUploadSession`, {
+    method: 'POST',
+    body: JSON.stringify({
+      AttachmentItem: {
+        attachmentType: 'file',
+        name: att.filename || 'anhang',
+        size: bytes.length,
+        ...(att.contentType ? { contentType: att.contentType } : {}),
+      },
+    }),
+  }).then(r => r.json())
+  const uploadUrl = session.uploadUrl
+  if (!uploadUrl) throw new Error('Graph: keine Upload-Session erhalten.')
+
+  for (let start = 0; start < bytes.length; start += GRAPH_CHUNK) {
+    const end   = Math.min(start + GRAPH_CHUNK, bytes.length)
+    const chunk = bytes.subarray(start, end)
+    // Upload-URL ist vorauthentifiziert – KEIN Authorization-Header
+    const res = await fetch(uploadUrl, {
+      method: 'PUT',
+      headers: {
+        'Content-Type':   'application/octet-stream',
+        'Content-Length': String(chunk.length),
+        'Content-Range':  `bytes ${start}-${end - 1}/${bytes.length}`,
+      },
+      body: chunk,
+    })
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}))
+      throw new Error(`Graph-Upload fehlgeschlagen (${res.status}): ${data.error?.message || 'unbekannt'}`)
+    }
+  }
+}
+
 // ── Versand über Microsoft Graph ──────────────────────────────────────────────
 async function sendViaGraph(cfg, { from, to, cc, subject, html, text, replyTo, attachments }) {
   const token    = await getGraphToken(cfg)
@@ -120,19 +186,38 @@ async function sendViaGraph(cfg, { from, to, cc, subject, html, text, replyTo, a
   }
   if (replyTo) message.replyTo = toRecipients(replyTo)
 
-  const graphAtts = toGraphAttachments(attachments)
-  if (graphAtts.length) message.attachments = graphAtts
+  const userBase  = `${GRAPH_BASE}/users/${encodeURIComponent(cfg.sender)}`
+  const totalSize = (attachments || []).reduce((s, a) => s + (attachmentBuffer(a)?.length || 0), 0)
 
-  const url = `${GRAPH_BASE}/users/${encodeURIComponent(cfg.sender)}/sendMail`
-  const res = await fetch(url, {
-    method:  'POST',
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-    body:    JSON.stringify({ message, saveToSentItems: true }),
-  })
-  if (!res.ok && res.status !== 202) {
-    const data = await res.json().catch(() => ({}))
-    throw new Error(`Graph-Versand fehlgeschlagen (${res.status}): ${data.error?.message || 'unbekannt'}`)
+  // Kleiner Fall: alles in einem Aufruf
+  if (totalSize <= GRAPH_INLINE_LIMIT) {
+    const graphAtts = toGraphAttachments(attachments)
+    if (graphAtts.length) message.attachments = graphAtts
+    await graphFetch(token, `${userBase}/sendMail`, {
+      method: 'POST',
+      body:   JSON.stringify({ message, saveToSentItems: true }),
+    })
+    return
   }
+
+  // Großer Fall: Entwurf anlegen → Anhänge hochladen → Entwurf senden
+  const draft   = await graphFetch(token, `${userBase}/messages`, {
+    method: 'POST', body: JSON.stringify(message),
+  }).then(r => r.json())
+  const msgBase = `${userBase}/messages/${encodeURIComponent(draft.id)}`
+
+  for (const att of (attachments || [])) {
+    const bytes = attachmentBuffer(att)
+    if (!bytes) continue
+    if (bytes.length > GRAPH_INLINE_LIMIT) {
+      await graphUploadAttachment(token, msgBase, att)
+    } else {
+      await graphFetch(token, `${msgBase}/attachments`, {
+        method: 'POST', body: JSON.stringify(toGraphAttachments([att])[0]),
+      })
+    }
+  }
+  await graphFetch(token, `${msgBase}/send`, { method: 'POST' })
 }
 
 // ── SMTP-Fallback (klassisch, nodemailer) ─────────────────────────────────────

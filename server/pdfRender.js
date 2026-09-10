@@ -57,6 +57,16 @@ async function withPage(fn) {
 // Rendert einen fertigen HTML-String zu einem PDF-Buffer.
 // Externe Netzwerkzugriffe werden blockiert (nur data:/about:) → SSRF-sicher und
 // schnell; das Druck-HTML ist ohnehin self-contained (inline-CSS, data:-Bilder).
+//
+// Zeitrahmen: Eine Baudokumentation mit vielen Fotos bringt zweistellige
+// Megabyte an data:-Bildern mit. Das Parsen und Dekodieren dauert auf der NAS
+// deutlich länger als die 30 s, die Puppeteer standardmäßig ansetzt – daher
+// eigener, großzügiger Zeitrahmen für Laden UND PDF-Erzeugung. 'load' statt
+// 'networkidle0': bei reinen data:-Bildern gibt es keinen Netzwerkverkehr,
+// auf den sich warten ließe; das Load-Ereignis feuert erst, wenn alle Bilder
+// dekodiert sind.
+const RENDER_TIMEOUT_MS = 180000
+
 async function renderHtmlToPdf(html, pdfOpts = {}) {
   return withPage(async (page) => {
     await page.setRequestInterception(true)
@@ -65,8 +75,13 @@ async function renderHtmlToPdf(html, pdfOpts = {}) {
       if (u.startsWith('data:') || u.startsWith('about:') || u.startsWith('blob:')) req.continue()
       else req.abort()
     })
-    await page.setContent(html, { waitUntil: 'networkidle0', timeout: 30000 })
-    return page.pdf({ format: 'A4', printBackground: true, margin: A4_MARGIN, preferCSSPageSize: true, ...pdfOpts })
+    page.setDefaultTimeout(RENDER_TIMEOUT_MS)
+    await page.setContent(html, { waitUntil: 'load', timeout: RENDER_TIMEOUT_MS })
+    return page.pdf({
+      format: 'A4', printBackground: true, margin: A4_MARGIN, preferCSSPageSize: true,
+      timeout: RENDER_TIMEOUT_MS,
+      ...pdfOpts,
+    })
   })
 }
 
