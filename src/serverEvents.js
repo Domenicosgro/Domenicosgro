@@ -52,6 +52,21 @@ function disconnect() {
   if (es) { es.close(); es = null }
 }
 
+// Nach An-/Abmeldung neu verbinden: Die Verbindung trägt den Sitzungs-Token
+// in der URL. Wurde sie vor dem Login (ohne Token) aufgebaut, bleibt sie zwar
+// offen, der Server ordnet ihr aber keinen Nutzer zu – Projekt-Ereignisse
+// kämen dann bis zum nächsten Neuladen nicht an.
+export function reconnectServerEvents() {
+  if (handlers.size === 0) return
+  disconnect()
+  retryDelay = 1000
+  connect()
+}
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('kp-auth-changed', reconnectServerEvents)
+}
+
 export function subscribeToServerEvents(handler) {
   handlers.add(handler)
   if (handlers.size === 1) connect()

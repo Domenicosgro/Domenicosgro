@@ -29,13 +29,16 @@ export default defineConfig({
   },
   // Required for Electron: assets use relative paths (file:// protocol)
   base: './',
+  // Drei Einstiege, ein Bundle-Verzeichnis, gemeinsame Chunks, ein Deploy:
+  //   index.html           Protokolltool
+  //   personalplanung.html eigenständige Personalplanung (/personalplanung)
+  //   gelaende.html        einbettbare Gelände-Seite fürs Dashboard (/gelaende)
   build: {
     rollupOptions: {
-      // Zweiter Einstieg: einbettbare Gelaende-Seite fuer das Dashboard
-      // (wird von server/index.js unter /gelaende ausgeliefert)
       input: {
-        main:     resolve(__dirname, 'index.html'),
-        gelaende: resolve(__dirname, 'gelaende.html'),
+        main:            resolve(__dirname, 'index.html'),
+        personalplanung: resolve(__dirname, 'personalplanung.html'),
+        gelaende:        resolve(__dirname, 'gelaende.html'),
       },
     },
   },

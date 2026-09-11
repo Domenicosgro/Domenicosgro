@@ -72,6 +72,36 @@ git pull origin claude/protocol-tool-meetings-tIoZX
 Erkennung im Frontend: `window.__SERVER_MODE__` (von Express injiziert),
 `window.electronAPI` (Electron-Preload).
 
+### Zwei Anwendungen und eine Einbettseite, ein Backend
+
+| Anwendung | Einstieg | URL | Bundle |
+|---|---|---|---|
+| **Protokolltool** | `index.html` → `src/main.jsx` → `App.jsx` | `/` | `assets/index-*.js` |
+| **Personalplanung** | `personalplanung.html` → `src/personalplanung/main.jsx` → `PersonalplanungApp.jsx` | `/personalplanung` | `assets/personalplanung-*.js` |
+| **Gelände (Dashboard)** | `gelaende.html` → `src/gelaendeEntry.jsx` | `/gelaende?token=…` | `assets/gelaende-*.js` |
+
+Die Personalplanung ist seit 2026-09-11 eine **eigenständige Oberfläche**
+(eigene URL, eigene Kopfzeile, eigener Login-Titel, nur Admins), läuft aber
+gegen **denselben Server und dieselbe SQLite-Datenbank**. Projektdaten sind
+damit ohne Abgleich synchron – `useProjects` inkl. SSE wird geteilt. Sitzung
+(`kp_session_token`) und Benutzer sind identisch; die Kachel im Protokolltool
+verlinkt nur noch (`window.location.href = '/personalplanung'`).
+
+- Vite baut alle Einstiege (`build.rollupOptions.input` in `vite.config.mjs`);
+  ein Deploy, ein Container.
+- Express: Route `/personalplanung` (und `.html`) liefert `personalplanung.html`
+  mit injizierten Server-Variablen, ein Schrägstrich am Ende wird umgeleitet
+  (relative Assets). Die Route steht vor `express.static` und vor dem
+  SPA-Fallback.
+- Live-Updates: `serverEvents.js` baut die SSE-Verbindung bei `kp-auth-changed`
+  neu auf (Token in der URL). Ohne das blieb eine vor dem Login geöffnete
+  Verbindung ohne Nutzerzuordnung – Projektereignisse kamen bis zum Neuladen
+  nicht an (betraf auch das Protokolltool).
+- Im Electron-/Local-Modus gibt es die Personalplanung nicht (sie braucht die
+  Staff-API); die Kachel ist dort ausgeblendet.
+- Für das Synology-Dashboard: eigenes Modul, Reverse-Proxy-Ziel
+  `http://localhost:3000/personalplanung` (gleicher Container).
+
 ---
 
 ## 2. Dateistruktur (Repository)
@@ -87,7 +117,7 @@ Domenicosgro/
 ├── build-deploy.ps1               # Optionaler Deploy-Build
 ├── package.json                   # Frontend + Electron-Abhängigkeiten
 ├── index.html                     # PWA-Einstieg (manifest, sw.js, apple-touch-icon)
-├── gelaende.html                  # zweiter Vite-Einstieg: einbettbare Gelände-Seite (Dashboard)
+├── gelaende.html                  # Vite-Einstieg: einbettbare Gelände-Seite (Dashboard)
 ├── vite.config.mjs                # erzeugt BUILD_ID → __BUILD_ID__ + dist/version.json
 ├── tailwind.config.mjs            # borderRadius: 0 (Flat Design)
 ├── postcss.config.mjs
@@ -762,7 +792,8 @@ git pull origin claude/protocol-tool-meetings-tIoZX
 ### Personalplanung im Dashboard (Gelände)
 - Die Personalplanung bleibt im Protokolltool; das Dashboard bindet die Ansicht
   per iframe ein (Registry-Zeile, keine zweite Datenhaltung).
-- Reiter „Gelände" in der Personalplanung zeigt dieselbe Ansicht angemeldet.
+- Reiter „Gelände" in der Personalplanung (`/personalplanung`) zeigt dieselbe
+  Ansicht angemeldet; die Einbettseite `/gelaende` ist login-frei über das Token.
 - Bauzustand aus den Projektdaten: nichts beauftragt → Hologramm, beauftragt und
   ruhend → Fundament, diese Woche geplant → Rohbau mit Kran, zuletzt bearbeitet →
   fertiges Gebäude. Soll aus dem Projektteam (Anteil × Kapazität).

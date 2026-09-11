@@ -4128,34 +4128,31 @@ app.get('/api/gelaende/public/:token{/:week}', (req, res) => {
   catch (e) { res.status(400).json({ error: e.message }) }
 })
 
-// Einbettbare Vollbildseite (eigener Vite-Einstieg → dist/gelaende.html)
-function serveGelaendeHtml(req, res) {
-  const htmlPath = path.join(distDir, 'gelaende.html')
-  if (!fs.existsSync(htmlPath)) {
-    return res.status(503).send('Frontend nicht gebaut. Bitte zuerst "npm run build" ausführen.')
-  }
-  let html = fs.readFileSync(htmlPath, 'utf8')
-  html = html.replace('</head>',
-    `<script>window.__SERVER_MODE__=true;window.__APP_URL__=${JSON.stringify(getAppUrl(req))}</script></head>`)
+// Einbettbare Vollbildseite (eigener Vite-Einstieg → dist/gelaende.html).
+// Wie /personalplanung: ohne Schrägstrich am Ende, sonst suchen die relativen
+// Assets unter /gelaende/assets.
+app.get(['/gelaende', '/gelaende.html'], (req, res) => {
+  if (req.path.endsWith('/')) return res.redirect(301, '/gelaende')
   allowEmbedding(res)
-  res.setHeader('Content-Type', 'text/html; charset=utf-8')
-  res.setHeader('X-Content-Type-Options', 'nosniff')
-  res.send(html)
-}
-app.get('/gelaende', serveGelaendeHtml)
-app.get('/gelaende/', (_req, res) => res.redirect(302, '/gelaende'))
+  sendHtml(res, 'gelaende.html', [`window.__APP_URL__=${JSON.stringify(getAppUrl(req))}`])
+})
 
 // ── Static frontend ───────────────────────────────────────────────────────────
 const distDir = path.join(__dirname, '../dist')
 
-function serveHtml(_req, res) {
-  const htmlPath = path.join(distDir, 'index.html')
+// Als Express-Handler registriert → dritter Parameter wäre `next`, deshalb der
+// Dateiname über eine Factory (serveHtmlFile) und nicht als Positionsargument.
+const serveHtml = serveHtmlFile('index.html')
+function serveHtmlFile(file) { return (_req, res) => sendHtml(res, file) }
+function sendHtml(res, file, extraVars = []) {
+  const htmlPath = path.join(distDir, file)
   if (!fs.existsSync(htmlPath)) {
     return res.status(503).send('Frontend nicht gebaut. Bitte zuerst "npm run build" ausführen.')
   }
   let html = fs.readFileSync(htmlPath, 'utf8')
   const vars = ['window.__SERVER_MODE__=true']
   if (API_KEY) vars.push(`window.__API_KEY__=${JSON.stringify(API_KEY)}`)
+  vars.push(...extraVars)
   html = html.replace('</head>', `<script>${vars.join(';')}</script></head>`)
   res.setHeader('Content-Type', 'text/html; charset=utf-8')
   res.setHeader('X-Content-Type-Options', 'nosniff')
@@ -4163,6 +4160,17 @@ function serveHtml(_req, res) {
 }
 
 app.get('/', serveHtml)
+
+// ── Personalplanung: eigenständige Oberfläche, gleicher Server ───────────────
+// Erreichbar unter /personalplanung (ohne Schrägstrich am Ende – die Assets
+// sind relativ eingebunden und liegen unter /assets). Muss VOR express.static
+// stehen, damit die Server-Variablen (__SERVER_MODE__) injiziert werden.
+app.get(['/personalplanung', '/personalplanung.html'], (req, res) => {
+  // Express 5 lässt den Schrägstrich am Ende durch – dann würden die relativen
+  // Assets unter /personalplanung/assets gesucht. Deshalb hier umleiten.
+  if (req.path.endsWith('/')) return res.redirect(301, '/personalplanung')
+  sendHtml(res, 'personalplanung.html')
+})
 app.use(express.static(distDir, {
   index: false,
   setHeaders: (res) => { res.setHeader('X-Content-Type-Options', 'nosniff') },
