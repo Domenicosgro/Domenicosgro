@@ -1,10 +1,12 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { ArrowLeft, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Plus, Trash2, Loader, AlertCircle, X,
-         CalendarClock, Printer, Users, UserPlus, Link2, Copy, CheckSquare, Pencil, Check, FileDown, Briefcase, GripVertical, Eye, EyeOff, Lock } from 'lucide-react'
+         CalendarClock, Printer, Users, UserPlus, Link2, Copy, CheckSquare, Pencil, Check, FileDown, Briefcase, GripVertical, Eye, EyeOff, Lock, Map as MapIcon } from 'lucide-react'
 import { uid, formatDate } from '../utils'
 import { buildStaffPlanPdf } from '../staffPlanPdf'
 import { downloadPdfBase64 } from '../archivePdf'
 import ProjektTeamEditor, { PROJECT_ROLES, TEAM_ANTEILE } from './ProjektTeamEditor'
+// Die Gelaende-Ansicht zieht Three.js nach - erst laden, wenn der Reiter geoeffnet wird
+const PersonalplanungGelaende = React.lazy(() => import('./PersonalplanungGelaende'))
 
 const isServer = typeof window !== 'undefined' && !!window.__SERVER_MODE__
 const authHeaders = () => {
@@ -692,6 +694,14 @@ export default function PersonalplanungView({ projects, onUpdateProject, serverU
       .catch(() => {})
   }, [])
 
+  // Gelaende-Ansicht: Daten je Woche vom Server (Muster-Darstellung des Dashboards)
+  const fetchGelaende = useCallback(async (week) => {
+    if (!isServer) throw new Error('Die Gelände-Ansicht braucht den Server-Modus.')
+    const res = await fetch(`/api/gelaende/personalplanung/${week}`, { headers: authHeaders() })
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `Fehler ${res.status}`)
+    return res.json()
+  }, [])
+
   // Woche speichern (debounced je Woche)
   const persistWeek = useCallback((week, assignments) => {
     setPlans(prev => ({ ...prev, [week]: assignments }))
@@ -1159,7 +1169,8 @@ export default function PersonalplanungView({ projects, onUpdateProject, serverU
       <div className="flex gap-1 border-b border-gray-200 no-print">
         {[['plan', 'Wochenplan', <CalendarClock key="i" size={14} />],
           ['staff', 'Mitarbeiter', <Users key="i" size={14} />],
-          ['teams', 'Projektteams', <CheckSquare key="i" size={14} />]].map(([id, label, icon]) => (
+          ['teams', 'Projektteams', <CheckSquare key="i" size={14} />],
+          ['gelaende', 'Gelände', <MapIcon key="i" size={14} />]].map(([id, label, icon]) => (
           <button key={id} onClick={() => setTab(id)}
             className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px flex items-center gap-1.5 ${
               tab === id ? 'border-brand-600 text-brand-700' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
@@ -1170,6 +1181,21 @@ export default function PersonalplanungView({ projects, onUpdateProject, serverU
 
       {tab === 'staff' && (
         <StaffTab staff={staff} orgUsers={orgUsers} onChanged={loadStaff} setError={setError} />
+      )}
+
+      {tab === 'gelaende' && (
+        <div className="border border-gray-200" style={{ height: 'calc(100vh - 230px)', minHeight: 480 }}>
+          <React.Suspense fallback={<div className="h-full flex items-center justify-center text-sm text-gray-400"><Loader size={16} className="animate-spin mr-2" /> Gelände wird geladen …</div>}>
+          <PersonalplanungGelaende
+            fetchWeek={fetchGelaende}
+            initialWeek={weeks[0].week}
+            onOpenPerson={(person) => {
+              const member = staff.find(s2 => s2.id === person.id)
+              if (member) setStaffDetail(member)
+            }}
+          />
+          </React.Suspense>
+        </div>
       )}
 
       {tab === 'teams' && (

@@ -21,6 +21,12 @@ services:
       PUBLIC_URL: "http://192.168.178.250:3000"
       DB_PATH: "/data"
       LOG_PATH: "/logs"
+      # ── Einbettung der Gelände-Ansicht ins Komplizen-Dashboard ──────────────
+      # Ohne Eintrag bleibt es bei frame-ancestors 'self': /gelaende läuft im
+      # Browser, das Dashboard-iframe bleibt leer. Hier die Dashboard-Adresse
+      # eintragen (mehrere durch Leerzeichen trennen), Container danach löschen
+      # und neu erstellen. Details: docs/DASHBOARD-INTEGRATION-PERSONALPLANUNG.md
+      # EMBED_FRAME_ANCESTORS: "http://192.168.178.250:5050"
       # ── Synology-Authentifizierung ──────────────────────────────────────────
       # Wenn gesetzt: Synology-DSM-Benutzer können sich direkt anmelden.
       # URL = HTTP-Adresse der NAS inkl. Port (Standard-DSM-Ports: 5000=HTTP, 5001=HTTPS)

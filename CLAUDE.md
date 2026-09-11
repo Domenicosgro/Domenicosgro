@@ -87,6 +87,7 @@ Domenicosgro/
 ├── build-deploy.ps1               # Optionaler Deploy-Build
 ├── package.json                   # Frontend + Electron-Abhängigkeiten
 ├── index.html                     # PWA-Einstieg (manifest, sw.js, apple-touch-icon)
+├── gelaende.html                  # zweiter Vite-Einstieg: einbettbare Gelände-Seite (Dashboard)
 ├── vite.config.mjs                # erzeugt BUILD_ID → __BUILD_ID__ + dist/version.json
 ├── tailwind.config.mjs            # borderRadius: 0 (Flat Design)
 ├── postcss.config.mjs
@@ -109,6 +110,12 @@ Domenicosgro/
 │   ├── exportDocx.js              # Word-Export einzelne Protokolle
 │   ├── exportParticipantsList.js  # Word-Export Beteiligtenliste (7 Spalten)
 │   ├── spellcheck.worker.js       # nspell Deutsch (Web Worker)
+│   ├── gelaendeEntry.jsx          # Einstieg der eingebetteten Gelände-Seite (/gelaende)
+│   │
+│   ├── gelaende/                  # Gelände-Darstellung (Muster des Komplizen-Dashboards)
+│   │   ├── hex.js                 # Hex-Mathematik, Auto-Platzierung, BFS-Wegfindung
+│   │   ├── layout.js              # Quartiere, Farbfamilien, Parzellen, Deko, Zielwaben
+│   │   └── engine.js              # Three.js: Waben, Bauzustände, Figuren, Agenten, Kamera
 │   │
 │   ├── components/
 │   │   ├── ProjectsHome.jsx       # Startseite: Projektliste, Favoriten, PWA-Install, Import, Admin-Kachel
@@ -129,6 +136,8 @@ Domenicosgro/
 │   │   ├── ActionItems.jsx        # Maßnahmen/Aufgaben-Liste (+ Freimeldung-Badge)
 │   │   ├── FreimeldungBadge.jsx   # Badge + Modal für Aufgaben-Freimeldungen (Server-Modus)
 │   │   ├── MassnahmenDashboard.jsx# Projektübergreifende Maßnahmen + Aufgaben-E-Mail-Versand
+│   │   ├── PersonalplanungView.jsx# Personalplanung (Wochenraster, Mitarbeiter, Teams, Gelände)
+│   │   ├── PersonalplanungGelaende.jsx # Gelände-Ansicht: Karte + Liste + Wochenregler
 │   │   ├── NotesSection.jsx       # Allgemeine Bemerkungen (rich text) im Protokoll
 │   │   ├── NotesList.jsx          # Akten- und Telefonnotizen (projektbezogen)
 │   │   ├── RichTextEditor.jsx     # Tiptap-Editor (Bold/Italic/Underline/Strike/Listen)
@@ -154,6 +163,7 @@ Domenicosgro/
 │   ├── synologyAuth.js            # Synology-DSM Web-API: Login + Admin-Gruppen-Check + User-Liste
 │   ├── mailer.js                  # E-Mail-Abstraktion: Microsoft Graph (OAuth2) + SMTP-Fallback
 │   ├── attachments.js             # Anhang-Endpunkte (Datei-Upload/-Download im /data-Volume)
+│   ├── gelaende.js                # Gelände-Daten je Kalenderwoche (Dashboard-Integration)
 │   ├── pm2.config.js              # PM2-Konfiguration für direkten Linux-Betrieb (ohne Docker)
 │   └── package.json               # Nur Server-Abhängigkeiten (kein Electron, kein Vite)
 │
@@ -438,6 +448,18 @@ POST /api/actions/:protocolId/:actionId/reject         ablehnen + Notiz
 GET  /api/projects/:id/release-tokens                  aktive Links (Manager)
 POST /api/projects/:id/release-tokens/:token/revoke    Link widerrufen
 ```
+
+**Personalplanung / Gelände (Dashboard-Integration)**
+```
+GET  /api/staff  ·  /api/staff-plan/:week  ·  /api/staff-plan-settings
+GET  /api/gelaende/personalplanung/:week          Gelände-Daten (angemeldet)
+GET  /api/gelaende/public/:token/:week            dieselben Daten, login-frei
+GET  /api/gelaende/public/:token/agents           Kurzmeldungen für meta.agent_says
+GET  /gelaende?token=…&week=…                     einbettbare Vollbildseite (iframe)
+```
+> Token = veröffentlichter Team-Link der Personalplanung. Einbettung nur, wenn
+> `EMBED_FRAME_ANCESTORS` das Dashboard nennt (sonst `frame-ancestors 'self'`).
+> Details: `docs/DASHBOARD-INTEGRATION-PERSONALPLANUNG.md`.
 
 **Anhänge / Live-Updates**
 ```
@@ -737,6 +759,15 @@ git pull origin claude/protocol-tool-meetings-tIoZX
 - **Wetter** über Open-Meteo, serverseitig, Standort = Ort der Bauherren-Anschrift, Zeitraum nach Tageshälfte (Vormittag 6–12, Nachmittag 12–18 Uhr).
 - **Sitzungsablauf** wird per Overlay (`SessionExpiredModal`) abgefangen – **nicht** über den Login-Screen, damit ungespeicherte Eingaben erhalten bleiben.
 
+### Personalplanung im Dashboard (Gelände)
+- Die Personalplanung bleibt im Protokolltool; das Dashboard bindet die Ansicht
+  per iframe ein (Registry-Zeile, keine zweite Datenhaltung).
+- Reiter „Gelände" in der Personalplanung zeigt dieselbe Ansicht angemeldet.
+- Bauzustand aus den Projektdaten: nichts beauftragt → Hologramm, beauftragt und
+  ruhend → Fundament, diese Woche geplant → Rohbau mit Kran, zuletzt bearbeitet →
+  fertiges Gebäude. Soll aus dem Projektteam (Anteil × Kapazität).
+- Three.js liegt als npm-Abhängigkeit bei und wird erst beim Öffnen geladen.
+
 ### Offene Aufgaben
 - **Entscheidung ausstehend:** Konzept „Agenda = Ansicht auf die Protokollpunkte" (eine Datenquelle statt zwei Listen) – große Lösung vs. kleinere Variante; siehe Vorschlag im Verlauf.
 - `ENTWICKLUNG.md` ist auf Stand 2026-07-26 und deckt die seitdem erfolgten Änderungen nicht ab.
@@ -745,3 +776,5 @@ git pull origin claude/protocol-tool-meetings-tIoZX
 - Baudokumentation/Mängel: kein Auto-Save (Speichern nur über Schaltfläche).
 - Docker-Image ohne Liberation-Fonts → PDF-Metrik weicht minimal von Arial ab.
 - Wetterabruf setzt Internetzugang der NAS und einen gepflegten **Ort** in den Projektdaten voraus.
+- Gelände: Zuteilung per Drag (Person auf Projekt ziehen) ist noch nicht gebaut – Phase 2 des Musters.
+- Gelände: ob die Embed-Shell des Dashboards eine externe `meta.embed_src` akzeptiert, ist noch nicht praktisch geprüft (Rückfall: `embed_mode = 'link'`).

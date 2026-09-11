@@ -4058,6 +4058,93 @@ app.post('/api/admin/release-report-test', requireAuth, requireAdmin, async (req
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
+// ── Gelände-Ansicht der Personalplanung (Dashboard-Integration) ──────────────
+// Muster: docs/MUSTER_GELAENDE-DARSTELLUNG.md (Komplizen-Dashboard).
+// Zwei Zugänge auf dieselben Daten:
+//   1. angemeldet   /api/gelaende/personalplanung/:week   (Reiter im Tool)
+//   2. login-frei   /api/gelaende/public/:token/:week     (Dashboard-Einbettung)
+// Das Token ist dasselbe wie beim veröffentlichten Team-Link (/plan/:token);
+// es wird in der Personalplanung erzeugt und lässt sich dort widerrufen.
+const { buildGelaende, isoWeekOf } = require('./gelaende')
+
+// Die App verbietet Einbettung global (helmet: frame-ancestors 'none'). Für die
+// Gelände-Seite bleibt es bei 'self', solange EMBED_FRAME_ANCESTORS nicht gesetzt
+// ist – erst dort trägt man das Dashboard ein, z. B.
+//   EMBED_FRAME_ANCESTORS: "http://192.168.178.250:5050"
+// (mehrere Herkünfte durch Leerzeichen getrennt). Ohne Eintrag zeigt das
+// Dashboard-iframe eine leere Fläche; das ist Absicht.
+const EMBED_FRAME_ANCESTORS = (process.env.EMBED_FRAME_ANCESTORS || '').trim()
+function allowEmbedding(res) {
+  const ancestors = EMBED_FRAME_ANCESTORS ? `'self' ${EMBED_FRAME_ANCESTORS}` : "'self'"
+  res.removeHeader('X-Frame-Options')
+  res.setHeader('Content-Security-Policy', [
+    "default-src 'self'",
+    "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data: blob:",
+    "font-src 'self'",
+    "connect-src 'self'",
+    `frame-ancestors ${ancestors}`,
+  ].join('; '))
+}
+
+const validWeek = (w) => /^\d{4}-W\d{2}$/.test(w || '')
+const weekOf = (req) => {
+  const w = req.params.week || req.query.week
+  return validWeek(w) ? w : isoWeekOf(new Date())
+}
+function requirePlanToken(req, res) {
+  const token = db.appState.get('staff_plan_token') || ''
+  if (!token || req.params.token !== token) {
+    res.status(404).json({ error: 'Link ungültig oder deaktiviert.' })
+    return false
+  }
+  return true
+}
+
+app.get('/api/gelaende/personalplanung{/:week}', requireAuth, (req, res) => {
+  try { res.json(buildGelaende(db, weekOf(req))) }
+  catch (e) { res.status(400).json({ error: e.message }) }
+})
+
+// Kurzmeldungen für die Gelände-Ansicht des Dashboards (dort meta.agent_says)
+app.get('/api/gelaende/public/:token/agents', (req, res) => {
+  if (!requirePlanToken(req, res)) return
+  try {
+    const g = buildGelaende(db, isoWeekOf(new Date()))
+    const says = [`${g.weekLabel}: ${g.totals.loadPct} % Auslastung`]
+    if (g.totals.freePeople > 0)   says.push(`${g.totals.freePeople} ohne Zuteilung`)
+    if (g.totals.absentPeople > 0) says.push(`${g.totals.absentPeople} abwesend`)
+    for (const p of g.projects.filter(x => x.saturation === 'unter').slice(0, 2)) {
+      says.push(`${p.short}: unterbesetzt`)
+    }
+    res.json({ week: g.week, says })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.get('/api/gelaende/public/:token{/:week}', (req, res) => {
+  if (!requirePlanToken(req, res)) return
+  try { res.json(buildGelaende(db, weekOf(req))) }
+  catch (e) { res.status(400).json({ error: e.message }) }
+})
+
+// Einbettbare Vollbildseite (eigener Vite-Einstieg → dist/gelaende.html)
+function serveGelaendeHtml(req, res) {
+  const htmlPath = path.join(distDir, 'gelaende.html')
+  if (!fs.existsSync(htmlPath)) {
+    return res.status(503).send('Frontend nicht gebaut. Bitte zuerst "npm run build" ausführen.')
+  }
+  let html = fs.readFileSync(htmlPath, 'utf8')
+  html = html.replace('</head>',
+    `<script>window.__SERVER_MODE__=true;window.__APP_URL__=${JSON.stringify(getAppUrl(req))}</script></head>`)
+  allowEmbedding(res)
+  res.setHeader('Content-Type', 'text/html; charset=utf-8')
+  res.setHeader('X-Content-Type-Options', 'nosniff')
+  res.send(html)
+}
+app.get('/gelaende', serveGelaendeHtml)
+app.get('/gelaende/', (_req, res) => res.redirect(302, '/gelaende'))
+
 // ── Static frontend ───────────────────────────────────────────────────────────
 const distDir = path.join(__dirname, '../dist')
 

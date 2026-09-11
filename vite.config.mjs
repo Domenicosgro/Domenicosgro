@@ -1,5 +1,9 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import { resolve, dirname } from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+const __dirname = dirname(fileURLToPath(import.meta.url))
 
 // Eindeutige Build-Kennung pro Build – wird ins Bundle eingebacken (__BUILD_ID__)
 // UND als dist/version.json ausgeliefert. Der laufende Client vergleicht beide
@@ -25,6 +29,16 @@ export default defineConfig({
   },
   // Required for Electron: assets use relative paths (file:// protocol)
   base: './',
+  build: {
+    rollupOptions: {
+      // Zweiter Einstieg: einbettbare Gelaende-Seite fuer das Dashboard
+      // (wird von server/index.js unter /gelaende ausgeliefert)
+      input: {
+        main:     resolve(__dirname, 'index.html'),
+        gelaende: resolve(__dirname, 'gelaende.html'),
+      },
+    },
+  },
   optimizeDeps: {
     exclude: ['web-ifc'],
   },
