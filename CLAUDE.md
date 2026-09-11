@@ -72,6 +72,35 @@ git pull origin claude/protocol-tool-meetings-tIoZX
 Erkennung im Frontend: `window.__SERVER_MODE__` (von Express injiziert),
 `window.electronAPI` (Electron-Preload).
 
+### Zwei Anwendungen, ein Backend
+
+| Anwendung | Einstieg | URL | Bundle |
+|---|---|---|---|
+| **Protokolltool** | `index.html` → `src/main.jsx` → `App.jsx` | `/` | `assets/index-*.js` |
+| **Personalplanung** | `personalplanung.html` → `src/personalplanung/main.jsx` → `PersonalplanungApp.jsx` | `/personalplanung` | `assets/personalplanung-*.js` |
+
+Die Personalplanung ist seit 2026-09-11 eine **eigenständige Oberfläche**
+(eigene URL, eigene Kopfzeile, eigener Login-Titel, nur Admins), läuft aber
+gegen **denselben Server und dieselbe SQLite-Datenbank**. Projektdaten sind
+damit ohne Abgleich synchron – `useProjects` inkl. SSE wird geteilt. Sitzung
+(`kp_session_token`) und Benutzer sind identisch; die Kachel im Protokolltool
+verlinkt nur noch (`window.location.href = '/personalplanung'`).
+
+- Vite baut beide Einstiege (`build.rollupOptions.input` in `vite.config.mjs`);
+  ein Deploy, ein Container.
+- Express: Route `/personalplanung` (und `.html`) liefert `personalplanung.html`
+  mit injizierten Server-Variablen, ein Schrägstrich am Ende wird umgeleitet
+  (relative Assets). Die Route steht vor `express.static` und vor dem
+  SPA-Fallback.
+- Live-Updates: `serverEvents.js` baut die SSE-Verbindung bei `kp-auth-changed`
+  neu auf (Token in der URL). Ohne das blieb eine vor dem Login geöffnete
+  Verbindung ohne Nutzerzuordnung – Projektereignisse kamen bis zum Neuladen
+  nicht an (betraf auch das Protokolltool).
+- Im Electron-/Local-Modus gibt es die Personalplanung nicht (sie braucht die
+  Staff-API); die Kachel ist dort ausgeblendet.
+- Für das Synology-Dashboard: eigenes Modul, Reverse-Proxy-Ziel
+  `http://localhost:3000/personalplanung` (gleicher Container).
+
 ---
 
 ## 2. Dateistruktur (Repository)

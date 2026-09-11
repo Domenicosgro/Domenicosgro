@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import { Eye, EyeOff } from 'lucide-react'
 
-export default function LoginScreen({ onLogin }) {
+export default function LoginScreen({ onLogin, title = 'Komplizen Protokolle' }) {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [showPw,   setShowPw]   = useState(false)
@@ -64,7 +64,7 @@ export default function LoginScreen({ onLogin }) {
             <img src="/logo.png" alt="Komplizen" className="w-10 h-10 object-contain" style={{ filter: 'brightness(0) invert(1)' }} />
           </div>
           <div>
-            <h1 className="text-2xl font-headline font-black text-light tracking-wide">Komplizen Protokolle</h1>
+            <h1 className="text-2xl font-headline font-black text-light tracking-wide">{title}</h1>
             <p className="text-sm text-sky/80 mt-1">
               {mode === 'login' ? 'Bitte melden Sie sich an' : 'Passwort zurücksetzen'}
             </p>

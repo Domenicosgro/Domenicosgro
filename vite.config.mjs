@@ -25,6 +25,17 @@ export default defineConfig({
   },
   // Required for Electron: assets use relative paths (file:// protocol)
   base: './',
+  // Zwei Einstiege: Protokolltool (index.html) und die eigenständige
+  // Personalplanung (personalplanung.html). Gleiches Bundle-Verzeichnis,
+  // gemeinsame Chunks, ein Deploy.
+  build: {
+    rollupOptions: {
+      input: {
+        main:           'index.html',
+        personalplanung: 'personalplanung.html',
+      },
+    },
+  },
   optimizeDeps: {
     exclude: ['web-ifc'],
   },

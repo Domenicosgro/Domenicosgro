@@ -495,8 +495,9 @@ export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, 
               </div>
             </button>
 
-            {/* Personalplanung – obliegt dem Admin (Mitarbeiter sehen den Team-Link) */}
-            {(!isServer || serverUser?.role === 'admin') && (
+            {/* Personalplanung – eigenständige Anwendung unter /personalplanung
+                (gleicher Server, gleiche Projektdaten); obliegt dem Admin. */}
+            {onOpenPersonalplanung && serverUser?.role === 'admin' && (
             <button
               onClick={onOpenPersonalplanung}
               className="card w-full text-left flex flex-col min-h-[110px] p-4 hover:border-brand-300 hover:bg-gray-50 transition-colors group border-l-4 border-purple-400"

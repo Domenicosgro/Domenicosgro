@@ -21,7 +21,6 @@ import LearningPlatform      from './components/LearningPlatform'
 import BautagebuchView       from './components/BautagebuchView'
 import InfoListView          from './components/InfoListView'
 import MaengelView           from './components/MaengelView'
-import PersonalplanungView   from './components/PersonalplanungView'
 import DateiablageView       from './components/DateiablageView'
 import ProjektdatenView      from './components/ProjektdatenView'
 import ProjektdatenbankView  from './components/ProjektdatenbankView'
@@ -882,22 +881,6 @@ export default function App() {
     )
   }
 
-  if (view === 'personalplanung') {
-    // Personalplanung obliegt dem Software-Admin
-    if (isServer && effectiveUser?.role !== 'admin') { setView('home'); return null }
-    return wrap(
-      <>
-        <PersonalplanungView
-          projects={projectsWithContacts}
-          onUpdateProject={handleUpdateProject}
-          serverUser={effectiveUser}
-          onBack={() => setView('home')}
-        />
-        <UpdateBanner /><SaveErrorBanner />
-      </>
-    )
-  }
-
   if (view === 'project-infos') {
     const project = projectsWithContacts.find(p => p.id === selectedProjectId)
     if (!project) { setView('home'); return null }
@@ -1047,7 +1030,9 @@ export default function App() {
         onRemovePassword={handleRemoveProjectPassword}
         onOpenContactDatabase={() => setView('contact-database')}
         onOpenLearning={() => setView('learning')}
-        onOpenPersonalplanung={() => setView('personalplanung')}
+        // Personalplanung ist eine eigenständige Anwendung (gleicher Server,
+        // gleiche Projektdaten) – sie öffnet unter ihrer eigenen Adresse.
+        onOpenPersonalplanung={isServer ? () => { window.location.href = '/personalplanung' } : undefined}
         onOpenProjektdatenbank={() => setView('projektdatenbank')}
         onImportProject={handleImportProject}
         onArchiveProject={handleArchiveProject}

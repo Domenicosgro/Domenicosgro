@@ -4061,8 +4061,12 @@ app.post('/api/admin/release-report-test', requireAuth, requireAdmin, async (req
 // ── Static frontend ───────────────────────────────────────────────────────────
 const distDir = path.join(__dirname, '../dist')
 
-function serveHtml(_req, res) {
-  const htmlPath = path.join(distDir, 'index.html')
+// Als Express-Handler registriert → dritter Parameter wäre `next`, deshalb der
+// Dateiname über eine Factory (serveHtmlFile) und nicht als Positionsargument.
+const serveHtml = serveHtmlFile('index.html')
+function serveHtmlFile(file) { return (_req, res) => sendHtml(res, file) }
+function sendHtml(res, file) {
+  const htmlPath = path.join(distDir, file)
   if (!fs.existsSync(htmlPath)) {
     return res.status(503).send('Frontend nicht gebaut. Bitte zuerst "npm run build" ausführen.')
   }
@@ -4076,6 +4080,17 @@ function serveHtml(_req, res) {
 }
 
 app.get('/', serveHtml)
+
+// ── Personalplanung: eigenständige Oberfläche, gleicher Server ───────────────
+// Erreichbar unter /personalplanung (ohne Schrägstrich am Ende – die Assets
+// sind relativ eingebunden und liegen unter /assets). Muss VOR express.static
+// stehen, damit die Server-Variablen (__SERVER_MODE__) injiziert werden.
+app.get(['/personalplanung', '/personalplanung.html'], (req, res) => {
+  // Express 5 lässt den Schrägstrich am Ende durch – dann würden die relativen
+  // Assets unter /personalplanung/assets gesucht. Deshalb hier umleiten.
+  if (req.path.endsWith('/')) return res.redirect(301, '/personalplanung')
+  sendHtml(res, 'personalplanung.html')
+})
 app.use(express.static(distDir, {
   index: false,
   setHeaders: (res) => { res.setHeader('X-Content-Type-Options', 'nosniff') },
