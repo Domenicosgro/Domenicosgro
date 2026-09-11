@@ -11,25 +11,40 @@
 Das Dashboard hostet keine Anwendungen, und die Personalplanung bleibt dort, wo
 ihre Daten liegen – im Protokolltool (`staff_members`, `staff_plan`, `projects`,
 `staff_plan_settings`). Statt der in der Dashboard-Doku skizzierten Variante
-„Weg C" mit eigenen `pp_`-Tabellen liefert **das Protokolltool die Ansicht selbst
-aus**, das Dashboard bindet sie ein. Ergebnis:
+„Weg C" mit eigenen `pp_`-Tabellen läuft die Personalplanung seit 2026-09-11 als
+**eigenständige Oberfläche unter `/personalplanung`** im selben Container – und
+das Dashboard nimmt sie über die Registry auf. Ergebnis:
 
 - keine zweite Datenhaltung, keine Synchronisation, kein doppelter Pflegeaufwand
 - die Registry bleibt die einzige Wahrheit darüber, **dass** es das Modul gibt
-- der Umbau im Dashboard ist eine Registry-Zeile (Weg A/B), kein Blueprint
+- im Dashboard sind es Registry-Zeilen (Weg A bzw. B), kein Blueprint
 
 Wenn die Planung später doch im Dashboard laufen soll, bleibt der Weg offen: die
 Daten liegen bereits als flache JSON-Liste am Endpunkt aus Abschnitt 3.
 
-```
-Browser ──▶ Dashboard  http://192.168.178.250:5050/m/personalplanung
-                │  Anmeldung (DSM) + Zugriffslayer des Dashboards
-                └─ iframe ──▶ Protokolltool  http://192.168.178.250:3000/gelaende?token=…
-                                   │
-                                   └─ /api/gelaende/public/<token>/<KW>  (JSON)
-```
+### Zwei Module, zwei Aufgaben
 
----
+| Modul | Ziel | Weg | Anmeldung |
+|---|---|---|---|
+| **Personalplanung** (arbeiten) | `http://192.168.178.250:3000/personalplanung` | A – `embed_mode = link`, neuer Tab | DSM-Login des Protokolltools, nur Admins |
+| **Personalplanung · Gelände** (schauen) | `http://192.168.178.250:3000/gelaende?token=…` | B – `embed_mode = iframe` | keine – der veröffentlichte Team-Link trägt den Zugriff |
+
+Warum getrennt: Die Planung **bearbeiten** setzt eine Anmeldung am Protokolltool
+voraus – im iframe erschiene sonst dessen Login-Maske, also gehört sie als Link
+in einen eigenen Tab. Die Gelände-Ansicht ist dagegen lesend und login-frei über
+das Token – genau das, was sich im Dashboard einbetten lässt. Wer nur eine Zeile
+will, nimmt die erste: das Dashboard zeigt die Personalplanung dann als Kachel
+bzw. Gebäude, und der Klick öffnet sie.
+
+```
+Browser ──▶ Dashboard  http://192.168.178.250:5050
+                │  Anmeldung (DSM) + Zugriffslayer des Dashboards
+                ├─ Klick „Personalplanung"  ──▶ neuer Tab
+                │                              Protokolltool /personalplanung
+                └─ /m/personalplanung-gelaende
+                      └─ iframe ──▶ Protokolltool /gelaende?token=…
+                                       └─ /api/gelaende/public/<token>/<KW>  (JSON)
+```
 
 ## 2. Was gebaut wurde (in diesem Repo)
 
@@ -126,34 +141,29 @@ Bodenring. Wer diese Woche keine Zuteilung hat, wartet am Brunnen.
 
 ## 5. Einbindung im Dashboard
 
-### 5.1 Registry-Zeile (Migration im Dashboard-Repo)
+### 5.1 Registry-Zeilen (Migration im Dashboard-Repo)
 
-`migrations/007_personalplanung.sql` – Token vorher in der Personalplanung
-erzeugen und unten einsetzen:
+Fertig zum Kopieren: `docs/dashboard/007_personalplanung.sql` in diesem Repo →
+im Dashboard-Repo als `migrations/007_personalplanung.sql` ablegen, Token
+einsetzen, einspielen. Die Datei legt beide Zeilen an (Arbeiten + Gelände) und
+ist idempotent (`ON CONFLICT (key) DO UPDATE`).
 
-```sql
--- Personalplanung des Protokolltools als eingebettetes Modul
-INSERT INTO core_modules (key, rubrik, title, description, status, embed_mode,
-                          url, sort_order, min_role, active, meta)
-VALUES (
-  'personalplanung', 'buero', 'Personalplanung',
-  'Wochenplanung des Büros als Gelände: wer steht auf welchem Projekt.',
-  'ok', 'iframe', '/m/personalplanung', 30, NULL, true,
-  '{"embed_src": "http://192.168.178.250:3000/gelaende?token=TOKEN_HIER",
-    "hex": {"q": 0, "r": 2},
-    "agent_says": ["Wochenplanung je Mitarbeiter", "Klick: Gelände öffnen"]}'::jsonb
-)
-ON CONFLICT (key) DO UPDATE SET
-  title = EXCLUDED.title, description = EXCLUDED.description,
-  status = EXCLUDED.status, embed_mode = EXCLUDED.embed_mode,
-  url = EXCLUDED.url, active = EXCLUDED.active, meta = EXCLUDED.meta;
+Einspielen auf der laufenden Datenbank (NAS, per SSH):
+
+```
+docker compose exec -T db psql -U dashboard -d dashboard < migrations/007_personalplanung.sql
 ```
 
-> **Annahme prüfen:** die Embed-Shell (`/m/<key>`, `templates/embed.html`) setzt
-> `meta.embed_src` als `src` des iframes. Trägt sie dort ausschließlich interne
-> Routen ein, genügt für den Anfang `embed_mode = 'link'` mit
-> `url = 'http://192.168.178.250:3000/gelaende?token=…'` – dann öffnet der Klick
-> die Seite in einem neuen Tab, ganz ohne Änderung am Dashboard.
+> Umlaut-Fallstrick aus der Dashboard-Doku: die Datei aus PowerShell 5.1 nicht
+> mit `Get-Content` lesen, sondern `[System.IO.File]::ReadAllText()`.
+
+> **Annahme prüfen (nur für die Gelände-Zeile):** die Embed-Shell (`/m/<key>`,
+> `templates/embed.html`) setzt `meta.embed_src` als `src` des iframes. Trägt sie
+> dort ausschließlich **interne** Routen ein, akzeptiert sie unsere absolute
+> Adresse womöglich nicht – dann entweder in `embed.html` absolute `http(s)://`-
+> Werte durchlassen, oder die Gelände-Zeile ebenfalls auf `embed_mode = 'link'`
+> stellen. Die erste Zeile (Personalplanung als Link) funktioniert in jedem Fall
+> ohne Änderung am Dashboard.
 
 ### 5.2 Freigabe im Protokolltool (Pflicht)
 
