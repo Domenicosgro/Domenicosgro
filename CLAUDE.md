@@ -542,6 +542,9 @@ für alle Dashboard-Apps.
 
 ## 7. E-Mail-Versand (server/mailer.js + index.js)
 
+> Einrichtung, Anbindung weiterer Server (Planserver) und Fehlerbilder:
+> siehe **[MAILSERVER.md](MAILSERVER.md)**.
+
 Zwei Wege, gekapselt (`mailerStatus`, `verifyMailer`, `sendMail`):
 
 1. **Microsoft Graph (OAuth2, bevorzugt)** – aktiv, sobald `GRAPH_TENANT_ID`,
