@@ -96,6 +96,13 @@ New-NetFirewallRule -DisplayName "LM Studio (Tailscale/Hermes)" `
 
 > Alternativ (weniger streng, aber ok): `-RemoteAddress 100.64.0.0/10` erlaubt das gesamte Tailscale-CGNAT-Netz. **Niemals** die Regel offen (`Any`) lassen.
 
+> **LAN-Konsumenten statt Fernzugriff?** Wenn ein Verbraucher (z. B. das Firmen-Dashboard)
+> im **selben Büro-LAN** wie der 5080 sitzt, braucht es kein Tailscale. Dafür liegt im
+> Repo das geprüfte Helfer-Skript **`freigabe-ki-dashboard.ps1`** (als Administrator auf
+> dem 5080 ausführen): es prüft Server/Bindung, legt die Firewall-Regel **beschränkt auf
+> das Büro-Subnetz** an und testet die Erreichbarkeit. Der entfernte Hermes-Rechner
+> (anderes Netz) bleibt beim Tailscale-Weg oben.
+
 **Akzeptanzkriterium:** `netstat` zeigt `0.0.0.0:1234`; Firewall-Regel erlaubt Port 1234 **nur** von der/den Tailscale-IP(s).
 
 ---
