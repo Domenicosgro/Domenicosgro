@@ -108,3 +108,65 @@ const NOOP = { record: () => {}, scoreOf: () => 0, compare: () => 0, hasUsage: f
 export function useContactUsage() {
   return useContext(ContactUsageContext) || NOOP
 }
+
+// ── Einheitliche Kontaktauswahl ───────────────────────────────────────────────
+// Jede Liste, aus der man einen Kontakt wählt, verhält sich gleich: dieselben
+// durchsuchten Felder, dieselbe Treffergüte, dieselben Gruppenüberschriften.
+// Wer eine neue Auswahl baut, nimmt diese Helfer und muss nichts nachbauen.
+
+export const FREQUENT_LABEL = '★ Häufig genutzt'
+export const REST_LABEL     = 'Weitere Kontakte'
+
+// Durchsuchte Felder – überall identisch. Leerer Suchtext trifft alles.
+export const matchesTerm = (c, term) => {
+  if (!term) return true
+  const t = term.toLowerCase()
+  return ['name', 'company', 'email', 'role', 'gewerk']
+    .some(f => (c?.[f] ?? '').toLowerCase().includes(t))
+}
+
+// Treffergüte: Präfix-Treffer (Name → Firma → E-Mail) vor Teiltreffern. Dadurch
+// werden die Vorschläge mit jedem weiteren Buchstaben konkreter. Ohne Suchtext
+// sind alle gleichrangig — dann entscheidet allein die Nutzungshäufigkeit.
+export const matchRank = (c, term) => {
+  if (!term) return 5
+  const t    = term.toLowerCase()
+  const name = (c?.name    ?? '').toLowerCase()
+  const comp = (c?.company ?? '').toLowerCase()
+  const mail = (c?.email   ?? '').toLowerCase()
+  if (name.startsWith(t)) return 0
+  if (comp.startsWith(t)) return 1
+  if (mail.startsWith(t)) return 2
+  if (name.includes(t))   return 3
+  return 4
+}
+
+// Der gemeinsame Vergleicher: Treffergüte → Nutzung → Alphabet.
+export const contactSorter = (term, score) => (a, b) =>
+  (term ? matchRank(a, term) - matchRank(b, term) : 0)
+  || score(b) - score(a)
+  || (a.name || a.company || '').localeCompare(b.name || b.company || '', 'de')
+
+// Vorschläge abtrennen: Was schon einmal genutzt wurde, steht oben unter
+// „Häufig genutzt". Ohne Suchtext — bei einer Suche zählt nur die Treffergüte.
+export const splitFrequent = (rows, score) => {
+  const frequent = [], rest = []
+  for (const r of rows) (score(r) > 0 ? frequent : rest).push(r)
+  return { frequent, rest }
+}
+
+// Eingefrorene Punktzahl für offene Auswahllisten.
+// Ohne das sortiert `record()` die Liste noch während der Auswahl um: Man klickt
+// einen Kontakt an, er wandert nach oben, alles darunter rutscht — und man sucht
+// seine Stelle neu. Der erste gelesene Wert je Kontakt gilt, solange die Liste
+// offen ist; beim nächsten Öffnen zählt wieder die aktuelle Häufigkeit.
+export function useStableScore() {
+  const { scoreOf } = useContactUsage()
+  const cache = useRef(null)
+  if (!cache.current) cache.current = new Map()
+  return useCallback((c) => {
+    const k = usageKey(c)
+    if (!cache.current.has(k)) cache.current.set(k, scoreOf(c))
+    return cache.current.get(k)
+  }, [scoreOf])
+}

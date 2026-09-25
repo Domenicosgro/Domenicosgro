@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react'
 import { X, Mail, Send, Check, Loader, UserPlus, Users, FileText, Lock } from 'lucide-react'
 import { formatDate } from '../utils'
-import { useContactUsage } from '../contactUsage'
+import { useContactUsage, useStableScore, splitFrequent, FREQUENT_LABEL, REST_LABEL } from '../contactUsage'
 
 function apiHeaders() {
   const h = { 'Content-Type': 'application/json' }
@@ -23,7 +23,8 @@ export default function DiaryEmailModal({
   project, entries = [],
   projectContacts = [], distribution = [], buildPdf, onSaveContact, onClose, onSent,
 }) {
-  const { scoreOf, record } = useContactUsage()
+  const { record } = useContactUsage()
+  const scoreOf = useStableScore()
 
   const [selected, setSelected] = useState(() => {
     const unsent = entries.filter(e => !e.sentAt).map(e => e.id)
@@ -212,13 +213,31 @@ export default function DiaryEmailModal({
                   Keine Kontakte mit E-Mail-Adresse im Projekt hinterlegt.
                 </p>
               )}
-              {contactCandidates.map(c => (
-                <Row key={c.id || c.email} email={c.email}
-                  label={c.name || c.company || c.email}
-                  hint={[c.company && c.name ? c.company : null, c.gewerk || c.role, c.email,
-                         distEmailSet.has((c.email || '').toLowerCase()) ? 'im Verteiler' : null]
-                        .filter(Boolean).join(' · ')} />
-              ))}
+              {/* Schon einmal genutzte Kontakte stehen als Vorschläge oben. */}
+              {(() => {
+                const row = (c) => (
+                  <Row key={c.id || c.email} email={c.email}
+                    label={c.name || c.company || c.email}
+                    hint={[c.company && c.name ? c.company : null, c.gewerk || c.role, c.email,
+                           distEmailSet.has((c.email || '').toLowerCase()) ? 'im Verteiler' : null]
+                          .filter(Boolean).join(' · ')} />
+                )
+                const { frequent, rest } = splitFrequent(contactCandidates, scoreOf)
+                if (!frequent.length) return contactCandidates.map(row)
+                const head = (text, tone) => (
+                  <div className={`-mx-3 px-3 py-1 text-[10px] font-semibold uppercase tracking-wide sticky top-0 ${tone}`}>
+                    {text}
+                  </div>
+                )
+                return (
+                  <>
+                    {head(FREQUENT_LABEL, 'text-amber-600 bg-amber-50/70')}
+                    {frequent.map(row)}
+                    {rest.length > 0 && head(REST_LABEL, 'text-gray-400 bg-gray-50')}
+                    {rest.map(row)}
+                  </>
+                )
+              })()}
               {distOnly.map(d => (
                 <Row key={d.id || d.email} email={d.email}
                   label={d.name || d.email} hint={`${d.email} · Verteiler`} />

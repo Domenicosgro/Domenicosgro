@@ -1,7 +1,10 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { Plus, Trash2, Users, FolderOpen, RefreshCw, AlertCircle, Search, X, Database } from 'lucide-react'
 import { emptyParticipant, uid } from '../utils'
-import { useContactUsage } from '../contactUsage'
+import {
+  useContactUsage, useStableScore, matchesTerm, contactSorter,
+  splitFrequent, FREQUENT_LABEL, REST_LABEL,
+} from '../contactUsage'
 
 // ── Globale Kontaktsuche ──────────────────────────────────────────────────────
 // Dedup-Schlüssel identisch zur zentralen Kontaktdatenbank (App.jsx allContacts)
@@ -12,7 +15,9 @@ const contactKey = (c) =>
 function ContactSearchPanel({ projectContacts = [], allContacts, participants, onAdd, onClose }) {
   const [q, setQ] = useState('')
   const inputRef  = useRef(null)
-  const { scoreOf } = useContactUsage()
+  // Eingefroren, solange das Panel offen ist – sonst sortiert sich die Liste
+  // nach jeder Auswahl um und man muss seine Stelle neu suchen.
+  const scoreOf = useStableScore()
 
   useEffect(() => { inputRef.current?.focus() }, [])
 
@@ -21,35 +26,8 @@ function ContactSearchPanel({ projectContacts = [], allContacts, participants, o
 
   const term = q.trim().toLowerCase()
 
-  const matches = (c) => {
-    if (!term) return true
-    return (
-      (c.name    ?? '').toLowerCase().includes(term) ||
-      (c.company ?? '').toLowerCase().includes(term) ||
-      (c.email   ?? '').toLowerCase().includes(term) ||
-      (c.role    ?? '').toLowerCase().includes(term) ||
-      (c.gewerk  ?? '').toLowerCase().includes(term)
-    )
-  }
-
-  // Rang: Präfix-Treffer (Name → Firma → E-Mail) vor Teiltreffern → Vorschläge
-  // werden mit jedem weiteren Buchstaben konkreter.
-  const rank = (c) => {
-    if (!term) return 5
-    const name  = (c.name    ?? '').toLowerCase()
-    const comp  = (c.company ?? '').toLowerCase()
-    const email = (c.email   ?? '').toLowerCase()
-    if (name.startsWith(term))  return 0
-    if (comp.startsWith(term))  return 1
-    if (email.startsWith(term)) return 2
-    if (name.includes(term))    return 3
-    return 4
-  }
-  // Ohne Suchtext: meistgenutzte zuerst. Mit Suchtext: Treffergüte, dann Nutzung.
-  const byRank = (a, b) =>
-    (term ? rank(a) - rank(b) : 0) ||
-    scoreOf(b) - scoreOf(a) ||
-    (a.name || a.company || '').localeCompare(b.name || b.company || '', 'de')
+  const matches = (c) => matchesTerm(c, term)
+  const byRank  = contactSorter(term, scoreOf)
 
   // Gruppe 1: Kontakte des konkreten Projekts. Gruppe 2: übrige Datenbank.
   const projectResults = projectContacts.filter(matches).sort(byRank)
@@ -59,19 +37,33 @@ function ContactSearchPanel({ projectContacts = [], allContacts, participants, o
     .sort(byRank)
 
   const LIMIT      = 50
-  const shownProj  = projectResults.slice(0, LIMIT)
-  const shownOther = otherResults.slice(0, Math.max(0, LIMIT - shownProj.length))
-  const totalShown = shownProj.length + shownOther.length
+  // Ohne Suchtext werden die schon einmal genutzten Kontakte als Vorschläge
+  // vorangestellt – quer über Projekt und Datenbank, damit man die üblichen
+  // Namen nicht erst suchen muss. Sobald gesucht wird, zählt nur die
+  // Treffergüte, und die Liste erscheint wieder in ihrer normalen Gliederung.
+  const SUGGEST_MAX = 6
+  const suggested = term
+    ? []
+    : splitFrequent([...projectResults, ...otherResults], scoreOf)
+        .frequent.slice(0, SUGGEST_MAX)
+  const suggestedKeys = new Set(suggested.map(contactKey))
+  const isSuggested   = (c) => suggestedKeys.has(contactKey(c))
+
+  const restProj   = projectResults.filter(c => !isSuggested(c))
+  const restOther  = otherResults.filter(c => !isSuggested(c))
+  const shownProj  = restProj.slice(0, LIMIT)
+  const shownOther = restOther.slice(0, Math.max(0, LIMIT - shownProj.length))
+  const totalShown = suggested.length + shownProj.length + shownOther.length
   const dbCount    = allContacts.length
 
-  const renderRow = (c, fromProject) => {
+  const renderRow = (c, fromProject, inSuggestions = false) => {
     const alreadyAdded = !!c.email && existingEmails.has(c.email)
     return (
       <button
-        key={`${fromProject ? 'p' : 'a'}-${c.id}-${contactKey(c)}`}
+        key={`${inSuggestions ? 's' : fromProject ? 'p' : 'a'}-${c.id}-${contactKey(c)}`}
         className={`w-full text-left px-3 py-2 flex items-start gap-3 hover:bg-brand-50 transition-colors
           ${alreadyAdded ? 'opacity-40 cursor-not-allowed' : ''}`}
-        onClick={() => { if (!alreadyAdded) { onAdd(c); setQ('') } }}
+        onClick={() => { if (!alreadyAdded) onAdd(c) }}
         disabled={alreadyAdded}
         title={alreadyAdded ? 'Bereits in der Teilnehmerliste' : ''}
       >
@@ -79,7 +71,14 @@ function ContactSearchPanel({ projectContacts = [], allContacts, participants, o
           {(c.name || c.company || '?')[0].toUpperCase()}
         </div>
         <div className="flex-1 min-w-0">
-          <div className="text-sm font-medium text-gray-900 truncate">{c.name || '–'}</div>
+          <div className="text-sm font-medium text-gray-900 truncate">
+            {c.name || '–'}
+            {/* In der Vorschlagsgruppe fehlt sonst die Herkunft, weil sie quer
+                über beide Gruppen zieht. */}
+            {inSuggestions && fromProject && (
+              <span className="badge-blue text-[10px] ml-1.5 align-middle">Projekt</span>
+            )}
+          </div>
           <div className="text-xs text-gray-500 truncate">
             {[c.company, c.role || c.gewerk].filter(Boolean).join(' · ')}
             {c.email && <span className="ml-1 text-gray-400">{c.email}</span>}
@@ -113,6 +112,17 @@ function ContactSearchPanel({ projectContacts = [], allContacts, participants, o
           <p className="text-xs text-gray-400 text-center py-4">Keine Kontakte gefunden.</p>
         )}
 
+        {suggested.length > 0 && (
+          <>
+            <div className="px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-amber-600 bg-amber-50/70 border-b border-amber-100 sticky top-0">
+              {FREQUENT_LABEL}
+            </div>
+            <div className="divide-y divide-gray-50">
+              {suggested.map(c => renderRow(c, projectKeys.has(contactKey(c)), true))}
+            </div>
+          </>
+        )}
+
         {shownProj.length > 0 && (
           <>
             <div className="px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-brand-500 bg-brand-50/60 border-b border-brand-100 sticky top-0">
@@ -127,7 +137,7 @@ function ContactSearchPanel({ projectContacts = [], allContacts, participants, o
         {shownOther.length > 0 && (
           <>
             <div className="px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-gray-400 bg-gray-50 border-y border-gray-100 sticky top-0">
-              {shownProj.length > 0 ? 'Weitere Kontakte' : 'Alle Kontakte'}
+              {shownProj.length > 0 || suggested.length > 0 ? REST_LABEL : 'Alle Kontakte'}
             </div>
             <div className="divide-y divide-gray-50">
               {shownOther.map(c => renderRow(c, false))}

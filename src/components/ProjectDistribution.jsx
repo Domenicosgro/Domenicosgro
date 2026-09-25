@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react'
 import { Plus, Trash2, Mail, Info, UserPlus, AlertTriangle } from 'lucide-react'
 import { DISTRIBUTION_CHANNELS, emptyDistributionRecipient } from '../utils'
+import { useContactUsage, useStableScore, splitFrequent, FREQUENT_LABEL } from '../contactUsage'
 
 // ── Verteiler-Terminal je Projekt ─────────────────────────────────────────────
 // Matrix: je Empfänger ein Häkchen je Nachrichtenart. Steuert, wer welche
@@ -9,6 +10,8 @@ import { DISTRIBUTION_CHANNELS, emptyDistributionRecipient } from '../utils'
 // kontrolliert: recipients + onChange.
 export default function ProjectDistribution({ recipients = [], onChange, projectContacts = [], projectUsers = [] }) {
   const [addOpen, setAddOpen] = useState(false)
+  const { record } = useContactUsage()
+  const scoreOf = useStableScore()
 
   const usedEmails = useMemo(
     () => new Set(recipients.map(r => (r.email || '').trim().toLowerCase()).filter(Boolean)),
@@ -28,8 +31,15 @@ export default function ProjectDistribution({ recipients = [], onChange, project
     }
     for (const c of projectContacts) add(c.name || c.company, c.email, { contactId: c.id ?? null, from: 'Kontakt' })
     for (const u of projectUsers)    add(u.display_name || u.username, u.email, { username: u.username, from: 'Benutzer' })
-    return out.sort((a, b) => (a.name || a.email).localeCompare(b.name || b.email, 'de'))
-  }, [projectContacts, projectUsers, usedEmails])
+    // Wie überall: schon einmal genutzte Kontakte zuerst, dann alphabetisch.
+    const alpha = (a, b) => (a.name || a.email).localeCompare(b.name || b.email, 'de')
+    const { frequent, rest } = splitFrequent(out, scoreOf)
+    return [...frequent.sort((a, b) => scoreOf(b) - scoreOf(a) || alpha(a, b)), ...rest.sort(alpha)]
+  }, [projectContacts, projectUsers, usedEmails, scoreOf])
+
+  // Wie viele der Vorschläge schon einmal genutzt wurden – nur für die Trennlinie.
+  const frequentCount = useMemo(
+    () => candidates.filter(c => scoreOf(c) > 0).length, [candidates, scoreOf])
 
   const update = (id, patch) =>
     onChange(recipients.map(r => r.id === id ? { ...r, ...patch } : r))
@@ -43,6 +53,7 @@ export default function ProjectDistribution({ recipients = [], onChange, project
   const remove = (id) => onChange(recipients.filter(r => r.id !== id))
 
   const addFromCandidate = (c) => {
+    record(c)   // zählt als Nutzung – der Kontakt wird künftig vorgeschlagen
     onChange([...recipients, {
       ...emptyDistributionRecipient(),
       name: c.name, email: c.email,
@@ -174,15 +185,29 @@ export default function ProjectDistribution({ recipients = [], onChange, project
           <p className="px-3 py-1.5 text-xs font-medium text-gray-500 bg-gray-50">
             Aus Projektkontakten &amp; Projektbenutzern
           </p>
-          {candidates.map(c => (
-            <button key={c.email} type="button"
-              className="w-full text-left px-3 py-2 hover:bg-brand-50 flex items-center gap-2"
-              onClick={() => addFromCandidate(c)}>
-              <Plus size={12} className="text-brand-600 flex-shrink-0" />
-              <span className="text-sm text-gray-900 truncate">{c.name || c.email}</span>
-              <span className="badge-gray text-[10px] flex-shrink-0">{c.from}</span>
-              <span className="text-xs text-gray-400 ml-auto truncate">{c.email}</span>
-            </button>
+          {candidates.map((c, i) => (
+            <React.Fragment key={c.email}>
+              {/* Vorschläge oben abtrennen – gleiche Kennzeichnung wie in den
+                  Versanddialogen und der Teilnehmerauswahl. */}
+              {i === 0 && frequentCount > 0 && (
+                <p className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-amber-600 bg-amber-50/70">
+                  {FREQUENT_LABEL}
+                </p>
+              )}
+              {i === frequentCount && frequentCount > 0 && (
+                <p className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-gray-400 bg-gray-50">
+                  Weitere
+                </p>
+              )}
+              <button type="button"
+                className="w-full text-left px-3 py-2 hover:bg-brand-50 flex items-center gap-2"
+                onClick={() => addFromCandidate(c)}>
+                <Plus size={12} className="text-brand-600 flex-shrink-0" />
+                <span className="text-sm text-gray-900 truncate">{c.name || c.email}</span>
+                <span className="badge-gray text-[10px] flex-shrink-0">{c.from}</span>
+                <span className="text-xs text-gray-400 ml-auto truncate">{c.email}</span>
+              </button>
+            </React.Fragment>
           ))}
         </div>
       )}

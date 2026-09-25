@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react'
 import { X, Mail, Send, Check, Loader, Calendar, Paperclip, Info, ClipboardCheck, UserPlus } from 'lucide-react'
 import { formatDate } from '../utils'
 import { buildProtocolPdf } from '../protocolPdf'
-import { useContactUsage } from '../contactUsage'
+import { useContactUsage, useStableScore, splitFrequent, FREQUENT_LABEL, REST_LABEL } from '../contactUsage'
 
 function apiHeaders() {
   const h = { 'Content-Type': 'application/json' }
@@ -24,7 +24,8 @@ function formatFileSize(bytes) {
 // Der E-Mail-Text wird serverseitig aus den Protokolldaten + Vorlage erzeugt.
 export default function ProtocolEmailModal({ protocol, protocolNo, logoDataUrl, clientLogoDataUrl, projectContacts = [], distribution = [], mode = 'send', buildPdf, onSaveContact, onClose, onSent }) {
   const isReview = mode === 'freigabe'
-  const { scoreOf, record } = useContactUsage()
+  const { record } = useContactUsage()
+  const scoreOf = useStableScore()
 
   // Teilnehmer der Besprechung – bei Freigabe immer im Verteiler vorbelegt
   const recipientCandidates = useMemo(
@@ -303,29 +304,51 @@ export default function ProtocolEmailModal({ protocol, protocolNo, logoDataUrl, 
             </div>
           )}
 
-          {/* Weitere Empfänger aus den Projektkontakten */}
+          {/* Weitere Empfänger aus den Projektkontakten – schon einmal genutzte
+              stehen als Vorschläge oben, damit man sie nicht suchen muss. */}
           {contactCandidates.length > 0 && (
             <div>
               <p className="text-xs font-medium text-gray-700 mb-2">Weitere Projektkontakte</p>
-              <div className="border border-gray-200 divide-y divide-gray-100 max-h-36 overflow-y-auto">
-                {contactCandidates.map(c => {
-                  const inDist = distEmailSet.has((c.email || '').toLowerCase())
+              <div className="border border-gray-200 max-h-36 overflow-y-auto">
+                {(() => {
+                  const row = (c) => {
+                    const inDist = distEmailSet.has((c.email || '').toLowerCase())
+                    return (
+                      <label key={c.id || c.email} className="flex items-center gap-3 px-3 py-2 hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-b-0">
+                        <input
+                          type="checkbox"
+                          className="w-4 h-4 accent-brand-600 flex-shrink-0"
+                          checked={recipients.includes(c.email)}
+                          onChange={() => toggle(c.email)}
+                        />
+                        <div className="flex-1 min-w-0">
+                          <span className="text-sm text-gray-900">{c.name || c.company || c.email}</span>
+                          {inDist && <span className="badge-blue text-[10px] ml-1.5">Verteiler</span>}
+                          {c.company && c.name && <span className="text-xs text-gray-400 ml-1.5">{c.company}</span>}
+                          <span className="text-xs text-gray-400 ml-1.5">{c.email}</span>
+                        </div>
+                      </label>
+                    )
+                  }
+                  const { frequent, rest } = splitFrequent(contactCandidates, scoreOf)
+                  if (!frequent.length) return contactCandidates.map(row)
                   return (
-                  <label key={c.id || c.email} className="flex items-center gap-3 px-3 py-2 hover:bg-gray-50 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      className="w-4 h-4 accent-brand-600 flex-shrink-0"
-                      checked={recipients.includes(c.email)}
-                      onChange={() => toggle(c.email)}
-                    />
-                    <div className="flex-1 min-w-0">
-                      <span className="text-sm text-gray-900">{c.name || c.company || c.email}</span>
-                      {inDist && <span className="badge-blue text-[10px] ml-1.5">Verteiler</span>}
-                      {c.company && c.name && <span className="text-xs text-gray-400 ml-1.5">{c.company}</span>}
-                      <span className="text-xs text-gray-400 ml-1.5">{c.email}</span>
-                    </div>
-                  </label>
-                )})}
+                    <>
+                      <div className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-amber-600 bg-amber-50/70 border-b border-amber-100 sticky top-0">
+                        {FREQUENT_LABEL}
+                      </div>
+                      {frequent.map(row)}
+                      {rest.length > 0 && (
+                        <>
+                          <div className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-gray-400 bg-gray-50 border-y border-gray-100 sticky top-0">
+                            {REST_LABEL}
+                          </div>
+                          {rest.map(row)}
+                        </>
+                      )}
+                    </>
+                  )
+                })()}
               </div>
             </div>
           )}

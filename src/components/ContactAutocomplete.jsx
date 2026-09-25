@@ -1,6 +1,9 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react'
 import { createPortal } from 'react-dom'
-import { useContactUsage } from '../contactUsage'
+import {
+  useContactUsage, useStableScore, matchesTerm, matchRank,
+  splitFrequent, FREQUENT_LABEL, REST_LABEL,
+} from '../contactUsage'
 
 // Wiederverwendbares Namensfeld mit smarter Suche: Bei Eingabe der ersten
 // Buchstaben werden passende Kontakte vorgeschlagen (Treffer in Name/Firma/
@@ -33,58 +36,42 @@ export default function ContactAutocomplete({
   const inputRef = useRef(null)
   const listRef  = useRef(null)
 
-  const { scoreOf, record } = useContactUsage()
+  const { record } = useContactUsage()
+  // Eingefroren, solange das Feld lebt – die Vorschlagsreihenfolge darf sich
+  // beim Tippen nicht dadurch ändern, dass anderswo ein Kontakt genutzt wurde.
+  const scoreOf = useStableScore()
 
   const q = (value || '').toLowerCase().trim()
 
-  const rank = useCallback((c) => {
-    if (!q) return 5
-    const name = (c.name || '').toLowerCase()
-    const comp = (c.company || '').toLowerCase()
-    const mail = (c.email || '').toLowerCase()
-    if (name.startsWith(q)) return 0
-    if (comp.startsWith(q)) return 1
-    if (mail.startsWith(q)) return 2
-    if (name.includes(q))   return 3
-    return 4
-  }, [q])
-
   const matches = useMemo(() => {
     if (!contacts.length) return []
-    const hit = (c) => !q
-      || (c.name || '').toLowerCase().includes(q)
-      || (c.company || '').toLowerCase().includes(q)
-      || (c.email || '').toLowerCase().includes(q)
-      || (c.role || '').toLowerCase().includes(q)
-      || (c.gewerk || '').toLowerCase().includes(q)
     // Nach Anzeige-Wert deduplizieren
     const seen = new Set()
     return contacts
-      .filter(hit)
+      .filter(c => matchesTerm(c, q))
       .map(c => ({ c, label: labelOf(c), score: scoreOf(c) }))
       .filter(({ label }) => label && !seen.has(label) && seen.add(label))
       // Ohne Suchtext: meistgenutzte zuerst. Mit Suchtext: Treffergüte zuerst,
       // Nutzungshäufigkeit als Tiebreak – so werden Vorschläge trotzdem konkreter.
       .sort((a, b) =>
-        (q ? rank(a.c) - rank(b.c) : 0)
+        (q ? matchRank(a.c, q) - matchRank(b.c, q) : 0)
         || b.score - a.score
         || a.label.localeCompare(b.label, 'de'))
       .slice(0, 10)
-  }, [contacts, q, rank, scoreOf])
+  }, [contacts, q, scoreOf])
 
   // Feste Auswahleinträge zuerst, danach – ohne Suchtext gruppiert – die Kontakte:
-  // „Häufig genutzt" (score > 0) vor „Weitere Kontakte".
+  // „Häufig genutzt" vor „Weitere Kontakte".
   const options = useMemo(() => {
     const extra = extraOptions
       .filter(o => !q || o.value.toLowerCase().includes(q))
       .map(o => ({ kind: 'extra', label: o.value, hint: o.hint }))
     const contactRows = matches.map(({ c, label, score }) => ({ kind: 'contact', label, c, score }))
     if (q) return [...extra, ...contactRows]
-    const frequent = contactRows.filter(r => r.score > 0)
-    const rest     = contactRows.filter(r => r.score <= 0)
+    const { frequent, rest } = splitFrequent(contactRows, r => r.score)
     const out = [...extra]
-    if (frequent.length) { out.push({ kind: 'header', label: '★ Häufig genutzt' }); out.push(...frequent) }
-    if (rest.length)     { if (frequent.length) out.push({ kind: 'header', label: 'Weitere Kontakte' }); out.push(...rest) }
+    if (frequent.length) { out.push({ kind: 'header', label: FREQUENT_LABEL }); out.push(...frequent) }
+    if (rest.length)     { if (frequent.length) out.push({ kind: 'header', label: REST_LABEL }); out.push(...rest) }
     return out
   }, [extraOptions, q, matches])
 
