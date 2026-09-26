@@ -150,6 +150,42 @@ function registerStammdaten(app, db, schutz) {
     } catch (e) { res.status(500).json({ error: e.message }) }
   })
 
+  // ── Umzug der Personalplanung ins Dashboard ────────────────────────────────
+  // Einmaliger Ausgang fuer die Datenuebernahme: alle Wochenplaene, die
+  // Einstellungen und die Arbeitszeitmodelle in einem Stueck. Wiederholbar,
+  // damit ein Probelauf moeglich ist.
+  //
+  // Das sind PLANUNGSdaten, keine Stammdaten - sie liegen nur hier, weil sie
+  // denselben Schluessel nutzen. Faellt die Personalplanung aus dem
+  // Protokolltool heraus, faellt diese Route mit ihr weg.
+  app.get('/api/stammdaten/umzug/personalplanung', schutz, (req, res) => {
+    try {
+      let einstellungen = {}
+      try { einstellungen = JSON.parse(db.appState.get('staff_plan_settings') || '{}') } catch {}
+
+      res.json({
+        erzeugt: new Date().toISOString(),
+        quelle: 'komplizen-protokolle',
+        wochenplaene: db.staffPlan.list().map(p => ({
+          woche: p.id,
+          // Das Altformat `rows` wird mitgegeben, damit nichts still verloren
+          // geht - die Zielseite entscheidet, was sie damit tut.
+          assignments: Array.isArray(p.assignments) ? p.assignments : [],
+          rows: Array.isArray(p.rows) ? p.rows : [],
+          updatedAt: p.updatedAt || p._updatedAt || null,
+        })),
+        einstellungen,
+        arbeitszeiten: db.staffMembers.list().map(s => ({
+          mitarbeiterId: s.id,
+          name:          s.name || '',
+          weeklyHours:   s.weeklyHours ?? null,
+          dayHours:      s.dayHours || null,
+          planbar:       s.active !== false,
+        })),
+      })
+    } catch (e) { res.status(500).json({ error: e.message }) }
+  })
+
   // Mitarbeiter (Personalplanung). Nur lesen: gespiegelte Eintraege haengen an
   // den Kontakten, eigene werden im Protokolltool gepflegt.
   app.get('/api/stammdaten/mitarbeiter', schutz, (req, res) => {
