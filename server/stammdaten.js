@@ -54,7 +54,11 @@ function projektAussen(p) {
       anteil:   typeof t.anteil === 'number' ? t.anteil : null,
     })),
     hex:       d.hex || null,
-    archived:  !!p.archived,
+    // Optionale Festlegungen fuer die Gelaende-Darstellung. Fehlen sie,
+    // platziert und faerbt das Frontend selbst.
+    color:     d.color || null,
+    // Das Protokolltool fuehrt das Feld als `isArchived` (siehe ProjectsHome.jsx).
+    archived:  !!p.isArchived,
     updatedAt: p._updatedAt || null,
   }
 }
@@ -65,6 +69,9 @@ function mitarbeiterAussen(s) {
     name:         s.name || '',
     funktion:     s.funktion || '',
     username:     s.username || null,
+    // Wird gebraucht, um Projektteam-Mitglieder zuzuordnen: dort stehen auch
+    // Leute ohne Benutzerkonto, der Name allein ist nicht eindeutig genug.
+    email:        s.email || '',
     weeklyHours:  s.weeklyHours ?? null,
     dayHours:     s.dayHours || null,
     active:       s.active !== false,
@@ -97,7 +104,7 @@ function registerStammdaten(app, db, schutz) {
     try {
       const mitArchiv = req.query.archiviert === '1'
       const rows = db.projects.list()
-        .filter(p => mitArchiv || !p.archived)
+        .filter(p => mitArchiv || !p.isArchived)
         .map(projektAussen)
         .sort((a, b) => (a.nummer || a.name).localeCompare(b.nummer || b.name, 'de'))
       res.json({ projekte: rows })
