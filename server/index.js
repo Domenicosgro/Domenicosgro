@@ -2018,105 +2018,8 @@ app.delete('/api/staff/:id', requireAuth, requireAdmin, writeLimiter, (req, res)
   catch (e) { res.status(500).json({ error: e.message }) }
 })
 
-// ── Personalplan veröffentlichen (login-freier Team-Link) ─────────────────────
-app.post('/api/staff-plan-token', requireAuth, requireAdmin, writeLimiter, (req, res) => {
-  try {
-    const revoke = req.body?.action === 'revoke'
-    const token  = revoke ? '' : auth.generateToken()
-    db.appState.set('staff_plan_token', token)
-    logEvent(revoke ? 'STAFFPLAN_UNPUBLISHED' : 'STAFFPLAN_PUBLISHED', req, '')
-    res.json({ ok: true, url: token ? `${getAppUrl(req)}/plan/${token}` : null })
-  } catch (e) { res.status(500).json({ error: e.message }) }
-})
-
-app.get('/api/staff-plan-token', requireAuth, (req, res) => {
-  try {
-    const token = db.appState.get('staff_plan_token') || ''
-    res.json({ url: token ? `${getAppUrl(req)}/plan/${token}` : null })
-  } catch (e) { res.status(500).json({ error: e.message }) }
-})
-
-// Öffentliche Team-Ansicht: aktuelle + nächste Woche
-app.get('/plan/:token', (req, res) => {
-  try {
-    const token = db.appState.get('staff_plan_token') || ''
-    if (!token || req.params.token !== token) {
-      return res.status(404).send(renderSimplePage('Nicht verfügbar',
-        '<p style="color:#6b7280;">Dieser Link ist ungültig oder wurde deaktiviert.</p>'))
-    }
-    // ISO-Woche + Montag berechnen
-    const isoWeekOf = (date) => {
-      const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()))
-      const dayNum = d.getUTCDay() || 7
-      d.setUTCDate(d.getUTCDate() + 4 - dayNum)
-      const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1))
-      return `${d.getUTCFullYear()}-W${String(Math.ceil((((d - yearStart) / 86400000) + 1) / 7)).padStart(2, '0')}`
-    }
-    const mondayOf = (date) => { const d = new Date(date); const day = d.getDay() || 7; d.setDate(d.getDate() - day + 1); return d }
-    const addDays  = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x }
-    const fmtShort = (d) => d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' })
-
-    const staff    = db.staffMembers.list().filter(s => s.active !== false)
-    const projects = db.projects.list()
-    let services = []
-    try { services = JSON.parse(db.appState.get('staff_plan_settings') || '{}').services || [] } catch {}
-    const projName = (pid) => {
-      if (!pid) return ''
-      if (['urlaub', 'krank', 'buero'].includes(pid)) return { urlaub: 'Urlaub', krank: 'Krank', buero: 'Büro' }[pid]
-      return projects.find(p => p.id === pid)?.name
-        || services.find(s => s.id === pid)?.name
-        || pid
-    }
-    const DAYS = [['mo', 'Mo'], ['di', 'Di'], ['mi', 'Mi'], ['do', 'Do'], ['fr', 'Fr']]
-
-    const fmtTage = (t) => String(t).replace('.', ',')
-    const weekTable = (monday) => {
-      const week = isoWeekOf(monday)
-      const plan = db.staffPlan.get(week) || {}
-      const assignments = plan.assignments || []
-      const bodyRows = staff.map(s => {
-        const mine = assignments.filter(a => a.staffId === s.id)
-        const cells = DAYS.map(([key]) => {
-          const parts = mine
-            .filter(a => a.days?.[key] > 0)
-            .map(a => `${esc(projName(a.projectId))} <span style="color:#9ca3af;font-size:11px;">${fmtTage(a.days[key])}</span>`)
-          if (parts.length === 0) return '<td style="padding:6px 8px;border:0.5px solid #e5e7eb;color:#d1d5db;">–</td>'
-          const special = mine.some(a => ['urlaub', 'krank'].includes(a.projectId) && a.days?.[key] > 0)
-          return `<td style="padding:6px 8px;border:0.5px solid #e5e7eb;${special ? 'background:#fef9c3;' : ''}">${parts.join('<br>')}</td>`
-        }).join('')
-        return `<tr><td style="padding:6px 8px;border:0.5px solid #e5e7eb;font-weight:bold;white-space:nowrap;">${esc(s.name)}</td>${cells}</tr>`
-      }).join('')
-      const heads = DAYS.map(([, label], i) =>
-        `<th style="padding:6px 8px;border:0.5px solid #d1d5db;background:#000040;color:#8FBEFF;font-size:11px;text-transform:uppercase;">${label} ${fmtShort(addDays(monday, i))}</th>`).join('')
-      return `
-        <h2 style="font-size:15px;margin:24px 0 8px 0;">KW ${week.split('-W')[1]} (${fmtShort(monday)} – ${fmtShort(addDays(monday, 4))})</h2>
-        <table style="width:100%;border-collapse:collapse;font-size:13px;">
-          <thead><tr><th style="padding:6px 8px;border:0.5px solid #d1d5db;background:#000040;color:#8FBEFF;font-size:11px;text-transform:uppercase;text-align:left;">Mitarbeiter</th>${heads}</tr></thead>
-          <tbody>${bodyRows || '<tr><td colspan="6" style="padding:12px;color:#9ca3af;">Keine Planung hinterlegt.</td></tr>'}</tbody>
-        </table>`
-    }
-
-    const thisMonday = mondayOf(new Date())
-    const html = `<!DOCTYPE html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-      <title>Personalplanung – GHBA</title></head>
-      <body style="font-family:Arial,sans-serif;margin:0;background:#F0F0F0;color:#1F2937;">
-      <div style="max-width:860px;margin:0 auto;padding:24px 16px;">
-        <div style="background:#000040;padding:20px 24px;">
-          <p style="margin:0;color:#8FBEFF;font-size:11px;letter-spacing:2px;text-transform:uppercase;">GHBA</p>
-          <p style="margin:4px 0 0 0;color:#FBFFE6;font-size:19px;font-weight:bold;">Personalplanung</p>
-          <p style="margin:4px 0 0 0;color:#8FBEFF;font-size:12px;">Stand ${new Date().toLocaleString('de-DE')}</p>
-        </div>
-        <div style="background:#fff;padding:8px 24px 24px 24px;border:1px solid #e5e7eb;border-top:none;">
-          ${weekTable(thisMonday)}
-          ${weekTable(addDays(thisMonday, 7))}
-          ${weekTable(addDays(thisMonday, 14))}
-          ${weekTable(addDays(thisMonday, 21))}
-          <p style="color:#9ca3af;font-size:11px;margin-top:20px;">Werte in Tagen (¼-Schritte). Diese Seite ist immer aktuell – einfach neu laden. Änderungen erfolgen im Protokolltool.</p>
-        </div>
-      </div></body></html>`
-    res.send(html)
-  } catch (e) { res.status(500).send(renderSimplePage('Fehler', `<p>${esc(e.message)}</p>`)) }
-})
+// Der login-freie Team-Link (/plan/:token) ist mit der Wochenplanung ins
+// Dashboard umgezogen; dort bekommt er eine eigene Token-Verwaltung.
 
 // ── Personalplanung: Einstellungen (Projekt-Reihenfolge + Zusatz-Leistungen) ──
 app.get('/api/staff-plan-settings', requireAuth, (_req, res) => {
@@ -2138,36 +2041,8 @@ app.put('/api/staff-plan-settings', requireAuth, requireAdmin, writeLimiter, (re
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
-// ── Personalplanung: ein Dokument je Kalenderwoche (global) ──────────────────
-app.get('/api/staff-plan/:week', requireAuth, (req, res) => {
-  try {
-    const doc = db.staffPlan.get(req.params.week)
-    res.json(doc || { id: req.params.week, rows: [] })
-  } catch (e) { res.status(500).json({ error: e.message }) }
-})
-
-app.put('/api/staff-plan/:week', requireAuth, requireAdmin, writeLimiter, (req, res) => {
-  try {
-    const week = req.params.week
-    if (!/^\d{4}-W\d{2}$/.test(week)) return res.status(400).json({ error: 'Ungültige Woche.' })
-    const existing = db.staffPlan.get(week)
-    const data = {
-      id: week,
-      // assignments: [{ projectId, staffId, days: { mo: 0.25|0.5|0.75|1, … } }]
-      assignments: Array.isArray(req.body.assignments) ? req.body.assignments : [],
-      rows: Array.isArray(req.body.rows) ? req.body.rows : [],   // Altformat (Kompatibilität)
-      updatedAt: new Date().toISOString(),
-    }
-    if (existing) {
-      const result = db.staffPlan.update(week, data, existing._version, req.user)
-      if (result.conflict) return res.status(409).json({ conflict: true, ...result })
-    } else {
-      db.staffPlan.create(data, req.user)
-    }
-    broadcast('staff_plan', 'update', week, data.updatedAt)
-    res.json({ ok: true })
-  } catch (e) { res.status(500).json({ error: e.message }) }
-})
+// Die Wochenpläne (/api/staff-plan/:week) liegen jetzt im Dashboard
+// (pp_wochenplan). Die Tabelle staff_plan bleibt vorerst unangetastet.
 
 // ── Learning-Plattform: Schulungsvideos ──────────────────────────────────────
 // Videos sind global (projektübergreifend) – sie erklären die Bedienung der App.
@@ -4086,14 +3961,6 @@ app.post('/api/admin/release-report-test', requireAuth, requireAdmin, async (req
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
-// ── Gelände-Ansicht der Personalplanung (Dashboard-Integration) ──────────────
-// Muster: docs/MUSTER_GELAENDE-DARSTELLUNG.md (Komplizen-Dashboard).
-// Zwei Zugänge auf dieselben Daten:
-//   1. angemeldet   /api/gelaende/personalplanung/:week   (Reiter im Tool)
-//   2. login-frei   /api/gelaende/public/:token/:week     (Dashboard-Einbettung)
-// Das Token ist dasselbe wie beim veröffentlichten Team-Link (/plan/:token);
-// es wird in der Personalplanung erzeugt und lässt sich dort widerrufen.
-const { buildGelaende, isoWeekOf } = require('./gelaende')
 
 // ── Stammdaten-Schnittstelle ─────────────────────────────────────────────────
 // Fassade fuer andere Anwendungen (zuerst: Personalplanung im Dashboard).
@@ -4111,75 +3978,9 @@ require('./spiegel').registerSpiegel(app, db, requireStammdaten)
 // nur an den drei Feldern, die die Projektdaten-Ansicht kennt.
 require('./spiegel').registerSpiegelSchreiben(app, db, requireStammdaten, writeLimiter)
 
-// Die App verbietet Einbettung global (helmet: frame-ancestors 'none'). Für die
-// Gelände-Seite bleibt es bei 'self', solange EMBED_FRAME_ANCESTORS nicht gesetzt
-// ist – erst dort trägt man das Dashboard ein, z. B.
-//   EMBED_FRAME_ANCESTORS: "http://192.168.178.250:5050"
-// (mehrere Herkünfte durch Leerzeichen getrennt). Ohne Eintrag zeigt das
-// Dashboard-iframe eine leere Fläche; das ist Absicht.
-const EMBED_FRAME_ANCESTORS = (process.env.EMBED_FRAME_ANCESTORS || '').trim()
-function allowEmbedding(res) {
-  const ancestors = EMBED_FRAME_ANCESTORS ? `'self' ${EMBED_FRAME_ANCESTORS}` : "'self'"
-  res.removeHeader('X-Frame-Options')
-  res.setHeader('Content-Security-Policy', [
-    "default-src 'self'",
-    "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
-    "style-src 'self' 'unsafe-inline'",
-    "img-src 'self' data: blob:",
-    "font-src 'self'",
-    "connect-src 'self'",
-    `frame-ancestors ${ancestors}`,
-  ].join('; '))
-}
-
-const validWeek = (w) => /^\d{4}-W\d{2}$/.test(w || '')
-const weekOf = (req) => {
-  const w = req.params.week || req.query.week
-  return validWeek(w) ? w : isoWeekOf(new Date())
-}
-function requirePlanToken(req, res) {
-  const token = db.appState.get('staff_plan_token') || ''
-  if (!token || req.params.token !== token) {
-    res.status(404).json({ error: 'Link ungültig oder deaktiviert.' })
-    return false
-  }
-  return true
-}
-
-app.get('/api/gelaende/personalplanung{/:week}', requireAuth, (req, res) => {
-  try { res.json(buildGelaende(db, weekOf(req))) }
-  catch (e) { res.status(400).json({ error: e.message }) }
-})
-
-// Kurzmeldungen für die Gelände-Ansicht des Dashboards (dort meta.agent_says)
-app.get('/api/gelaende/public/:token/agents', (req, res) => {
-  if (!requirePlanToken(req, res)) return
-  try {
-    const g = buildGelaende(db, isoWeekOf(new Date()))
-    const says = [`${g.weekLabel}: ${g.totals.loadPct} % Auslastung`]
-    if (g.totals.freePeople > 0)   says.push(`${g.totals.freePeople} ohne Zuteilung`)
-    if (g.totals.absentPeople > 0) says.push(`${g.totals.absentPeople} abwesend`)
-    for (const p of g.projects.filter(x => x.saturation === 'unter').slice(0, 2)) {
-      says.push(`${p.short}: unterbesetzt`)
-    }
-    res.json({ week: g.week, says })
-  } catch (e) { res.status(500).json({ error: e.message }) }
-})
-
-app.get('/api/gelaende/public/:token{/:week}', (req, res) => {
-  if (!requirePlanToken(req, res)) return
-  try { res.json(buildGelaende(db, weekOf(req))) }
-  catch (e) { res.status(400).json({ error: e.message }) }
-})
-
-// Einbettbare Vollbildseite (eigener Vite-Einstieg → dist/gelaende.html).
-// Wie /personalplanung: ohne Schrägstrich am Ende, sonst suchen die relativen
-// Assets unter /gelaende/assets.
-app.get(['/gelaende', '/gelaende.html'], (req, res) => {
-  if (req.path.endsWith('/')) return res.redirect(301, '/gelaende')
-  allowEmbedding(res)
-  sendHtml(res, 'gelaende.html', [`window.__APP_URL__=${JSON.stringify(getAppUrl(req))}`])
-})
+// Die Gelände-Ansicht der Personalplanung ist ins Dashboard umgezogen
+// (app/gelaende.py dort, portiert aus dem früheren server/gelaende.js).
+// Damit entfällt auch die Einbettungsfreigabe EMBED_FRAME_ANCESTORS.
 
 // ── Static frontend ───────────────────────────────────────────────────────────
 const distDir = path.join(__dirname, '../dist')
@@ -5155,6 +4956,14 @@ app.post('/api/protocols/:id/render-pdf', requireAuth, writeLimiter, async (req,
 
 // ── SPA fallback ──────────────────────────────────────────────────────────────
 // Express 5 requires named wildcards (path-to-regexp v8)
+// Unbekannte API-Pfade ehrlich beantworten. Ohne das faengt der SPA-Fallback
+// darunter sie ab und liefert HTML mit Status 200 - ein aufrufendes Programm
+// sieht dann eine scheinbar erfolgreiche Antwort und keinen Hinweis auf den
+// Tippfehler oder die entfernte Route.
+app.use('/api', (req, res) => {
+  res.status(404).json({ error: `Unbekannter Endpunkt: ${req.method} /api${req.path}` })
+})
+
 app.get('/{*path}', serveHtml)
 
 // ── Error handler ─────────────────────────────────────────────────────────────

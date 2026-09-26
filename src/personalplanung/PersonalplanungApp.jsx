@@ -1,16 +1,15 @@
-import React, { useEffect, useState, useCallback } from 'react'
+import React, { useEffect, useState } from 'react'
 import { CalendarClock, LogOut, ExternalLink, ShieldAlert, Loader } from 'lucide-react'
 import LoginScreen from '../components/LoginScreen'
 import SessionExpiredModal from '../components/SessionExpiredModal'
-import PersonalplanungView from '../components/PersonalplanungView'
-import { useProjects } from '../hooks/useProjects'
+import MitarbeiterView from '../components/MitarbeiterView'
 
-// ── Personalplanung als eigenständige Anwendung ──────────────────────────────
-// Eigene Oberfläche mit eigener URL, aber gemeinsames Backend mit dem
-// Protokolltool: dieselben Benutzer und Sitzungen (kp_session_token), dieselbe
-// Projekt-Datenbank, dieselben Live-Updates (SSE in useProjects). Was hier am
-// Projektteam geändert wird, steht sofort im Protokolltool – und umgekehrt.
-// Es gibt keine zweite Datenhaltung und nichts abzugleichen.
+// ── Mitarbeiter & Projektteams als eigenständige Anwendung ──────────────────
+// Die Wochenplanung ist ins Dashboard umgezogen (docs/UMZUG_PERSONALPLANUNG.md
+// dort). Was hier geblieben ist, sind die Stammdaten der eigenen Organisation:
+// 16 der 36 Mitarbeiter stammen nicht aus Kontakten, sondern wurden von Hand
+// angelegt — sie brauchen eine Pflege, und Stammdaten werden dort gepflegt,
+// wo sie liegen. Das Dashboard liest sie über die Stammdaten-Schnittstelle.
 
 const isServer = typeof window !== 'undefined' && !!window.__SERVER_MODE__
 const tokenOf  = () => (typeof localStorage !== 'undefined' ? localStorage.getItem('kp_session_token') : null)
@@ -20,7 +19,6 @@ export default function PersonalplanungApp() {
   const [authChecked, setAuthChecked] = useState(!isServer)
   const [expired,     setExpired]     = useState(false)
 
-  const { projects, saveError, clearSaveError, updateProject, refetchProjects } = useProjects()
 
   // Anmeldung prüfen – gleiche Sitzung wie das Protokolltool
   useEffect(() => {
@@ -31,7 +29,7 @@ export default function PersonalplanungApp() {
         if (r.status === 401) { localStorage.removeItem('kp_session_token'); return null }
         return r.json()
       })
-      .then(u => { setUser(u || null); setAuthChecked(true); if (u) refetchProjects() })
+      .then(u => { setUser(u || null); setAuthChecked(true) })
       .catch(() => { setUser(null); setAuthChecked(true) })
   }, [])  // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -48,7 +46,7 @@ export default function PersonalplanungApp() {
     window.dispatchEvent(new Event('kp-auth-changed'))
   }, [user?.username])
 
-  const handleLogin = (u) => { setUser(u); refetchProjects() }
+  const handleLogin = (u) => setUser(u)
 
   const handleLogout = async () => {
     const token = tokenOf()
@@ -57,11 +55,6 @@ export default function PersonalplanungApp() {
     setUser(null)
   }
 
-  // Projektänderungen (Team, Gesellschaft) gehen direkt in die gemeinsame
-  // Projektdatenbank – die Personalplanung fasst keine Kontakte an, daher ist
-  // hier keine Verschlüsselungslogik nötig.
-  const handleUpdateProject = useCallback((id, patch) => updateProject(id, patch), [updateProject])
-
   if (!authChecked) {
     return (
       <div className="min-h-screen flex items-center justify-center text-gray-400 text-sm">
@@ -69,7 +62,7 @@ export default function PersonalplanungApp() {
       </div>
     )
   }
-  if (isServer && !user) return <LoginScreen onLogin={handleLogin} title="Komplizen Personalplanung" />
+  if (isServer && !user) return <LoginScreen onLogin={handleLogin} title="Komplizen Mitarbeiter" />
 
   // Personalplanung obliegt dem Software-Admin (wie bisher im Protokolltool)
   if (isServer && user?.role !== 'admin') {
@@ -77,9 +70,9 @@ export default function PersonalplanungApp() {
       <div className="min-h-screen flex items-center justify-center p-6">
         <div className="card max-w-md p-6 text-center">
           <ShieldAlert size={32} className="mx-auto text-amber-500 mb-3" />
-          <h1 className="font-semibold text-night mb-1">Kein Zugriff auf die Personalplanung</h1>
+          <h1 className="font-semibold text-night mb-1">Kein Zugriff auf die Mitarbeiterverwaltung</h1>
           <p className="text-sm text-gray-500 mb-4">
-            Die Personalplanung ist Administratoren vorbehalten. Angemeldet als <strong>{user?.display_name || user?.username}</strong>.
+            Die Mitarbeiterverwaltung ist Administratoren vorbehalten. Angemeldet als <strong>{user?.display_name || user?.username}</strong>.
           </p>
           <div className="flex justify-center gap-2">
             <a className="btn-secondary" href="/"><ExternalLink size={14} /> Zum Protokolltool</a>
@@ -96,8 +89,8 @@ export default function PersonalplanungApp() {
       <header className="no-print sticky top-0 z-30 bg-night text-light px-4 sm:px-6 lg:px-10 py-2 flex items-center justify-between gap-3">
         <div className="flex items-center gap-2 min-w-0">
           <CalendarClock size={18} className="text-sky flex-shrink-0" />
-          <span className="font-semibold truncate">Komplizen Personalplanung</span>
-          <span className="hidden sm:inline text-xs text-light/60 truncate">· Projektdaten synchron mit dem Protokolltool</span>
+          <span className="font-semibold truncate">Komplizen Mitarbeiter</span>
+          <span className="hidden sm:inline text-xs text-light/60 truncate">· Stammdaten der eigenen Organisation</span>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
           {user && <span className="hidden sm:inline text-xs text-light/70">{user.display_name || user.username}</span>}
@@ -112,24 +105,13 @@ export default function PersonalplanungApp() {
         </div>
       </header>
 
-      <PersonalplanungView
-        projects={projects}
-        onUpdateProject={handleUpdateProject}
-        serverUser={user}
-        onBack={() => { window.location.href = '/' }}
-      />
+      <MitarbeiterView onBack={() => { window.location.href = '/' }} />
 
       {expired && (
         <SessionExpiredModal
           username={user?.username}
-          onSuccess={(u) => { setExpired(false); if (u) setUser(u); clearSaveError() }}
+          onSuccess={(u) => { setExpired(false); if (u) setUser(u) }}
         />
-      )}
-      {!expired && saveError && (
-        <div className="fixed top-0 inset-x-0 z-50 flex items-center justify-between gap-4 bg-red-700 text-white px-5 py-3 text-sm no-print">
-          <span><strong>Speichern fehlgeschlagen.</strong> {saveError}</span>
-          <button className="shrink-0 text-white/70 hover:text-white text-lg" onClick={clearSaveError}>×</button>
-        </div>
       )}
     </>
   )

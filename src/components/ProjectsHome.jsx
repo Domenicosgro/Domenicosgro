@@ -495,8 +495,8 @@ export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, 
               </div>
             </button>
 
-            {/* Personalplanung – eigenständige Anwendung unter /personalplanung
-                (gleicher Server, gleiche Projektdaten); obliegt dem Admin. */}
+            {/* Mitarbeiter & Projektteams unter /personalplanung. Die
+                Wochenplanung ist ins Dashboard umgezogen. Obliegt dem Admin. */}
             {onOpenPersonalplanung && serverUser?.role === 'admin' && (
             <button
               onClick={onOpenPersonalplanung}
@@ -504,11 +504,11 @@ export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, 
             >
               <div className="flex items-center gap-2 mb-1.5">
                 <span className="text-brand-600 group-hover:text-brand-700 transition-colors flex-shrink-0"><CalendarClock size={20} /></span>
-                <h3 className="font-semibold text-sm text-gray-900 group-hover:text-brand-700 transition-colors truncate">Personalplanung / Projekttermine</h3>
+                <h3 className="font-semibold text-sm text-gray-900 group-hover:text-brand-700 transition-colors truncate">Mitarbeiter &amp; Projektteams</h3>
               </div>
-              <p className="text-xs text-gray-500 line-clamp-3">Wocheneinsatz je Mitarbeiter über alle Projekte planen</p>
+              <p className="text-xs text-gray-500 line-clamp-3">Eigene Organisation pflegen · Wochenplanung liegt im Dashboard</p>
               <div className="flex gap-4 mt-auto pt-2">
-                <span className="text-xs text-gray-400 italic">Wochenmatrix öffnen · nur Admin</span>
+                <span className="text-xs text-gray-400 italic">Stammdaten öffnen · nur Admin</span>
               </div>
             </button>
             )}
