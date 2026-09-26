@@ -94,4 +94,158 @@ function registerSpiegel(app, db, schutz) {
   })
 }
 
-module.exports = { registerSpiegel, pruefsumme, kanonisch }
+// ── Schreiben (Stufe 2) ──────────────────────────────────────────────────────
+// Das Dashboard bekommt die Oberflaeche, die Wahrheit bleibt hier. Damit dabei
+// nichts verlorengeht, gelten drei Regeln:
+//
+//   1. NUR die drei Felder, die die Projektdaten-Ansicht kennt, werden
+//      angefasst: name, projectData, team. Alles andere am Projekt bleibt
+//      unberuehrt - auch Felder, die niemand auf dem Schirm hat.
+//   2. Der Aufrufer schickt die Pruefsumme mit, auf der er gearbeitet hat.
+//      Stimmt sie nicht mehr, wird abgelehnt statt ueberschrieben. Ohne das
+//      koennte ein veralteter Stand aus dem Dashboard eine neuere Aenderung
+//      aus dem Protokolltool ausloeschen.
+//   3. Projektnummern werden nicht doppelt vergeben.
+
+const SCHREIBBARE_FELDER = ['name', 'projectData', 'team']
+
+// Nummer aus einem Projekt lesen - fuer die Doppelpruefung.
+const nummerVon = (p) => String(p?.projectData?.nummer || '').trim()
+
+function registerSpiegelSchreiben(app, db, schutz, writeLimiter) {
+  const limiter = writeLimiter || ((req, res, next) => next())
+
+  // Naechste freie Projektnummer vorschlagen. Das Regelwerk sagt: Nummer und
+  // Kuerzel vergibt der Mensch - die Schnittstelle schlaegt nur vor und
+  // verhindert Doppelvergabe.
+  app.get('/api/spiegel/naechste-nummer', schutz, (req, res) => {
+    const belegt = new Set(db.projects.list().map(nummerVon).filter(Boolean))
+    const zahlen = [...belegt].map(n => parseInt(n, 10)).filter(Number.isFinite)
+    const hoechste = zahlen.length ? Math.max(...zahlen) : 0
+    let vorschlag = hoechste + 1
+    while (belegt.has(String(vorschlag))) vorschlag++
+    res.json({
+      vorschlag: String(vorschlag),
+      belegt: [...belegt].sort(),
+      hinweis: 'Vorschlag. Die Vergabe bleibt beim Menschen.',
+    })
+  })
+
+  // Aendern. Erwartet { basis, aenderung }.
+  app.patch('/api/spiegel/projekte/:id', schutz, limiter, (req, res) => {
+    const p = db.projects.get(req.params.id)
+    if (!p) return res.status(404).json({ error: 'Projekt nicht gefunden.' })
+
+    const aktuelle = pruefsumme(p)
+    const basis = req.body?.basis
+    if (!basis) {
+      return res.status(400).json({ error: 'Feld "basis" (Pruefsumme) fehlt.' })
+    }
+    if (basis !== aktuelle) {
+      // Kein Ueberschreiben: der Aufrufer hat auf einem alten Stand gearbeitet.
+      return res.status(409).json({
+        error: 'Das Projekt wurde zwischenzeitlich geändert.',
+        konflikt: true,
+        pruefsumme: aktuelle,
+        dokument: ohneStoreFelder(p),
+      })
+    }
+
+    const aenderung = req.body?.aenderung
+    if (!aenderung || typeof aenderung !== 'object') {
+      return res.status(400).json({ error: 'Feld "aenderung" fehlt.' })
+    }
+    const fremd = Object.keys(aenderung).filter(k => !SCHREIBBARE_FELDER.includes(k))
+    if (fremd.length > 0) {
+      return res.status(400).json({
+        error: 'Diese Felder lassen sich über die Projektdatenbank nicht ändern: ' + fremd.join(', '),
+      })
+    }
+
+    // Doppelte Projektnummer verhindern.
+    if (aenderung.projectData) {
+      const neueNummer = String(aenderung.projectData.nummer || '').trim()
+      if (neueNummer) {
+        const kollision = db.projects.list()
+          .find(x => x.id !== p.id && nummerVon(x) === neueNummer)
+        if (kollision) {
+          return res.status(409).json({
+            error: `Die Projektnummer ${neueNummer} ist bereits vergeben (${kollision.name}).`,
+          })
+        }
+      }
+    }
+
+    // Nur die erlaubten Felder ersetzen - der Rest des Dokuments bleibt.
+    const neu = { ...p }
+    for (const feld of SCHREIBBARE_FELDER) {
+      if (feld in aenderung) neu[feld] = aenderung[feld]
+    }
+    neu.updatedAt = new Date().toISOString()
+
+    const r = db.projects.update(p.id, neu, p._version, req.user || '__dashboard__')
+    if (r.notFound) return res.status(404).json({ error: 'Projekt nicht gefunden.' })
+    if (r.conflict) {
+      return res.status(409).json({ error: 'Das Projekt wurde zwischenzeitlich geändert.',
+                                    konflikt: true, pruefsumme: pruefsumme(r.serverData),
+                                    dokument: ohneStoreFelder(r.serverData) })
+    }
+    const frisch = db.projects.get(p.id)
+    res.json({ id: p.id, pruefsumme: pruefsumme(frisch), version: frisch._version,
+               dokument: ohneStoreFelder(frisch) })
+  })
+
+  // Anlegen. Bewusst schmal: ein neues Projekt entsteht mit Codierung und
+  // Bezeichnung, alles Weitere wird danach gepflegt.
+  app.post('/api/spiegel/projekte', schutz, limiter, (req, res) => {
+    const d = req.body || {}
+    const nummer = String(d.nummer || '').trim()
+    const kuerzel = String(d.kuerzel || '').trim()
+    const bezeichnung = String(d.bezeichnung || '').trim()
+
+    if (!/^\d{3,4}$/.test(nummer)) {
+      return res.status(400).json({ error: 'Die Projektnummer muss 3 oder 4 Ziffern haben.' })
+    }
+    if (!d.kuerzelAusnahme && !/^[A-Za-z0-9ÄÖÜäöüß]{3,4}$/.test(kuerzel)) {
+      return res.status(400).json({ error: 'Das Kürzel muss 3 oder 4 Zeichen haben.' })
+    }
+    if (!bezeichnung) {
+      return res.status(400).json({ error: 'Die Bezeichnung fehlt.' })
+    }
+    const kollision = db.projects.list().find(x => nummerVon(x) === nummer)
+    if (kollision) {
+      return res.status(409).json({
+        error: `Die Projektnummer ${nummer} ist bereits vergeben (${kollision.name}).`,
+      })
+    }
+
+    const id = crypto.randomUUID()
+    const jetzt = new Date().toISOString()
+    const projekt = {
+      id,
+      name: [nummer, kuerzel, bezeichnung].filter(Boolean).join(' ').trim(),
+      contacts: [],
+      distribution: { recipients: [] },
+      passwordHash: null, isEncrypted: false, encryptedContacts: null,
+      cryptoSalt: null, cryptoIv: null,
+      hoaiServices: [], linkedFolders: [], tiles: [],
+      logo: '', clientLogo: '',
+      team: [],
+      projectData: {
+        nummer, kuerzel, bezeichnung,
+        kuerzelAusnahme: !!d.kuerzelAusnahme,
+        gesellschaft: String(d.gesellschaft || ''),
+        vertrag: String(d.vertrag || ''),
+        lph: {}, preLeistungen: {}, planungspartner: [],
+        bauherr: { company: '', person: '', street: '', zip: '', city: '', phone: '', email: '' },
+      },
+      createdAt: jetzt, updatedAt: jetzt,
+    }
+    db.projects.create(projekt, req.user || '__dashboard__')
+    const frisch = db.projects.get(id)
+    res.status(201).json({ id, pruefsumme: pruefsumme(frisch),
+                           version: frisch._version, dokument: ohneStoreFelder(frisch) })
+  })
+}
+
+module.exports = { registerSpiegel, registerSpiegelSchreiben, pruefsumme, kanonisch }

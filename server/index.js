@@ -4106,6 +4106,10 @@ require('./stammdaten').registerStammdaten(app, db, requireStammdaten)
 // Kontakte) - und damit es sich einzeln abschalten laesst, wenn der Umzug
 // durch ist. Siehe server/spiegel.js.
 require('./spiegel').registerSpiegel(app, db, requireStammdaten)
+// Stufe 2: Das Dashboard bekommt die Oberflaeche der Projektdatenbank, die
+// Wahrheit bleibt hier. Geschrieben wird nur mit passender Pruefsumme und
+// nur an den drei Feldern, die die Projektdaten-Ansicht kennt.
+require('./spiegel').registerSpiegelSchreiben(app, db, requireStammdaten, writeLimiter)
 
 // Die App verbietet Einbettung global (helmet: frame-ancestors 'none'). Für die
 // Gelände-Seite bleibt es bei 'self', solange EMBED_FRAME_ANCESTORS nicht gesetzt
