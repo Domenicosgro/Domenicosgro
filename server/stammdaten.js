@@ -49,6 +49,7 @@ function projektAussen(p) {
       id:       t.id,
       name:     t.name || '',
       username: t.username || null,
+      email:    t.email || '',
       rolle:    t.role || '',
       anteil:   typeof t.anteil === 'number' ? t.anteil : null,
     })),
@@ -125,6 +126,7 @@ function registerStammdaten(app, db, schutz) {
       id:       String(t.id || ''),
       name:     String(t.name || ''),
       username: t.username || null,
+      email:    String(t.email || ''),
       role:     String(t.rolle ?? t.role ?? ''),
       anteil:   typeof t.anteil === 'number' ? t.anteil : 0,
     })).filter(t => t.id && (t.name || t.username))
