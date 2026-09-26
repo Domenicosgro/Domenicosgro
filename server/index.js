@@ -4100,6 +4100,13 @@ const { buildGelaende, isoWeekOf } = require('./gelaende')
 // Siehe server/stammdaten.js und komplizen-dashboard/docs/ARCHITEKTUR_STAMMDATEN.md
 require('./stammdaten').registerStammdaten(app, db, requireStammdaten)
 
+// ── Spiegel: vollstaendige Projektdokumente ──────────────────────────────────
+// Fuer den Umzug der Projektdatenbank ins Dashboard. Getrennt von den
+// Stammdaten, weil es hier um das VOLLSTAENDIGE Dokument geht (inkl.
+// Kontakte) - und damit es sich einzeln abschalten laesst, wenn der Umzug
+// durch ist. Siehe server/spiegel.js.
+require('./spiegel').registerSpiegel(app, db, requireStammdaten)
+
 // Die App verbietet Einbettung global (helmet: frame-ancestors 'none'). Für die
 // Gelände-Seite bleibt es bei 'self', solange EMBED_FRAME_ANCESTORS nicht gesetzt
 // ist – erst dort trägt man das Dashboard ein, z. B.
