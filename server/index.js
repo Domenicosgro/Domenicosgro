@@ -195,6 +195,34 @@ function requireAuth(req, res, next) {
   res.status(401).json({ error: 'Nicht angemeldet. Bitte zuerst einloggen.' })
 }
 
+// Zugang zur Stammdaten-Schnittstelle (server/stammdaten.js).
+// Bewusst NICHT der allgemeine API_KEY: der oeffnet alles. Dieser Schluessel
+// gilt nur fuer /api/stammdaten/* und gibt damit genau das frei, was eine
+// fremde Anwendung braucht - Projekte und Mitarbeiter, keine Protokolle und
+// keine Kontakte. Ist er nicht gesetzt, bleibt die Schnittstelle fuer
+// Angemeldete offen und fuer Fremde zu.
+const STAMMDATEN_KEY = process.env.STAMMDATEN_KEY
+
+function requireStammdaten(req, res, next) {
+  const key = req.headers['x-stammdaten-key']
+  // Wer einen Schluessel mitschickt, will als Dienst sprechen. Stimmt er nicht,
+  // wird abgewiesen - NICHT stillschweigend auf die Sitzungspruefung
+  // zurueckgefallen. Sonst sieht ein Tippfehler in der Dashboard-Konfiguration
+  // aus wie ein Anmeldeproblem, und ein Rateversuch bliebe unbemerkt.
+  if (key) {
+    if (!STAMMDATEN_KEY) {
+      return res.status(503).json({ error: 'Stammdaten-Schnittstelle ist nicht eingerichtet (STAMMDATEN_KEY fehlt).' })
+    }
+    if (key !== STAMMDATEN_KEY) {
+      logEvent('AUTH_FAIL', req)
+      return res.status(401).json({ error: 'Ungültiger Stammdaten-Schlüssel.' })
+    }
+    req.user = '__stammdaten__'; return next()
+  }
+  // Ohne Schluessel: ein Mensch im Tool, normale Sitzungspruefung.
+  return requireAuth(req, res, next)
+}
+
 function requireAdmin(req, res, next) {
   if (req.user === '__apikey__' || req.user === '__anonymous__') return next()
   const user = db.users.get(req.user)
@@ -4066,6 +4094,11 @@ app.post('/api/admin/release-report-test', requireAuth, requireAdmin, async (req
 // Das Token ist dasselbe wie beim veröffentlichten Team-Link (/plan/:token);
 // es wird in der Personalplanung erzeugt und lässt sich dort widerrufen.
 const { buildGelaende, isoWeekOf } = require('./gelaende')
+
+// ── Stammdaten-Schnittstelle ─────────────────────────────────────────────────
+// Fassade fuer andere Anwendungen (zuerst: Personalplanung im Dashboard).
+// Siehe server/stammdaten.js und komplizen-dashboard/docs/ARCHITEKTUR_STAMMDATEN.md
+require('./stammdaten').registerStammdaten(app, db, requireStammdaten)
 
 // Die App verbietet Einbettung global (helmet: frame-ancestors 'none'). Für die
 // Gelände-Seite bleibt es bei 'self', solange EMBED_FRAME_ANCESTORS nicht gesetzt
