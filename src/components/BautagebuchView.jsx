@@ -50,7 +50,7 @@ function firmsOfProject(project) {
   return [...map.values()].sort((a, b) => a.rank - b.rank || a.company.localeCompare(b.company, 'de'))
 }
 
-const emptyFirmRow = () => ({ id: uid(), company: '', gewerk: '', workers: '', work: '' })
+const emptyFirmRow = () => ({ id: uid(), company: '', person: '', gewerk: '', workers: '', work: '' })
 
 // Klartext-Fassung der Firmenzeilen – hält das bisherige Feld `firms` aktuell,
 // damit Bestandsdaten, Ausdruck und Export unverändert weiterlaufen.
@@ -59,7 +59,8 @@ const firmsToText = (list) => (list || [])
   .map(f => {
     const meta = [f.gewerk, f.workers !== '' && f.workers != null ? `${f.workers} AK` : '']
       .filter(Boolean).join(', ')
-    return `${f.company.trim()}${meta ? ` (${meta})` : ''}${f.work ? ` – ${f.work}` : ''}`
+    const who = (f.person || '').trim()
+    return `${f.company.trim()}${who ? `, ${who}` : ''}${meta ? ` (${meta})` : ''}${f.work ? ` – ${f.work}` : ''}`
   })
   .join('\n')
 
@@ -95,11 +96,18 @@ function PhotoThumb({ photoId, onRemove, no, size = 'w-20 h-20' }) {
 
 // Foto-Tafel im Anhang: großes Bild mit Bildunterschrift (nur im Ausdruck/PDF).
 // Eigene Bildunterschrift geht vor; ohne sie beschriftet der Anhang automatisch.
-function PhotoPlate({ photo, no, entry }) {
+// Bildunterschrift im Fotoanhang: Standard ist Datum und Projekt. Eine am Foto
+// hinterlegte eigene Unterschrift ersetzt diesen Text; die laufende Fotonummer
+// bleibt immer stehen, weil der Bericht über sie auf das Foto verweist.
+export function photoCaption(photo, entry, projectName) {
+  const own = (photo?.caption || '').trim()
+  if (own) return own
+  return [formatDate(entry?.date), (projectName || '').trim()].filter(Boolean).join(' · ')
+}
+
+function PhotoPlate({ photo, no, entry, projectName }) {
   const [url, setUrl] = useState(null)
   useEffect(() => { cachedPhotoUrl(photo.id).then(setUrl) }, [photo.id])
-  const caption = (photo.caption || '').trim()
-    || (entry.workDone ? stripHtml(toHtml(entry.workDone)).split('\n')[0].trim().slice(0, 90) : '')
   return (
     <figure className="diary-plate">
       {url
@@ -107,8 +115,7 @@ function PhotoPlate({ photo, no, entry }) {
         : <div className="w-full border border-gray-300" style={{ height: '40mm' }} />}
       <figcaption className="diary-caption mt-1">
         <span className="font-semibold">Foto {no}</span>
-        {' · '}{formatDate(entry.date)}{entry.daytime ? `, ${halfLabel(entry.daytime)}` : ''}
-        {caption ? ` · ${caption}` : ''}
+        {' · '}{photoCaption(photo, entry, projectName)}
       </figcaption>
     </figure>
   )
@@ -179,6 +186,28 @@ function EntryForm({ entry, onSave, onCancel, projectId, firmOptions = [], onAdd
     [firmOptions])
 
   const setFirm = (id, patch) => setFirmList(rows => rows.map(r => r.id === id ? { ...r, ...patch } : r))
+
+  // Alle Projektkontakte mit Namen stehen zur Auswahl; die der bereits
+  // gewählten Firma kommen oben in einer eigenen Gruppe. Freitext bleibt.
+  const namedContacts = useMemo(
+    () => (contacts ?? []).filter(x => (x.name || '').trim()),
+    [contacts])
+  // Die Auswahl liefert „Name (Firma)“ – in der Firmenzeile steht die Firma
+  // schon daneben, deshalb den Zusatz abschneiden, wenn er sie wiederholt.
+  const stripCompanySuffix = (value, company) => {
+    const v = (value || '').trim()
+    const c = (company || '').trim()
+    if (!c) return v
+    const suffix = ` (${c})`
+    return v.toLowerCase().endsWith(suffix.toLowerCase()) ? v.slice(0, -suffix.length).trim() : v
+  }
+
+  const sameCompany = useCallback(
+    (company) => {
+      const c = (company || '').trim().toLowerCase()
+      if (!c) return null
+      return (x) => (x.company || '').trim().toLowerCase() === c
+    }, [])
   const pickFirm = (id, value) => {
     const hit = knownFirm(value)
     setFirm(id, hit ? { company: hit.company, gewerk: hit.gewerk || '' } : { company: value })
@@ -311,7 +340,7 @@ function EntryForm({ entry, onSave, onCancel, projectId, firmOptions = [], onAdd
           {firmList.map(row => {
             const isNew = (row.company || '').trim() && !knownFirm(row.company)
             return (
-              <div key={row.id} className="grid grid-cols-[1fr_130px_70px_1fr_auto] gap-1.5 items-start">
+              <div key={row.id} className="grid grid-cols-[1.1fr_1fr_110px_60px_1fr_auto] gap-1.5 items-start">
                 <div>
                   <ContactAutocomplete
                     value={row.company}
@@ -327,6 +356,16 @@ function EntryForm({ entry, onSave, onCancel, projectId, firmOptions = [], onAdd
                     </button>
                   )}
                 </div>
+                {/* Mitarbeiter der Firma: Projektkontakte dieser Firma zuerst,
+                    freier Eintrag jederzeit möglich. */}
+                <ContactAutocomplete
+                  value={row.person}
+                  onChange={v => setFirm(row.id, { person: stripCompanySuffix(v, row.company) })}
+                  contacts={namedContacts}
+                  preferred={sameCompany(row.company)}
+                  preferredLabel={`Bei ${(row.company || '').trim() || 'dieser Firma'}`}
+                  placeholder="Mitarbeiter (optional)"
+                />
                 <input className="input" value={row.gewerk} placeholder="Gewerk"
                   onChange={e => setFirm(row.id, { gewerk: e.target.value })} />
                 <input type="number" min="0" className="input" value={row.workers} placeholder="AK"
@@ -414,14 +453,14 @@ function EntryForm({ entry, onSave, onCancel, projectId, firmOptions = [], onAdd
           Datum, Tageszeit und der ersten Zeile der ausgeführten Arbeiten. */}
       <div>
         <label className="block text-xs font-medium text-gray-500 mb-1">
-          Fotos <span className="font-normal text-gray-400">· Bildunterschrift optional (z. B. „Achse C, 2. OG, Blick nach Norden“)</span>
+          Fotos <span className="font-normal text-gray-400">· Bildunterschrift optional – ohne Eintrag steht Datum und Projekt darunter</span>
         </label>
         <div className="flex gap-3 flex-wrap items-start">
           {photos.map((p, i) => (
             <div key={p.id} className="w-36">
               <PhotoThumb photoId={p.id} size="w-36 h-24"
                 onRemove={() => { removePhoto(p.id); photoUrlCache.delete(p.id); setPhotos(prev => prev.filter((_, j) => j !== i)) }} />
-              <input className="input text-xs mt-1" value={p.caption || ''} placeholder="Bildunterschrift"
+              <input className="input text-xs mt-1" value={p.caption || ''} placeholder="Datum · Projekt"
                 onChange={e => setPhotos(prev => prev.map((x, j) => j === i ? { ...x, caption: e.target.value } : x))} />
             </div>
           ))}
@@ -434,7 +473,7 @@ function EntryForm({ entry, onSave, onCancel, projectId, firmOptions = [], onAdd
                   <X size={11} />
                 </button>
               </div>
-              <input className="input text-xs mt-1" value={p.caption || ''} placeholder="Bildunterschrift"
+              <input className="input text-xs mt-1" value={p.caption || ''} placeholder="Datum · Projekt"
                 onChange={e => setNewPhotos(prev => prev.map((x, j) => j === i ? { ...x, caption: e.target.value } : x))} />
             </div>
           ))}
@@ -936,6 +975,7 @@ export default function BautagebuchView({ project, serverUser, logoDataUrl, clie
                         {entry.firmList.map(f => (
                           <li key={f.id}>
                             <span className="font-medium">{f.company}</span>
+                            {f.person && <span className="text-gray-700">, {f.person}</span>}
                             {[f.gewerk, (f.workers !== '' && f.workers != null) ? `${f.workers} AK` : '']
                               .filter(Boolean).length > 0 && (
                               <span className="text-gray-500">
@@ -1005,7 +1045,7 @@ export default function BautagebuchView({ project, serverUser, logoDataUrl, clie
           </h2>
           <div className="grid grid-cols-2 gap-4">
             {photoPlates.map(({ p, entry }) => (
-              <PhotoPlate key={p.id} photo={p} no={p.no} entry={entry} />
+              <PhotoPlate key={p.id} photo={p} no={p.no} entry={entry} projectName={project.name} />
             ))}
           </div>
         </div>

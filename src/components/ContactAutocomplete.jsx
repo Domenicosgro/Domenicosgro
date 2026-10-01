@@ -19,10 +19,17 @@ const labelOf = (c) =>
 // extraOptions: feste Einträge, die über den Kontakten stehen, z. B.
 // [{ value: 'Info', hint: 'nur zur Kenntnisnahme' }]. Sie sind normale Werte –
 // Freitext bleibt daneben jederzeit möglich.
+//
+// preferred/preferredLabel: Kontakte, die im aktuellen Zusammenhang die
+// naheliegenden sind, stehen oben in einer eigenen Gruppe – z. B. die
+// Mitarbeiter der bereits gewählten Firma. Alle übrigen Kontakte bleiben
+// erreichbar, Freitext ebenfalls.
 export default function ContactAutocomplete({
   value,
   onChange,
   contacts = [],
+  preferred = null,
+  preferredLabel = 'Passend zur Auswahl',
   extraOptions = [],
   placeholder = '',
   className = 'input',
@@ -43,22 +50,27 @@ export default function ContactAutocomplete({
 
   const q = (value || '').toLowerCase().trim()
 
+  const isPreferred = useCallback(
+    (c) => (typeof preferred === 'function' ? !!preferred(c) : false),
+    [preferred])
+
   const matches = useMemo(() => {
     if (!contacts.length) return []
     // Nach Anzeige-Wert deduplizieren
     const seen = new Set()
     return contacts
       .filter(c => matchesTerm(c, q))
-      .map(c => ({ c, label: labelOf(c), score: scoreOf(c) }))
+      .map(c => ({ c, label: labelOf(c), score: scoreOf(c), pref: isPreferred(c) }))
       .filter(({ label }) => label && !seen.has(label) && seen.add(label))
-      // Ohne Suchtext: meistgenutzte zuerst. Mit Suchtext: Treffergüte zuerst,
-      // Nutzungshäufigkeit als Tiebreak – so werden Vorschläge trotzdem konkreter.
+      // Passende Kontakte zuerst. Danach ohne Suchtext: meistgenutzte zuerst;
+      // mit Suchtext: Treffergüte zuerst, Nutzungshäufigkeit als Tiebreak.
       .sort((a, b) =>
-        (q ? matchRank(a.c, q) - matchRank(b.c, q) : 0)
+        (b.pref === a.pref ? 0 : b.pref ? 1 : -1)
+        || (q ? matchRank(a.c, q) - matchRank(b.c, q) : 0)
         || b.score - a.score
         || a.label.localeCompare(b.label, 'de'))
       .slice(0, 10)
-  }, [contacts, q, scoreOf])
+  }, [contacts, q, scoreOf, isPreferred])
 
   // Feste Auswahleinträge zuerst, danach – ohne Suchtext gruppiert – die Kontakte:
   // „Häufig genutzt" vor „Weitere Kontakte".
@@ -66,14 +78,19 @@ export default function ContactAutocomplete({
     const extra = extraOptions
       .filter(o => !q || o.value.toLowerCase().includes(q))
       .map(o => ({ kind: 'extra', label: o.value, hint: o.hint }))
-    const contactRows = matches.map(({ c, label, score }) => ({ kind: 'contact', label, c, score }))
+    const contactRows = matches.map(({ c, label, score, pref }) => ({ kind: 'contact', label, c, score, pref }))
     if (q) return [...extra, ...contactRows]
-    const { frequent, rest } = splitFrequent(contactRows, r => r.score)
+
     const out = [...extra]
+    const prefRows = contactRows.filter(r => r.pref)
+    const others   = contactRows.filter(r => !r.pref)
+    if (prefRows.length) { out.push({ kind: 'header', label: preferredLabel }); out.push(...prefRows) }
+
+    const { frequent, rest } = splitFrequent(others, r => r.score)
     if (frequent.length) { out.push({ kind: 'header', label: FREQUENT_LABEL }); out.push(...frequent) }
-    if (rest.length)     { if (frequent.length) out.push({ kind: 'header', label: REST_LABEL }); out.push(...rest) }
+    if (rest.length)     { if (frequent.length || prefRows.length) out.push({ kind: 'header', label: REST_LABEL }); out.push(...rest) }
     return out
-  }, [extraOptions, q, matches])
+  }, [extraOptions, q, matches, preferredLabel])
 
   const place = useCallback(() => {
     const el = inputRef.current
