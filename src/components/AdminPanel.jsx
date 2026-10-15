@@ -11,9 +11,10 @@ function userInitials(u) {
   return base.slice(0, 2).toUpperCase()
 }
 
-// Vorschlag für den Anmeldenamen aus dem Anzeigenamen: erster Buchstabe des
-// Vornamens + Nachname, Umlaute aufgelöst, klein. Der Admin kann ihn ändern –
-// maßgeblich ist der Name auf der Synology.
+// Vorschlag für den Anmeldenamen aus dem Anzeigenamen: Initialen, klein –
+// das entspricht der Konvention in der Domäne (am, ek, ov, ms …). Bei
+// gleichen Initialen weicht sie ab (csc, CrS), deshalb ist der Vorschlag nur
+// ein Startwert; maßgeblich ist der Name in der Domäne bzw. auf der Synology.
 function suggestLogin(displayName) {
   const clean = (displayName || '')
     .replace(/ä/g, 'ae').replace(/ö/g, 'oe').replace(/ü/g, 'ue')
@@ -24,8 +25,8 @@ function suggestLogin(displayName) {
     .trim()
   const parts = clean.split(/\s+/).filter(Boolean)
   if (parts.length === 0) return ''
-  if (parts.length === 1) return parts[0].toLowerCase()
-  return (parts[0][0] + parts[parts.length - 1]).toLowerCase()
+  if (parts.length === 1) return parts[0].slice(0, 2).toLowerCase()
+  return (parts[0][0] + parts[parts.length - 1][0]).toLowerCase()
 }
 
 function apiHeaders() {
