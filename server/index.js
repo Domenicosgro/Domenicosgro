@@ -579,16 +579,19 @@ function buildInviteMail({ username, displayName, email, appUrl, isSynology, pas
     ? '<img src="cid:logo@komplizen" alt="GHBA" style="height:80px;display:block;margin:0 auto;">'
     : '<h2 style="color:#1e3a5f;text-align:center;margin:0;font-family:Arial,sans-serif;">GHBA</h2>'
 
+  // „Synology-NAS-Passwort" sagte Empfängern außerhalb der IT nichts – sie
+  // fragten nach. Jetzt steht da, woran sie es erkennen: derselbe Zugang wie
+  // für die Projektordner auf dem Server.
   const pwRow = isSynology
-    ? `<tr><td style="color:#6b7280;white-space:nowrap;padding-right:16px;">Passwort</td><td style="color:#374151;">Ihr <strong>Synology-NAS-Passwort</strong></td></tr>`
+    ? `<tr><td style="color:#6b7280;white-space:nowrap;padding-right:16px;">Passwort</td><td style="color:#374151;">Dein <strong>gewohntes Passwort vom Server</strong> – dasselbe wie für die Projektordner</td></tr>`
     : `<tr><td style="color:#6b7280;white-space:nowrap;padding-right:16px;">Passwort</td><td style="font-family:monospace;font-weight:bold;">${passwordNote || '(bitte beim Admin erfragen)'}</td></tr>`
 
   const pwHint = isSynology
-    ? `<p style="margin:12px 0 0 0;font-size:12px;color:#6b7280;">Du meldest dich mit deinem Synology-DSM-Benutzernamen und -Passwort an. Es ist kein separates Passwort erforderlich.</p>`
+    ? `<p style="margin:12px 0 0 0;font-size:12px;color:#6b7280;">Du meldest dich mit deinem Zugang zum Server (Synology-NAS) an – also mit denselben Daten, mit denen du auf die Projektordner zugreifst. Ein eigenes Passwort für das Protokolltool gibt es nicht.</p>`
     : `<p style="margin:12px 0 0 0;font-size:12px;color:#ef4444;">⚠ Bitte ändere dein Passwort nach der ersten Anmeldung (Einstellungen → Passwort ändern).</p>`
 
   const pwTextHint = isSynology
-    ? 'Passwort: Ihr Synology-NAS-Passwort'
+    ? 'Passwort: dein gewohntes Passwort vom Server (Synology-NAS) – dasselbe wie für die Projektordner. Ein eigenes Passwort für das Protokolltool gibt es nicht.'
     : `Passwort: ${passwordNote || '(bitte beim Admin erfragen)'}\n\n⚠ Bitte Passwort nach der ersten Anmeldung ändern.`
 
   const html = `<!DOCTYPE html>
