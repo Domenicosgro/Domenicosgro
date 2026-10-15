@@ -721,31 +721,46 @@ app.post('/api/auth/users/:username/invite', requireAuth, requireAdmin, async (r
 // Kontakte der eigenen Organisation erscheinen in der Benutzerdatenbank als
 // login-freie Spiegel-Einträge (kontakt:<key>, source='contact'). Um eine
 // solche Person einzuladen, braucht es einen echten Benutzer: Die Anmeldung
-// läuft über Synology-DSM, deshalb genügt der DSM-Benutzername – ein eigenes
-// Passwort wird nicht vergeben. Nach dem Anlegen verschwindet der Spiegel beim
-// nächsten Kontaktabgleich von selbst (die E-Mail gehört dann einem Konto).
+// Es bleibt dabei freigestellt, wie sich jemand anmeldet:
+//   mode='synology' – Anmeldung über DSM bzw. die Domäne, kein eigenes
+//                     Passwort; der Anmeldename muss dort existieren.
+//   mode='local'    – eigenes Konto im Tool mit Anfangspasswort, das in der
+//                     Einladung steht (für alle ohne Domänenkonto).
+// Nach dem Anlegen verschwindet der Spiegel beim nächsten Kontaktabgleich von
+// selbst (die E-Mail gehört dann einem Konto).
 app.post('/api/admin/contact-invite', requireAuth, requireAdmin, writeLimiter, async (req, res) => {
   try {
     const mirrorName = String(req.body?.mirrorUsername || '').trim()
     const loginName  = String(req.body?.loginUsername  || '').trim()
     const role       = req.body?.role === 'admin' ? 'admin' : 'user'
+    const mode       = req.body?.mode === 'local' ? 'local' : 'synology'
+    const password   = String(req.body?.password || '').trim()
 
     const mirror = db.users.get(mirrorName)
     if (!mirror)                       return res.status(404).json({ error: 'Kontakt nicht gefunden.' })
     if ((mirror.source || '') !== 'contact')
       return res.status(400).json({ error: 'Dieser Eintrag ist bereits ein Benutzer – bitte dort einladen.' })
     if (!mirror.email)                 return res.status(400).json({ error: 'Für diesen Kontakt ist keine E-Mail-Adresse hinterlegt.' })
-    if (!loginName)                    return res.status(400).json({ error: 'Bitte den Anmeldenamen (Synology-DSM) angeben.' })
+    if (!loginName)                    return res.status(400).json({ error: 'Bitte den Anmeldenamen angeben.' })
+    if (mode === 'local' && password.length < 8)
+      return res.status(400).json({ error: 'Das Anfangspasswort muss mindestens 8 Zeichen lang sein.' })
     if (!mailer.mailerStatus().configured)
       return res.status(400).json({ error: 'E-Mail-Versand nicht konfiguriert. Bitte zuerst im Tab „E-Mail" einrichten.' })
 
     const existing = db.users.get(loginName)
     if (existing && (existing.source || 'local') === 'contact')
       return res.status(409).json({ error: 'Dieser Anmeldename gehört zu einem anderen Kontakt.' })
+    if (existing && mode === 'local')
+      return res.status(409).json({ error: `Der Anmeldename „${loginName}" ist bereits vergeben.` })
 
-    // Benutzer anlegen bzw. vorhandenen behalten; Anmeldung über DSM
-    db.users.upsertSynology(loginName, mirror.display_name || loginName, role)
-    db.users.updateEmail(loginName, mirror.email)
+    if (mode === 'local') {
+      const hash = await auth.hashPassword(password)
+      db.users.create(loginName, mirror.display_name || loginName, hash, role, password, mirror.email)
+    } else {
+      // Anmeldung über DSM/Domäne – vorhandenes Konto bleibt bestehen
+      db.users.upsertSynology(loginName, mirror.display_name || loginName, role)
+      db.users.updateEmail(loginName, mirror.email)
+    }
 
     const appUrl = getAppUrl(req)
     const { from, html, text, attachments } = buildInviteMail({
@@ -753,8 +768,8 @@ app.post('/api/admin/contact-invite', requireAuth, requireAdmin, writeLimiter, a
       displayName:  mirror.display_name || loginName,
       email:        mirror.email,
       appUrl,
-      isSynology:   true,
-      passwordNote: null,
+      isSynology:   mode !== 'local',
+      passwordNote: mode === 'local' ? password : null,
     })
     await mailer.sendMail({
       from, to: mirror.email,
@@ -767,7 +782,7 @@ app.post('/api/admin/contact-invite', requireAuth, requireAdmin, writeLimiter, a
     try { db.users.delete(mirrorName) } catch {}
     syncOrgContacts()
 
-    logEvent('CONTACT_INVITE', req, `to=${mirror.email} login=${loginName}`)
+    logEvent('CONTACT_INVITE', req, `to=${mirror.email} login=${loginName} mode=${mode}`)
     res.json({ ok: true, username: loginName })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })

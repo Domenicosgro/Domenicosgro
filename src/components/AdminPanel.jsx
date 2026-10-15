@@ -29,6 +29,17 @@ function suggestLogin(displayName) {
   return (parts[0][0] + parts[parts.length - 1][0]).toLowerCase()
 }
 
+// Vorschlag für ein Anfangspasswort (nur für Konten mit eigenem Passwort).
+// Lesbar gehalten – es wird einmal benutzt und soll abtippbar sein.
+function suggestPassword() {
+  const abc = 'abcdefghijkmnopqrstuvwxyz'
+  const ABC = 'ABCDEFGHJKLMNPQRSTUVWXYZ'
+  const num = '23456789'
+  const pick = (set, n) => Array.from({ length: n }, () =>
+    set[Math.floor(Math.random() * set.length)]).join('')
+  return pick(ABC, 1) + pick(abc, 5) + pick(num, 3)
+}
+
 function apiHeaders() {
   const h = { 'Content-Type': 'application/json' }
   const token = localStorage.getItem('kp_session_token')
@@ -332,7 +343,12 @@ function UsersTab({ serverUser }) {
     try {
       const res  = await fetch('/api/admin/contact-invite', {
         method: 'POST', headers: apiHeaders(),
-        body: JSON.stringify({ mirrorUsername, loginUsername: loginUsername.trim() }),
+        body: JSON.stringify({
+          mirrorUsername,
+          loginUsername: loginUsername.trim(),
+          mode:          contactInvite.mode,
+          password:      contactInvite.mode === 'local' ? contactInvite.password.trim() : undefined,
+        }),
       })
       const data = await res.json()
       if (res.ok) {
@@ -567,6 +583,8 @@ function UsersTab({ serverUser }) {
                         onClick={() => setContactInvite({
                           mirrorUsername: u.username,
                           loginUsername:  suggestLogin(u.display_name || ''),
+                          mode:           'synology',
+                          password:       suggestPassword(),
                         })}>
                         {inviting === u.username
                           ? <Loader size={13} className="animate-spin" />
@@ -580,19 +598,52 @@ function UsersTab({ serverUser }) {
                 <div className="bg-brand-50 border border-brand-200 px-3 py-2 space-y-2">
                   <p className="text-xs text-gray-600">
                     <strong>{u.display_name}</strong> wird als Benutzer angelegt und per E-Mail an <strong>{u.email}</strong> eingeladen.
-                    Die Anmeldung läuft über die Synology – bitte den dortigen Anmeldenamen eintragen.
                   </p>
+
+                  {/* Wie meldet sich die Person an? Beides bleibt möglich. */}
+                  <div className="flex gap-4">
+                    {[['synology', 'Über die NAS / Domäne', 'Kein eigenes Passwort – der Anmeldename muss dort existieren'],
+                      ['local',    'Eigenes Passwort im Tool', 'Anfangspasswort wird mit der Einladung verschickt']].map(([val, label, hint]) => (
+                      <label key={val} className="flex items-start gap-1.5 text-xs cursor-pointer">
+                        <input type="radio" className="mt-0.5" checked={contactInvite.mode === val}
+                          onChange={() => setContactInvite(v => ({ ...v, mode: val }))} />
+                        <span>
+                          <span className="block text-gray-800">{label}</span>
+                          <span className="block text-gray-400">{hint}</span>
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+
                   <div className="flex items-center gap-2">
                     <span className="text-xs text-gray-400 w-28 shrink-0">Anmeldename:</span>
                     <input className="input text-xs flex-1" autoFocus value={contactInvite.loginUsername}
-                      placeholder="Benutzername auf der Synology"
+                      placeholder={contactInvite.mode === 'local' ? 'Benutzername für die Anmeldung' : 'Benutzername in der Domäne (z. B. ek)'}
                       onChange={e => setContactInvite(v => ({ ...v, loginUsername: e.target.value }))}
                       onKeyDown={e => { if (e.key === 'Enter') handleContactInvite(); if (e.key === 'Escape') setContactInvite(null) }} />
-                    <button className="btn-primary btn-sm" disabled={!contactInvite.loginUsername.trim() || inviting === u.username}
-                      onClick={handleContactInvite}>
+                  </div>
+
+                  {contactInvite.mode === 'local' && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-gray-400 w-28 shrink-0">Anfangs-PW:</span>
+                      <input className="input text-xs flex-1 font-mono" value={contactInvite.password}
+                        placeholder="mindestens 8 Zeichen"
+                        onChange={e => setContactInvite(v => ({ ...v, password: e.target.value }))}
+                        onKeyDown={e => { if (e.key === 'Enter') handleContactInvite(); if (e.key === 'Escape') setContactInvite(null) }} />
+                      <button className="btn-ghost btn-sm text-gray-400" title="Neues Passwort vorschlagen"
+                        onClick={() => setContactInvite(v => ({ ...v, password: suggestPassword() }))}>
+                        <RefreshCw size={13} />
+                      </button>
+                    </div>
+                  )}
+
+                  <div className="flex justify-end gap-2">
+                    <button className="btn-ghost btn-sm text-gray-400" onClick={() => setContactInvite(null)}>Abbrechen</button>
+                    <button className="btn-primary btn-sm" onClick={handleContactInvite}
+                      disabled={inviting === u.username || !contactInvite.loginUsername.trim()
+                                || (contactInvite.mode === 'local' && contactInvite.password.trim().length < 8)}>
                       <Send size={13} /> Senden
                     </button>
-                    <button className="btn-ghost btn-sm text-gray-400" onClick={() => setContactInvite(null)}>Abbrechen</button>
                   </div>
                 </div>
               )}
