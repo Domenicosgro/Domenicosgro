@@ -11,6 +11,23 @@ function userInitials(u) {
   return base.slice(0, 2).toUpperCase()
 }
 
+// Vorschlag für den Anmeldenamen aus dem Anzeigenamen: erster Buchstabe des
+// Vornamens + Nachname, Umlaute aufgelöst, klein. Der Admin kann ihn ändern –
+// maßgeblich ist der Name auf der Synology.
+function suggestLogin(displayName) {
+  const clean = (displayName || '')
+    .replace(/ä/g, 'ae').replace(/ö/g, 'oe').replace(/ü/g, 'ue')
+    .replace(/Ä/g, 'Ae').replace(/Ö/g, 'Oe').replace(/Ü/g, 'Ue')
+    .replace(/ß/g, 'ss')
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[^A-Za-z\s-]/g, ' ')
+    .trim()
+  const parts = clean.split(/\s+/).filter(Boolean)
+  if (parts.length === 0) return ''
+  if (parts.length === 1) return parts[0].toLowerCase()
+  return (parts[0][0] + parts[parts.length - 1]).toLowerCase()
+}
+
 function apiHeaders() {
   const h = { 'Content-Type': 'application/json' }
   const token = localStorage.getItem('kp_session_token')
@@ -208,6 +225,8 @@ function UsersTab({ serverUser }) {
   const [contactSearch,  setContactSearch]  = useState('')
   const [smtpOk,         setSmtpOk]         = useState(null) // null=unknown, true, false
   const [togglingRole,   setTogglingRole]   = useState(null) // username being toggled
+  // Einladung eines Team-Kontakts: { mirrorUsername, loginUsername }
+  const [contactInvite,  setContactInvite]  = useState(null)
 
   useEffect(() => { load() }, [])
 
@@ -299,6 +318,30 @@ function UsersTab({ serverUser }) {
       setInviteMsg(p => ({ ...p, [username]: { ok: res.ok, text: res.ok ? 'Einladung gesendet.' : data.error } }))
       if (res.ok) setUsers(list => list.map(u => u.username === username ? { ...u, invited_at: new Date().toISOString() } : u))
     } catch { setInviteMsg(p => ({ ...p, [username]: { ok: false, text: 'Netzwerkfehler.' } })) }
+    finally { setInviting(null) }
+  }
+
+  // Team-Kontakt einladen: Anmeldename (Synology-DSM) festlegen, Benutzer
+  // anlegen lassen und Einladung senden. Danach ist die Person ein echter
+  // Benutzer, der Kontakt-Spiegel verschwindet.
+  async function handleContactInvite() {
+    const { mirrorUsername, loginUsername } = contactInvite || {}
+    if (!mirrorUsername || !loginUsername?.trim()) return
+    setInviting(mirrorUsername); setInviteMsg(p => ({ ...p, [mirrorUsername]: null }))
+    try {
+      const res  = await fetch('/api/admin/contact-invite', {
+        method: 'POST', headers: apiHeaders(),
+        body: JSON.stringify({ mirrorUsername, loginUsername: loginUsername.trim() }),
+      })
+      const data = await res.json()
+      if (res.ok) {
+        setContactInvite(null)
+        await load()
+        setInviteMsg(p => ({ ...p, [data.username]: { ok: true, text: 'Einladung gesendet.' } }))
+      } else {
+        setInviteMsg(p => ({ ...p, [mirrorUsername]: { ok: false, text: data.error } }))
+      }
+    } catch { setInviteMsg(p => ({ ...p, [mirrorUsername]: { ok: false, text: 'Netzwerkfehler.' } })) }
     finally { setInviting(null) }
   }
 
@@ -504,7 +547,7 @@ function UsersTab({ serverUser }) {
                       onClick={() => { setEditingEmail(u.username); setEmailDraft(u.email || '') }}>
                       <Pencil size={13} />
                     </button>
-                    {u.source !== 'contact' && (
+                    {u.source !== 'contact' ? (
                       <>
                         <button className="btn-ghost p-1 text-gray-400 hover:text-brand-600" title={u.invited_at ? 'Erneut einladen' : 'Einladung senden'}
                           disabled={!u.email || inviting === u.username}
@@ -515,10 +558,43 @@ function UsersTab({ serverUser }) {
                           ? <span className="badge badge-green text-[10px] whitespace-nowrap flex items-center gap-1" title={`Einladung gesendet am ${formatDate(u.invited_at.slice(0, 10))}`}><Check size={10} /> eingeladen</span>
                           : <span className="badge badge-gray text-[10px] whitespace-nowrap" title="Es wurde noch keine Einladung versendet">nicht eingeladen</span>}
                       </>
+                    ) : (
+                      /* Team-Kontakt: noch kein Benutzer – Einladung legt ihn an */
+                      <button className="btn-ghost text-xs text-brand-600 hover:text-brand-800 whitespace-nowrap"
+                        title="Als Benutzer anlegen und zum Protokolltool einladen"
+                        disabled={!u.email || inviting === u.username}
+                        onClick={() => setContactInvite({
+                          mirrorUsername: u.username,
+                          loginUsername:  suggestLogin(u.display_name || ''),
+                        })}>
+                        {inviting === u.username
+                          ? <Loader size={13} className="animate-spin" />
+                          : <><UserPlus size={13} /> Einladen</>}
+                      </button>
                     )}
                   </>
                 )}
               </div>
+              {contactInvite?.mirrorUsername === u.username && (
+                <div className="bg-brand-50 border border-brand-200 px-3 py-2 space-y-2">
+                  <p className="text-xs text-gray-600">
+                    <strong>{u.display_name}</strong> wird als Benutzer angelegt und per E-Mail an <strong>{u.email}</strong> eingeladen.
+                    Die Anmeldung läuft über die Synology – bitte den dortigen Anmeldenamen eintragen.
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-gray-400 w-28 shrink-0">Anmeldename:</span>
+                    <input className="input text-xs flex-1" autoFocus value={contactInvite.loginUsername}
+                      placeholder="Benutzername auf der Synology"
+                      onChange={e => setContactInvite(v => ({ ...v, loginUsername: e.target.value }))}
+                      onKeyDown={e => { if (e.key === 'Enter') handleContactInvite(); if (e.key === 'Escape') setContactInvite(null) }} />
+                    <button className="btn-primary btn-sm" disabled={!contactInvite.loginUsername.trim() || inviting === u.username}
+                      onClick={handleContactInvite}>
+                      <Send size={13} /> Senden
+                    </button>
+                    <button className="btn-ghost btn-sm text-gray-400" onClick={() => setContactInvite(null)}>Abbrechen</button>
+                  </div>
+                </div>
+              )}
               {inviteMsg[u.username] && (
                 <div className={`text-xs px-2 py-1 ${inviteMsg[u.username].ok ? 'text-green-700' : 'text-red-600'}`}>
                   {inviteMsg[u.username].text}

@@ -714,6 +714,61 @@ app.post('/api/auth/users/:username/invite', requireAuth, requireAdmin, async (r
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
+// ── Team-Kontakt einladen ─────────────────────────────────────────────────────
+// Kontakte der eigenen Organisation erscheinen in der Benutzerdatenbank als
+// login-freie Spiegel-Einträge (kontakt:<key>, source='contact'). Um eine
+// solche Person einzuladen, braucht es einen echten Benutzer: Die Anmeldung
+// läuft über Synology-DSM, deshalb genügt der DSM-Benutzername – ein eigenes
+// Passwort wird nicht vergeben. Nach dem Anlegen verschwindet der Spiegel beim
+// nächsten Kontaktabgleich von selbst (die E-Mail gehört dann einem Konto).
+app.post('/api/admin/contact-invite', requireAuth, requireAdmin, writeLimiter, async (req, res) => {
+  try {
+    const mirrorName = String(req.body?.mirrorUsername || '').trim()
+    const loginName  = String(req.body?.loginUsername  || '').trim()
+    const role       = req.body?.role === 'admin' ? 'admin' : 'user'
+
+    const mirror = db.users.get(mirrorName)
+    if (!mirror)                       return res.status(404).json({ error: 'Kontakt nicht gefunden.' })
+    if ((mirror.source || '') !== 'contact')
+      return res.status(400).json({ error: 'Dieser Eintrag ist bereits ein Benutzer – bitte dort einladen.' })
+    if (!mirror.email)                 return res.status(400).json({ error: 'Für diesen Kontakt ist keine E-Mail-Adresse hinterlegt.' })
+    if (!loginName)                    return res.status(400).json({ error: 'Bitte den Anmeldenamen (Synology-DSM) angeben.' })
+    if (!mailer.mailerStatus().configured)
+      return res.status(400).json({ error: 'E-Mail-Versand nicht konfiguriert. Bitte zuerst im Tab „E-Mail" einrichten.' })
+
+    const existing = db.users.get(loginName)
+    if (existing && (existing.source || 'local') === 'contact')
+      return res.status(409).json({ error: 'Dieser Anmeldename gehört zu einem anderen Kontakt.' })
+
+    // Benutzer anlegen bzw. vorhandenen behalten; Anmeldung über DSM
+    db.users.upsertSynology(loginName, mirror.display_name || loginName, role)
+    db.users.updateEmail(loginName, mirror.email)
+
+    const appUrl = getAppUrl(req)
+    const { from, html, text, attachments } = buildInviteMail({
+      username:     loginName,
+      displayName:  mirror.display_name || loginName,
+      email:        mirror.email,
+      appUrl,
+      isSynology:   true,
+      passwordNote: null,
+    })
+    await mailer.sendMail({
+      from, to: mirror.email,
+      subject: applyTpl(getEmailSettings().invite.subject, { name: mirror.display_name || loginName }),
+      html, text, attachments,
+    })
+    db.users.markInvited(loginName)
+
+    // Spiegel entfernen – die Person ist jetzt ein echter Benutzer
+    try { db.users.delete(mirrorName) } catch {}
+    syncOrgContacts()
+
+    logEvent('CONTACT_INVITE', req, `to=${mirror.email} login=${loginName}`)
+    res.json({ ok: true, username: loginName })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
 // ── Synology-Benutzerliste abrufen ────────────────────────────────────────────
 app.post('/api/admin/synology-list', requireAuth, requireAdmin, async (req, res) => {
   try {
