@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react'
+import React, { useCallback, useMemo, useState } from 'react'
 import { Plus, Trash2, CalendarClock, GripVertical } from 'lucide-react'
 import { emptyAgendaDraftItem } from '../utils'
 import SpellCheckTextarea from './SpellCheckTextarea'
@@ -11,38 +11,60 @@ export default function AgendaDraft({ agenda, agendaGreeting, agendaSentAt, prot
   // Ein im Protokoll erzeugter Punkt erscheint damit sofort in der Agenda, und
   // ein Agendapunkt kann jedem Punkt beliebiger Ebene zugeordnet werden
   // (handleAgendaChange erzeugt dann das Kind auf Ebene parent+1, max. 3).
-  // Nur die aus dem Agenda-Entwurf auto-erzeugten Punkte (linkedFromAgendaId)
-  // sind ausgenommen – sie sind selbst schon das Sync-Ergebnis.
-  const targetPoints = useMemo(
-    () => (protocolItems ?? []).filter(it => it.topic && !it.linkedFromAgendaId),
-    [protocolItems]
-  )
+  const points = useMemo(() => protocolItems ?? [], [protocolItems])
+
+  // Zuordnungsziele – je Agendapunkt verschieden: Ein Agendapunkt erzeugt im
+  // Protokoll selbst einen Punkt. Dieser (und alles darunter) scheidet als Ziel
+  // aus, sonst würde er sich selbst untergeordnet. Alle übrigen Punkte sind
+  // waehlbar – auch die, die aus anderen Agendapunkten entstanden sind; sonst
+  // gäbe es in einem frischen Protokoll überhaupt kein Ziel und damit keine
+  // Möglichkeit, einen Unterpunkt anzulegen.
+  // Ebene 3 ist die unterste – solche Punkte nehmen keine Kinder mehr auf.
+  const targetsFor = useCallback((agendaItemId) => {
+    const own = points.findIndex(p => p.linkedFromAgendaId === agendaItemId)
+    const blocked = new Set()
+    if (own >= 0) {
+      blocked.add(points[own].id)
+      const lvl = points[own].level ?? 1
+      for (let i = own + 1; i < points.length; i++) {
+        if ((points[i].level ?? 1) <= lvl) break
+        blocked.add(points[i].id)
+      }
+    }
+    return points.filter(p => p.topic && !blocked.has(p.id) && (p.level ?? 1) < 3)
+  }, [points])
 
   // Abschnitte der Agenda: übernommen werden NUR die HAUPTPUNKTE (Ebene 1) –
   // die Agenda bleibt damit die schlanke Gliederung der Besprechung.
   // Ein Unterpunkt erscheint nur dann als eigener Abschnitt, wenn ihm bereits
   // ein Agendapunkt zugeordnet wurde (sonst wäre der Punkt unsichtbar).
   const sections = useMemo(() => {
-    const linked = targetPoints
+    const linked = points
+      .filter(pi => pi.topic)
       .map(pi => ({
         id: pi.id,
         no: pi.no,
         level: pi.level ?? 1,
         topic: pi.topic,
+        fromAgenda: !!pi.linkedFromAgendaId,
         label: `${pi.no ? pi.no + ' – ' : ''}${pi.topic}`,
         items: agenda.filter(a => a.linkedProtocolItemId === pi.id),
       }))
-      .filter(sec => sec.level === 1 || sec.items.length > 0)
+      // Aus der Agenda erzeugte Punkte stehen schon als Agendazeile da – als
+      // Abschnitt erscheinen sie nur, wenn ihnen etwas untergeordnet wurde.
+      // Von den übrigen sind Hauptpunkte immer sichtbar, tiefere nur mit Inhalt.
+      .filter(sec => sec.items.length > 0 || (!sec.fromAgenda && sec.level === 1))
+    const sectionIds = new Set(linked.map(sec => sec.id))
     const newItems = agenda.filter(a =>
-      !a.linkedProtocolItemId || !targetPoints.find(pi => pi.id === a.linkedProtocolItemId)
+      !a.linkedProtocolItemId || !sectionIds.has(a.linkedProtocolItemId)
     )
     return [...linked, { id: '__new__', no: null, level: 1, label: null, items: newItems }]
-  }, [agenda, targetPoints])
+  }, [agenda, points])
 
   const totalMin = agenda.reduce((s, a) => s + (parseInt(a.duration) || 0), 0)
 
   const addToSection = (parentId) => {
-    const pi = parentId === '__new__' ? null : targetPoints.find(p => p.id === parentId)
+    const pi = parentId === '__new__' ? null : points.find(p => p.id === parentId)
     onChange([...agenda, {
       ...emptyAgendaDraftItem(),
       topic: pi?.topic || '',   // erbt zunächst den Titel des Zielpunkts (bleibt änderbar)
@@ -183,7 +205,7 @@ export default function AgendaDraft({ agenda, agendaGreeting, agendaSentAt, prot
                               onChange={e => assignToPoint(item, e.target.value)}
                             >
                               <option value="__none__">– ohne Zuordnung –</option>
-                              {targetPoints.map(pt => (
+                              {targetsFor(item.id).map(pt => (
                                 <option key={pt.id} value={pt.id}>
                                   {' '.repeat(((pt.level ?? 1) - 1) * 2)}
                                   {pt.no ? `${pt.no} – ` : ''}{pt.topic}
