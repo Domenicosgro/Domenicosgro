@@ -4040,6 +4040,19 @@ app.post('/api/admin/release-report-test', requireAuth, requireAdmin, async (req
 // Siehe server/stammdaten.js und komplizen-dashboard/docs/ARCHITEKTUR_STAMMDATEN.md
 require('./stammdaten').registerStammdaten(app, db, requireStammdaten)
 
+// ── Assistent ────────────────────────────────────────────────────────────────
+// Der Chatbot dieser Anwendung. Er liest Projekte, Protokolle, Aufgaben und
+// Notizen -- aber nur die, die die fragende Person auch sehen darf, und dafuer
+// bekommt er canAccessProject hier mitgegeben. Dieselbe Funktion, die auch die
+// Oberflaeche benutzt; eine zweite waere die, die eines Tages abweicht.
+//
+// Mit den KI-Rechnern spricht er nicht selbst, sondern ueber das Dashboard
+// (server/ki.js). Das ist kein Umweg aus Ordnungsliebe: Dort entscheidet
+// ki._reservieren nach Rang, GPU-Last und "nur leicht", welche Karte eine
+// Anfrage bekommt. Eine eigene Leitung wuerde daran vorbeilaufen.
+require('./assistent').registerAssistent(app, db, requireAuth,
+                                         canAccessProject, logEvent)
+
 // ── Spiegel: vollstaendige Projektdokumente ──────────────────────────────────
 // Fuer den Umzug der Projektdatenbank ins Dashboard. Getrennt von den
 // Stammdaten, weil es hier um das VOLLSTAENDIGE Dokument geht (inkl.

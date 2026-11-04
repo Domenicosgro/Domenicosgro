@@ -24,6 +24,7 @@ import MaengelView           from './components/MaengelView'
 import DateiablageView       from './components/DateiablageView'
 import ProjektdatenView      from './components/ProjektdatenView'
 import ProjektdatenbankView  from './components/ProjektdatenbankView'
+import Assistent             from './components/Assistent'
 import { hashPassword, uid } from './utils'
 import { buildProjectArchivePdf, downloadPdfBase64 } from './archivePdf'
 import { deriveKey, encryptJSON, decryptJSON, newSalt } from './crypto'
@@ -594,6 +595,17 @@ export default function App() {
           viewpoint={bimPopup.viewpoint}
           title={bimPopup.title}
           onClose={() => setBimPopup(null)}
+        />
+      )}
+      {/* Der Assistent hängt hier und damit in jeder Ansicht — er soll nicht
+          dort aufhören, wo man gerade eine Frage hätte. Das offene Projekt gibt
+          ihm den Schwerpunkt; gelesen wird trotzdem nur, was für die
+          angemeldete Person freigegeben ist (server/kontext.js). Nur im
+          Server-Modus: ohne Server gibt es keine Anmeldung und keine KI. */}
+      {isServer && (
+        <Assistent
+          projektId={selectedProjectId}
+          projektName={projectsWithContacts?.find(p => p.id === selectedProjectId)?.name || null}
         />
       )}
       <WebUpdateBanner />

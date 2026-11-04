@@ -1,15 +1,20 @@
-# Komplizen Protokolle – Quelldokument für Nutzerhandbuch
+# Komplizen Protokolle – Nutzerhandbuch
+
+> Diese Datei ist nicht nur Dokumentation: Der Assistent im Programm
+> (`server/kontext.js`) liest sie und beantwortet daraus Fragen zur Bedienung.
+> Was hier falsch steht, sagt er falsch. Steht etwas hier nicht, sagt er, dass
+> er es nicht weiß — das ist so gewollt.
 
 ## Was ist Komplizen Protokolle?
 
-Komplizen Protokolle ist ein digitales Werkzeug für Besprechungsprotokolle und Projektdokumentation, entwickelt für das Büro Komplizen Industrieplanung und Architektur. Die App läuft auf einem eigenen Server im Büronetzwerk unter der Adresse http://192.168.178.154:3000 und ist für alle Mitarbeiter über den Browser erreichbar. Es gibt keine Abhängigkeit von externen Cloud-Diensten. Alle Daten werden lokal gespeichert.
+Komplizen Protokolle ist ein digitales Werkzeug für Besprechungsprotokolle und Projektdokumentation, entwickelt für das Büro Komplizen Industrieplanung und Architektur. Die App läuft auf einem eigenen Server im Büronetzwerk unter der Adresse http://192.168.178.250:3000 und ist für alle Mitarbeiter über den Browser erreichbar. Es gibt keine Abhängigkeit von externen Cloud-Diensten. Alle Daten werden lokal gespeichert.
 
 ---
 
 ## Anmeldung
 
 ### Erster Aufruf
-Die App wird im Browser (Chrome oder Edge empfohlen) über die Adresse http://192.168.178.154:3000 geöffnet. Es erscheint ein Anmeldebildschirm mit den Feldern Benutzername und Passwort.
+Die App wird im Browser (Chrome oder Edge empfohlen) über die Adresse http://192.168.178.250:3000 geöffnet. Es erscheint ein Anmeldebildschirm mit den Feldern Benutzername und Passwort.
 
 ### Benutzername und Passwort
 Jeder Nutzer erhält vom Administrator einen Benutzernamen und ein temporäres Passwort per E-Mail-Einladung. Nach der ersten Anmeldung sollte das Passwort geändert werden. Das Passwort kann über das Augensymbol sichtbar gemacht werden.
@@ -22,7 +27,7 @@ Nach der Anmeldung kann das Passwort über das Zahnrad-Symbol (oben rechts) → 
 
 ### Als App installieren (PWA)
 Die App kann wie eine Desktop-App installiert werden:
-1. http://192.168.178.154:3000 in Chrome oder Edge öffnen
+1. http://192.168.178.250:3000 in Chrome oder Edge öffnen
 2. In der Adressleiste erscheint ein Installieren-Symbol (⊕)
 3. Auf „Installieren" klicken
 4. Die App erscheint im Startmenü und auf dem Desktop mit dem Komplizen-Logo

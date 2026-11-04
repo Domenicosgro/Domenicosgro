@@ -194,8 +194,15 @@ Domenicosgro/
 │   ├── mailer.js                  # E-Mail-Abstraktion: Microsoft Graph (OAuth2) + SMTP-Fallback
 │   ├── attachments.js             # Anhang-Endpunkte (Datei-Upload/-Download im /data-Volume)
 │   ├── gelaende.js                # Gelände-Daten je Kalenderwoche (Dashboard-Integration)
+│   ├── assistent.js               # Assistent: Routen, Verlauf, SSE zum Browser (§15)
+│   ├── kontext.js                 # Rückgriff: Systemkopf aus dem, was die Person sehen darf
+│   ├── ki.js                      # Einzige Stelle, die das Dashboard kennt (Weg zur KI-Farm)
+│   ├── handbuch.md                # Nutzerhandbuch – Laufzeitdatei, der Assistent liest sie
 │   ├── pm2.config.js              # PM2-Konfiguration für direkten Linux-Betrieb (ohne Docker)
 │   └── package.json               # Nur Server-Abhängigkeiten (kein Electron, kein Vite)
+│
+├── pruefungen/                    # Prüfskripte (nicht im Produktionsabbild)
+│   └── pruefung-assistent.js      # 75 Prüfungen: Rechtegrenze, Rückgriff, Strom, Fehlerwege
 │
 └── electron/                      # Desktop-Variante (optional)
     ├── main.js                    # Electron-Hauptprozess
@@ -354,6 +361,8 @@ Ein-Befehl-Deploy, komplett passwortlos via SSH-Key:
 | `release_tokens` | Login-freie Freimelde-Links je Verantwortlicher + Projekt |
 | `app_state` | Key-Value-Speicher (z.B. Scheduler-Zeitstempel) |
 | `store` | Generischer Key-Value-Store (Logo etc.) |
+| `chats` | Unterhaltungen mit dem Assistenten (je Benutzer) |
+| `chat_messages` | deren Nachrichten inkl. Knoten, Dauer und Fundstellen (`ON DELETE CASCADE`) |
 
 Persistenz im WAL-Modus; `makeStore()` kapselt CRUD + optimistische Versionierung.
 
@@ -511,6 +520,21 @@ GET   /api/admin/sessions  ·  DELETE /api/admin/sessions/:username
 GET   /api/admin/deletion-requests  ·  POST …/:id/{approve,reject}
 POST  /api/admin/release-report-test                        wöchentlichen Report manuell auslösen
 ```
+
+**Assistent** (`server/assistent.js`, siehe §15)
+```
+GET    /api/assistent/status                 ist eine KI da, wie viele Projekte freigegeben
+GET    /api/assistent/chats                  eigene Unterhaltungen
+POST   /api/assistent/chats                  neue Unterhaltung  {projektId?}
+GET    /api/assistent/chats/:id              Unterhaltung mit Nachrichten
+POST   /api/assistent/chats/:id/titel        umbenennen
+DELETE /api/assistent/chats/:id              löschen (Nachrichten per CASCADE)
+POST   /api/assistent/chats/:id/fragen       fragen → SSE: quellen, text…, fertig | fehler
+```
+Fremde Unterhaltungen ergeben **404, nicht 403** – ein 403 würde bestätigen,
+dass es sie gibt. Ein Dienstschlüssel (`X-API-Key` → `__apikey__`) bekommt hier
+**403**: Er gehört zu keinem Menschen und sieht in `canAccessProject` jedes
+Projekt; ein Assistent darauf hätte keine Rechtegrenze.
 
 **Statische Auslieferung**
 ```
@@ -812,3 +836,109 @@ git pull origin claude/protocol-tool-meetings-tIoZX
 - Wetterabruf setzt Internetzugang der NAS und einen gepflegten **Ort** in den Projektdaten voraus.
 - Gelände: Zuteilung per Drag (Person auf Projekt ziehen) ist noch nicht gebaut – Phase 2 des Musters.
 - Gelände: ob die Embed-Shell des Dashboards eine externe `meta.embed_src` akzeptiert, ist noch nicht praktisch geprüft (Rückfall: `embed_mode = 'link'`).
+
+---
+
+## 15. Der Assistent (Chatbot auf den Projektdaten)
+
+> Seit 04.11.2026. Erste von mehreren Integrationen, die je einen eigenen
+> Assistenten bekommen. Das Papier dazu:
+> `komplizen-dashboard/docs/ARCHITEKTUR_ASSISTENTEN.md`.
+
+Beantwortet zwei Arten von Fragen: zu den Bauprojekten dieses Büros und zur
+Bedienung des Programms. **Er liest nur** – anlegen, speichern und versenden
+bleibt bei den Menschen.
+
+### 15.1 Die zwei Entscheidungen, auf denen alles steht
+
+**Der Bot lebt hier, nicht im Dashboard.** Naheliegend wäre das Gegenteil
+gewesen: Dort steht schon ein Assistent, dort steht die KI-Farm, und die
+Leitung zu den Projektdaten gibt es seit September (`/api/stammdaten/*`).
+Dagegen steht eine Zeile in `canAccessProject`:
+
+```js
+if (username === '__apikey__') return true
+```
+
+Der Dienstschlüssel des Dashboards sieht **jedes** Projekt, auch die
+zugangsbeschränkten. Für die Personalplanung ist das richtig; ein Chatbot
+darauf hätte genau die Grenze aufgehoben, um die es geht. Hier dagegen liegt
+die Sitzung des Menschen, und `server/kontext.js` bekommt `canAccessProject`
+hereingereicht – dieselbe Funktion, die auch die Oberfläche benutzt.
+
+**Mit den KI-Rechnern spricht trotzdem nur das Dashboard.** Dort entscheidet
+`ki._reservieren` nach Rang, gemeldeter GPU-Last und dem Schalter „nur leicht",
+welche Karte eine Anfrage bekommt – das ist der Schutz für den Menschen, der an
+der Maschine sitzt. Eine eigene Leitung zu LM Studio liefe daran vorbei.
+
+### 15.2 Die Dateien
+
+| Datei | Aufgabe |
+|---|---|
+| `server/ki.js` | Einzige Stelle, die das Dashboard kennt. Schickt `POST /api/ki/dienst/unterhalten` mit `X-KI-Key`, liest den SSE-Strom zurück. Wirft nie – jeder Fehlschlag kommt als `fehler`-Ereignis. |
+| `server/kontext.js` | Der Rückgriff: baut den Systemkopf aus dem, was die Person sehen darf. Stichwortsuche, Zeichenbudget, Quellenangaben. |
+| `server/assistent.js` | Die Routen, der Verlauf, das Strömen zum Browser. |
+| `server/handbuch.md` | Das Nutzerhandbuch – **Laufzeitdatei**, keine reine Doku. Lag vorher als `Komplizen_Protokolle_Quelldokument.md` oben; das Produktionsabbild kopiert nur `server/` und `dist/`, dort wäre es nie angekommen. |
+| `src/components/Assistent.jsx` | Das Fenster. Hängt in `wrap()` in `App.jsx`, also in jeder Ansicht. |
+| `pruefungen/pruefung-assistent.js` | 75 Einzelprüfungen gegen echten Server und Attrappe. |
+
+### 15.3 Wie der Systemkopf entsteht (`kontext.js`)
+
+1. **Projekte filtern** mit `canAccessProject`. Protokolle und Notizen ohne
+   Projektbezug bleiben sichtbar – genau wie in `GET /api/protocols`.
+2. **Schwerpunkt bestimmen**: das offene Projekt, sonst ein in der Frage
+   genanntes – aber nur bei **genau einem** Treffer. Bei zweien wäre die Wahl
+   geraten, und eine geratene Mappe verdrängt echte Fundstellen.
+3. **Stücke bewerten**: Protokollpunkte, Aufgaben, Bemerkungen, Notizen.
+   Abdeckung zählt mehr als Häufigkeit – sonst gewinnt immer der längste Text.
+4. **Füllen bis zum Budget** (17 000 Zeichen; das Dashboard lehnt über 24 000
+   ab). **Weggelassen wird, nicht abgeschnitten**: Ein mitten im Satz gekappter
+   Protokollpunkt sieht für das Modell aus wie ein vollständiger. Was nicht
+   mehr hineinpasste, wird gezählt und mitgeteilt.
+
+**Was bewusst nicht in den Kopf kommt:** E-Mail-Adressen und Telefonnummern der
+Kontakte. Für „wer macht die Statik?" braucht das Modell sie nicht, und was
+nicht im Kopf steht, kann in keiner weitergeleiteten Antwort auftauchen.
+Verschlüsselte Kontakte bleiben ohnehin draußen – der Schlüssel liegt im
+Browser.
+
+Gesucht wird mit Stichwörtern, nicht nach Bedeutung. Bei 66 Protokollen in 21
+Projekten reicht das und ist nachprüfbar: Man kann sehen, **warum** etwas
+gefunden wurde. Der Preis sind Synonyme – deshalb sagt die Anweisung dem Modell
+ausdrücklich, es soll das Fehlen von Material benennen statt es zu überbrücken,
+und: *„Behaupte nie, etwas existiere nicht – sage, dass du es nicht findest."*
+Was fehlt, kann auch hinter einer fehlenden Freigabe liegen.
+
+### 15.4 Die Fundstellen stehen über der Antwort
+
+Sie kommen auch zuerst an: Der Server schickt das `quellen`-Ereignis, bevor das
+Modell das erste Wort geschrieben hat. Wer liest, worauf sich eine Antwort
+stützt, **bevor** er die Antwort liest, glaubt ihr so weit, wie sie es verdient.
+Steht dort „Keine Fundstellen", ist das die wichtigste Zeile auf dem Schirm.
+
+### 15.5 Einrichten
+
+```
+KI_DASHBOARD_URL=http://192.168.178.250:5050
+KI_DASHBOARD_KEY=<derselbe wie KI_DIENST_SCHLUESSEL im Dashboard>
+KI_TIMEOUT_MS=180000
+```
+
+Fehlt eines von beiden, **erscheint der Knopf gar nicht**. Ein Chatfenster, das
+auf jede Frage mit einem Verbindungsfehler antwortet, sieht nach einem kaputten
+Programm aus statt nach einer Funktion, die hier nicht eingeschaltet ist.
+
+### 15.6 Prüfen
+
+```bash
+node pruefungen/pruefung-assistent.js
+```
+
+Startet einen echten Server mit leerer Datenbank im Temp-Verzeichnis und eine
+Attrappe des Dashboards, die **jede Anfrage mitschreibt**. Das ist die Naht, an
+der sich nachlesen lässt, was der Systemkopf wirklich enthielt – die Rechtegrenze
+lässt sich nicht behaupten, nur messen.
+
+Mit `--vorschau` bleibt am Ende alles stehen (Anmeldung `anna` sieht beide
+Projekte, `bert` nur eines), um die Oberfläche anzusehen. Portblock: 3477
+Anwendung, 3478 Attrappe.
