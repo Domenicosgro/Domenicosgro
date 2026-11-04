@@ -536,6 +536,16 @@ export default function Assistent({ projektId = null, projektName = null,
         {nachrichten.length === 0 && (
           <div className="space-y-3">
             <div className="bg-white border border-gray-200 px-3 py-2.5 text-sm text-gray-700">
+              {/* Der Gruß steht hier und nicht nur in der Sprechblase: Die
+                  erscheint nur, wenn es etwas Neues gibt — und das ist der
+                  Ausnahmefall. Wer den Assistenten öffnet, soll immer
+                  begrüßt werden, nicht nur an Tagen mit Neuigkeiten.
+                  Weiterhin ohne KI: ein `if` über die Uhrzeit. */}
+              {benutzerName ? (
+                <div className="font-headline text-night mb-1">
+                  {gruss()}, {benutzerName.split(' ')[0]}.
+                </div>
+              ) : null}
               Ich beantworte Fragen zu den Projekten, die für dich freigegeben
               sind, und zur Bedienung des Programms. Ich nenne dabei immer, worauf
               sich meine Antwort stützt.

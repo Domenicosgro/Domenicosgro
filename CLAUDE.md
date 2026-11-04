@@ -1041,9 +1041,18 @@ Vier Entscheidungen, die man an der Umsetzung sieht:
    eigenen Projekt und sind gegengelesen — die Oberfläche soll aber nicht
    davon abhängen, dass das so bleibt.
 
-**Die Begrüßung selbst kostet keinen KI-Aufruf.** „Guten Morgen, Anna" ist
-ein `if` über die Uhrzeit. Dafür belegt niemand einen Platz auf einer
-Grafikkarte.
+**Die Begrüßung steht an zwei Stellen**, und das ist Absicht:
+
+* in der **Sprechblase**, wenn es etwas Neues gibt,
+* im **Fenster selbst**, bei jedem Öffnen.
+
+Die erste Fassung hatte sie nur in der Sprechblase — und die erscheint nur
+an Tagen mit Neuigkeiten, also fast nie. Wer den Assistenten öffnet, soll
+immer begrüßt werden; eine tägliche Blase nur zum Grüßen wäre dagegen
+Belästigung.
+
+**Sie kostet keinen KI-Aufruf.** „Guten Morgen, Anna" ist ein `if` über die
+Uhrzeit. Dafür belegt niemand einen Platz auf einer Grafikkarte.
 
 ### 15.3c Bilder: SVG statt Bildmodell
 
