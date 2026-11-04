@@ -595,6 +595,62 @@ async function main() {
          && !/Besprechung im Projekt Nummer/.test(hilfe2.gesendet?.system || ''),
          '(Quellen: ' + JSON.stringify(hilfe2.quellen?.quellen) + ')')
 
+  abschnitt('Wie Menschen tippen, nicht wie es im Handbuch steht')
+  // Alle drei Regeln stammen aus echten Fehlschlaegen am 04.11.2026, bei
+  // denen der Bot mangels Fundstelle eine Oberflaeche erfunden hat.
+  pruefe('ss trifft ß: „schliesse" findet „schließen"',
+         k._treffer('Protokoll abschließen, schließen und sperren', ['schliesse']).punkte > 0)
+  pruefe('ae trifft ä: „aendern" findet „ändern"',
+         k._treffer('Eigenes Passwort ändern', ['aendern']).punkte > 0)
+  pruefe('und die Frage wird genauso angeglichen',
+         k._begriffe('Wie schliesse ich ab?').includes('schliesse'))
+
+  // Zusammengesetzte Woerter, Rueckfallebene.
+  const gew1 = (() => {
+    const st = [{ text: 'Maßnahmen und Aufgaben anlegen' }, { text: 'Teilnehmer eintragen' }]
+    return { st, g: k._gewichte(st, ['massnahmenpunkt']) }
+  })()
+  pruefe('ein Wort, das nirgends steht, bekommt die Rueckfallebene',
+         gew1.g.ohneTreffer.has('massnahmenpunkt'))
+  pruefe('und findet damit sein Grundwort',
+         k._treffer(gew1.st[0].text, ['massnahmenpunkt'], gew1.g, gew1.g.ohneTreffer).punkte > 0)
+  pruefe('aber nicht den unbeteiligten Abschnitt',
+         k._treffer(gew1.st[1].text, ['massnahmenpunkt'], gew1.g, gew1.g.ohneTreffer).punkte === 0)
+
+  // Und der Rueckschritt, den die erste Fassung der Regel verursacht hat.
+  const gew2 = (() => {
+    const st = [{ text: 'Was ist eine Protokollkette?' },
+                { text: 'Neues Protokoll anlegen' },
+                { text: 'Protokoll als PDF drucken' }]
+    return { st, g: k._gewichte(st, ['protokollkette']) }
+  })()
+  pruefe('ein Wort, das es wirklich gibt, nimmt die Rueckfallebene NICHT',
+         !gew2.g.ohneTreffer.has('protokollkette'))
+  pruefe('es trifft nur seinen eigenen Abschnitt',
+         k._treffer(gew2.st[0].text, ['protokollkette'], gew2.g, gew2.g.ohneTreffer).punkte > 0
+         && k._treffer(gew2.st[1].text, ['protokollkette'], gew2.g, gew2.g.ohneTreffer).punkte === 0,
+         '(sonst begruebe die Hilfsregel genau die richtige Stelle)')
+
+  abschnitt('Das Handbuch beschreibt die Anwendung von heute')
+  const hb2 = k._handbuch()
+  const titel = hb2.map(a => a.titel).join(' | ')
+  for (const [was, muss] of [['Projektdatenbank', true], ['Zugangsbeschränkung', true],
+                             ['Freimeldung', true], ['Notizbuch', true],
+                             ['Baudokumentation', true], ['Projekt-Dashboard', true]]) {
+    pruefe('ein Abschnitt zu „' + was + '" ist da',
+           titel.includes(was) === muss, '(Titel: ' + titel.slice(0, 80) + '…)')
+  }
+  const anlegen = hb2.find(a => a.titel === 'Neues Projekt anlegen')
+  pruefe('„Neues Projekt anlegen" nennt die Projektdatenbank',
+         Boolean(anlegen) && /Projektdatenbank/.test(anlegen.text))
+  pruefe('und die drei Pflichtfelder',
+         Boolean(anlegen) && /Nummer/.test(anlegen.text) && /Kürzel/.test(anlegen.text)
+         && /Projektbezeichnung/.test(anlegen.text))
+  pruefe('und dass es dort nur Admins duerfen',
+         Boolean(anlegen) && /Administrator/.test(anlegen.text))
+  pruefe('die alte, falsche Anleitung steht nicht mehr da',
+         !/Startseite → „Neues Projekt"/.test(hb2.map(a => a.text).join('\n')))
+
   abschnitt('Das Feste steht vorn, das Wechselnde hinten')
   // Nicht Geschmack, sondern Tempo: LM Studio verwendet den gleichbleibenden
   // Anfang eines Systemkopfs wieder. Gemessen am 04.11.2026 auf der 4090,

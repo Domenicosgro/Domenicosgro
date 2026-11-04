@@ -13,19 +13,19 @@ Komplizen Protokolle ist ein digitales Werkzeug für Besprechungsprotokolle und 
 
 ## Anmeldung
 
-### Erster Aufruf
+### Anmelden: der erste Aufruf
 Die App wird im Browser (Chrome oder Edge empfohlen) über die Adresse http://192.168.178.250:3000 geöffnet. Es erscheint ein Anmeldebildschirm mit den Feldern Benutzername und Passwort.
 
 ### Benutzername und Passwort
 Jeder Nutzer erhält vom Administrator einen Benutzernamen und ein temporäres Passwort per E-Mail-Einladung. Nach der ersten Anmeldung sollte das Passwort geändert werden. Das Passwort kann über das Augensymbol sichtbar gemacht werden.
 
-### Passwort vergessen
+### Passwort vergessen oder zurücksetzen
 Auf dem Anmeldebildschirm gibt es den Link „Passwort zurücksetzen". Dort kann der Nutzername eingegeben werden. Der Administrator erhält dann eine Benachrichtigung und setzt ein neues Passwort.
 
-### Passwort ändern
+### Eigenes Passwort ändern
 Nach der Anmeldung kann das Passwort über das Zahnrad-Symbol (oben rechts) → Tab „Passwort" geändert werden.
 
-### Als App installieren (PWA)
+### Programm als App installieren (PWA, Handy, Desktop)
 Die App kann wie eine Desktop-App installiert werden:
 1. http://192.168.178.250:3000 in Chrome oder Edge öffnen
 2. In der Adressleiste erscheint ein Installieren-Symbol (⊕)
@@ -40,22 +40,40 @@ Die App kann wie eine Desktop-App installiert werden:
 Nach der Anmeldung erscheint die Startseite mit allen Projekten.
 
 ### Projekte
-- Jedes Projekt wird als Karte angezeigt mit Name, Anzahl der Protokolle und letztem Datum
-- Klick auf ein Projekt öffnet die Protokollliste des Projekts
-- Projekte können über den Button „Neues Projekt" angelegt werden
-- Projektnamen können durch Klick auf den Stift-Icon bearbeitet werden
-- Projekte können gelöscht werden (nur wenn keine Protokolle vorhanden sind)
 
-### Favoriten
+Die Startseite zeigt die Projekte, die **auf dem Protokoll-Dashboard liegen** —
+nicht alle Projekte des Büros. Jede Karte nennt Protokolle, offene Maßnahmen,
+Kontakte und das letzte Datum. Ein Klick öffnet das Projekt-Dashboard.
+
+**Ein neues Projekt wird nicht hier angelegt, sondern in der
+Projektdatenbank.** Der Knopf „Projekt hinzufügen" auf der Startseite holt
+ein bereits vorhandenes Projekt aus der Projektdatenbank auf das
+Protokoll-Dashboard. Der ganze Ablauf steht unter „Neues Projekt anlegen".
+
+Mit „vom Dashboard entfernen" verschwindet ein Projekt nur von der
+Startseite. **Es bleibt in der Projektdatenbank erhalten** und lässt sich
+jederzeit wieder hinzufügen. Gelöscht wird dabei nichts.
+
+### Die Kacheln oben auf der Startseite
+
+| Kachel | Wozu |
+|---|---|
+| **Kontaktdatenbank** | alle Projektkontakte auf einen Blick, projektübergreifend |
+| **Projektdatenbank** | die zentralen Projektstammdaten: Nummer, Kürzel, Leistungsphasen, Verträge. **Hier entstehen neue Projekte.** Bearbeiten dürfen nur Admins |
+| **Mitarbeiter & Projektteams** | die eigene Organisation pflegen (nur Admin) |
+| **Learning-Plattform** | Schulungsvideos zur Nutzung des Programms |
+| **Administration** | Benutzer, E-Mail-Vorlagen, Backup, Server-Einstellungen (nur Admin) |
+
+### Favoriten setzen (Stern)
 Jeder Nutzer kann Projekte als Favorit markieren (Stern-Symbol). Favoriten erscheinen oben in der Liste. Diese Einstellung ist pro Nutzer individuell und wird auf dem Server gespeichert.
 
-### Suche
+### Projekte suchen und filtern
 Über das Suchfeld können Projekte nach Namen gefiltert werden.
 
-### Maßnahmen-Dashboard
+### Maßnahmen-Dashboard: offene Aufgaben über alle Projekte
 Der Button „Dashboard" öffnet eine projektübergreifende Übersicht aller offenen Maßnahmen aus allen Protokollen.
 
-### Passwortschutz für Projekte
+### Projekt mit Passwort schützen
 Projekte können mit einem Passwort geschützt werden. Geschützte Projekte sind mit einem Schloss-Symbol gekennzeichnet. Beim Öffnen wird das Passwort abgefragt. Der Inhalt wird verschlüsselt gespeichert.
 
 ---
@@ -75,7 +93,7 @@ Jedes Protokoll zeigt:
 - Wer das Protokoll zuletzt bearbeitet hat
 - Ob das Protokoll abgeschlossen ist (Schloss-Symbol)
 
-### Neues Protokoll
+### Neues Protokoll anlegen oder erstellen
 Der Button „Neues Protokoll" erstellt ein leeres Protokoll für das aktuelle Projekt.
 
 ### Aktionen pro Protokoll
@@ -87,7 +105,7 @@ Der Button „Neues Protokoll" erstellt ein leeres Protokoll für das aktuelle P
 - Protokolle können nach Stichwort durchsucht werden
 - Bei mehreren Besprechungsarten erscheint ein Filter zum Einschränken
 
-### Import
+### Protokolle importieren
 Protokolle können als JSON-Datei importiert werden (für Datenmigration).
 
 ---
@@ -106,14 +124,14 @@ Der Editor ist das Herzstück der App. Er besteht aus mehreren Abschnitten.
 - **Erstellt von**: Name des Protokollführers
 - **Vorgänger-Protokoll**: Verknüpfung mit einem vorherigen Protokoll derselben Reihe (Protokollkette)
 
-### Protokollnummer
+### Protokollnummer: wie sie entsteht
 Die Protokollnummer wird automatisch generiert, z.B. „2 - BB-MeinProjekt_29.04.2026". Sie setzt sich zusammen aus:
 - Position in der Protokollkette (1, 2, 3, ...)
 - Kürzel der Besprechungsart
 - Projektname
 - Datum
 
-### Teilnehmerliste
+### Teilnehmer hinzufügen und Anwesenheit eintragen
 - Teilnehmer können manuell eingegeben oder aus den Projektkontakten übernommen werden
 - Pro Teilnehmer: Name, Firma, Funktion
 - Anwesenheit kann mit einem Haken markiert werden (anwesend / entschuldigt / nicht erschienen)
@@ -125,7 +143,7 @@ Die Protokollnummer wird automatisch generiert, z.B. „2 - BB-MeinProjekt_29.04
 - Die Agenda kann per E-Mail an die Teilnehmer verschickt werden (Button „Agenda senden")
 - Beim Abschließen des Protokolls werden Agenda-Punkte automatisch als Protokollpunkte übernommen
 
-### Protokollpunkte
+### Protokollpunkte erfassen und bearbeiten
 Der Hauptbereich des Protokolls enthält die Protokollpunkte.
 
 **Struktur eines Protokollpunkts:**
@@ -148,7 +166,7 @@ Der Hauptbereich des Protokolls enthält die Protokollpunkte.
 **Übernahme aus Vorgänger-Protokoll:**
 Wenn ein Vorgänger-Protokoll verknüpft ist, werden beim Öffnen automatisch alle offenen Punkte aus dem Vorgänger übernommen (Carryover). Erledigte Punkte erscheinen grau und werden ebenfalls zur Dokumentation übernommen.
 
-### Maßnahmen (Action Items)
+### Maßnahmen und Aufgaben anlegen, zuweisen, Frist setzen
 Unterhalb der Protokollpunkte gibt es eine Maßnahmenliste.
 
 **Felder einer Maßnahme:**
@@ -178,12 +196,12 @@ In den Textfeldern (Besprechungsinhalt, Ergebnis, Bemerkungen) steht ein Textedi
 
 ## Protokoll abschließen
 
-### Abschließen
+### Protokoll abschließen, schließen und sperren
 Mit dem Button „Protokoll abschließen" wird das Protokoll gesperrt. Danach kann es nicht mehr bearbeitet werden. Beim Abschließen werden automatisch:
 - Alle noch nicht verlinkten Agenda-Punkte als Protokollpunkte übernommen
 - Das Protokoll als „Abgeschlossen" markiert (Schloss-Symbol in der Liste)
 
-### Wieder öffnen
+### Abgeschlossenes Protokoll wieder öffnen, aufmachen, bearbeiten
 Ein abgeschlossenes Protokoll kann durch den Administrator wieder geöffnet werden.
 
 ---
@@ -198,14 +216,14 @@ Protokolle derselben Besprechungsreihe (z.B. wöchentliche Baubesprechung) könn
 - Offene Punkte werden automatisch übernommen
 - Das Gesamtprotokoll kann die gesamte Reihe anzeigen
 
-### Gesamtprotokoll
+### Gesamtprotokoll erzeugen
 Der Button „Gesamtprotokoll" (nur sichtbar wenn das Protokoll Teil einer Kette ist) öffnet eine Druckansicht der gesamten Protokollreihe – alle Besprechungen von Beginn an auf einen Blick.
 
 ---
 
 ## Drucken und Exportieren
 
-### PDF-Druck
+### Protokoll als PDF drucken oder speichern
 Der Button „Drucken" (Drucker-Symbol) öffnet den Browser-Druckdialog. Das Protokoll wird als A4-Seite formatiert mit:
 - Kopfzeile mit Logo und Protokolldaten
 - Teilnehmerliste
@@ -213,7 +231,7 @@ Der Button „Drucken" (Drucker-Symbol) öffnet den Browser-Druckdialog. Das Pro
 - Maßnahmen
 - Seitennummern
 
-### Word-Export
+### Protokoll nach Word exportieren
 Der Button „Word" exportiert das Protokoll als .docx-Datei, die in Microsoft Word geöffnet werden kann.
 
 ### Gesamtprotokoll drucken
@@ -226,7 +244,7 @@ Der Button „Word" exportiert das Protokoll als .docx-Datei, die in Microsoft W
 ### Was sind Projektkontakte?
 Jedes Projekt kann eine Liste von Beteiligten haben: Auftraggeber, Planer, Fachplaner, Firmen etc.
 
-### Kontakte verwalten
+### Kontakte anlegen, bearbeiten und löschen
 Der Button „Kontakte" in der Protokollliste öffnet die Kontaktverwaltung.
 
 **Felder pro Kontakt:**
@@ -344,13 +362,177 @@ Die App kann als Desktop-App installiert werden. Nach der Installation:
 
 ---
 
+## Das Projekt-Dashboard
+
+Ein Klick auf eine Projektkarte öffnet das Projekt-Dashboard. Oben stehen die
+Zahlen des Projekts (Protokolle, offene und freigemeldete Maßnahmen, Notizen,
+Kontakte, Info-Punkte, beauftragte Leistungsphasen), darunter die Kacheln:
+
+| Kachel | Wozu |
+|---|---|
+| **Protokolle** | die Besprechungsprotokolle des Projekts |
+| **Maßnahmen** | alle Aufgaben des Projekts mit Zuständigen und Fristen |
+| **Projektkontakte** | die Beteiligten dieses Projekts |
+| **Projektdaten** | Stammdaten, Leistungsphasen, Verträge |
+| **Notizen & Notizbuch** | Akten- und Telefonnotizen, dazu das projektinterne Notizbuch |
+| **Info-Punkte** | Festhaltungen, die keine Aufgabe sind |
+| **Baudokumentation** | das Bautagebuch |
+| **Mängel** | Mängelerfassung und -verfolgung |
+| **Dateiablage** | die verknüpften Projektordner auf der NAS |
+| **BIM-Modell** | IFC-Modell ansehen, Issues erfassen |
+| **Planungsphase / Bauphase** | schaltet um, welche Kacheln im Vordergrund stehen |
+| **Administration** | Zugang und Projektadmins (nur für Admins sichtbar) |
+
+---
+
+## Wer darf was sehen — Zugangsbeschränkung
+
+Standardmäßig ist ein Projekt für **alle angemeldeten Personen** sichtbar.
+
+Soll es das nicht sein, wird es **zugangsbeschränkt** gestellt: in der
+Admin-Kachel des Projekts. Dann sehen es nur noch
+
+- System-Administratoren,
+- der **Projekt-Admin** (wer es angelegt hat) und benannte Co-Admins,
+- die ausdrücklich freigegebenen Personen.
+
+Für alle anderen ist das Projekt **unsichtbar** — es steht nicht in der
+Liste, und auch (K)ompl(I)ze findet nichts dazu.
+
+Die Freigabe ist eine **Namensliste**, keine Gruppe: Jede Person wird
+einzeln eingetragen. Kommt jemand ins Team, muss sie ergänzt werden.
+
+---
+
+## Freimeldung von Aufgaben
+
+Eine Maßnahme kann der Zuständige selbst als erledigt melden — auch ohne
+Zugang zum Programm. Dafür gibt es einen **Link ohne Anmeldung**, je
+Verantwortlichem und Projekt.
+
+Der Ablauf: Der Zuständige meldet frei und gibt eine Begründung (Anhänge
+möglich). Die Aufgabe trägt danach ein Kennzeichen. **Genehmigt wird von
+einem Projekt- oder System-Admin**; erst dann gilt sie als erledigt. Der
+Verlauf — angefordert, genehmigt, abgelehnt — bleibt an der Aufgabe stehen.
+
+Freitags um 15:00 geht ein Bericht über die genehmigten Freimeldungen an die
+Besprechungsteilnehmer.
+
+---
+
+## Notizbuch
+
+Projektintern, zwei Ebenen: **Hauptthemen**, darunter **Notizen** mit
+Formatierung und einer eigenen kleinen Aufgabenliste (Haken, Zuständiger,
+Frist). Es speichert selbsttätig. Drucken und per E-Mail versenden sind
+möglich.
+
+Unterschied zu den **Notizen**: Die sind Akten- und Telefonnotizen mit
+Teilnehmern und Verteiler und gehen nach außen. Das Notizbuch bleibt im Team.
+
+---
+
+## Baudokumentation und Mängel
+
+**Baudokumentation** (Bautagebuch) hält den Bauablauf fest, **Mängel** erfasst
+und verfolgt Mängel bis zur Beseitigung.
+
+> **Achtung:** Beide speichern **nicht** von selbst. Hier muss die
+> Schaltfläche zum Speichern gedrückt werden, sonst ist die Eingabe weg.
+> Das ist der Unterschied zu Protokollen und Notizbuch, die beim Tippen
+> sichern.
+
+---
+
+## Info-Punkte
+
+Ein **Info-Punkt** hält etwas fest, aus dem **keine Aufgabe** wird: eine
+Feststellung, eine Randbedingung, eine Entscheidung, die niemand abarbeiten
+muss. Er hat deshalb auch keinen Zuständigen und keine Frist.
+
+Der Unterschied zur Maßnahme: Eine Maßnahme ist zu erledigen und wird
+nachgehalten, ein Info-Punkt ist zu wissen. Die Kachel „Info-Punkte" im
+Projekt-Dashboard zeigt sie gesammelt.
+
+---
+
+## Dateiablage und BIM
+
+**Dateiablage** zeigt die **Dateien** in den Projektordnern, die auf der NAS
+mit dem Projekt verknüpft sind — ansehen und herunterladen, nicht hochladen.
+Wer an die Dateien eines Projekts will, findet sie dort.
+
+**BIM-Modell** zeigt ein IFC-Modell im Browser. Zu Stellen im Modell lassen
+sich Issues erfassen, die mit Blickpunkt gespeichert werden und sich aus dem
+Protokoll heraus öffnen lassen.
+
+---
+
+## Die Projektdatenbank
+
+Die zentrale Stelle für **alle** Projekte des Büros — auch für die, an denen
+gerade nicht protokolliert wird. Hier stehen Nummer, Kürzel, Bezeichnung,
+Gesellschaft, Vertrag, Leistungsphasen und die Generalplanung.
+
+**Nur Administratoren dürfen anlegen und bearbeiten.** Alle anderen sehen die
+Daten.
+
+Hier entstehen neue Projekte (siehe „Neues Projekt anlegen").
+
+---
+
+## Mitarbeiter & Projektteams
+
+Die eigene Organisation: wer im Büro arbeitet und wer welchem Projekt
+zugeordnet ist. Nur für Administratoren. Die **Wochenplanung** selbst liegt
+nicht hier, sondern im Dashboard.
+
+---
+
+## Learning-Plattform
+
+Schulungsvideos zur Nutzung des Programms, über die Kachel auf der Startseite
+erreichbar.
+
+---
+
 ## Typische Arbeitsabläufe
 
 ### Neues Projekt anlegen
-1. Startseite → „Neues Projekt"
-2. Projektname eingeben
-3. Optional: Kontakte hinzufügen (Button „Kontakte")
-4. Projekt als Favorit markieren (Stern) für schnellen Zugriff
+
+Das geschieht in **zwei Schritten** und beginnt **nicht** auf der Startseite.
+
+**Schritt 1 — in der Projektdatenbank anlegen**
+
+1. Startseite → Kachel **„Projektdatenbank"**
+2. Dort **„Neues Projekt"**
+3. Drei Pflichtfelder ausfüllen:
+   - **Nummer** — vier Zeichen, z. B. `1012`
+   - **Kürzel** — vier Zeichen, z. B. `BSA`. Wird ein längeres gebraucht,
+     setzt man den Haken für die Ausnahme (dann bis zwölf Zeichen)
+   - **Projektbezeichnung** — z. B. „Fassadensanierung Synthese A1"
+4. Anlegen
+
+Der Projektname setzt sich daraus zusammen: `1012 BSA Fassadensanierung
+Synthese A1`. Diese Schreibweise ist kein Geschmack — andere Systeme im Haus
+erkennen das Projekt daran wieder.
+
+> **Nur Administratoren dürfen in der Projektdatenbank anlegen und
+> bearbeiten.** Wer das nicht darf, sieht die Daten, aber keinen Knopf.
+> Dann bittet man einen Admin.
+
+**Schritt 2 — auf das Protokoll-Dashboard holen**
+
+1. Zurück auf die Startseite
+2. **„Projekt hinzufügen"**
+3. Das eben angelegte Projekt aus der Liste wählen
+
+Es erscheint dann als Karte auf der Startseite und öffnet sich gleich. Ab da
+lassen sich Protokolle, Kontakte, Notizen und alles Weitere dazu anlegen.
+
+**Warum zwei Schritte?** Die Projektdatenbank führt *alle* Projekte des
+Büros. Auf der Startseite sollen nur die stehen, an denen gerade protokolliert
+wird — sonst wäre die Übersicht nach einem Jahr unbrauchbar.
 
 ### Besprechung protokollieren
 1. Projekt öffnen → „Neues Protokoll"

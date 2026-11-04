@@ -94,6 +94,12 @@ const FUELLWOERTER = new Set([
   'von', 'vom', 'vor', 'war', 'waren', 'was', 'weil', 'welche', 'welcher',
   'wenn', 'wer', 'werden', 'wie', 'wieder', 'wir', 'wird', 'wo', 'wurde',
   'würde', 'zu', 'zum', 'zur', 'zwar',
+  // in angeglichener Schreibweise, damit sie auch so wegfallen
+  'fuer', 'ueber', 'wuerde', 'koennte',
+  // Richtungs- und Verlegenheitswoerter. "Wo soll das hin?" ist eine Frage
+  // nach dem Ort, nicht nach dem Wort "hin" -- und "hin" steht in jedem
+  // "hinzufuegen".
+  'hin', 'her', 'dran', 'rein', 'raus', 'dabei', 'damit', 'denn', 'etwa',
 ])
 
 const ohneHtml = (s) => String(s || '')
@@ -113,9 +119,27 @@ const datum = (d) => {
   return m ? `${m[3]}.${m[2]}.${m[1]}` : String(d)
 }
 
+/**
+ * Schreibweisen angleichen, damit Suche und Text sich treffen.
+ *
+ * Leute tippen „schliesse", „Massnahme", „aendern" — im Handbuch steht
+ * „schließe", „Maßnahme", „ändern". Ohne diese Zeile findet die Suche das
+ * nicht, und das Modell erfindet dann eine Antwort. Genau so geschehen:
+ * „Wie schliesse ich ein Protokoll ab?" ergab keine Fundstelle, und die
+ * Antwort erfand eine Schaltfläche „Freigeben", die es nicht gibt.
+ *
+ * Angewandt wird das auf **beide** Seiten — auf die Frage und auf den Text.
+ * Nur zum Suchen; angezeigt wird immer das Original.
+ */
+function angleichen(s) {
+  return String(s)
+    .replace(/ß/g, 'ss')
+    .replace(/ä/g, 'ae').replace(/ö/g, 'oe').replace(/ü/g, 'ue')
+}
+
 /** Die tragenden Wörter einer Frage. Zahlen und Kürzel bleiben erhalten. */
 function begriffe(frage) {
-  const roh = String(frage || '').toLowerCase()
+  const roh = angleichen(String(frage || '').toLowerCase())
   const gefunden = roh.match(/[a-zäöüß0-9][a-zäöüß0-9\-/.]*/g) || []
   const heraus = new Set()
   for (const w of gefunden) {
@@ -147,8 +171,10 @@ function begriffe(frage) {
  */
 function gewichte(stuecke, worte) {
   const N = Math.max(stuecke.length, 1)
-  const texte = stuecke.map(s => s.text.toLowerCase())
+  const texte = stuecke.map(s => angleichen(s.text.toLowerCase()))
   const heraus = new Map()
+  const ohneTreffer = new Set()
+  const fachwoerter = new Set()
   for (const w of worte) {
     let df = 0
     for (const t of texte) if (wortTreffer(t, w) > 0) df++
@@ -159,11 +185,19 @@ function gewichte(stuecke, worte) {
     // nichts trifft. (Erste Fassung setzte hier 0 und warf das Wort damit
     // aus der Quellenangabe: Der Kopf sagte dann „keine Suchwörter" statt
     // „danach gesucht, nichts gefunden".)
-    if (df === 0) { heraus.set(w, Math.log(N)); continue }
+    if (df === 0) { heraus.set(w, Math.log(N)); ohneTreffer.add(w); continue }
     if (df / N > ALLERWELT_AB) { heraus.set(w, 0); continue }
     // log(N/df): in einem von N Stücken -> viel, in jedem zweiten -> wenig.
     heraus.set(w, Math.log(N / df))
+    // Ein langes Wort, das in hoechstens zwei Abschnitten vorkommt, ist ein
+    // Fachwort: "Info-Punkt", "Projektordner", "Protokollkette". Danach
+    // fragt jemand gezielt, und es traegt eine Frage allein. Kurze Woerter
+    // nicht -- "Test" kommt auch in "E-Mail-Test" vor, und ein Gruss soll
+    // keinen Handbuchabschnitt holen.
+    if (w.length >= 6 && df <= 2) fachwoerter.add(w)
   }
+  heraus.ohneTreffer = ohneTreffer
+  heraus.fachwoerter = fachwoerter
   return heraus
 }
 
@@ -179,7 +213,7 @@ function gewichte(stuecke, worte) {
  * jedem Wort etwas dran. „Projekt" soll „Projekte" und „Projektleiter"
  * treffen, und das tut es so.
  */
-function wortTreffer(kleinText, wort) {
+function wortTreffer(kleinText, wort, mitRueckwaerts = false) {
   let n = 0, ab = 0
   for (;;) {
     const i = kleinText.indexOf(wort, ab)
@@ -190,7 +224,28 @@ function wortTreffer(kleinText, wort) {
     if (!davor || !/[a-zäöüß0-9]/.test(davor)) n++
     ab = i + wort.length
   }
-  return n
+  if (n > 0 || !mitRueckwaerts) return n
+
+  // Derselbe Vergleich andersherum — der deutscheste Fall von allen: Jemand
+  // fragt nach dem „Maßnahmenpunkt", im Handbuch steht „Maßnahmen". Das
+  // Fragewort ist **länger** als das Wort im Text; von oben findet die Suche
+  // nichts, und das Modell erfindet eine Antwort. Genau so geschehen.
+  //
+  // **Nur als Rückfallebene** (`mitRueckwaerts`), und die gilt nur für
+  // Wörter, die wörtlich **nirgends** vorkommen. Beim ersten Versuch stand
+  // die Regel immer an — mit der Folge, dass „Protokollkette" auf jeden
+  // Abschnitt mit „Protokoll" passte, dadurch als Allerweltswort galt und
+  // ganz herausfiel. Die beiden Abschnitte, die wirklich davon handeln,
+  // wurden so ausgerechnet von der Hilfsregel begraben.
+  //
+  // Ab acht Zeichen im Fragewort, gegen Textwörter ab fünf, und es zählt
+  // nur einmal: Ein Teiltreffer ist ein Hinweis, kein Beleg.
+  if (wort.length >= 8) {
+    for (const w of kleinText.match(/[a-zäöüß0-9]{5,}/g) || []) {
+      if (wort.startsWith(w)) return 1
+    }
+  }
+  return 0
 }
 
 /**
@@ -203,15 +258,17 @@ function wortTreffer(kleinText, wort) {
  * Ohne `gew` (altes Verhalten, nur noch für das Handbuch gegen seine
  * eigenen Abschnitte) wiegt jedes Wort gleich.
  */
-function treffer(text, worte, gew = null) {
+function treffer(text, worte, gew = null, rueckwaerts = null) {
   if (!text) return { punkte: 0, getroffen: [] }
-  const klein = text.toLowerCase()
+  const klein = angleichen(text.toLowerCase())
   let punkte = 0, haeufigkeit = 0
   const getroffen = []
   for (const w of worte) {
     const gewicht = gew ? (gew.get(w) || 0) : 1
     if (gewicht <= 0) continue
-    const n = wortTreffer(klein, w)
+    // Die Rückfallebene für zusammengesetzte Wörter gilt nur für Wörter,
+    // die wörtlich nirgends vorkommen (gewichte() hat sie dafür vermerkt).
+    const n = wortTreffer(klein, w, rueckwaerts ? rueckwaerts.has(w) : false)
     if (n > 0) {
       punkte += gewicht * 10
       haeufigkeit += n
@@ -276,9 +333,14 @@ function handbuchTeile(worte) {
       const im_text  = treffer(a.titel + '\n' + a.text, worte, gew)
       // Der Titel wiegt mehr: "Passwort ändern" trifft die Frage nach dem
       // Passwort genauer als ein Abschnitt, in dem das Wort nebenbei fällt.
-      const im_titel = treffer(a.titel, worte, gew)
+      const im_titel = treffer(a.titel, worte, gew, gew.ohneTreffer)
       return { ...a, punkte: im_text.punkte + im_titel.punkte * 2,
-               getroffen: im_text.getroffen, imTitel: im_titel.getroffen.length }
+               getroffen: im_text.getroffen,
+               // Nur Woerter ab vier Zeichen qualifizieren einen Abschnitt
+               // allein ueber die Ueberschrift. Sonst reichte das "hin" in
+               // "hinzufuegen", um einen Abschnitt ueber Teilnehmerlisten zur
+               // Antwort auf eine Frage nach der Sprinklerzentrale zu machen.
+               imTitelLang: im_titel.getroffen.filter(w => w.length >= 4).length }
     })
     // **Zwei** tragende Wörter, oder eines in der Überschrift. Das Handbuch
     // ist die Nebenquelle: Bei einer Frage zu einem Bauteil soll es nicht
@@ -288,7 +350,8 @@ function handbuchTeile(worte) {
     // Gemessen an echten Fragen: „Hallo Test!" holte den Abschnitt „Tab:
     // E-Mail" (wegen „E-Mail-Test"), und „Wo soll die Sprinklerzentrale
     // hin?" holte drei Abschnitte, in denen irgendwo „hin" vorkam.
-    .filter(a => a.punkte > 0 && (a.getroffen.length >= 2 || a.imTitel >= 1))
+    .filter(a => a.punkte > 0 && (a.getroffen.length >= 2 || a.imTitelLang >= 1
+                                  || a.getroffen.some(w => gew.fachwoerter?.has(w))))
     .sort((a, b) => b.punkte - a.punkte)
 
   if (!bewertet.length) return []
@@ -514,7 +577,7 @@ function bauen({ db, frage, darfProjekt, projektId = null, benutzer = null }) {
   const tragend = worte.filter(w => (gew.get(w) || 0) > 0)
 
   const roh = stuecke
-    .map(s => ({ ...s, ...treffer(s.text, worte, gew) }))
+    .map(s => ({ ...s, ...treffer(s.text, worte, gew, gew.ohneTreffer) }))
     .filter(s => s.punkte > 0)
     .map(s => ({
       ...s,
@@ -649,6 +712,8 @@ module.exports = {
   // nur für die Prüfungen
   _begriffe: begriffe,
   _treffer: treffer,
+  _gewichte: gewichte,
+  _angleichen: angleichen,
   _ohneHtml: ohneHtml,
   _handbuch: handbuch,
 }

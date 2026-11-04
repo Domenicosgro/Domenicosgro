@@ -962,8 +962,27 @@ Drei Regeln dagegen:
    „Projekt" auch „Projekte" trifft — im Deutschen hängt an jedem Wort etwas
    dran.
 
-Das Handbuch braucht zusätzlich **zwei** tragende Wörter oder eines in der
-Überschrift. Es ist die Nebenquelle: Bei einer Frage nach der
+Dazu drei Regeln für die Art, wie Menschen wirklich tippen — alle drei
+stammen aus echten Fehlschlägen am 04.11.2026, bei denen der Bot mangels
+Fundstelle eine Oberfläche **erfunden** hat:
+
+4. **Schreibweisen angleichen** (`angleichen`): `ß`→`ss`, `ä`→`ae`, `ö`→`oe`,
+   `ü`→`ue`, auf beiden Seiten. „Wie schliesse ich ab?" fand „abschließen"
+   nicht und erfand eine Schaltfläche „Freigeben", die es nicht gibt.
+5. **Zusammengesetzte Wörter rückwärts** — der deutscheste Fall: Jemand fragt
+   nach dem „Maßnahmenpunkt", im Handbuch steht „Maßnahmen". Das Fragewort ist
+   **länger** als das Wort im Text. Gilt **nur** für Wörter, die wörtlich
+   nirgends vorkommen. Die erste Fassung ließ die Regel immer gelten — mit der
+   Folge, dass „Protokollkette" auf jeden Abschnitt mit „Protokoll" passte,
+   dadurch als Allerweltswort galt und ganz herausfiel. Die Hilfsregel begrub
+   genau die Stelle, die sie finden sollte.
+6. **Fachwörter tragen allein.** Ein Wort ab sechs Zeichen, das in höchstens
+   zwei Abschnitten steht, genügt für sich: „Info-Punkt", „Projektordner".
+   Kurze nicht — „Test" steht auch in „E-Mail-Test", und ein Gruß soll keinen
+   Handbuchabschnitt holen.
+
+Das Handbuch braucht ansonsten **zwei** tragende Wörter oder eines ab vier
+Zeichen in der Überschrift. Es ist die Nebenquelle: Bei einer Frage nach der
 Sprinklerzentrale soll es nicht mitkommen, nur weil dort irgendwo „hin"
 vorkommt.
 
@@ -1045,6 +1064,39 @@ Das ist kein Mangel, sondern die bessere Wahl:
 22 Sekunden sind zu lang für eine Sprechblase. Das Bild entsteht deshalb
 **beim Schreiben der Neuigkeit**, wird angesehen und mit ausgeliefert — nicht
 beim Anzeigen.
+
+### 15.3d Das Handbuch ist die Wahrheit über die Bedienung
+
+`server/handbuch.md` ist **keine Dokumentation, sondern eine Laufzeitdatei.**
+Was dort falsch steht, sagt der Bot falsch; was fehlt, erfindet er im
+Zweifel. Am 04.11.2026 fiel auf, dass es den Stand von vor etlichen
+Versionen beschrieb:
+
+* **Falsch:** „Neues Projekt → Projektname eingeben". In Wahrheit entsteht ein
+  Projekt in der **Projektdatenbank** (Nummer, Kürzel, Bezeichnung, nur
+  Admins) und wird danach über „Projekt hinzufügen" auf das
+  Protokoll-Dashboard geholt. `NewProjectModal` wird **nur** von
+  `ProjektdatenbankView` benutzt — daran ist es nachzusehen.
+* **Fehlend:** Projektdatenbank, Projekt-Dashboard, Zugangsbeschränkung,
+  Freimeldung, Notizbuch, Baudokumentation, Mängel, Dateiablage, BIM,
+  Info-Punkte, Mitarbeiter, Learning-Plattform.
+
+**Zwei Regeln für künftige Änderungen:**
+
+1. **Wer eine Funktion ändert, ändert das Handbuch mit** — im selben Commit,
+   wie bei `neuigkeiten.md`. Sonst erklärt der Bot eine Oberfläche, die es
+   nicht mehr gibt.
+2. **Überschriften enthalten die Wörter, mit denen gefragt wird.** Nicht
+   „Abschließen", sondern „Protokoll abschließen, schließen und sperren".
+   Nicht „Import", sondern „Protokolle importieren". Die Überschrift ist die
+   stärkste Spur für die Suche; ein Hauptwort allein genügt nicht, weil es in
+   jedem zweiten Abschnitt steht.
+
+Geprüft wird das: `pruefung-assistent.js` hält fest, dass die Abschnitte zu
+Projektdatenbank, Zugangsbeschränkung, Freimeldung, Notizbuch,
+Baudokumentation und Projekt-Dashboard da sind, dass „Neues Projekt anlegen"
+die Projektdatenbank, die drei Pflichtfelder und die Adminrechte nennt — und
+dass die alte, falsche Anleitung **nicht mehr** darin steht.
 
 ### 15.4 Die Fundstellen stehen über der Antwort
 
