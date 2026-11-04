@@ -897,7 +897,9 @@ der Maschine sitzt. Eine eigene Leitung zu LM Studio liefe daran vorbei.
 | `server/assistent.js` | Die Routen, der Verlauf, das Strömen zum Browser. |
 | `server/handbuch.md` | Das Nutzerhandbuch – **Laufzeitdatei**, keine reine Doku. Lag vorher als `Komplizen_Protokolle_Quelldokument.md` oben; das Produktionsabbild kopiert nur `server/` und `dist/`, dort wäre es nie angekommen. |
 | `src/components/Assistent.jsx` | Das Fenster. Hängt in `wrap()` in `App.jsx`, also in jeder Ansicht. |
-| `pruefungen/pruefung-assistent.js` | 75 Einzelprüfungen gegen echten Server und Attrappe. |
+| `server/neuigkeiten.md` | Die Neuigkeiten selbst – **Laufzeitdatei**, von Menschen geschrieben (§15.3b) |
+| `server/neuigkeiten.js` | Liest sie, merkt sich Gesehenes |
+| `pruefungen/pruefung-assistent.js` | 111 Einzelprüfungen gegen echten Server und Attrappe. |
 
 ### 15.3 Wie der Systemkopf entsteht (`kontext.js`)
 
@@ -983,6 +985,66 @@ gefunden wurde. Der Preis sind Synonyme – deshalb sagt die Anweisung dem Model
 ausdrücklich, es soll das Fehlen von Material benennen statt es zu überbrücken,
 und: *„Behaupte nie, etwas existiere nicht – sage, dass du es nicht findest."*
 Was fehlt, kann auch hinter einer fehlenden Freigabe liegen.
+
+### 15.3b Neuigkeiten: die Sprechblase beim Anmelden
+
+Seit 04.11.2026 begrüßt (K)ompl(I)ze jeden mit Namen und zeigt, was sich im
+Programm geändert hat — als Sprechblase über seinem Knopf. Ein Klick auf
+„Mehr dazu" öffnet den Chat, der Text steht dort als erste Nachricht, und ab
+da lässt sich nachfragen.
+
+**Der Text kommt aus `server/neuigkeiten.md`, nicht aus dem Modell.** Wer
+eine Verbesserung baut, schreibt sie im selben Commit dort hinein —
+versioniert, gegengelesen, nicht erfindbar. Dieselbe Rollenteilung wie bei
+den Fundstellen: Die Wahrheit ist von Menschen, die Erläuterung vom Modell.
+(`BUILD_ID` taugt dafür nicht: Das ist ein Zeitstempel.)
+
+| Stück | Wo |
+|---|---|
+| Die Texte | `server/neuigkeiten.md`, Überschrift `## <kennung> \| <Titel>` |
+| Das Lesen | `server/neuigkeiten.js` |
+| Wer was gesehen hat | Tabelle `neuigkeit_gesehen` |
+| Die Sprechblase | `Assistent.jsx`, Komponente `Blase` |
+
+Vier Entscheidungen, die man an der Umsetzung sieht:
+
+1. **Die Kennung darf sich nie ändern**, der Titel schon. Die Kennung merkt
+   sich, wer den Eintrag gesehen hat — wird sie geändert, erscheint er bei
+   allen erneut.
+2. **Nichts von vor der eigenen Anmeldung, höchstens drei auf einmal.** Wer
+   heute dazukommt, soll nicht die Versionsgeschichte eines Jahres vorgesetzt
+   bekommen; wer drei Wochen weg war, keine Wand.
+3. **Der Text wird beim Öffnen wirklich gespeichert**, nicht nur angezeigt.
+   Sonst stünde er auf dem Schirm, aber nicht im Verlauf — und die erste
+   Nachfrage („wie meinst du das?") ginge ins Leere.
+4. **Bilder als `<img>` mit `data:`-URL, nie als eingebettetes SVG.** In einem
+   `<img>` führt ein SVG keine Skripte aus. Die Dateien stammen aus dem
+   eigenen Projekt und sind gegengelesen — die Oberfläche soll aber nicht
+   davon abhängen, dass das so bleibt.
+
+**Die Begrüßung selbst kostet keinen KI-Aufruf.** „Guten Morgen, Anna" ist
+ein `if` über die Uhrzeit. Dafür belegt niemand einen Platz auf einer
+Grafikkarte.
+
+### 15.3c Bilder: SVG statt Bildmodell
+
+Gemessen am 04.11.2026: Das 35B schreibt ein brauchbares Erklärbild als
+**SVG** in rund 22 Sekunden, in den Hausfarben. Ein Bildmodell gibt es in
+der Farm nicht (nachgesehen: ein LLM, ein VLM, ein Einbettungsmodell — das
+VLM *liest* Bilder, es malt keine).
+
+Das ist kein Mangel, sondern die bessere Wahl:
+
+- **SVG ist Text.** Man sieht vor dem Ausliefern, ob es stimmt.
+- **Ein Diffusionsmodell malt überzeugende Bildschirmfotos von einer
+  Oberfläche, die es nicht gibt.** Im Hilfetext ist das schlimmer als gar
+  kein Bild — genauso wie eine erfundene Antwort mit Quellenangabe.
+- Geht es wirklich um „wo ist der neue Knopf", ist ein **echtes
+  Bildschirmfoto** jedem erzeugten überlegen. Dann gehört ein PNG daneben.
+
+22 Sekunden sind zu lang für eine Sprechblase. Das Bild entsteht deshalb
+**beim Schreiben der Neuigkeit**, wird angesehen und mit ausgeliefert — nicht
+beim Anzeigen.
 
 ### 15.4 Die Fundstellen stehen über der Antwort
 

@@ -606,6 +606,7 @@ export default function App() {
         <Assistent
           projektId={selectedProjectId}
           projektName={projectsWithContacts?.find(p => p.id === selectedProjectId)?.name || null}
+          benutzerName={effectiveUser?.displayName || effectiveUser?.username || null}
         />
       )}
       <WebUpdateBanner />

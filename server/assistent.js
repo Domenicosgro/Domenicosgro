@@ -22,6 +22,7 @@ const rateLimit = require('express-rate-limit')
 
 const ki = require('./ki')
 const kontext = require('./kontext')
+const neuigkeiten = require('./neuigkeiten')
 
 // So viele Zeichen nimmt eine einzelne Frage höchstens an. Wer ein ganzes
 // Protokoll einwirft, soll das können — aber nicht ein ganzes Buch.
@@ -164,6 +165,51 @@ function registerAssistent(app, db, requireAuth, canAccessProject, logEvent) {
     })
   })
 
+  // ── Neuigkeiten ───────────────────────────────────────────────────────────
+  // Was (K)ompl(I)ze beim Anmelden zu sagen hat. Der Text kommt aus
+  // server/neuigkeiten.md, nicht aus dem Modell -- erklärt wird er erst,
+  // wenn jemand nachfragt.
+
+  app.get('/api/assistent/neuigkeiten', requireAuth, nurMenschen, (req, res) => {
+    const benutzer = wer(req)
+    let seit = null
+    // Nichts von vor der eigenen Anmeldung: Wer heute dazukommt, soll nicht
+    // die Versionsgeschichte des letzten Jahres vorgesetzt bekommen.
+    try { seit = db.users.get(benutzer)?.created_at || null } catch { /* egal */ }
+    try {
+      const offen = neuigkeiten.offenFuer(db, benutzer, seit)
+      res.json({
+        neuigkeiten: offen.map(e => ({
+          kennung: e.kennung, titel: e.titel, datum: e.datum,
+          text: e.text, bild: neuigkeiten.bild(e),
+        })),
+      })
+    } catch (e) { res.status(500).json({ error: e.message }) }
+  })
+
+  // Eine einzelne Neuigkeit, auch eine längst gesehene. Dient der
+  // Oberfläche dazu, beim Wiederöffnen einer Unterhaltung das Bild
+  // nachzuladen, dessen Kennung in der ersten Nachricht steht.
+  app.get('/api/assistent/neuigkeiten/:kennung', requireAuth, nurMenschen, (req, res) => {
+    const e = neuigkeiten.lesen().find(x => x.kennung === req.params.kennung)
+    if (!e) return res.status(404).json({ error: 'Nicht gefunden.' })
+    res.json({ kennung: e.kennung, titel: e.titel, datum: e.datum,
+               text: e.text, bild: neuigkeiten.bild(e) })
+  })
+
+  app.post('/api/assistent/neuigkeiten/gesehen', requireAuth, nurMenschen, (req, res) => {
+    const kennungen = Array.isArray(req.body?.kennungen) ? req.body.kennungen : []
+    if (!kennungen.length) return res.status(400).json({ error: 'Keine Kennung übergeben.' })
+    // Nur Kennungen, die es wirklich gibt: Sonst könnte ein beliebiger Wert
+    // in der Tabelle landen und sie mit der Zeit vollschreiben.
+    const echte = new Set(neuigkeiten.lesen().map(e => e.kennung))
+    const gefiltert = kennungen.filter(k => echte.has(k))
+    try {
+      db.neuigkeiten.merkenViele(wer(req), gefiltert)
+      res.json({ ok: true, gemerkt: gefiltert.length })
+    } catch (e) { res.status(500).json({ error: e.message }) }
+  })
+
   // ── Die Unterhaltungen ────────────────────────────────────────────────────
   app.get('/api/assistent/chats', requireAuth, nurMenschen, (req, res) => {
     try {
@@ -178,7 +224,32 @@ function registerAssistent(app, db, requireAuth, canAccessProject, logEvent) {
     try {
       const projectId = req.body?.projektId || null
       const c = db.chats.create({ id: uid(), username: wer(req), projectId })
-      res.json({ id: c.id, titel: c.title, projektId: c.project_id })
+
+      // Aus einer Neuigkeit heraus geöffnet: Ihr Text wird als erste
+      // Nachricht **gespeichert**, nicht nur angezeigt. Sonst stünde er auf
+      // dem Bildschirm, aber nicht im Verlauf — und die erste Nachfrage
+      // („wie meinst du das?") ginge ins Leere, weil das Modell den
+      // Gegenstand gar nicht kennt.
+      const kennung = String(req.body?.neuigkeit || '').trim()
+      if (kennung) {
+        const e = neuigkeiten.lesen().find(x => x.kennung === kennung)
+        if (e) {
+          db.chats.addMessage({
+            chatId: c.id, role: 'assistant',
+            content: e.titel + '\n\n' + e.text,
+            // Die Herkunft steht in der Nachricht, nicht nur im Fenster.
+            // Dadurch findet die Oberfläche beim nächsten Öffnen das Bild
+            // wieder -- die data:-URL selbst gehört nicht in die Datenbank,
+            // sie wäre dort um ein Vielfaches größer als der Text.
+            sources: ['neuigkeit:' + e.kennung],
+          })
+          db.chats.rename(c.id, wer(req), e.titel.slice(0, TITEL_ZEICHEN))
+          db.neuigkeiten.merken(wer(req), kennung)
+        }
+      }
+
+      const frisch = db.chats.mine(c.id, wer(req))
+      res.json({ id: c.id, titel: frisch?.title || c.title, projektId: c.project_id })
     } catch (e) { res.status(500).json({ error: e.message }) }
   })
 

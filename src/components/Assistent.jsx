@@ -58,6 +58,26 @@ async function hole(weg, optionen = {}) {
   return json
 }
 
+/** Tageszeit für die Begrüßung — ohne KI. Ein Satz, den ein `if` hinbekommt,
+ *  soll keinen Platz auf einer Grafikkarte kosten. */
+function gruss() {
+  const h = new Date().getHours()
+  if (h < 11) return 'Guten Morgen'
+  if (h < 18) return 'Hallo'
+  return 'Guten Abend'
+}
+
+/** Nur `**fett**` — mehr Auszeichnung braucht eine Neuigkeit nicht, und
+ *  mehr würde bedeuten, fremden Text als HTML zu behandeln. */
+function MitFett({ text }) {
+  const teile = String(text || '').split(/\*\*(.+?)\*\*/gs)
+  return (
+    <>
+      {teile.map((t, i) => (i % 2 ? <strong key={i}>{t}</strong> : <span key={i}>{t}</span>))}
+    </>
+  )
+}
+
 /** Eine Zeitangabe wie „vor 3 Minuten" — ohne Bibliothek. */
 function vorWieLange(iso) {
   if (!iso) return ''
@@ -123,8 +143,15 @@ function Nachricht({ n }) {
       <Quellen daten={n.quellenDaten} />
       {n.inhalt ? (
         <div className="bg-white border border-gray-200 px-3 py-2 text-sm whitespace-pre-wrap text-gray-900">
-          {n.inhalt}
+          <MitFett text={n.inhalt} />
         </div>
+      ) : null}
+      {n.bild ? (
+        // Als <img> mit data:-URL, nicht als eingebettetes SVG: In einem
+        // <img> führt ein SVG keine Skripte aus. Die Dateien stammen zwar
+        // aus dem eigenen Projekt — die Oberfläche soll aber nicht davon
+        // abhängen, dass das so bleibt.
+        <img src={n.bild} alt="" className="w-full border border-gray-200 bg-white" />
       ) : null}
       {n.fehler ? (
         <div className="border-l-2 border-red-500 bg-red-50 px-3 py-2 text-xs text-red-800">
@@ -141,7 +168,51 @@ function Nachricht({ n }) {
   )
 }
 
-export default function Assistent({ projektId = null, projektName = null }) {
+/**
+ * Die Sprechblase mit der Neuigkeit.
+ *
+ * Sie steht über dem Knopf und verschwindet erst, wenn man sie wegklickt
+ * oder öffnet — nicht nach ein paar Sekunden von selbst. Eine Meldung, die
+ * verschwindet, während man gerade woanders hinsieht, ist keine Meldung,
+ * sondern ein Ärgernis.
+ */
+function Blase({ gruesse, neuigkeit, weitere, onOeffnen, onWeg }) {
+  return (
+    <div className="no-print fixed bottom-20 right-5 z-40 w-[22rem] max-w-[calc(100vw-2.5rem)] bg-white border border-gray-300 border-l-4 border-l-sky">
+      <div className="flex items-start gap-2 px-3 pt-2.5">
+        <div className="flex-1 min-w-0">
+          <div className="text-[11px] text-gray-500">{gruesse}</div>
+          <div className="font-headline text-sm text-night leading-snug mt-0.5">
+            {neuigkeit.titel}
+          </div>
+        </div>
+        <button className="text-gray-400 hover:text-night shrink-0 -mt-0.5"
+                title="Nicht mehr anzeigen" onClick={onWeg}>
+          <X size={15} />
+        </button>
+      </div>
+      {neuigkeit.bild ? (
+        <img src={neuigkeit.bild} alt="" className="w-full mt-2 border-t border-gray-200" />
+      ) : null}
+      <div className="px-3 py-2 text-xs text-gray-600 line-clamp-3">
+        {neuigkeit.text.split('\n').filter(Boolean)[0]}
+      </div>
+      <div className="flex items-center gap-2 px-3 pb-2.5">
+        <button className="btn-primary text-xs px-3 py-1.5" onClick={onOeffnen}>
+          Mehr dazu
+        </button>
+        {weitere > 0 ? (
+          <span className="text-[11px] text-gray-400">
+            und {weitere} weitere{weitere === 1 ? '' : ''}
+          </span>
+        ) : null}
+      </div>
+    </div>
+  )
+}
+
+export default function Assistent({ projektId = null, projektName = null,
+                                    benutzerName = null }) {
   const [status,  setStatus]  = useState(null)      // null = noch nicht gefragt
   const [offen,   setOffen]   = useState(false)
   const [liste,   setListe]   = useState([])
@@ -151,6 +222,7 @@ export default function Assistent({ projektId = null, projektName = null }) {
   const [laeuft,  setLaeuft]  = useState(false)
   const [fehler,  setFehler]  = useState(null)
   const [verlaufOffen, setVerlaufOffen] = useState(false)
+  const [news,    setNews]    = useState([])
 
   const ende = useRef(null)
   const feld = useRef(null)
@@ -210,13 +282,65 @@ export default function Assistent({ projektId = null, projektName = null }) {
     try {
       const c = await hole(`/api/assistent/chats/${id}`)
       setChatId(c.id)
-      setNachrichten((c.nachrichten || []).map(n => ({
+      const nn = (c.nachrichten || []).map(n => ({
         ...n,
-        quellenDaten: n.quellen ? { quellen: n.quellen } : null,
-      })))
+        quellenDaten: n.quellen && !n.quellen.some(q => q.startsWith('neuigkeit:'))
+          ? { quellen: n.quellen } : null,
+      }))
+      setNachrichten(nn)
       setVerlaufOffen(false)
+
+      // Stammt die erste Nachricht aus einer Neuigkeit, wird ihr Bild
+      // nachgeladen. In der Datenbank steht nur die Kennung — die data:-URL
+      // wäre dort um ein Vielfaches größer als der Text.
+      const kennung = (c.nachrichten || [])
+        .flatMap(n => n.quellen || [])
+        .find(q => typeof q === 'string' && q.startsWith('neuigkeit:'))
+      if (kennung) {
+        try {
+          const e = await hole('/api/assistent/neuigkeiten/'
+                               + encodeURIComponent(kennung.slice('neuigkeit:'.length)))
+          if (e?.bild) {
+            setNachrichten(v => v.map((n, i) => (i === 0 ? { ...n, bild: e.bild } : n)))
+          }
+        } catch { /* ohne Bild ist die Neuigkeit immer noch lesbar */ }
+      }
     } catch (e) { setFehler(e.message) }
   }, [])
+
+  // ── Neuigkeiten ───────────────────────────────────────────────────────────
+  const ladeNews = useCallback(() => {
+    hole('/api/assistent/neuigkeiten')
+      .then(d => setNews(d?.neuigkeiten || []))
+      .catch(() => setNews([]))
+  }, [])
+
+  useEffect(() => {
+    if (status?.eingerichtet && status?.person) ladeNews()
+  }, [status, ladeNews])
+
+  const newsWeg = useCallback(async (kennungen) => {
+    setNews([])
+    try {
+      await hole('/api/assistent/neuigkeiten/gesehen', {
+        method: 'POST', body: JSON.stringify({ kennungen }),
+      })
+    } catch { /* beim nächsten Anmelden eben noch einmal */ }
+  }, [])
+
+  const newsOeffnen = useCallback(async (n) => {
+    setFehler(null)
+    setNews([])
+    setOffen(true)
+    try {
+      const c = await hole('/api/assistent/chats', {
+        method: 'POST',
+        body: JSON.stringify({ projektId, neuigkeit: n.kennung }),
+      })
+      await oeffne(c.id)
+      ladeListe()
+    } catch (e) { setFehler(e.message) }
+  }, [projektId, oeffne, ladeListe])
 
   const loesche = useCallback(async (id) => {
     try {
@@ -317,15 +441,32 @@ export default function Assistent({ projektId = null, projektName = null }) {
   ]
 
   if (!offen) {
+    const anrede = benutzerName ? `${gruss()}, ${benutzerName.split(' ')[0]}` : gruss()
     return (
-      <button
-        className="no-print fixed bottom-5 right-5 z-40 flex items-center gap-2 bg-night text-white px-4 py-3 shadow-none border border-night hover:bg-brand-500 transition-colors"
-        onClick={() => setOffen(true)}
-        title={NAME_TEXT + ' öffnen'}
-      >
-        <Bot size={18} />
-        <Name klasse="text-sm font-medium hidden sm:inline" />
-      </button>
+      <>
+        {news.length > 0 && (
+          <Blase
+            gruesse={anrede}
+            neuigkeit={news[0]}
+            weitere={news.length - 1}
+            onOeffnen={() => newsOeffnen(news[0])}
+            onWeg={() => newsWeg(news.map(n => n.kennung))}
+          />
+        )}
+        <button
+          className="no-print fixed bottom-5 right-5 z-40 flex items-center gap-2 bg-night text-white px-4 py-3 shadow-none border border-night hover:bg-brand-500 transition-colors"
+          onClick={() => setOffen(true)}
+          title={NAME_TEXT + ' öffnen'}
+        >
+          <Bot size={18} />
+          <Name klasse="text-sm font-medium hidden sm:inline" />
+          {news.length > 0 && (
+            <span className="bg-sky text-night text-[11px] font-bold px-1.5 leading-5">
+              {news.length}
+            </span>
+          )}
+        </button>
+      </>
     )
   }
 

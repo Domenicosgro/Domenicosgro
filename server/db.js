@@ -221,6 +221,18 @@ db.exec(`
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
   CREATE INDEX IF NOT EXISTS idx_chat_messages_chat ON chat_messages (chat_id, id);
+
+  -- Wer welche Neuigkeit gesehen hat. Die Neuigkeiten selbst stehen in
+  -- server/neuigkeiten.md -- hier steht nur, wer sie weggeklickt hat.
+  -- Die Kennung kommt aus der Datei und aendert sich nie; aendert jemand
+  -- sie doch, erscheint der Eintrag bei allen erneut. Das ist gewollt und
+  -- in der Datei beschrieben.
+  CREATE TABLE IF NOT EXISTS neuigkeit_gesehen (
+    username    TEXT NOT NULL,
+    kennung     TEXT NOT NULL,
+    gesehen_am  TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (username, kennung)
+  );
 `)
 
 // ── Migration from legacy key-value store ─────────────────────────────────────
@@ -576,6 +588,16 @@ const chats = {
   },
 }
 
+// ── Gesehene Neuigkeiten ──────────────────────────────────────────────────────
+const _ngSetzen = db.prepare("INSERT INTO neuigkeit_gesehen (username, kennung) VALUES (?, ?) ON CONFLICT(username, kennung) DO NOTHING")
+const _ngListe  = db.prepare('SELECT kennung FROM neuigkeit_gesehen WHERE username = ?')
+
+const neuigkeiten = {
+  gesehenVon(username)          { return _ngListe.all(username).map(r => r.kennung) },
+  merken(username, kennung)     { _ngSetzen.run(username, kennung) },
+  merkenViele(username, liste)  { for (const k of liste) _ngSetzen.run(username, k) },
+}
+
 // ── App-State (kleiner Key-Value-Speicher, z.B. Reporting-Zeitstempel) ─────────
 const _asGet = db.prepare('SELECT value FROM app_state WHERE key = ?')
 const _asSet = db.prepare("INSERT INTO app_state (key, value, updated_at) VALUES (@key, @value, datetime('now')) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')")
@@ -605,5 +627,6 @@ module.exports = {
   releaseTokens,
   notifications,
   chats,
+  neuigkeiten,
   appState,
 }

@@ -641,6 +641,74 @@ async function main() {
          hilfe2.gesendet?.max_tokens === 900,
          '(war ' + hilfe2.gesendet?.max_tokens + ')')
 
+  // ── Neuigkeiten ───────────────────────────────────────────────────────────
+  abschnitt('Die Neuigkeit kommt aus der Datei, nicht aus dem Modell')
+  const nk = require(path.join(WURZEL, 'server', 'neuigkeiten.js'))
+  const eintraege = nk.lesen({ frisch: true })
+  pruefe('neuigkeiten.md wird gelesen', eintraege.length >= 1,
+         '(waren ' + eintraege.length + ')')
+  pruefe('das Beispiel aus der Anleitung zaehlt nicht mit',
+         !eintraege.some(e => /So wird eine Neuigkeit/.test(e.titel))
+         && eintraege.every(e => /^\d{4}-\d{2}-\d{2}/.test(e.kennung)),
+         '(Kennungen: ' + eintraege.map(e => e.kennung).join(', ') + ')')
+  pruefe('die Bildzeile steht nicht im Flaechentext',
+         eintraege.every(e => !/!\[/.test(e.text)))
+
+  abschnitt('Jede Person sieht jede Neuigkeit genau einmal')
+  const holeNews = async (token) =>
+    (await ruf('/api/assistent/neuigkeiten', { token })).json?.neuigkeiten || []
+
+  const bertNews1 = await holeNews(bertTok)
+  pruefe('beim ersten Mal ist etwas da', bertNews1.length >= 1,
+         '(waren ' + bertNews1.length + ')')
+  pruefe('mit Kennung, Titel und Text',
+         Boolean(bertNews1[0]?.kennung && bertNews1[0]?.titel && bertNews1[0]?.text))
+  pruefe('hoechstens drei auf einmal', bertNews1.length <= nk.HOECHSTENS)
+
+  const weggeklickt = await ruf('/api/assistent/neuigkeiten/gesehen', {
+    methode: 'POST', token: bertTok,
+    koerper: { kennungen: bertNews1.map(n => n.kennung) } })
+  pruefe('weggeklickt wird angenommen', weggeklickt.status === 200,
+         '(war ' + weggeklickt.status + ')')
+  pruefe('danach ist nichts mehr offen', (await holeNews(bertTok)).length === 0)
+  pruefe('fuer Anna aber schon noch', (await holeNews(annaTok)).length >= 1)
+
+  const erfunden = await ruf('/api/assistent/neuigkeiten/gesehen', {
+    methode: 'POST', token: annaTok, koerper: { kennungen: ['gibt-es-nicht'] } })
+  pruefe('eine erfundene Kennung wird nicht gemerkt',
+         erfunden.json?.gemerkt === 0, '(gemerkt: ' + erfunden.json?.gemerkt + ')')
+  pruefe('und aendert nichts am Offenen', (await holeNews(annaTok)).length >= 1)
+
+  abschnitt('Aus der Neuigkeit heraus laesst sich nachfragen')
+  const annaNews = await holeNews(annaTok)
+  const ausNews = await ruf('/api/assistent/chats', {
+    methode: 'POST', token: annaTok,
+    koerper: { neuigkeit: annaNews[0].kennung } })
+  pruefe('die Unterhaltung heisst wie die Neuigkeit',
+         ausNews.json?.titel && annaNews[0].titel.startsWith(ausNews.json.titel.replace('…', '')),
+         '(hiess ' + JSON.stringify(ausNews.json?.titel) + ')')
+
+  const gelesen2 = await ruf('/api/assistent/chats/' + ausNews.json.id, { token: annaTok })
+  const erste = gelesen2.json?.nachrichten?.[0]
+  pruefe('der Text steht WIRKLICH im Verlauf, nicht nur auf dem Schirm',
+         erste?.rolle === 'assistant' && erste.inhalt.includes(annaNews[0].titel),
+         '(war ' + JSON.stringify(erste?.inhalt?.slice(0, 60)) + ')')
+  pruefe('die Herkunft ist vermerkt',
+         (erste?.quellen || []).some(q => q.startsWith('neuigkeit:')),
+         '(waren ' + JSON.stringify(erste?.quellen) + ')')
+  pruefe('das Oeffnen hat sie zugleich als gesehen gemerkt',
+         !(await holeNews(annaTok)).some(n => n.kennung === annaNews[0].kennung))
+
+  // Und jetzt der Punkt, auf den es ankommt: Die Nachfrage muss den
+  // Gegenstand kennen. Ohne die gespeicherte erste Nachricht ginge sie ins
+  // Leere -- das Modell wuesste nicht, wovon die Rede ist.
+  const nachfrage = await fragen(ausNews.json.id, 'Wie meinst du das genau?', annaTok)
+  const gesendet = nachfrage.gesendet?.nachrichten || []
+  pruefe('die Neuigkeit geht als Vorgeschichte an das Modell mit',
+         gesendet.some(n => n.role === 'assistant'
+                            && n.content.includes(annaNews[0].titel)),
+         '(Verlauf: ' + gesendet.length + ' Nachrichten)')
+
   abschnitt('Der Status sagt, ob eine KI da ist')
   const st = await ruf('/api/assistent/status', { token: annaTok })
   pruefe('eingerichtet ist true', st.json?.eingerichtet === true)
