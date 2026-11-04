@@ -54,6 +54,13 @@ services:
       # SMTP_SECURE: "false"
       # SMTP_USER:   "Protokoll@ghbarchitekten.de"
       # SMTP_PASS:   "DEIN-PASSWORT-HIER"
+      # ── Assistent: Weg zur KI-Farm des Dashboards (CLAUDE.md §15) ───────────
+      # Ohne diese beiden Werte erscheint der Assistent in der Oberfläche gar
+      # nicht. KI_DASHBOARD_KEY muss mit KI_DIENST_SCHLUESSEL im Dashboard
+      # übereinstimmen (mindestens 24 Zeichen, sonst lehnt das Dashboard ab).
+      # Erzeugen: openssl rand -hex 32 · Niemals in Git, nur hier auf der NAS.
+      # KI_DASHBOARD_URL: "http://192.168.178.250:5050"
+      # KI_DASHBOARD_KEY: "DERSELBE-SCHLUESSEL-WIE-IM-DASHBOARD"
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/health"]
       interval: 30s
