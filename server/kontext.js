@@ -535,17 +535,32 @@ function bauen({ db, frage, darfProjekt, projektId = null, benutzer = null }) {
     .slice(0, STELLEN_HOECHSTENS)
 
   // 4. Zusammensetzen, bis das Budget voll ist.
+  //
+  // **Die Reihenfolge ist nicht Geschmack, sie ist Tempo.** LM Studio
+  // verwendet den gleichbleibenden *Anfang* eines Systemkopfs wieder,
+  // statt ihn erneut einzulesen. Am 04.11.2026 auf der 4090 gemessen,
+  // 9000 Zeichen Kopf:
+  //
+  //     derselbe Kopf, neue Frage      0,19 s bis zum ersten Zeichen
+  //     anderer Anfang, gleicher Rest  3,43 s
+  //
+  // Achtzehnfach. Wiederverwendet wird aber nur, was **vorn** steht und
+  // sich nicht ändert -- ab dem ersten abweichenden Zeichen wird alles
+  // Weitere neu gelesen. Deshalb von fest nach lose:
+  //
+  //   1. Anweisung          ändert sich nie
+  //   2. Projektverzeichnis ändert sich je Person, nicht je Frage
+  //   3. Projektmappe       ändert sich je Projekt, nicht je Frage
+  //   4. Handbuch           ändert sich je Frage
+  //   5. Gefundene Stellen  ändert sich je Frage
+  //
+  // Wer hier umsortiert und das Veränderliche nach vorn nimmt, macht den
+  // Zwischenspeicher wertlos -- ohne dass irgendetwas kaputtgeht. Es wird
+  // nur langsamer, und niemand weiß warum. Die Reihenfolge wird deshalb
+  // geprüft (pruefungen/pruefung-assistent.js).
   const abschnitte = []
   const quellen = []
   let platz = BUDGET_GESAMT
-
-  const hb = handbuchTeile(worte)
-  if (hb.length) {
-    const text = '# Aus dem Nutzerhandbuch\n\n' + hb.map(a => a.text).join('\n\n')
-    abschnitte.push(text)
-    platz -= text.length
-    for (const a of hb) quellen.push('Handbuch: ' + a.titel)
-  }
 
   const verzeichnis = '# Projekte, die du sehen darfst (' + erlaubt.length + ')\n'
     + erlaubt.map(projektZeile).join('\n')
@@ -567,6 +582,16 @@ function bauen({ db, frage, darfProjekt, projektId = null, benutzer = null }) {
       abschnitte.push(mappe)
       platz -= mappe.length
       quellen.push('Projektmappe: ' + (fokus.name || fokus.id))
+    }
+  }
+
+  const hb = handbuchTeile(worte)
+  if (hb.length) {
+    const text = '# Aus dem Nutzerhandbuch\n\n' + hb.map(a => a.text).join('\n\n')
+    if (text.length <= platz) {
+      abschnitte.push(text)
+      platz -= text.length
+      for (const a of hb) quellen.push('Handbuch: ' + a.titel)
     }
   }
 

@@ -595,6 +595,31 @@ async function main() {
          && !/Besprechung im Projekt Nummer/.test(hilfe2.gesendet?.system || ''),
          '(Quellen: ' + JSON.stringify(hilfe2.quellen?.quellen) + ')')
 
+  abschnitt('Das Feste steht vorn, das Wechselnde hinten')
+  // Nicht Geschmack, sondern Tempo: LM Studio verwendet den gleichbleibenden
+  // Anfang eines Systemkopfs wieder. Gemessen am 04.11.2026 auf der 4090,
+  // 9000 Zeichen Kopf: derselbe Anfang 0,19 s bis zum ersten Zeichen, ein
+  // anderer Anfang 3,43 s. Wer hier umsortiert, macht das wertlos -- ohne
+  // dass etwas kaputtgeht. Es wird nur langsam, und niemand weiss warum.
+  const ordnung = (kopf, was) => kopf.indexOf(was)
+  const k2 = tor.gesendet?.system || ''
+  const pVerzeichnis = ordnung(k2, '# Projekte, die du sehen darfst')
+  const pMappe       = ordnung(k2, '## Projekt: Halle Nord')
+  const pStellen     = ordnung(k2, '# Gefundene Stellen')
+  pruefe('die Anweisung steht ganz vorn',
+         k2.indexOf('Du bist der Assistent') === 0, '(bei %s)' .replace('%s', k2.indexOf('Du bist der Assistent')))
+  pruefe('danach das Projektverzeichnis', pVerzeichnis > 0)
+  pruefe('dann die Projektmappe', pMappe > pVerzeichnis,
+         '(Verzeichnis ' + pVerzeichnis + ', Mappe ' + pMappe + ')')
+  pruefe('und zuletzt die gefundenen Stellen', pStellen > pMappe,
+         '(Mappe ' + pMappe + ', Stellen ' + pStellen + ')')
+  const k3 = hilfe2.gesendet?.system || ''
+  pruefe('das Handbuch steht hinter dem Projektverzeichnis',
+         ordnung(k3, '# Aus dem Nutzerhandbuch')
+         > ordnung(k3, '# Projekte, die du sehen darfst'),
+         '(Verzeichnis ' + ordnung(k3, '# Projekte, die du sehen darfst')
+         + ', Handbuch ' + ordnung(k3, '# Aus dem Nutzerhandbuch') + ')')
+
   abschnitt('Alles zusammen passt in das Fenster des Modells')
   // Der Fehler, der im Betrieb auffiel, war keine schlechte Antwort, sondern
   // gar keine: Kopf plus Verlauf plus Antwort lagen über 8192 Token, und ein
