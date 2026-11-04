@@ -64,6 +64,28 @@ const firmsToText = (list) => (list || [])
   })
   .join('\n')
 
+// ── Ausgeführte Arbeiten: mehrere Angaben je Bericht ──────────────────────
+// Ein Bautag bringt selten nur eine Leistung. Statt alles in ein Feld zu
+// drängen, trägt jede Angabe ihren eigenen Textblock. Das bisherige Feld
+// `workDone` wird weiter mitgeschrieben, damit Bestandsdaten, Kachel-Kurzinfo,
+// Info-Punkte und Versand unverändert weiterlaufen.
+const emptyWorkRow = () => ({ id: uid(), html: '' })
+
+// Nur Angaben mit Inhalt – leere Felder sollen im Bericht keine Lücke machen.
+const filledWorkRows = (rows) => (rows || [])
+  .map(w => ({ id: w.id || uid(), html: toHtml(w.html ?? w.text ?? '') }))
+  .filter(w => stripHtml(w.html).trim())
+
+// Bestandsdaten (nur `workDone`) werden als eine einzelne Angabe geöffnet.
+const workRowsOf = (entry) => {
+  const rows = filledWorkRows(entry?.workItems)
+  if (rows.length) return rows
+  return [{ id: uid(), html: toHtml(entry?.workDone || '') }]
+}
+
+// Zusammengefasste Fassung aller Angaben – hält `workDone` aktuell.
+const workRowsToHtml = (rows) => filledWorkRows(rows).map(w => w.html).join('')
+
 // Fotos werden zweimal gebraucht (Miniatur im Eintrag + Tafel im Anhang) –
 // der Anhang-Speicher wird deshalb nur einmal je Foto gelesen.
 const photoUrlCache = new Map()
@@ -147,6 +169,24 @@ function DiaryField({ label, note, children }) {
   )
 }
 
+// Ausgeführte Arbeiten im Bericht: eine Angabe läuft als Fließtext, mehrere
+// werden nummeriert untereinander gesetzt. Rückgabe ist Text (dann prüft
+// DiaryField selbst auf „leer“) oder fertiges JSX.
+function workDoneValue(entry) {
+  const rows = filledWorkRows(entry?.workItems)
+  if (rows.length === 0) return entry?.workDone || null
+  if (rows.length === 1) return rows[0].html
+  return (
+    <ol className="diary-worklist">
+      {rows.map(w => (
+        <li key={w.id}>
+          <div className="rich-text" dangerouslySetInnerHTML={{ __html: w.html }} />
+        </li>
+      ))}
+    </ol>
+  )
+}
+
 function EntryForm({ entry, onSave, onCancel, projectId, firmOptions = [], onAddFirmToProject,
                      lastProgress = '', cfg = {}, contacts = [] }) {
   const [form, setForm] = useState({
@@ -167,7 +207,6 @@ function EntryForm({ entry, onSave, onCancel, projectId, firmOptions = [], onAdd
     // Datum/Ort, für die die Wetterwerte gelten – hält die Werte am Begehungstag fest
     weatherDate:     entry?.weatherDate     || '',
     weatherLocation: entry?.weatherLocation || '',
-    workDone:    toHtml(entry?.workDone    || ''),
     remarks:     toHtml(entry?.remarks     || ''),
     special:     toHtml(entry?.special     || ''),
   })
@@ -186,6 +225,10 @@ function EntryForm({ entry, onSave, onCancel, projectId, firmOptions = [], onAdd
     [firmOptions])
 
   const setFirm = (id, patch) => setFirmList(rows => rows.map(r => r.id === id ? { ...r, ...patch } : r))
+
+  // ── Ausgeführte Arbeiten (eine oder mehrere Angaben) ────────────────────
+  const [workRows, setWorkRows] = useState(() => workRowsOf(entry))
+  const setWork = (id, html) => setWorkRows(rows => rows.map(r => r.id === id ? { ...r, html } : r))
 
   // Alle Projektkontakte mit Namen stehen zur Auswahl; die der bereits
   // gewählten Firma kommen oben in einer eigenen Gruppe. Freitext bleibt.
@@ -399,10 +442,42 @@ function EntryForm({ entry, onSave, onCancel, projectId, firmOptions = [], onAdd
         )}
       </div>
 
+      {/* Ausgeführte Arbeiten: beliebig viele Angaben. Jede Leistung bekommt ihr
+          eigenes Feld, damit getrennte Gewerke oder Bauteile im Bericht auch
+          getrennt erscheinen und nicht zu einem Textblock verschmelzen. */}
       <div>
-        <label className="block text-xs font-medium text-gray-500 mb-1">Ausgeführte Arbeiten</label>
-        <RichTextEditor value={form.workDone} onChange={html => setForm(f => ({ ...f, workDone: html }))}
-          placeholder="Welche Leistungen wurden heute erbracht? (- oder 1. für Listen, Strg+B für Fett)" />
+        <div className="flex items-center justify-between mb-1">
+          <label className="block text-xs font-medium text-gray-500">Ausgeführte Arbeiten</label>
+          {workRows.length > 1 && (
+            <span className="text-[11px] text-gray-400">{workRows.length} Angaben</span>
+          )}
+        </div>
+        <div className="space-y-2">
+          {workRows.map((row, i) => (
+            <div key={row.id} className="flex items-start gap-1.5">
+              {workRows.length > 1 && (
+                <span className="text-xs text-gray-400 w-4 text-right pt-2 flex-shrink-0">{i + 1}.</span>
+              )}
+              <div className="flex-1 min-w-0">
+                <RichTextEditor value={row.html} onChange={html => setWork(row.id, html)}
+                  placeholder={i === 0
+                    ? 'Welche Leistungen wurden heute erbracht? (- oder 1. für Listen, Strg+B für Fett)'
+                    : 'Weitere ausgeführte Arbeiten…'} />
+              </div>
+              {workRows.length > 1 && (
+                <button type="button" className="btn-ghost p-1.5 text-gray-400 hover:text-red-600 mt-0.5 flex-shrink-0"
+                  title="Diese Angabe entfernen"
+                  onClick={() => setWorkRows(rows => rows.filter(r => r.id !== row.id))}>
+                  <X size={14} />
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+        <button type="button" className="btn-secondary btn-sm mt-1.5"
+          onClick={() => setWorkRows(rows => [...rows, emptyWorkRow()])}>
+          <Plus size={13} /> Weitere Arbeiten ergänzen
+        </button>
       </div>
       {/* Behinderungen: eigener Block, weil er im Streitfall die Bauzeit trägt */}
       {cfg.obstructions && (
@@ -493,6 +568,9 @@ function EntryForm({ entry, onSave, onCancel, projectId, firmOptions = [], onAdd
           ...form,
           firmList: firmList.filter(f => (f.company || '').trim()),
           firms:    firmsToText(firmList),
+          // Mehrere Angaben; `workDone` bleibt als zusammengefasste Fassung
+          workItems: filledWorkRows(workRows),
+          workDone:  workRowsToHtml(workRows),
           photos,
         }, newPhotos)}>Speichern</button>
       </div>
@@ -989,7 +1067,7 @@ export default function BautagebuchView({ project, serverUser, logoDataUrl, clie
                     ) : entry.firms || null}
                   </DiaryField>
 
-                  <DiaryField label="Ausgeführte Arbeiten">{entry.workDone}</DiaryField>
+                  <DiaryField label="Ausgeführte Arbeiten">{workDoneValue(entry)}</DiaryField>
 
                   {cfg.obstructions && (
                     <DiaryField

@@ -171,6 +171,11 @@
 .diary-fields .diary-note  { font-weight: 400; color: #6B7280; }
 .diary-head                { padding-bottom: 0.5rem; border-bottom: 1px solid #F0F0F0; }
 
+/* Mehrere ausgeführte Arbeiten: jede Angabe eine eigene, nummerierte Zeile.
+   So bleibt im Bericht erkennbar, dass es getrennte Leistungen sind. */
+.diary-worklist            { list-style: decimal; padding-left: 1.4em; margin: 0; }
+.diary-worklist > li + li  { margin-top: 0.45em; }
+
 /* ── Druckbogen (PrintSheet) ─────────────────────────────────
    Am Bildschirm verhält sich die Tabelle wie gewöhnliche Blöcke, damit sich
    am bestehenden Layout nichts ändert. Erst im Druck wird daraus eine echte
@@ -276,6 +281,8 @@ table.print-sheet,
   }
   .diary-fields .diary-value   { padding: 1.2mm 0 !important; vertical-align: top; line-height: 1.4; }
   .diary-fields .diary-note    { font-weight: normal; }
+  .diary-worklist > li + li    { margin-top: 2mm; }
+  .diary-worklist > li         { page-break-inside: avoid; break-inside: avoid; }
   /* Jede Angabe zusammenhalten, aber lange Texte umbrechen lassen */
   .diary-fields tr             { page-break-inside: auto; }
   /* Spezifischer als die Rahmen-Rücknahme weiter unten, damit die Trennlinie
