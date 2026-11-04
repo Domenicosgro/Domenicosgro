@@ -908,10 +908,68 @@ der Maschine sitzt. Eine eigene Leitung zu LM Studio liefe daran vorbei.
    geraten, und eine geratene Mappe verdrängt echte Fundstellen.
 3. **Stücke bewerten**: Protokollpunkte, Aufgaben, Bemerkungen, Notizen.
    Abdeckung zählt mehr als Häufigkeit – sonst gewinnt immer der längste Text.
-4. **Füllen bis zum Budget** (17 000 Zeichen; das Dashboard lehnt über 24 000
-   ab). **Weggelassen wird, nicht abgeschnitten**: Ein mitten im Satz gekappter
-   Protokollpunkt sieht für das Modell aus wie ein vollständiger. Was nicht
-   mehr hineinpasste, wird gezählt und mitgeteilt.
+4. **Füllen bis zum Budget.** **Weggelassen wird, nicht abgeschnitten**: Ein
+   mitten im Satz gekappter Protokollpunkt sieht für das Modell aus wie ein
+   vollständiger. Was nicht mehr hineinpasste, wird gezählt und mitgeteilt.
+
+### 15.3a Zwei Fehler des ersten Betriebstags (04.11.2026)
+
+Beide fielen erst im Echtbetrieb auf, beide sind gemessen.
+
+**Das Fenster lief über.** Das Budget stand auf 17 000 Zeichen, gegriffen aus
+dem Limit des Dashboards (`KI_MAX_INPUT` = 24 000). Maßgeblich ist aber das
+Fenster des Modells, und LM Studio lädt `qwen3-14b` mit **8192 Token**:
+
+```
+Kopf 17000 + Verlauf 6000 + Antwort 1500 Token  ->  0 Zeichen Antwort
+Kopf  9000 + Verlauf 3000 + Antwort  900 Token  ->  561 Zeichen, 3,2 s
+```
+
+Die erste Frage einer Unterhaltung passte noch, die zweite nicht mehr — dann
+kam **gar nichts**. Ein übergelaufenes Fenster meldet keinen Fehler. Genau das
+war der „abgerissen"-Fehler im Betrieb.
+
+Zeichen je Token, gemessen am Handbuch über `usage.prompt_tokens`: 3,47 / 3,43
+/ 3,38 / 3,40. Gerechnet wird mit **3,2**. Das Budget leitet sich jetzt aus
+`KI_FENSTER_TOKEN` ab (Vorgabe 8192) — wird LM Studio größer geladen, gehört
+die Zahl dort angepasst.
+
+**„Irgendein Wort getroffen" war kein Auswahlkriterium.** Gemessen an den
+ersten echten Fragen:
+
+| Frage | Fundstellen vorher |
+|---|---|
+| „Hallo Test!" | 44 |
+| „nochmal" | 29 |
+| „wie kann ich ein neues projekt anlagen?" | 42 |
+
+„Projekt" und „Protokoll" stehen in jedem Protokoll — wer danach sucht, findet
+alles, und alles finden ist dasselbe wie nichts finden. Bei der Bedienfrage
+verdrängten 42 Protokollschnipsel genau den Handbuchabschnitt mit der Antwort.
+
+Drei Regeln dagegen:
+
+1. **Seltenheit statt Vorkommen.** Jedes Suchwort wiegt `log(N/df)`. Wörter in
+   mehr als 40 % aller Stellen (`ALLERWELT_AB`) fliegen ganz heraus — und
+   stehen danach auch nicht mehr in der Quellenangabe, sonst behauptete die
+   Oberfläche, danach sei gesucht worden.
+2. **Abstand zur besten Stelle.** Mindestens 35 % ihrer Punkte
+   (`STELLEN_SCHWELLE`), höchstens 10 Stellen (`STELLEN_HOECHSTENS`).
+3. **Wortanfang statt Teilzeichenkette.** Vorher traf „hin" das Wort
+   „Hinweis" und „test" das Wort „Testlauf". Das Wortende bleibt frei, damit
+   „Projekt" auch „Projekte" trifft — im Deutschen hängt an jedem Wort etwas
+   dran.
+
+Das Handbuch braucht zusätzlich **zwei** tragende Wörter oder eines in der
+Überschrift. Es ist die Nebenquelle: Bei einer Frage nach der
+Sprinklerzentrale soll es nicht mitkommen, nur weil dort irgendwo „hin"
+vorkommt.
+
+Ein Wort, das **nirgends** vorkommt, gilt dabei nicht als nichtssagend,
+sondern als erfolglos gesucht — „Reykjavik" wird in der Quellenangabe genannt.
+Dass sich das von einem bloßen „nochmal" nicht unterscheiden lässt, ist kein
+Mangel: Für die Antwort gilt in beiden Fällen dasselbe, nämlich sich an die
+Unterhaltung zu halten und nichts zu erfinden.
 
 **Was bewusst nicht in den Kopf kommt:** E-Mail-Adressen und Telefonnummern der
 Kontakte. Für „wer macht die Statik?" braucht das Modell sie nicht, und was

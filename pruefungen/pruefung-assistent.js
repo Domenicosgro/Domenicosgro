@@ -403,7 +403,7 @@ async function main() {
   pruefe('der Kopf bleibt unter der Grenze des Dashboards',
          kopf.length < 24000, '(waren ' + kopf.length + ')')
   pruefe('die Anweisung verbietet dem Modell das Erfinden',
-         /erfindest nichts/.test(kopf))
+         /Erfinde nichts/.test(kopf))
   // Mit \s+ statt Leerzeichen: Der Satz steht im Quelltext umgebrochen, und
   // ein fester Leerschritt hätte hier eine Lücke gemeldet, die es nicht gibt.
   pruefe('und sagt ihm, dass Fehlen nicht Nichtexistenz ist',
@@ -522,6 +522,99 @@ async function main() {
   const wiederDa = await fragen(annaChat, 'Wie breit wird das Tor?', annaTok, 'p-offen')
   pruefe('danach geht es wieder', wiederDa.fertig?.knoten === 'Attrappe',
          '(war ' + JSON.stringify(wiederDa.fehler) + ')')
+
+  // ── Der Rückgriff bei realistischer Menge ─────────────────────────────────
+  // Bis hierher gab es zwei Protokolle. Das verdeckt genau den Fehler, der im
+  // Betrieb auffiel: Erst wenn vieles dasteht, zeigt sich, dass „irgendein
+  // Wort getroffen" kein Auswahlkriterium ist. Am ersten Tag holte ein
+  // „Hallo Test!" 44 Fundstellen und ein „nochmal" 29 — die richtige Stelle
+  // stand zwischen achtundzwanzig anderen.
+  abschnitt('Vierzig weitere Protokolle: Allerweltswörter zählen nicht mehr')
+  for (let i = 1; i <= 40; i++) {
+    await ruf('/api/protocols', { methode: 'POST', token: chefTok, koerper: {
+      id: 'pr-masse-' + i, projectId: 'p-offen', projectName: 'Halle Nord',
+      meetingType: 'Jour fixe', date: '2026-0' + (1 + (i % 9)) + '-1' + (i % 10),
+      agendaItems: [{ no: '1.' + i, topic: 'Besprechung im Projekt Nummer ' + i,
+        discussion: 'Im Protokoll zu diesem Projekt wurde der Test der '
+                  + 'Anlagen besprochen. Ein Protokoll je Projekt.',
+        result: 'Ergebnis ' + i + ' festgehalten.', status: 'offen' }],
+      actionItems: [{ no: '1', description: 'Aufgabe im Projekt ' + i,
+        responsible: 'Anna Architektin', status: 'offen' }] } })
+  }
+  // Eine einzige Stelle mit einem seltenen Wort.
+  await ruf('/api/protocols', { methode: 'POST', token: chefTok, koerper: {
+    id: 'pr-selten', projectId: 'p-offen', projectName: 'Halle Nord',
+    meetingType: 'Baubesprechung', date: '2026-10-02',
+    agendaItems: [{ no: '4.2', topic: 'Sprinklerzentrale',
+      discussion: 'Die Sprinklerzentrale muss in den Technikraum verlegt werden.',
+      result: 'Verlegung in Raum 0.14 beschlossen.', status: 'offen' }] } })
+
+  const gruss = await fragen(annaChat, 'Hallo Test!', annaTok)
+  pruefe('ein Gruss holt keine einzige Fundstelle',
+         (gruss.quellen?.quellen || []).length === 0,
+         '(waren: ' + JSON.stringify(gruss.quellen?.quellen) + ')')
+  pruefe('und der Kopf verweist auf die Unterhaltung statt auf Material',
+         /# Gefundene Stellen\s+Keine\./.test(gruss.gesendet?.system || '')
+         && /bisherige Unterhaltung/.test(gruss.gesendet?.system || ''))
+
+  const nochmal = await fragen(annaChat, 'nochmal', annaTok)
+  pruefe('ein blosses „nochmal" ebenfalls keine',
+         (nochmal.quellen?.quellen || []).length === 0,
+         '(waren ' + (nochmal.quellen?.quellen || []).length + ')')
+  pruefe('und es wird auf die Unterhaltung verwiesen',
+         /bisherige Unterhaltung/.test(nochmal.gesendet?.system || ''))
+  pruefe('auch ein Wort, das es nirgends gibt, wird als gesucht benannt',
+         /Gesucht wurde nach:[^\n]*reykjavik/.test(
+           (await fragen(annaChat, 'Was ist mit dem Hangar in Reykjavik?', annaTok))
+             .gesendet?.system || ''))
+
+  const allerwelt = await fragen(annaChat, 'Was steht im Protokoll zum Projekt?', annaTok)
+  pruefe('eine Frage nur aus Allerweltswörtern holt nichts',
+         (allerwelt.quellen?.quellen || []).length === 0,
+         '(waren: ' + JSON.stringify(allerwelt.quellen?.quellen) + ')')
+  pruefe('„projekt" und „protokoll" stehen nicht mehr als Suchwort da',
+         !(allerwelt.quellen?.begriffe || []).includes('projekt')
+         && !(allerwelt.quellen?.begriffe || []).includes('protokoll'),
+         '(waren ' + JSON.stringify(allerwelt.quellen?.begriffe) + ')')
+
+  const selten = await fragen(annaChat, 'Wo soll die Sprinklerzentrale hin?', annaTok)
+  const sq = selten.quellen?.quellen || []
+  pruefe('ein seltenes Wort findet genau seine Stelle',
+         sq.length >= 1 && sq.length <= 3, '(waren: ' + JSON.stringify(sq) + ')')
+  pruefe('und keine Handbuchabschnitte nebenher',
+         !sq.some(q => q.startsWith('Handbuch:')),
+         '(waren: ' + JSON.stringify(sq) + ')')
+  pruefe('und zwar die richtige',
+         (selten.gesendet?.system || '').includes('Raum 0.14'))
+  pruefe('die 40 Jour-fixe-Protokolle kommen nicht mit',
+         !/Besprechung im Projekt Nummer/.test(selten.gesendet?.system || ''))
+
+  const hilfe2 = await fragen(annaChat, 'Wie lege ich ein neues Projekt an?', annaTok)
+  pruefe('eine Bedienfrage bringt das Handbuch, nicht vierzig Protokolle',
+         (hilfe2.gesendet?.system || '').includes('# Aus dem Nutzerhandbuch')
+         && !/Besprechung im Projekt Nummer/.test(hilfe2.gesendet?.system || ''),
+         '(Quellen: ' + JSON.stringify(hilfe2.quellen?.quellen) + ')')
+
+  abschnitt('Alles zusammen passt in das Fenster des Modells')
+  // Der Fehler, der im Betrieb auffiel, war keine schlechte Antwort, sondern
+  // gar keine: Kopf plus Verlauf plus Antwort lagen über 8192 Token, und ein
+  // uebergelaufenes Fenster meldet nichts, es liefert nichts.
+  const ZEICHEN_JE_TOKEN = 3.2        // gemessen: 3,38–3,47 bei deutschem Text
+  const FENSTER = 8192
+  const kopfZ = (hilfe2.gesendet?.system || '').length
+  const verlaufZ = (hilfe2.gesendet?.nachrichten || [])
+    .reduce((s, n) => s + (n.content || '').length, 0)
+  const token = Math.ceil((kopfZ + verlaufZ) / ZEICHEN_JE_TOKEN)
+             + (hilfe2.gesendet?.max_tokens || 0)
+  pruefe('Kopf, Verlauf und Antwort bleiben unter 8192 Token',
+         token < FENSTER,
+         '(waren ~' + token + ': Kopf ' + kopfZ + ' Z, Verlauf ' + verlaufZ + ' Z, '
+         + 'Antwort ' + (hilfe2.gesendet?.max_tokens) + ' Token)')
+  pruefe('und zwar mit Abstand, nicht knapp',
+         token < FENSTER * 0.8, '(waren ~' + token + ' von ' + FENSTER + ')')
+  pruefe('die Antwortlaenge ist auf 900 Token gesetzt',
+         hilfe2.gesendet?.max_tokens === 900,
+         '(war ' + hilfe2.gesendet?.max_tokens + ')')
 
   abschnitt('Der Status sagt, ob eine KI da ist')
   const st = await ruf('/api/assistent/status', { token: annaTok })

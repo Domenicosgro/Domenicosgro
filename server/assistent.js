@@ -27,9 +27,18 @@ const kontext = require('./kontext')
 // Protokoll einwirft, soll das können — aber nicht ein ganzes Buch.
 const FRAGE_ZEICHEN = 8000
 const TITEL_ZEICHEN = 60
-// So viel Platz bekommt die Vorgeschichte. Der Systemkopf ist das Teure;
-// was hier zu viel steht, verdrängt gefundene Stellen.
-const VERLAUF_ZEICHEN = 6000
+// So viel Platz bekommt die Vorgeschichte, und so lang darf die Antwort
+// werden. Beides zusammen mit dem Systemkopf muss in das Fenster des
+// Modells passen — LM Studio lädt qwen3-14b derzeit mit 8192 Token.
+//
+// Hier stand 6000 und 1500. Nachgemessen am 04.11.2026:
+//   Kopf 17000 + Verlauf 6000 + 1500 Token  ->  **0 Zeichen Antwort**
+// Das war kein Fehler, den jemand gemeldet hätte — es kam einfach nichts.
+// Genau das war der Abriss bei der zweiten Frage einer Unterhaltung: Die
+// erste passte noch, die zweite nicht mehr, weil der Verlauf dazukam.
+// Die Rechnung dazu steht in server/kontext.js.
+const VERLAUF_ZEICHEN = 3000
+const ANTWORT_TOKEN   = Number(process.env.KI_ANTWORT_TOKEN || 900)
 
 function uid() {
   return crypto.randomUUID()
@@ -278,6 +287,7 @@ function registerAssistent(app, db, requireAuth, canAccessProject, logEvent) {
     try {
       for await (const e of ki.unterhalten({
         nachrichten: verlauf, system: gebaut.system, anwendung: 'protokolle',
+        maxTokens: ANTWORT_TOKEN,
       })) {
         if (e.art === 'text') { teile.push(e.nutzlast); res.write(ereignis('text', e.nutzlast)) }
         else if (e.art === 'fertig') { abschluss = e.nutzlast; res.write(ereignis('fertig', e.nutzlast)) }

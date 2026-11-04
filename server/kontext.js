@@ -28,13 +28,55 @@
 const fs = require('fs')
 const path = require('path')
 
-// Zeichenbudget für den ganzen Systemkopf. Das Dashboard lehnt alles über
-// KI_MAX_INPUT (24000) ab, und zwar mit einem Fehler statt mit einer
-// gekappten Antwort. Hier wird deutlich darunter geblieben: Die Anweisungen,
-// das Projektverzeichnis und der Verlauf kommen noch dazu.
-const BUDGET_GESAMT   = 17000
-const BUDGET_HANDBUCH = 4000
-const BUDGET_STUECK   = 1800   // ein einzelnes Stück höchstens
+// ── Das Zeichenbudget ────────────────────────────────────────────────────────
+//
+// Die erste Fassung hatte hier 17000 Zeichen stehen, gegriffen aus dem Limit
+// des Dashboards (KI_MAX_INPUT = 24000). Das war der falsche Maßstab. Maßgeblich
+// ist das **Fenster des Modells**, und LM Studio lädt qwen3-14b derzeit mit
+// 8192 Token. Am 04.11.2026 nachgemessen:
+//
+//   Systemkopf 17000 + Verlauf 6000 + Antwort 1500 Token  ->  0 Zeichen Antwort
+//   Systemkopf  9000 + Verlauf 3000 + Antwort  900 Token  ->  561 Zeichen, 3,2 s
+//
+// Der erste Fall ist genau der Abriss, den Domenico bei seiner zweiten Frage
+// gesehen hat: Die erste Frage passte noch, die zweite nicht mehr, weil der
+// Verlauf dazukam. Ein Fenster, das überläuft, meldet keinen Fehler — es
+// kommt einfach nichts.
+//
+// Umrechnung Zeichen je Token, gemessen am Handbuch über usage.prompt_tokens:
+// 3,47 / 3,43 / 3,38 / 3,40 — also stabil 3,4. Gerechnet wird mit 3,2, damit
+// eine Tabelle voller Zahlen und Namen (die schlechter tokenisiert) nicht
+// über die Kante kippt.
+const FENSTER_TOKEN  = Number(process.env.KI_FENSTER_TOKEN || 8192)
+const ANTWORT_TOKEN  = Number(process.env.KI_ANTWORT_TOKEN || 900)
+const RESERVE_TOKEN  = 300        // Rollenmarker, Gerüst, Rundung
+const ZEICHEN_JE_TOKEN = 3.2
+
+// Die harte Obergrenze: Was darüber liegt, kommt nicht mehr an.
+const PLATZ_GESAMT = Math.floor(
+  (FENSTER_TOKEN - ANTWORT_TOKEN - RESERVE_TOKEN) * ZEICHEN_JE_TOKEN)
+
+// Das weiche Ziel, und es liegt **weit** darunter. Mehr Zusammenhang ist
+// nicht besser: Bei 44 eingesammelten Stellen steht die eine richtige
+// zwischen 43 Beiläufigkeiten, und das Modell antwortet entsprechend
+// unscharf. Lieber wenig und passend.
+const BUDGET_GESAMT   = Math.min(9000, PLATZ_GESAMT)
+const BUDGET_HANDBUCH = 3000
+const BUDGET_STUECK   = 1400   // ein einzelnes Stück höchstens
+
+// So viele Fundstellen höchstens. Darüber hinaus hilft keine mehr — sie
+// verdrängt nur die besseren.
+const STELLEN_HOECHSTENS = 10
+
+// Eine Stelle muss mindestens so gut sein wie dieser Anteil der besten.
+// Ohne diese Schranke kam jede Stelle mit, die irgendein Wort enthielt:
+// „nochmal" holte 29 Stellen, ein „Hallo Test!" sogar 44.
+const STELLEN_SCHWELLE = 0.35
+
+// Ein Wort, das in mehr als diesem Anteil aller Stellen vorkommt, sagt
+// nichts mehr aus. „Projekt" und „Protokoll" stehen in jedem Protokoll —
+// wer danach sucht, findet alles, und das ist dasselbe wie nichts finden.
+const ALLERWELT_AB = 0.4
 
 // Wörter, die in jeder Frage vorkommen und nichts aussagen. Ohne diese Liste
 // trifft "Was ist in dem Projekt noch offen?" auf jedes Protokoll, in dem
@@ -88,27 +130,96 @@ function begriffe(frage) {
 }
 
 /**
+ * Was ein Suchwort wert ist — gemessen daran, wie selten es vorkommt.
+ *
+ * Das ist die Lehre aus dem ersten Betriebstag: „Hallo Test!" holte 44
+ * Fundstellen, „nochmal" 29, und die Frage nach dem Anlegen eines Projekts
+ * holte 42 Protokollschnipsel statt des Handbuchabschnitts. Der Grund war
+ * immer derselbe — Wörter wie „projekt", „protokoll" oder „test" stehen in
+ * fast jedem Stück. Wer danach sucht, findet alles, und alles finden ist
+ * dasselbe wie nichts finden.
+ *
+ * Also zählt nicht mehr, **ob** ein Wort vorkommt, sondern **wie selten**.
+ * Ein Wort in jedem zweiten Stück wiegt fast nichts, ein Wort in dreien
+ * wiegt viel. Wörter oberhalb von ALLERWELT_AB fliegen ganz heraus und
+ * stehen danach auch nicht mehr in der Quellenangabe — sonst behauptete die
+ * Oberfläche, danach sei gesucht worden.
+ */
+function gewichte(stuecke, worte) {
+  const N = Math.max(stuecke.length, 1)
+  const texte = stuecke.map(s => s.text.toLowerCase())
+  const heraus = new Map()
+  for (const w of worte) {
+    let df = 0
+    for (const t of texte) if (wortTreffer(t, w) > 0) df++
+    // Ein Wort, das **nirgends** vorkommt, ist nicht nichtssagend, sondern
+    // erfolglos: „Reykjavik" ist genau die Art Wort, nach der gesucht werden
+    // soll, und die Person soll erfahren, dass danach gesucht wurde. Es
+    // bekommt deshalb volles Gewicht — das kostet nichts, weil es ohnehin
+    // nichts trifft. (Erste Fassung setzte hier 0 und warf das Wort damit
+    // aus der Quellenangabe: Der Kopf sagte dann „keine Suchwörter" statt
+    // „danach gesucht, nichts gefunden".)
+    if (df === 0) { heraus.set(w, Math.log(N)); continue }
+    if (df / N > ALLERWELT_AB) { heraus.set(w, 0); continue }
+    // log(N/df): in einem von N Stücken -> viel, in jedem zweiten -> wenig.
+    heraus.set(w, Math.log(N / df))
+  }
+  return heraus
+}
+
+/**
+ * Wie oft ein Suchwort in einem Text steht — am **Wortanfang**, nicht
+ * irgendwo mittendrin.
+ *
+ * Vorher wurde als Teilzeichenkette gesucht. Dann trifft „hin" das Wort
+ * „Hinweis", „test" trifft „Testlauf" und „bau" trifft „Ausbau" — und zwar
+ * so oft, dass die Seltenheitsrechnung davon verdorben wird.
+ *
+ * Der Wortanfang genügt, das Wortende wäre zu streng: Im Deutschen hängt an
+ * jedem Wort etwas dran. „Projekt" soll „Projekte" und „Projektleiter"
+ * treffen, und das tut es so.
+ */
+function wortTreffer(kleinText, wort) {
+  let n = 0, ab = 0
+  for (;;) {
+    const i = kleinText.indexOf(wort, ab)
+    if (i === -1) break
+    const davor = i === 0 ? '' : kleinText[i - 1]
+    // Wortanfang: am Textanfang oder hinter etwas, das kein Buchstabe und
+    // keine Ziffer ist.
+    if (!davor || !/[a-zäöüß0-9]/.test(davor)) n++
+    ab = i + wort.length
+  }
+  return n
+}
+
+/**
  * Wie gut ein Text zu den Begriffen passt.
  *
- * Abdeckung zählt mehr als Häufigkeit: Ein Punkt, in dem drei der vier
- * gesuchten Wörter vorkommen, gehört vor einen, in dem ein Wort achtmal
- * steht. Sonst gewinnt immer der längste Text.
+ * Summe der Gewichte der getroffenen Wörter. Abdeckung zählt damit von
+ * selbst mehr als Häufigkeit: Drei verschiedene seltene Wörter schlagen ein
+ * Wort, das achtmal dasteht — sonst gewinnt immer der längste Text.
+ *
+ * Ohne `gew` (altes Verhalten, nur noch für das Handbuch gegen seine
+ * eigenen Abschnitte) wiegt jedes Wort gleich.
  */
-function treffer(text, worte) {
+function treffer(text, worte, gew = null) {
   if (!text) return { punkte: 0, getroffen: [] }
   const klein = text.toLowerCase()
-  let abdeckung = 0, haeufigkeit = 0
+  let punkte = 0, haeufigkeit = 0
   const getroffen = []
   for (const w of worte) {
-    let ab = 0, n = 0
-    for (;;) {
-      const i = klein.indexOf(w, ab)
-      if (i === -1) break
-      n++; ab = i + w.length
+    const gewicht = gew ? (gew.get(w) || 0) : 1
+    if (gewicht <= 0) continue
+    const n = wortTreffer(klein, w)
+    if (n > 0) {
+      punkte += gewicht * 10
+      haeufigkeit += n
+      getroffen.push(w)
     }
-    if (n > 0) { abdeckung++; haeufigkeit += n; getroffen.push(w) }
   }
-  return { punkte: abdeckung * 10 + Math.min(haeufigkeit, 10), getroffen }
+  // Mehrfaches Vorkommen hilft ein wenig, entscheidet aber nie.
+  return { punkte: punkte + Math.min(haeufigkeit, 5) * 0.2, getroffen }
 }
 
 // ── Das Handbuch ─────────────────────────────────────────────────────────────
@@ -151,22 +262,47 @@ function handbuch() {
 
 function handbuchTeile(worte) {
   if (!worte.length) return []
-  const bewertet = handbuch()
-    .map(a => ({ ...a, ...treffer(a.titel + '\n' + a.text, worte) }))
-    // Der Titel wiegt mehr: "Passwort ändern" trifft die Frage nach dem
-    // Passwort genauer als ein Abschnitt, in dem das Wort nebenbei fällt.
-    .map(a => ({ ...a, punkte: a.punkte + treffer(a.titel, worte).punkte * 2 }))
-    .filter(a => a.punkte > 0)
+  const abschnitte = handbuch()
+  if (!abschnitte.length) return []
+
+  // Dieselbe Seltenheitsrechnung wie bei den Projektdaten, nur gegen die
+  // Abschnitte des Handbuchs. Auch hier steht "Protokoll" fast überall --
+  // und auch hier führte das dazu, dass jeder Abschnitt ein Treffer war.
+  const gew = gewichte(abschnitte.map(a => ({ text: a.titel + '\n' + a.text })),
+                       worte)
+
+  const bewertet = abschnitte
+    .map(a => {
+      const im_text  = treffer(a.titel + '\n' + a.text, worte, gew)
+      // Der Titel wiegt mehr: "Passwort ändern" trifft die Frage nach dem
+      // Passwort genauer als ein Abschnitt, in dem das Wort nebenbei fällt.
+      const im_titel = treffer(a.titel, worte, gew)
+      return { ...a, punkte: im_text.punkte + im_titel.punkte * 2,
+               getroffen: im_text.getroffen, imTitel: im_titel.getroffen.length }
+    })
+    // **Zwei** tragende Wörter, oder eines in der Überschrift. Das Handbuch
+    // ist die Nebenquelle: Bei einer Frage zu einem Bauteil soll es nicht
+    // mitkommen, nur weil dort zufällig dasselbe Wort einmal vorkommt. Ein
+    // einzelnes beiläufiges Wort ist kein Thema.
+    //
+    // Gemessen an echten Fragen: „Hallo Test!" holte den Abschnitt „Tab:
+    // E-Mail" (wegen „E-Mail-Test"), und „Wo soll die Sprinklerzentrale
+    // hin?" holte drei Abschnitte, in denen irgendwo „hin" vorkam.
+    .filter(a => a.punkte > 0 && (a.getroffen.length >= 2 || a.imTitel >= 1))
     .sort((a, b) => b.punkte - a.punkte)
+
+  if (!bewertet.length) return []
+  const schwelle = bewertet[0].punkte * STELLEN_SCHWELLE
 
   const heraus = []
   let platz = BUDGET_HANDBUCH
   for (const a of bewertet) {
+    if (a.punkte < schwelle) break
     const stueck = `### ${a.titel}\n${a.text}`
     if (stueck.length > platz) continue
     heraus.push({ titel: a.titel, text: stueck, punkte: a.punkte })
     platz -= stueck.length
-    if (heraus.length >= 4) break
+    if (heraus.length >= 3) break
   }
   return heraus
 }
@@ -296,17 +432,27 @@ Komplizen Industrieplanung und Architektur. Du hilfst bei zwei Dingen:
 Fragen zu den Bauprojekten dieses Büros und Fragen zur Bedienung des
 Programms.
 
+Du redest wie ein erfahrener Kollege im Büro: direkt, in ganzen Sätzen,
+ohne Floskeln und ohne Entschuldigungen. Keine Einleitung wie „Gerne!" oder
+„Basierend auf den vorliegenden Informationen" — fang mit der Antwort an.
+
 So antwortest du:
-- Nur aus dem Material unten. Du erfindest nichts — keine Namen, keine
-  Fristen, keine Beschlüsse, keine Protokollnummern.
-- Steht die Antwort nicht im Material, sagst du genau das: dass du dazu
-  nichts findest. Du nennst dann, wonach du gesucht hast, damit die Frage
-  anders gestellt werden kann. Rate nicht.
-- Du nennst deine Quelle. Die Angaben in eckigen Klammern über jedem
-  Abschnitt sind dafür gedacht, zum Beispiel: „(Protokoll Halle Nord ·
-  Baubesprechung · 14.09.2026, Punkt 2.1)".
-- Deutsch, sachlich, kurz. Aufgaben als „Wer — Was — Bis wann".
-- Du gibst keine Rechtsauskunft und keine Honorarberatung.
+- **Antworte wirklich.** Nenne das Ergebnis zuerst, dann die Begründung.
+  Eine Aufzählung, wenn es mehrere Punkte sind; sonst zwei, drei Sätze.
+- **Denke mit.** Du darfst aus dem Material schließen, zusammenfassen,
+  einordnen, Widersprüche und offene Enden benennen und sagen, was als
+  Nächstes zu tun wäre. Das ist kein Erfinden, solange du dich auf das
+  Material stützt und kenntlich machst, was dein Schluss ist.
+- **Erfinde nichts.** Keine Namen, Fristen, Beschlüsse, Zahlen oder
+  Protokollnummern, die nicht im Material stehen.
+- **Nenne deine Quelle** in Klammern, zum Beispiel „(Protokoll Halle Nord ·
+  Baubesprechung · 14.09.2026, Punkt 2.1)". Die Angaben in eckigen Klammern
+  über jedem Abschnitt sind dafür gedacht.
+- **Steht die Antwort nicht im Material**, sag das in einem Satz und nenne,
+  was du stattdessen gefunden hast oder wonach sich zu suchen lohnt. Rate
+  nicht — aber antworte auch nicht nur mit „weiß ich nicht".
+- Aufgaben gibst du als „Wer — Was — Bis wann" aus.
+- Keine Rechtsauskunft, keine Honorarberatung.
 
 Was du nicht kannst: Du kannst nichts im Programm ändern — kein Protokoll
 anlegen, keine Aufgabe speichern, keine E-Mail senden. Wer dich darum
@@ -360,16 +506,33 @@ function bauen({ db, frage, darfProjekt, projektId = null, benutzer = null }) {
 
   // 3. Die Stücke bewerten.
   const stuecke = stueckeSammeln(protokolle, notizen, namen)
-  const bewertet = stuecke
-    .map(s => ({ ...s, ...treffer(s.text, worte) }))
+  const gew = gewichte(stuecke, worte)
+  // Nur die Wörter, nach denen wirklich gesucht wurde. Die Allerwelts-
+  // wörter stehen hier nicht mehr drin, und damit auch nicht mehr in der
+  // Oberfläche: „gesucht nach: projekt, protokoll" war eine Unwahrheit,
+  // weil nach ihnen gerade nicht gesucht wurde.
+  const tragend = worte.filter(w => (gew.get(w) || 0) > 0)
+
+  const roh = stuecke
+    .map(s => ({ ...s, ...treffer(s.text, worte, gew) }))
     .filter(s => s.punkte > 0)
     .map(s => ({
       ...s,
       // Das Projekt im Mittelpunkt zuerst: Wer in einem Projekt steht und
-      // "noch offen?" fragt, meint dieses.
-      punkte: s.punkte + (fokus && s.projektId === fokus.id ? 15 : 0),
+      // "noch offen?" fragt, meint dieses. Ein Zuschlag, kein Freifahrt-
+      // schein -- er verschiebt die Reihenfolge, hebt aber die Schwelle
+      // unten nicht auf.
+      punkte: s.punkte * (fokus && s.projektId === fokus.id ? 1.5 : 1),
     }))
     .sort((a, b) => b.punkte - a.punkte)
+
+  // Abstand zur besten Stelle: Was deutlich schlechter passt, gehört nicht
+  // dazu. Vorher kam alles mit, was irgendein Wort enthielt -- ein „nochmal"
+  // brachte so 29 Stellen mit, und die richtige stand zwischen 28 anderen.
+  const beste = roh.length ? roh[0].punkte : 0
+  const bewertet = roh
+    .filter(s => s.punkte >= beste * STELLEN_SCHWELLE)
+    .slice(0, STELLEN_HOECHSTENS)
 
   // 4. Zusammensetzen, bis das Budget voll ist.
   const abschnitte = []
@@ -427,9 +590,24 @@ function bauen({ db, frage, darfProjekt, projektId = null, benutzer = null }) {
     abschnitte.push('# Gefundene Stellen (' + gefunden.length +
                     (uebrig ? ', ' + uebrig + ' weitere passten nicht mehr dazu' : '') +
                     ')\n\n' + gefunden.join('\n\n'))
-  } else if (worte.length) {
-    abschnitte.push('# Gefundene Stellen\n\nKeine. Gesucht wurde nach: '
-                    + worte.join(', ') + '.')
+  } else {
+    // Nichts gefunden -- aus zwei Gründen, die sich **nicht** auseinander-
+    // halten lassen: Entweder stand in der Frage kein Wort, das etwas
+    // bezeichnet („Hallo Test!", „nochmal"), oder es stand eines da, das es
+    // in den Daten nicht gibt („Reykjavik"). Beide sehen gleich aus — ein
+    // Wort ohne Fundstelle ist ein Wort ohne Fundstelle. Eine erste Fassung
+    // hat hier unterschieden und dabei geraten; der Unterschied ist für die
+    // Antwort auch gar nicht wichtig.
+    //
+    // In beiden Fällen gilt dasselbe: nichts erfinden, sagen was gesucht
+    // wurde, und sich an die Unterhaltung halten statt an zufälliges
+    // Material. Früher holte so etwas 29 bis 44 Stellen -- eine Schüttung,
+    // in der nichts zur Frage gehörte.
+    abschnitte.push('# Gefundene Stellen\n\nKeine.'
+      + (tragend.length ? ' Gesucht wurde nach: ' + tragend.join(', ') + '.' : '')
+      + '\nBeziehe dich auf die bisherige Unterhaltung. Ist auch die leer, '
+      + 'frage kurz nach, worum es gehen soll, oder biete an, wobei du '
+      + 'helfen kannst. Erfinde keine Projektinhalte.')
   }
 
   const anrede = benutzer ? `\n\nDie fragende Person heisst ${benutzer}.` : ''
@@ -437,7 +615,7 @@ function bauen({ db, frage, darfProjekt, projektId = null, benutzer = null }) {
 
   return { system, quellen, projekte: erlaubt.length, uebrig,
            fokus: fokus ? (fokus.name || fokus.id) : null,
-           begriffe: worte }
+           begriffe: tragend, geprueft: stuecke.length }
 }
 
 module.exports = {
