@@ -91,7 +91,7 @@ DB und Sessions überleben den Container-Tausch → im Browser genügt Neuladen.
 
 ---
 
-## 4a. Der Assistent (Chatbot auf den Projektdaten)
+## 4a. (K)ompl(I)ze — der Assistent (Chatbot auf den Projektdaten)
 
 Das Protokolltool bringt seinen **eigenen** Assistenten mit. Er liest nur, und
 nur das, was die fragende Person auch in der Oberfläche sehen darf.
@@ -121,8 +121,9 @@ Einzelheiten hier: `CLAUDE.md` §15.
 - [ ] E-Mail-Test erfolgreich (Graph)
 - [ ] Einladungs-/Freimelde-Link zeigt die **öffentliche** URL
 - [ ] Secrets nur in der NAS-`docker-compose.yml`
-- [ ] Assistent: Knopf unten rechts erscheint, eine Frage bekommt Fundstellen
-      genannt (sonst stimmen die beiden KI-Schlüssel nicht überein)
+- [ ] (K)ompl(I)ze: Knopf unten rechts erscheint, eine Frage bekommt Fundstellen
+      genannt und darunter „beantwortet von Komplize 54" (sonst stimmen die
+      beiden KI-Schlüssel nicht überein)
 
 ---
 

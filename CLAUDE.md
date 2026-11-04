@@ -839,7 +839,7 @@ git pull origin claude/protocol-tool-meetings-tIoZX
 
 ---
 
-## 15. Der Assistent (Chatbot auf den Projektdaten)
+## 15. (K)ompl(I)ze — der Assistent auf den Projektdaten
 
 > Seit 04.11.2026. Erste von mehreren Integrationen, die je einen eigenen
 > Assistenten bekommen. Das Papier dazu:
@@ -848,6 +848,23 @@ git pull origin claude/protocol-tool-meetings-tIoZX
 Beantwortet zwei Arten von Fragen: zu den Bauprojekten dieses Büros und zur
 Bedienung des Programms. **Er liest nur** – anlegen, speichern und versenden
 bleibt bei den Menschen.
+
+### 15.0 Wie er heißt
+
+In der Oberfläche heißt er **(K)ompl(I)ze**. Die Klammern greifen das
+(K)-Logo des Hauses auf, und die beiden eingeklammerten Buchstaben ergeben
+zusammen „KI" – das Wort steckt also im Namen, ohne dass es jemand
+hinschreiben müsste. Dargestellt wird es in `Assistent.jsx` über die kleine
+Komponente `Name`; die Klammerbuchstaben stehen in Sky (`#8FBEFF`).
+
+**Nur die Anzeige trägt diesen Namen.** Die Routen heißen weiter
+`/api/assistent/*`, die Dateien ebenso. Ein Name, der sich nach außen ändern
+darf, soll nicht an Pfaden hängen, die danach alle mitwandern müssten.
+
+Dieselbe Überlegung gilt auf der anderen Seite: Die KI-Rechner heißen seit
+dem 04.11.2026 **`Komplize <letzte Stelle der IP>`** (`Komplize 54`,
+`Komplize 190`), weil ihr Name unter jeder Antwort steht. Vorher standen dort
+das Kürzel eines Kollegen und eine Kartenbezeichnung.
 
 ### 15.1 Die zwei Entscheidungen, auf denen alles steht
 

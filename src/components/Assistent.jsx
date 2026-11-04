@@ -20,6 +20,24 @@ import { Bot, ChevronDown, ChevronRight, Plus, Send, Trash2, X } from 'lucide-re
 
 const SPEICHER_OFFEN = 'kp_assistent_offen'
 
+// Wie er heißt, wenn jemand ihn ansieht: **(K)ompl(I)ze**. Die Klammern
+// greifen das (K)-Logo des Hauses auf, und die beiden eingeklammerten
+// Buchstaben ergeben zusammen „KI" — das Wort steckt also im Namen, ohne
+// dass es jemand hinschreiben müsste.
+//
+// Nur die Anzeige trägt diesen Namen. Die Routen heißen weiter
+// /api/assistent/*, die Dateien ebenso: Ein Name, der sich nach außen
+// ändern darf, sollte nicht an Pfaden hängen, die danach alle mitwandern.
+const NAME_TEXT = '(K)ompl(I)ze'
+
+function Name({ klasse = '' }) {
+  return (
+    <span className={klasse}>
+      <span className="text-sky">(K)</span>ompl<span className="text-sky">(I)</span>ze
+    </span>
+  )
+}
+
 function token() {
   try { return localStorage.getItem('kp_session_token') } catch { return null }
 }
@@ -303,10 +321,10 @@ export default function Assistent({ projektId = null, projektName = null }) {
       <button
         className="no-print fixed bottom-5 right-5 z-40 flex items-center gap-2 bg-night text-white px-4 py-3 shadow-none border border-night hover:bg-brand-500 transition-colors"
         onClick={() => setOffen(true)}
-        title="Assistent öffnen"
+        title={NAME_TEXT + ' öffnen'}
       >
         <Bot size={18} />
-        <span className="text-sm font-medium hidden sm:inline">Assistent</span>
+        <Name klasse="text-sm font-medium hidden sm:inline" />
       </button>
     )
   }
@@ -317,7 +335,7 @@ export default function Assistent({ projektId = null, projektName = null }) {
       <div className="flex items-center gap-2 bg-night text-white px-4 py-3 shrink-0">
         <Bot size={18} />
         <div className="flex-1 min-w-0">
-          <div className="font-headline text-sm leading-tight">Assistent</div>
+          <Name klasse="font-headline text-sm leading-tight block" />
           <div className="text-[11px] text-white/60 truncate">
             {projektName
               ? `Schwerpunkt: ${projektName}`
