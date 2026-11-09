@@ -4553,12 +4553,12 @@ app.patch('/api/projects/:id', requireAuth, writeLimiter, (req, res) => {
       projectAdminUser:   existing.projectAdminUser,
       projectAdmins:      existing.projectAdmins,
     }
-    // Projektdatenbank (projectData) darf nur von System- oder Projektadmins
-    // geändert werden – für alle anderen wird die Server-Kopie wiederhergestellt.
-    const requester = req.user !== '__apikey__' && req.user !== '__anonymous__' ? db.users.get(req.user) : null
-    const mayEditData = req.user === '__apikey__' || !db.users.hasAny()
-      || requester?.role === 'admin' || isProjectAdmin(existing, req.user)
-    if (!mayEditData) safeData.projectData = existing.projectData
+    // Die Projektdaten (projectData: Codierung, Leistungsphasen, Vertrag)
+    // pflegt jeder, der auf das Projekt zugreifen darf. Sie entstehen im
+    // Projektalltag, nicht am Admin-Schreibtisch, und waren als Admin-Feld
+    // regelmäßig veraltet. Die Zugriffsbeschränkung oben bleibt maßgeblich:
+    // Wer das Projekt nicht sehen darf, kommt hier gar nicht erst an.
+    // Angelegt und gelöscht werden Projekte weiterhin nur vom Systemadmin.
     const result = db.projects.update(req.params.id, safeData, version, req.user)
     if (result.notFound) return res.status(404).json({ error: 'Nicht gefunden.' })
     if (result.conflict) return res.status(409).json({

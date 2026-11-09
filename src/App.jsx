@@ -931,10 +931,10 @@ export default function App() {
     )
   }
 
-  // Projektdatenbank bearbeiten dürfen System- und Projektadmins
-  const canEditProjektdaten = (project) => !isServer || effectiveUser?.role === 'admin'
-    || project.projectAdminUser === serverUser?.username
-    || project.projectAdmins?.includes(serverUser?.username)
+  // Projektdaten pflegt jeder, der das Projekt sehen darf – zugriffsbeschränkte
+  // Projekte erreichen die übrigen Nutzer ohnehin nicht. Neue Projekte legt
+  // weiterhin der Systemadmin in der Projektdatenbank an.
+  const canEditProjektdaten = () => true
 
   if (view === 'project-daten') {
     const project = projectsWithContacts.find(p => p.id === selectedProjectId)

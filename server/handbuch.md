@@ -59,16 +59,26 @@ jederzeit wieder hinzufügen. Gelöscht wird dabei nichts.
 | Kachel | Wozu |
 |---|---|
 | **Kontaktdatenbank** | alle Projektkontakte auf einen Blick, projektübergreifend |
-| **Projektdatenbank** | die zentralen Projektstammdaten: Nummer, Kürzel, Leistungsphasen, Verträge. **Hier entstehen neue Projekte.** Bearbeiten dürfen nur Admins |
+| **Projektdatenbank** | die zentralen Projektstammdaten: Nummer, Kürzel, Leistungsphasen, Verträge. **Neue Projekte legt ein Admin an**, pflegen darf die Daten danach jeder, der das Projekt sehen darf |
 | **Mitarbeiter & Projektteams** | die eigene Organisation pflegen (nur Admin) |
 | **Learning-Plattform** | Schulungsvideos zur Nutzung des Programms |
 | **Administration** | Benutzer, E-Mail-Vorlagen, Backup, Server-Einstellungen (nur Admin) |
 
 ### Favoriten setzen (Stern)
-Jeder Nutzer kann Projekte als Favorit markieren (Stern-Symbol). Favoriten erscheinen oben in der Liste. Diese Einstellung ist pro Nutzer individuell und wird auf dem Server gespeichert.
+Jeder Nutzer kann Projekte als Favorit markieren (Stern-Symbol). Diese
+Einstellung ist pro Nutzer individuell und wird auf dem Server gespeichert.
+
+> **Achtung, häufige Stolperfalle:** Sobald man **einen** Favoriten hat, zeigt
+> die Startseite **nur noch die Favoriten**. Alle übrigen Projekte sind
+> ausgeblendet — auch neu hinzugekommene. Ein gelber Streifen über den Karten
+> sagt, wie viele das gerade sind; der Knopf **„Alle anzeigen"** daneben (und
+> oben neben dem Suchfeld) blendet sie wieder ein.
 
 ### Projekte suchen und filtern
-Über das Suchfeld können Projekte nach Namen gefiltert werden.
+Das Suchfeld durchsucht **Name, Bezeichnung, Projektnummer und Kürzel** — und
+zwar immer **alle** Projekte der Startseite, auch wenn gerade nur Favoriten
+angezeigt werden. Wer ein Projekt sucht, findet es also, ohne vorher etwas
+umzustellen.
 
 ### Maßnahmen-Dashboard: offene Aufgaben über alle Projekte
 Der Button „Dashboard" öffnet eine projektübergreifende Übersicht aller offenen Maßnahmen aus allen Protokollen.
@@ -474,8 +484,14 @@ Die zentrale Stelle für **alle** Projekte des Büros — auch für die, an dene
 gerade nicht protokolliert wird. Hier stehen Nummer, Kürzel, Bezeichnung,
 Gesellschaft, Vertrag, Leistungsphasen und die Generalplanung.
 
-**Nur Administratoren dürfen anlegen und bearbeiten.** Alle anderen sehen die
-Daten.
+**Anlegen darf nur ein Administrator.** Die Projektdaten eines bestehenden
+Projekts **pflegt jeder**, der das Projekt sehen darf — Nummer, Kürzel,
+Bezeichnung, Gesellschaft, Vertrag, Leistungsphasen. Sie entstehen bei der
+Arbeit am Projekt und sollen nicht auf einen Admin warten müssen.
+
+Ist für ein Projekt der **Zugang eingeschränkt** (Projektadmin, UserCog-Symbol
+auf der Projektkarte), gilt das unverändert: Wer nicht freigegeben ist, sieht
+das Projekt gar nicht — und kann es folglich auch nicht ändern.
 
 Hier entstehen neue Projekte (siehe „Neues Projekt anlegen").
 
@@ -517,9 +533,8 @@ Der Projektname setzt sich daraus zusammen: `1012 BSA Fassadensanierung
 Synthese A1`. Diese Schreibweise ist kein Geschmack — andere Systeme im Haus
 erkennen das Projekt daran wieder.
 
-> **Nur Administratoren dürfen in der Projektdatenbank anlegen und
-> bearbeiten.** Wer das nicht darf, sieht die Daten, aber keinen Knopf.
-> Dann bittet man einen Admin.
+> **Anlegen darf nur ein Administrator.** Die Projektdaten eines bestehenden
+> Projekts darf danach jeder pflegen, der das Projekt sehen darf.
 
 **Schritt 2 — auf das Protokoll-Dashboard holen**
 
@@ -530,9 +545,29 @@ erkennen das Projekt daran wieder.
 Es erscheint dann als Karte auf der Startseite und öffnet sich gleich. Ab da
 lassen sich Protokolle, Kontakte, Notizen und alles Weitere dazu anlegen.
 
+**Diesen zweiten Schritt darf jeder machen**, nicht nur der Admin. Wer ein
+Projekt aus der Datenbank braucht, holt es sich selbst auf die Startseite —
+einmal für alle, denn die Startseite ist für das ganze Büro dieselbe.
+
 **Warum zwei Schritte?** Die Projektdatenbank führt *alle* Projekte des
 Büros. Auf der Startseite sollen nur die stehen, an denen gerade protokolliert
 wird — sonst wäre die Übersicht nach einem Jahr unbrauchbar.
+
+### Ein Projekt ist nicht zu finden
+
+Der Knopf **„Projekt hinzufügen"** ist die eine Stelle, an der **jedes**
+Projekt auftaucht. Oben stehen die, die noch nicht auf der Startseite sind
+(Klick holt sie her), darunter unter „Bereits auf dem Dashboard" alle
+übrigen (Klick öffnet sie). Fehlt ein Projekt auch dort, liegt es an einem
+von drei Punkten:
+
+1. **Favoritenansicht** — betrifft nur die Kartenansicht, nicht diesen Dialog.
+   Der gelbe Streifen über den Karten sagt es; „Alle anzeigen" hilft.
+2. **Archiviert** — dann steht es unten im Abschnitt „Archiv".
+3. **Zugang eingeschränkt** — der Projektadmin hat festgelegt, wer das
+   Projekt sehen darf. Dann hilft nur, ihn um die Freigabe zu bitten. Zu
+   erkennen ist das am Schloss auf der Projektkarte — allerdings nur für die,
+   die das Projekt ohnehin sehen.
 
 ### Besprechung protokollieren
 1. Projekt öffnen → „Neues Protokoll"

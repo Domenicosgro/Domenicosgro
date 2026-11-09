@@ -260,17 +260,34 @@ export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, 
   const hasFavorites = activeProjects.some(p => isFavorite(p.id))
 
   const q = search.trim().toLowerCase()
-  const baseFiltered = activeProjects
-    .filter(p => !q || (p.name || '').toLowerCase().includes(q))
+  // Gesucht wird in Name, Bezeichnung, Projektnummer und Kürzel – wer ein
+  // Projekt sucht, soll es finden, egal unter welcher Angabe er es kennt.
+  const matchesQuery = (p) => {
+    if (!q) return true
+    const d = p.projectData || {}
+    return [p.name, d.bezeichnung, d.nummer, d.kuerzel]
+      .some(v => String(v ?? '').toLowerCase().includes(q))
+  }
+  const baseFiltered = activeProjects.filter(matchesQuery)
 
-  // Favorites-only mode: only show when there are favorites AND showAll=false
-  const displayed = (hasFavorites && !showAll)
+  // Die Favoritenansicht blendet alle übrigen Projekte aus. Bei einer Suche
+  // gilt sie NICHT: sonst bleibt ein gesuchtes Projekt unauffindbar, nur weil
+  // es kein Favorit ist – genau so verschwinden neu angelegte Projekte.
+  const favoritesOnly = hasFavorites && !showAll && !q
+  const displayed = favoritesOnly
     ? baseFiltered.filter(p => isFavorite(p.id))
-    : baseFiltered.sort((a, b) => {
+    : [...baseFiltered].sort((a, b) => {
         const af = isFavorite(a.id) ? 0 : 1
         const bf = isFavorite(b.id) ? 0 : 1
         return af - bf
       })
+  // Wie viele Projekte die Favoritenansicht gerade verbirgt
+  const hiddenByFavorites = favoritesOnly ? baseFiltered.length - displayed.length : 0
+
+  // Einheitliche Reihenfolge für Listen und Dialoge: Projektnummer, dann Name
+  const byProjektNr = (a, b) =>
+    (parseInt(a.projectData?.nummer, 10) || 99999) - (parseInt(b.projectData?.nummer, 10) || 99999)
+    || (a.name || '').localeCompare(b.name || '', 'de')
 
   const unassigned    = protocols.filter(p => !p.projectId)
   const protocolsFor  = (id) => protocols.filter(p => p.projectId === id)
@@ -491,7 +508,7 @@ export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, 
                   <div className="text-lg font-bold text-night leading-none">{dbProjectCount}</div>
                   <div className="text-xs text-gray-400 mt-0.5">Projekte</div>
                 </div>
-                <span className="text-xs text-gray-400 italic self-end">Bearbeitung: Admins</span>
+                <span className="text-xs text-gray-400 italic self-end">Anlegen: Admins · Pflege: alle</span>
               </div>
             </button>
 
@@ -604,9 +621,24 @@ export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, 
         </div>
       )}
 
-      {/* No favorites yet hint */}
-      {hasFavorites && !showAll && displayed.length === 0 && q && (
-        <p className="text-sm text-gray-400 text-center py-4">Kein Favorit gefunden.</p>
+      {/* Die Favoritenansicht verbirgt Projekte. Das muss sichtbar sein, sonst
+          sucht jemand ein Projekt, das längst auf dem Dashboard liegt. */}
+      {hiddenByFavorites > 0 && (
+        <div className="flex items-center gap-2 text-sm bg-amber-50 border border-amber-200 text-amber-900 px-4 py-2.5">
+          <Star size={14} className="text-amber-500 flex-shrink-0" />
+          <span>
+            Du siehst gerade nur deine Favoriten –{' '}
+            <strong>{hiddenByFavorites} weitere{hiddenByFavorites === 1 ? 's' : ''} Projekt{hiddenByFavorites === 1 ? '' : 'e'}</strong>
+            {' '}{hiddenByFavorites === 1 ? 'ist' : 'sind'} ausgeblendet.
+          </span>
+          <button className="btn-secondary text-xs ml-auto whitespace-nowrap" onClick={() => setShowAll(true)}>
+            Alle anzeigen
+          </button>
+        </div>
+      )}
+
+      {q && displayed.length === 0 && (
+        <p className="text-sm text-gray-400 text-center py-4">Kein Projekt gefunden.</p>
       )}
 
       {/* Project cards – 16:9-Kacheln */}
@@ -908,26 +940,42 @@ export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, 
                 Projekt aus der Projektdatenbank als Protokollgrundlage aufs Dashboard holen.
               </p>
               {availableFromDb.length === 0 ? (
-                <div className="text-sm text-gray-400 text-center py-8 border border-gray-100">
-                  Alle Projekte sind bereits auf dem Dashboard.<br />
-                  Neue Projekte werden in der <strong>Projektdatenbank</strong> angelegt.
+                <div className="text-sm text-gray-400 text-center py-6 border border-gray-100">
+                  Alle Projekte der Datenbank sind bereits auf dem Dashboard.
                 </div>
               ) : (
-                availableFromDb
-                  .sort((a, b) => (parseInt(a.projectData?.nummer, 10) || 99999) - (parseInt(b.projectData?.nummer, 10) || 99999)
-                    || (a.name || '').localeCompare(b.name || '', 'de'))
-                  .map(p => (
+                [...availableFromDb].sort(byProjektNr).map(p => (
+                  <button key={p.id}
+                    className="w-full flex items-center gap-3 text-left px-3 py-2.5 border border-gray-100 hover:border-brand-300 hover:bg-brand-50/50 transition-colors"
+                    onClick={() => addFromDb(p.id)}>
+                    <FolderOpen size={15} className="text-brand-500 flex-shrink-0" />
+                    <div className="min-w-0 flex-1">
+                      <span className="block text-sm font-medium text-gray-900 truncate">{p.name || 'Unbenannt'}</span>
+                      {p.projectData?.vertrag && <span className="block text-xs text-gray-400 truncate">{p.projectData.vertrag}</span>}
+                    </div>
+                    <Plus size={14} className="text-gray-300 flex-shrink-0" />
+                  </button>
+                ))
+              )}
+
+              {/* Projekte, die schon auf dem Dashboard liegen: Dieser Dialog ist
+                  damit die eine Stelle, an der sich JEDES Projekt wiederfindet –
+                  auch wenn die Favoritenansicht es auf dem Dashboard verbirgt. */}
+              {activeProjects.length > 0 && (
+                <>
+                  <p className="text-[11px] uppercase tracking-wide text-gray-400 pt-3 mt-2 border-t border-gray-100">
+                    Bereits auf dem Dashboard
+                  </p>
+                  {[...activeProjects].sort(byProjektNr).map(p => (
                     <button key={p.id}
-                      className="w-full flex items-center gap-3 text-left px-3 py-2.5 border border-gray-100 hover:border-brand-300 hover:bg-brand-50/50 transition-colors"
-                      onClick={() => addFromDb(p.id)}>
-                      <FolderOpen size={15} className="text-brand-500 flex-shrink-0" />
-                      <div className="min-w-0 flex-1">
-                        <span className="block text-sm font-medium text-gray-900 truncate">{p.name || 'Unbenannt'}</span>
-                        {p.projectData?.vertrag && <span className="block text-xs text-gray-400 truncate">{p.projectData.vertrag}</span>}
-                      </div>
-                      <Plus size={14} className="text-gray-300 flex-shrink-0" />
+                      className="w-full flex items-center gap-3 text-left px-3 py-2 border border-transparent hover:border-gray-200 hover:bg-gray-50 transition-colors"
+                      onClick={() => { setShowAddFromDb(false); if (hasFavorites) setShowAll(true); handleCardClick(p) }}>
+                      <FolderOpen size={14} className="text-gray-300 flex-shrink-0" />
+                      <span className="block text-sm text-gray-600 truncate flex-1 min-w-0">{p.name || 'Unbenannt'}</span>
+                      <span className="text-[11px] text-gray-400 flex-shrink-0">öffnen</span>
                     </button>
-                  ))
+                  ))}
+                </>
               )}
             </div>
             <div className="px-5 py-3 border-t border-gray-200 flex justify-between items-center">
