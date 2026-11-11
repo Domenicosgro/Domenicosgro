@@ -24,18 +24,52 @@ async function fetchSyno(url, timeoutMs = 8000) {
   }
 }
 
+// DSM-Fehlercodes der Anmeldung (SYNO.API.Auth)
+const LOGIN_FEHLER = {
+  400: 'Benutzername oder Passwort falsch',
+  401: 'Konto deaktiviert',
+  402: 'Zugriff verweigert – App-Recht „File Station" für das Konto fehlt',
+  403: 'Zwei-Faktor-Anmeldung verlangt – Service-Konto davon ausnehmen',
+  404: 'Zwei-Faktor-Anmeldung fehlgeschlagen',
+  406: 'Zwei-Faktor-Anmeldung ist Pflicht – Service-Konto davon ausnehmen',
+  407: 'IP-Adresse von DSM gesperrt (Automatische Blockierung) – in DSM entsperren',
+  408: 'Passwort abgelaufen und nicht änderbar',
+  409: 'Passwort abgelaufen',
+  410: 'Passwort muss geändert werden',
+}
+
+// Nach einer fehlgeschlagenen Anmeldung eine Minute warten, statt bei jeder
+// Anfrage erneut zu probieren – sonst sperrt die automatische Blockierung von
+// DSM nach wenigen Versuchen die IP der NAS selbst.
+let loginSperreBis = 0
+let letzterFehler  = ''
+
 async function login() {
+  if (Date.now() < loginSperreBis) throw new Error(letzterFehler)
   const params = new URLSearchParams({
     api: 'SYNO.API.Auth', version: '6', method: 'login',
     account: process.env.SYNOLOGY_FS_USER,
     passwd:  process.env.SYNOLOGY_FS_PASS,
-    session: 'KomplizenFS', format: 'sid',
+    // DSM 7 nimmt hier nicht jeden Namen an; "FileStation" ist der dokumentierte.
+    session: 'FileStation', format: 'sid',
   })
-  const data = await fetchSyno(`${baseUrl()}/webapi/auth.cgi?${params}`)
+  let data
+  try {
+    data = await fetchSyno(`${baseUrl()}/webapi/auth.cgi?${params}`)
+  } catch (e) {
+    cachedSid = null
+    throw new Error(`NAS nicht erreichbar (${baseUrl()}): ${e.message}`)
+  }
   if (!data?.success) {
     cachedSid = null
-    throw new Error('File-Station-Anmeldung fehlgeschlagen (SYNOLOGY_FS_USER/SYNOLOGY_FS_PASS prüfen).')
+    const code = data?.error?.code
+    letzterFehler = `File-Station-Anmeldung von „${process.env.SYNOLOGY_FS_USER}" fehlgeschlagen`
+      + (code ? ` (DSM-Code ${code}: ${LOGIN_FEHLER[code] || 'unbekannt'})` : '') + '.'
+    loginSperreBis = Date.now() + 60_000
+    console.warn('[fileStation]', letzterFehler)
+    throw new Error(letzterFehler)
   }
+  loginSperreBis = 0
   cachedSid = data.data.sid
   return cachedSid
 }
