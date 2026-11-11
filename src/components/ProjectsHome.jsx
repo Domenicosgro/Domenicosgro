@@ -3,7 +3,7 @@ import { Plus, Trash2, Search, ChevronRight, FileText, Users, FolderOpen,
          Calendar, Lock, LockOpen, X, Eye, EyeOff, Star,
          User, Settings, LogOut, Download, RotateCcw, Upload, AlertTriangle,
          ShieldCheck, Loader, CalendarClock, Copy, Link2, UserCog, GraduationCap,
-         Archive, ArchiveRestore, FileDown, Smartphone, Database, CheckSquare } from 'lucide-react'
+         Archive, ArchiveRestore, FileDown, Smartphone, Database, CheckSquare, ScanSearch } from 'lucide-react'
 import ProjectAdminPanel from './ProjectAdminPanel'
 import GlobalSearch from './GlobalSearch'
 import NotificationBell from './NotificationBell'
@@ -186,7 +186,7 @@ function PasswordModal({ mode, projectName, onConfirm, onCancel }) {
 // ── Main component ─────────────────────────────────────────────────────────────
 export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, onDelete, onOpenProject,
                                        onOpenProjectDashboard, onUnlock, onSetPassword, onRemovePassword,
-                                       onOpenContactDatabase, onImportProject, onOpenPersonalplanung,
+                                       onOpenContactDatabase, onImportProject, onOpenPersonalplanung, onOpenPruefstation,
                                        onOpenLearning, onArchiveProject, onUnarchiveProject,
                                        onOpenProjektdatenbank,
                                        notes, onOpenProtocol, onOpenProjectNotes,
@@ -509,6 +509,24 @@ export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, 
               <p className="text-xs text-gray-500 line-clamp-3">Eigene Organisation pflegen · Wochenplanung liegt im Dashboard</p>
               <div className="flex gap-4 mt-auto pt-2">
                 <span className="text-xs text-gray-400 italic">Stammdaten öffnen · nur Admin</span>
+              </div>
+            </button>
+            )}
+
+            {/* Prüfstation unter /pruefstation – Nachträge und Rechnungen prüfen,
+                Unterlagen im je Vorgang verknüpften NAS-Ordner. */}
+            {onOpenPruefstation && (
+            <button
+              onClick={onOpenPruefstation}
+              className="card w-full text-left flex flex-col min-h-[110px] p-4 hover:border-brand-300 hover:bg-gray-50 transition-colors group border-l-4 border-emerald-500"
+            >
+              <div className="flex items-center gap-2 mb-1.5">
+                <span className="text-brand-600 group-hover:text-brand-700 transition-colors flex-shrink-0"><ScanSearch size={20} /></span>
+                <h3 className="font-semibold text-sm text-gray-900 group-hover:text-brand-700 transition-colors truncate">Prüfstation</h3>
+              </div>
+              <p className="text-xs text-gray-500 line-clamp-3">Nachträge und Abschlagsrechnungen prüfen · Unterlagen und Anlagen im NAS-Projektordner</p>
+              <div className="flex gap-4 mt-auto pt-2">
+                <span className="text-xs text-gray-400 italic">Prüfstation öffnen</span>
               </div>
             </button>
             )}

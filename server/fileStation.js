@@ -99,4 +99,76 @@ async function downloadFile(filePath) {
   return res
 }
 
-module.exports = { isConfigured, listFolder, downloadFile }
+function synoError(data, fallback) {
+  const code = data?.error?.code
+  const sub  = data?.error?.errors?.[0]?.code
+  const c    = sub || code
+  const msg  = c === 408 || c === 418 ? 'Ordner nicht gefunden.'
+             : c === 407 || c === 105 ? 'Keine Berechtigung (Service-Konto braucht Schreibrechte auf diesen Ordner).'
+             : c === 414 ? 'Eine Datei oder ein Ordner mit diesem Namen existiert bereits.'
+             : c === 415 || c === 416 ? 'Speicherplatz auf der NAS reicht nicht aus.'
+             : c === 419 ? 'Ungültiger Name.'
+             : `${fallback}${c ? ` (Code ${c})` : ''}.`
+  return new Error(msg)
+}
+
+// Freigegebene Ordner (Wurzeln), die das Service-Konto sieht
+async function listShares() {
+  const params = new URLSearchParams({
+    api: 'SYNO.FileStation.List', version: '2', method: 'list_share', sort_by: 'name',
+  })
+  const data = await apiCall(params)
+  if (!data?.success) throw synoError(data, 'Freigaben nicht abrufbar')
+  return (data.data?.shares || []).map(s => ({ name: s.name, path: s.path, isdir: true }))
+}
+
+// Ordner anlegen (inkl. fehlender Elternordner). Gibt den neuen Pfad zurück.
+async function createFolder(parentPath, name) {
+  const params = new URLSearchParams({
+    api: 'SYNO.FileStation.CreateFolder', version: '2', method: 'create',
+    folder_path: JSON.stringify([parentPath]),
+    name:        JSON.stringify([name]),
+    force_parent: 'true',
+  })
+  const data = await apiCall(params)
+  if (!data?.success) throw synoError(data, 'Ordner konnte nicht angelegt werden')
+  return data.data?.folders?.[0]?.path || `${parentPath}/${name}`
+}
+
+// Datei hochladen (Buffer). Vorhandene Dateien werden NICHT überschrieben –
+// der Aufrufer wählt vorher einen freien Namen.
+async function uploadFile(destFolder, filename, buffer, mimeType = 'application/octet-stream') {
+  const send = async () => {
+    const form = new FormData()
+    form.append('api', 'SYNO.FileStation.Upload')
+    form.append('version', '2')
+    form.append('method', 'upload')
+    form.append('path', destFolder)
+    form.append('create_parents', 'true')
+    form.append('overwrite', 'false')
+    // Die Datei muss das letzte Feld sein (Vorgabe der File-Station-API)
+    form.append('file', new Blob([buffer], { type: mimeType }), filename)
+    const res = await fetch(`${baseUrl()}/webapi/entry.cgi?_sid=${encodeURIComponent(cachedSid)}`, { method: 'POST', body: form })
+    return res.json().catch(() => null)
+  }
+  if (!cachedSid) await login()
+  let data = await send()
+  if (!data?.success && [105, 106, 107, 119].includes(data?.error?.code)) {
+    await login()
+    data = await send()
+  }
+  if (!data?.success) throw synoError(data, 'Upload fehlgeschlagen')
+  return `${destFolder}/${filename}`
+}
+
+// Einzelne Datei löschen (blockierender Aufruf, nicht rekursiv)
+async function deleteFile(filePath) {
+  const params = new URLSearchParams({
+    api: 'SYNO.FileStation.Delete', version: '2', method: 'delete',
+    path: JSON.stringify([filePath]), recursive: 'false',
+  })
+  const data = await apiCall(params)
+  if (!data?.success) throw synoError(data, 'Löschen fehlgeschlagen')
+}
+
+module.exports = { isConfigured, listFolder, downloadFile, listShares, createFolder, uploadFile, deleteFile }

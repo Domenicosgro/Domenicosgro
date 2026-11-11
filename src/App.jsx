@@ -1033,6 +1033,7 @@ export default function App() {
         // Personalplanung ist eine eigenständige Anwendung (gleicher Server,
         // gleiche Projektdaten) – sie öffnet unter ihrer eigenen Adresse.
         onOpenPersonalplanung={isServer ? () => { window.location.href = '/personalplanung' } : undefined}
+        onOpenPruefstation={isServer ? () => { window.location.href = '/pruefstation' } : undefined}
         onOpenProjektdatenbank={() => setView('projektdatenbank')}
         onImportProject={handleImportProject}
         onArchiveProject={handleArchiveProject}

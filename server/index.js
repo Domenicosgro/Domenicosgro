@@ -1951,6 +1951,12 @@ app.get('/api/projects/:id/files/download', requireAuth, async (req, res) => {
   }
 })
 
+// ── Prüfstation: Prüfvorgänge mit individuell verknüpftem NAS-Ordner ─────────
+// Details: server/pruefstation.js und docs/PRUEFSTATION.md
+require('./pruefstation').registerPruefstation(app, {
+  db, fileStation, requireAuth, writeLimiter, canAccessProject, isProjectManager, logEvent, broadcast,
+})
+
 // ── Personalplanung: Mitarbeiter-Stammdaten (Arbeitszeitmodelle) ──────────────
 // ── Sync: "Eigene Organisation"-Kontakte → Benutzer + Personalplanung ──────────
 // Einseitige Spiegelung. Quelle: alle Kontakte mit category==='organisation'
@@ -4088,6 +4094,11 @@ app.get(['/personalplanung', '/personalplanung.html'], (req, res) => {
   // Assets unter /personalplanung/assets gesucht. Deshalb hier umleiten.
   if (req.path.endsWith('/')) return res.redirect(301, '/personalplanung')
   sendHtml(res, 'personalplanung.html')
+})
+// ── Prüfstation: eigenständige Oberfläche, gleicher Server ───────────────────
+app.get(['/pruefstation', '/pruefstation.html'], (req, res) => {
+  if (req.path.endsWith('/')) return res.redirect(301, '/pruefstation')
+  sendHtml(res, 'pruefstation.html')
 })
 app.use(express.static(distDir, {
   index: false,

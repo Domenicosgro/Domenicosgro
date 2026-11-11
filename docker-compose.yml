@@ -35,6 +35,13 @@ services:
       SYNOLOGY_URL:        "http://192.168.178.250:5000"
       # SYNOLOGY_ADMIN_GROUP: "administrators"
       # SYNOLOGY_ADMIN_USERS: ""
+      # ── NAS-Dateizugriff (Dateiablage + Prüfstation) über File Station ───────
+      # Service-Konto mit Lese- UND Schreibrecht auf die Projektordner (die
+      # Prüfstation legt Vorgangsordner an und lädt Unterlagen hoch).
+      # Passwort niemals in Git – nur hier auf der NAS eintragen.
+      # SYNOLOGY_FS_USER: "svc-komplizen"
+      # SYNOLOGY_FS_PASS: ""
+      # PRUEFSTATION_ROOTS: "/Projekte"       # optional: erlaubte Wurzelordner (Komma)
       # ── E-Mail-Versand via Microsoft Graph (OAuth2) ──────────────────────────
       # Bevorzugter Weg: kein Passwort, keine MFA, kein Konflikt mit den
       # Microsoft-365-Sicherheitsstandards. Werte aus der in Entra registrierten

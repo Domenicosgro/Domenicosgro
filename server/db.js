@@ -136,6 +136,17 @@ db.exec(`
     updated_by TEXT
   );
 
+  -- Prüfstation: ein Prüfvorgang (Nachtrag, Abschlagsrechnung …) je Zeile.
+  -- Die Dateien selbst liegen im verknüpften NAS-Ordner, hier nur Metadaten.
+  CREATE TABLE IF NOT EXISTS pruef_vorgaenge (
+    id         TEXT    PRIMARY KEY,
+    project_id TEXT,
+    data       TEXT    NOT NULL,
+    version    INTEGER NOT NULL DEFAULT 1,
+    updated_at TEXT    NOT NULL DEFAULT (datetime('now')),
+    updated_by TEXT
+  );
+
   CREATE TABLE IF NOT EXISTS plan_reviews (
     id         TEXT    PRIMARY KEY,
     project_id TEXT,
@@ -524,6 +535,7 @@ module.exports = {
   bimIssues:  makeStore('bim_issues'),
   bimPlans:   makeStore('bim_plans'),
   planReviews: makeStore('plan_reviews'),
+  pruefVorgaenge: makeStore('pruef_vorgaenge'),
   learningVideos: makeStore('learning_videos'),
   diaryEntries: makeStore('diary_entries'),
   defects:      makeStore('defects'),

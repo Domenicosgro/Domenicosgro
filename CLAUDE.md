@@ -79,6 +79,7 @@ Erkennung im Frontend: `window.__SERVER_MODE__` (von Express injiziert),
 | **Protokolltool** | `index.html` → `src/main.jsx` → `App.jsx` | `/` | `assets/index-*.js` |
 | **Personalplanung** | `personalplanung.html` → `src/personalplanung/main.jsx` → `PersonalplanungApp.jsx` | `/personalplanung` | `assets/personalplanung-*.js` |
 | **Gelände (Dashboard)** | `gelaende.html` → `src/gelaendeEntry.jsx` | `/gelaende?token=…` | `assets/gelaende-*.js` |
+| **Prüfstation** | `pruefstation.html` → `src/pruefstation/main.jsx` → `PruefstationApp.jsx` | `/pruefstation` | `assets/pruefstation-*.js` |
 
 Die Personalplanung ist seit 2026-09-11 eine **eigenständige Oberfläche**
 (eigene URL, eigene Kopfzeile, eigener Login-Titel, nur Admins), läuft aber
@@ -101,6 +102,16 @@ verlinkt nur noch (`window.location.href = '/personalplanung'`).
   Staff-API); die Kachel ist dort ausgeblendet.
 - Für das Synology-Dashboard: eigenes Modul, Reverse-Proxy-Ziel
   `http://localhost:3000/personalplanung` (gleicher Container).
+
+**Prüfstation (seit 2026-11-11, Arbeitstitel)** – Nachträge und Abschlagsrechnungen
+prüfen. Gleiches Muster wie die Personalplanung (eigene URL, gleicher Server,
+gleiche Projekte), aber für alle Angemeldeten mit Projektzugriff. Jeder Prüfvorgang
+wird **individuell mit einem NAS-Ordner verknüpft** (Ordnerauswahl über die
+File Station, `SYNOLOGY_FS_USER`/`SYNOLOGY_FS_PASS`, Service-Konto mit
+**Schreibrecht**). Prüfdokumente liegen im Vorgangsordner, Anlagen (Einigungen,
+E-Mail-Verläufe, Stellungnahmen) im Unterordner „Anlagen zur Prüfung". Stufe 2:
+Prüfung mit Claude über die Skills `nachtragspruefung`/`rechnungspruefung`.
+Details: `docs/PRUEFSTATION.md`, Server: `server/pruefstation.js`.
 
 ---
 
@@ -194,6 +205,8 @@ Domenicosgro/
 │   ├── mailer.js                  # E-Mail-Abstraktion: Microsoft Graph (OAuth2) + SMTP-Fallback
 │   ├── attachments.js             # Anhang-Endpunkte (Datei-Upload/-Download im /data-Volume)
 │   ├── gelaende.js                # Gelände-Daten je Kalenderwoche (Dashboard-Integration)
+│   ├── fileStation.js             # Synology File Station (Service-Konto): list/download/upload/mkdir/delete
+│   ├── pruefstation.js            # Prüfstation: Prüfvorgänge + verknüpfte NAS-Ordner (/api/pruefstation/*)
 │   ├── pm2.config.js              # PM2-Konfiguration für direkten Linux-Betrieb (ohne Docker)
 │   └── package.json               # Nur Server-Abhängigkeiten (kein Electron, kein Vite)
 │
@@ -352,6 +365,7 @@ Ein-Befehl-Deploy, komplett passwortlos via SSH-Key:
 | `reset_requests` | Passwort-Zurücksetzen-Anfragen |
 | `deletion_requests` | Projekt-Löschanfragen (Admin-Freigabe per Link) |
 | `release_tokens` | Login-freie Freimelde-Links je Verantwortlicher + Projekt |
+| `pruef_vorgaenge` | Prüfstation: Prüfvorgänge (Ordnerverknüpfung, Datei-Metadaten, Hinweise) |
 | `app_state` | Key-Value-Speicher (z.B. Scheduler-Zeitstempel) |
 | `store` | Generischer Key-Value-Store (Logo etc.) |
 

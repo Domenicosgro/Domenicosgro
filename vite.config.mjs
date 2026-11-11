@@ -32,12 +32,14 @@ export default defineConfig({
   // Zwei Einstiege, ein Bundle-Verzeichnis, gemeinsame Chunks, ein Deploy:
   //   index.html           Protokolltool
   //   personalplanung.html Mitarbeiter & Projektteams (/personalplanung)
+  //   pruefstation.html    Prüfstation: Nachträge/Rechnungen prüfen (/pruefstation)
   // Die Gelände-Seite ist mit der Wochenplanung ins Dashboard umgezogen.
   build: {
     rollupOptions: {
       input: {
         main:            resolve(__dirname, 'index.html'),
         personalplanung: resolve(__dirname, 'personalplanung.html'),
+        pruefstation:    resolve(__dirname, 'pruefstation.html'),
       },
     },
   },
