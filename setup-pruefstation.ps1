@@ -146,7 +146,9 @@ try {
     if ($LASTEXITCODE -ne 0) { Write-Error "Upload fehlgeschlagen - SSH erreichbar?"; exit 1 }
 
     Write-Host "[2/2] Einrichtung auf der NAS (sudo-Passwort von $NasUser eingeben)..." -ForegroundColor Yellow
-    ssh -t "${NasUser}@${NasIp}" "chmod 600 /tmp/kp-setup-pruef.sh && sudo bash /tmp/kp-setup-pruef.sh; rm -f /tmp/kp-setup-pruef.sh"
+    Write-Host "      Hinweis: Beim Tippen erscheinen keine Zeichen - Passwort blind eingeben, dann Enter." -ForegroundColor Gray
+    # Exit-Code von sudo/Skript erhalten (sonst meldet ein spaeteres rm Erfolg)
+    ssh -t "${NasUser}@${NasIp}" "chmod 600 /tmp/kp-setup-pruef.sh; sudo bash /tmp/kp-setup-pruef.sh; rc=`$?; rm -f /tmp/kp-setup-pruef.sh; exit `$rc"
     if ($LASTEXITCODE -ne 0) { Write-Error "Einrichtung auf der NAS fehlgeschlagen (Ausgabe oben)."; exit 1 }
 }
 finally {
