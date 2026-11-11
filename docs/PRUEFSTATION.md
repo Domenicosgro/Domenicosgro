@@ -35,6 +35,20 @@ Ablage im verknüpften Ordner:
 └── Nachtrag geprüft JJJJ-MM-TT/       (Stufe 2: Ergebnisse, wird angezeigt)
 ```
 
+### Im Projekt (seit 2026-11-11)
+
+- **Kachel „Prüfstation" im Projekt-Dashboard** (neben „Dateiablage") mit
+  offenen Vorgängen und nächster Frist. Öffnet die Vorgänge dieses Projekts im
+  Protokolltool (`view = 'project-pruefstation'`). `/pruefstation` bleibt als
+  Übersicht über alle Projekte.
+- **Prüfordner je Projekt** (`project.pruefOrdner = { nachtrag, rechnung, sonstiges }`),
+  festgelegt von Projekt- oder System-Admins über „Prüfordner des Projekts".
+  Beispiel 427 VIZ: `/DriveShare/01 Projekte/427 VIZ/08 Objektüberwachung/02 Nachtragsprüfung`.
+- **Neuer Vorgang → Ordner automatisch**: darunter wird „Nachtrag 008" (aus „NA 8",
+  „NA 008" …) bzw. die Nummer der Rechnung („3. AR Bau") angelegt. Gibt es den
+  Ordner schon, wird er verknüpft statt neu angelegt. Ohne Prüfordner bleibt es
+  bei der freien Verknüpfung.
+
 ## Stufe 2 (geplant): Prüfung mit Claude
 
 Die Skills `nachtragspruefung` und `rechnungspruefung` (Stand 11.11.2026) werden
@@ -89,7 +103,8 @@ Ordnerauswahl auf die Projektfreigabe begrenzen.
 
 ```
 GET    /api/pruefstation/status                      NAS konfiguriert?, erlaubte Wurzeln
-GET    /api/pruefstation/projects                    zugängliche Projekte (+ fsPath)
+GET    /api/pruefstation/projects                    zugängliche Projekte (+ fsPath, pruefOrdner)
+PUT    /api/pruefstation/projects/:id/ordner {nachtrag,rechnung,sonstiges}  Prüfordner (Projekt-Admin)
 GET    /api/pruefstation/browse?path=                Ordner/Dateien; ohne path: Freigaben
 POST   /api/pruefstation/folders        {parent,name} Ordner anlegen
 GET    /api/pruefstation/vorgaenge[?projectId=]

@@ -306,7 +306,7 @@ export default function VorgangDetail({ vorgang, project, onChange, onDelete }) 
 
       {picker && (
         <FolderPicker
-          startPath={draft.folderPath}
+          startPath={draft.folderPath || project?.pruefOrdner?.[draft.art] || ''}
           projectPath={project?.fsPath}
           suggestedName={suggestFolderName(draft)}
           onSelect={linkFolder}

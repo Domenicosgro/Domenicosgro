@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { ArrowLeft, FileText, Users, HardHat, Pencil, NotebookPen, ChevronRight, BarChart2, UserCog, BookOpen, Box, AlertOctagon, HardDrive, Database, Info } from 'lucide-react'
+import { ArrowLeft, FileText, Users, HardHat, Pencil, NotebookPen, ChevronRight, BarChart2, UserCog, BookOpen, Box, AlertOctagon, HardDrive, Database, Info, ScanSearch } from 'lucide-react'
 import ProjectAdminPanel from './ProjectAdminPanel'
 import { lphRange } from './ProjektdatenView'
 import { liveActionItems, infoItemsForProject } from '../utils'
@@ -64,9 +64,30 @@ function DashboardTile({ icon, title, subtitle, accent, onClick, stat1, stat2, c
 export default function ProjectDashboard({
   project, protocols, notes, serverUser, globalLogoDataUrl,
   onUpdateProject, onBack, onOpenProtocols, onOpenNotes, onManageContacts, onOpenMassnahmen, onOpenBim,
-  onOpenBautagebuch, onOpenMaengel, onOpenDateiablage, onOpenProjektdaten, onOpenInfos, onSaved,
+  onOpenBautagebuch, onOpenMaengel, onOpenDateiablage, onOpenPruefstation, onOpenProjektdaten, onOpenInfos, onSaved,
 }) {
   const [showAdminPanel, setShowAdminPanel] = useState(false)
+  const [pruefStats,     setPruefStats]     = useState(null)
+
+  // Prüfstation: offene Vorgänge + nächste Frist für die Kachel
+  useEffect(() => {
+    if (!onOpenPruefstation) return
+    const t = localStorage.getItem('kp_session_token')
+    let alive = true
+    fetch(`/api/pruefstation/vorgaenge?projectId=${encodeURIComponent(project.id)}`, { headers: t ? { Authorization: `Bearer ${t}` } : {} })
+      .then(r => (r.ok ? r.json() : []))
+      .then(list => {
+        if (!alive || !Array.isArray(list)) return
+        const offen = list.filter(v => v.status !== 'abgeschlossen')
+        const fristen = offen.map(v => v.frist).filter(Boolean).sort()
+        setPruefStats({
+          offen: offen.length,
+          frist: fristen[0] ? new Date(fristen[0] + 'T12:00:00').toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' }) : '',
+        })
+      })
+      .catch(() => {})
+    return () => { alive = false }
+  }, [project.id, onOpenPruefstation])
   const [bimIssues,      setBimIssues]      = useState([])
 
   useEffect(() => {
@@ -252,6 +273,19 @@ export default function ProjectDashboard({
             subtitle="Mängel mit Foto erfassen, verfolgen und als Mängelanzeige versenden"
             accent="border-red-400"
             onClick={onOpenMaengel}
+          />
+        )}
+
+        {/* Prüfstation – Nachträge/Rechnungen dieses Projekts, nur Server-Modus */}
+        {onOpenPruefstation && (
+          <DashboardTile
+            icon={<ScanSearch size={20} />}
+            title="Prüfstation"
+            subtitle="Nachträge und Abschlagsrechnungen prüfen · Unterlagen im NAS-Projektordner"
+            accent="border-emerald-500"
+            onClick={onOpenPruefstation}
+            stat1={pruefStats ? { value: pruefStats.offen, label: 'offen' } : undefined}
+            stat2={pruefStats?.frist ? { value: pruefStats.frist, label: 'nächste Frist' } : undefined}
           />
         )}
 

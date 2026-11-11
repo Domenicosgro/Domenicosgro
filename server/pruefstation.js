@@ -74,6 +74,28 @@ function uniqueName(name, existing) {
   return `${base} ${Date.now()}${ext}`
 }
 
+// Name des Vorgangsordners: „Nachtrag 008", „3. AR Bau", sonst Titel
+function ordnerName(v) {
+  if (v.art === 'nachtrag') {
+    const m = /(\d+)/.exec(v.nummer || '')
+    return cleanName(`Nachtrag ${m ? m[1].padStart(3, '0') : (v.nummer || '0xx')}`, 'Nachtrag')
+  }
+  if (v.art === 'rechnung') return cleanName(v.nummer || v.titel || 'Abschlagsrechnung', 'Abschlagsrechnung')
+  return cleanName(v.titel || v.nummer || 'Prüfung', 'Prüfung')
+}
+
+function cleanOrdnerMap(o) {
+  const out = {}
+  for (const art of ARTEN) {
+    const raw = o && typeof o[art] === 'string' ? o[art].trim() : ''
+    if (!raw) { out[art] = ''; continue }
+    const p = cleanPath(raw)
+    if (!p) throw Object.assign(new Error(`Ordnerpfad nicht erlaubt: ${raw}`), { status: 400 })
+    out[art] = p
+  }
+  return out
+}
+
 const str = (v, max = 500) => (typeof v === 'string' ? v.slice(0, max) : '')
 const isoDate = (v) => (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : '')
 
@@ -143,10 +165,37 @@ function registerPruefstation(app, { db, fileStation, requireAuth, writeLimiter,
     try {
       const list = db.projects.list()
         .filter(p => !p.archived && canAccessProject(p, req.user))
-        .map(p => ({ id: p.id, name: p.name, fsPath: p.fsPath || '', canManage: isProjectManager(p, req.user) }))
+        .map(p => ({
+          id: p.id, name: p.name, fsPath: p.fsPath || '',
+          pruefOrdner: { nachtrag: '', rechnung: '', sonstiges: '', ...(p.pruefOrdner || {}) },
+          canManage: isProjectManager(p, req.user),
+        }))
         .sort((a, b) => String(a.name).localeCompare(String(b.name), 'de'))
       res.json(list)
     } catch (e) { res.status(500).json({ error: e.message }) }
+  })
+
+  // Prüfordner je Projekt und Art (Basis für neue Vorgangsordner).
+  // Projekt-Admins und System-Admins legen sie fest.
+  app.put('/api/pruefstation/projects/:id/ordner', requireAuth, writeLimiter, (req, res) => {
+    try {
+      const project = db.projects.get(req.params.id)
+      if (!project) return res.status(404).json({ error: 'Projekt nicht gefunden.' })
+      if (!isProjectManager(project, req.user)) return res.status(403).json({ error: 'Nur Projekt-Administratoren können die Prüfordner festlegen.' })
+      const pruefOrdner = cleanOrdnerMap(req.body || {})
+      for (let i = 0; i < 3; i++) {
+        const cur = db.projects.get(req.params.id)
+        const { _version, _updatedAt, ...data } = cur
+        const updatedAt = new Date().toISOString()
+        const r = db.projects.update(cur.id, { ...data, pruefOrdner, updatedAt }, _version, req.user)
+        if (!r.conflict) {
+          broadcast?.('project', 'update', cur.id, updatedAt)
+          logEvent('PRUEF_ORDNER', req, `project=${cur.id}`)
+          return res.json({ pruefOrdner })
+        }
+      }
+      res.status(409).json({ error: 'Projekt wurde gerade geändert – bitte erneut versuchen.' })
+    } catch (e) { res.status(e.status || 500).json({ error: e.message }) }
   })
 
   // ── Ordnerauswahl auf der NAS ────────────────────────────────────────────────
@@ -221,7 +270,25 @@ function registerPruefstation(app, { db, fileStation, requireAuth, writeLimiter,
     return out
   }
 
-  app.post('/api/pruefstation/vorgaenge', requireAuth, writeLimiter, (req, res) => {
+  // Vorgangsordner unter dem Prüfordner des Projekts anlegen – oder einen
+  // gleichnamigen vorhandenen Ordner übernehmen (z. B. „Nachtrag 008" existiert schon).
+  async function autoFolder(project, v) {
+    const base = cleanPath(project.pruefOrdner?.[v.art])
+    if (!base || !fileStation.isConfigured()) return { folderPath: '', hinweis: '' }
+    const name = ordnerName(v)
+    try {
+      const entries = await listSafe(base)
+      if (!entries) return { folderPath: '', hinweis: `Prüfordner des Projekts nicht gefunden: ${base}` }
+      const hit = entries.find(e => e.isdir && e.name.toLowerCase() === name.toLowerCase())
+      if (hit) return { folderPath: hit.path, hinweis: `Vorhandenen Ordner „${hit.name}" verknüpft.` }
+      const created = await fileStation.createFolder(base, name)
+      return { folderPath: created, hinweis: `Ordner „${name}" angelegt.` }
+    } catch (e) {
+      return { folderPath: '', hinweis: `Ordner konnte nicht angelegt werden: ${e.message}` }
+    }
+  }
+
+  app.post('/api/pruefstation/vorgaenge', requireAuth, writeLimiter, async (req, res) => {
     try {
       const body = req.body || {}
       const project = db.projects.get(body.projectId)
@@ -238,10 +305,17 @@ function registerPruefstation(app, { db, fileStation, requireAuth, writeLimiter,
         createdBy: req.user, createdByName: displayName(req.user),
         createdAt: now, updatedAt: now,
       }
+      let hinweis = ''
+      if (!v.folderPath) {
+        const r = await autoFolder(project, v)
+        v.folderPath = r.folderPath
+        hinweis = r.hinweis
+        if (r.folderPath) logEvent('PRUEF_MKDIR', req, `path=${r.folderPath}`)
+      }
       db.pruefVorgaenge.create(v, req.user)
       broadcast?.('pruefvorgang', 'create', v.id, now)
       logEvent('PRUEF_CREATE', req, `vorgang=${v.id} project=${project.id}`)
-      res.status(201).json(db.pruefVorgaenge.get(v.id))
+      res.status(201).json({ ...db.pruefVorgaenge.get(v.id), _hinweis: hinweis })
     } catch (e) { res.status(e.status || 500).json({ error: e.message }) }
   })
 
@@ -428,4 +502,4 @@ function registerPruefstation(app, { db, fileStation, requireAuth, writeLimiter,
   })
 }
 
-module.exports = { registerPruefstation, ANLAGEN_ORDNER, cleanPath, cleanName, uniqueName }
+module.exports = { registerPruefstation, ANLAGEN_ORDNER, cleanPath, cleanName, uniqueName, ordnerName }

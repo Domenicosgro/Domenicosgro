@@ -22,6 +22,7 @@ import BautagebuchView       from './components/BautagebuchView'
 import InfoListView          from './components/InfoListView'
 import MaengelView           from './components/MaengelView'
 import DateiablageView       from './components/DateiablageView'
+import Pruefstation          from './pruefstation/Pruefstation'
 import ProjektdatenView      from './components/ProjektdatenView'
 import ProjektdatenbankView  from './components/ProjektdatenbankView'
 import Assistent             from './components/Assistent'
@@ -820,6 +821,7 @@ export default function App() {
           onOpenBautagebuch={() => setView('project-bautagebuch')}
           onOpenMaengel={() => setView('project-maengel')}
           onOpenDateiablage={isServer ? () => setView('project-dateiablage') : undefined}
+          onOpenPruefstation={isServer ? () => setView('project-pruefstation') : undefined}
           onOpenProjektdaten={() => setView('project-daten')}
           onOpenInfos={() => setView('project-infos')}
           onSaved={isServer ? handleRefresh : undefined}
@@ -965,6 +967,17 @@ export default function App() {
           onUpdateProject={handleUpdateProject}
           onBack={() => setView('home')}
         />
+        <UpdateBanner /><SaveErrorBanner />
+      </>
+    )
+  }
+
+  if (view === 'project-pruefstation') {
+    const project = projectsWithContacts.find(p => p.id === selectedProjectId)
+    if (!project) { setView('home'); return null }
+    return wrap(
+      <>
+        <Pruefstation fixedProjectId={project.id} onBack={() => setView('project-dashboard')} />
         <UpdateBanner /><SaveErrorBanner />
       </>
     )

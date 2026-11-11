@@ -87,11 +87,14 @@ export function vorgangLabel(v) {
   return v.titel ? `${head} – ${v.titel}` : head
 }
 
-// Vorschlag für den Ordnernamen eines neuen Vorgangsordners
+// Name des Vorgangsordners – gleiche Regel wie server/pruefstation.js (ordnerName)
 export function suggestFolderName(v) {
-  if (v.art === 'nachtrag')  return `Nachtrag ${v.nummer || '0xx'}`.trim()
-  if (v.art === 'rechnung')  return `${v.nummer || 'AR'}`.trim()
-  return v.titel || 'Prüfung'
+  if (v.art === 'nachtrag') {
+    const m = /(\d+)/.exec(v.nummer || '')
+    return `Nachtrag ${m ? m[1].padStart(3, '0') : (v.nummer || '0xx')}`
+  }
+  if (v.art === 'rechnung') return v.nummer || v.titel || 'Abschlagsrechnung'
+  return v.titel || v.nummer || 'Prüfung'
 }
 
 // Dialog mit Escape schließen
