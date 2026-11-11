@@ -14,6 +14,27 @@ Jeder Eintrag beginnt mit einer Überschrift aus **Kennung** und **Titel**,
 getrennt durch `|`:
 
 ```markdown
+## 2026-11-11-pruefstation | Neu: die Prüfstation für Nachträge und Abschlagsrechnungen
+
+Im Projekt-Dashboard gibt es die Kachel **Prüfstation**. Dort legst du einen
+Nachtrag oder eine Abschlagsrechnung als Prüfvorgang an, ziehst das Original
+und die Anlagen (Einigungen, E-Mail-Verläufe, Stellungnahmen) hinein — alles
+landet direkt im Projektordner auf der NAS.
+
+Für jeden Vorgang wird automatisch ein Ordner angelegt, z. B. „Nachtrag 011"
+unter dem Prüfordner des Projekts. Den Prüfordner legt ein Projekt-Admin
+einmal fest; einzelne Vorgänge lassen sich jederzeit mit einem anderen Ordner
+verknüpfen.
+
+Ist es eingeschaltet, prüft **Claude** den Vorgang nach unseren Regeln
+(Nachtragsprüfung bzw. Rechnungsprüfung LBIH) — ohne eigenen Claude-Zugang,
+über den Schlüssel des Büros. Rückfragen beantwortest du direkt dort. Die
+Ergebnisse sind zuerst ein Entwurf; in den Projektordner kommen sie erst, wenn
+ein Projekt-Admin sie freigibt. Anders als (K)ompl(I)ze läuft diese Prüfung
+**nicht** im Haus: Die Unterlagen gehen dafür an die Claude API von Anthropic.
+
+---
+
 ## 2026-11-04-komplize | (K)ompl(I)ze beantwortet jetzt Projektfragen
 ```
 

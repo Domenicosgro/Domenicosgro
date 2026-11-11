@@ -1956,6 +1956,14 @@ app.get('/api/projects/:id/files/download', requireAuth, async (req, res) => {
 require('./pruefstation').registerPruefstation(app, {
   db, fileStation, requireAuth, writeLimiter, canAccessProject, isProjectManager, logEvent, broadcast,
 })
+// Stufe 2: Prüfung mit Claude (aktiv, sobald ANTHROPIC_API_KEY gesetzt ist)
+{
+  const ps = require('./pruefstation')
+  require('./pruefKi').registerPruefKi(app, {
+    db, fileStation, requireAuth, writeLimiter, canAccessProject, isProjectManager, logEvent, broadcast,
+    ANLAGEN_ORDNER: ps.ANLAGEN_ORDNER, cleanName: ps.cleanName, uniqueName: ps.uniqueName,
+  })
+}
 
 // ── Personalplanung: Mitarbeiter-Stammdaten (Arbeitszeitmodelle) ──────────────
 // ── Sync: "Eigene Organisation"-Kontakte → Benutzer + Personalplanung ──────────

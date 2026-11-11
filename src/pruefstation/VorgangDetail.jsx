@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { FolderOpen, Link2, RefreshCw, Upload, FileText, Download, Eye, Trash2, Loader, AlertCircle,
          X, Mail, Paperclip, ClipboardList, Folder, Sparkles, Check } from 'lucide-react'
 import FolderPicker from './FolderPicker'
+import PruefungKi from './PruefungKi'
 import { api, uploadFile, fetchBlob, ART_LABEL, STATUS, DATEI_ART, formatBytes, formatDateDe, suggestFolderName, useEscape } from './api'
 
 const PREVIEW_TYPES = /\.(pdf|png|jpe?g|gif|webp|txt)$/i
@@ -229,6 +230,7 @@ export default function VorgangDetail({ vorgang, project, onChange, onDelete }) 
               ))}
             </div>
           )}
+          <PruefungKi vorgang={vorgang} project={project} onChange={onChange} />
         </div>
 
         {/* Stammdaten */}
@@ -285,16 +287,6 @@ export default function VorgangDetail({ vorgang, project, onChange, onDelete }) 
               Gilt für diesen Vorgang vorrangig, ändert aber den Projekt-Standard nicht.
             </p>
             <textarea className="textarea min-h-[160px]" value={draft.hinweise || ''} onChange={e => setField('hinweise', e.target.value)} />
-          </div>
-
-          <div className="card p-4 text-xs text-gray-500 space-y-1 border-dashed">
-            <p className="section-title text-gray-500"><Sparkles size={15} /> Prüfung mit Claude (folgt)</p>
-            <p>
-              Im nächsten Schritt prüft Claude den Vorgang mit dem Skill
-              {' '}<strong>{draft.art === 'rechnung' ? 'Rechnungsprüfung LBIH' : draft.art === 'nachtrag' ? 'Nachtragsprüfung LBIH' : 'passend zur Art'}</strong>:
-              Prüfdokumente, Anlagen und Hinweise gehen als Eingabe hinein, die Ergebnisse
-              landen nach Freigabe im Ordner „{draft.art === 'rechnung' ? 'Rechnung' : 'Nachtrag'} geprüft JJJJ-MM-TT".
-            </p>
           </div>
 
           <p className="text-[11px] text-gray-400">

@@ -49,20 +49,37 @@ Ablage im verknüpften Ordner:
   Ordner schon, wird er verknüpft statt neu angelegt. Ohne Prüfordner bleibt es
   bei der freien Verknüpfung.
 
-## Stufe 2 (geplant): Prüfung mit Claude
+## Stufe 2: Prüfung mit Claude (`server/pruefKi.js`, `src/pruefstation/PruefungKi.jsx`)
 
-Die Skills `nachtragspruefung` und `rechnungspruefung` (Stand 11.11.2026) werden
-über die Claude API eingebunden (`POST /v1/skills`, Code-Execution-Tool, dazu die
-Anthropic-Skills `pdf` und `docx`). Eingabe sind die Prüfdokumente, die Anlagen und
-die Hinweise des Bearbeiters. Die Ergebnisse (Anschreiben, Prüfvermerk, grün
-markiertes PDF) werden **erst nach Freigabe** in den Unterordner „… geprüft
-JJJJ-MM-TT" geschrieben. Ein neuerer Projekt-Standard unter `_Standard/` im
-Projektordner hat Vorrang.
+Damit auch Kolleginnen und Kollegen **ohne eigenen Claude-Zugang** prüfen
+können, ruft der **Server** Claude auf – mit dem API-Schlüssel des Büros.
 
-Vorher klären (aus der Skill-Übergabe):
-- Vertraulichkeit 427 VIZ: Lassen die Vertragsbedingungen des LBIH die Verarbeitung über die API zu?
-- Dateinamen und Ordner der Rechnungsprüfung bestätigen.
-- Prüfsummen-Tabelle 427 VIZ ab dem 07.10.2026 fortschreiben.
+| Schritt | Umsetzung |
+|---|---|
+| Skill | `nachtragspruefung` / `rechnungspruefung` aus `PRUEF_SKILLS_PFAD` (NAS) lesen, als **Custom Skill** bei Anthropic anlegen; bei Änderung neue Version (SHA-256 in `app_state.pruef_skill_<name>`). **Die Skills liegen nicht in Git** – sie enthalten Projektdaten, das Repo ist öffentlich. |
+| Unterlagen | Prüfdokumente, „Anlagen zur Prüfung", `Vorlage_*` und `_Standard/` aus dem Prüfordner → Files API → `container_upload` |
+| Anfrage | `claude-opus-5-5`, Effort `high`, Code-Ausführung `code_execution_20260521`, Container-Skills: Custom + Anthropic `pdf` + `docx`, Streaming, `pause_turn` wird fortgesetzt; Rückfallmodell bei Ablehnung (`fallbacks: "default"`) |
+| Ergebnis | Dateien aus `$OUTPUT_DIR` → `/data/pruefung/<vorgang>/ergebnisse/` (**Entwurf**) |
+| Rückfragen | Antwort in der App → gleiche Unterhaltung, **gleicher Container** (`verlauf.json`) |
+| Freigabe | nur Projekt-/System-Admins → NAS `<Vorgangsordner>/Nachtrag|Rechnung geprüft JJJJ-MM-TT/` |
+
+Höchstens drei Läufe gleichzeitig, einer je Vorgang. Kosten je Lauf werden
+angezeigt (Token × Listenpreis Opus 5.5).
+
+**Datenschutz/Vertraulichkeit:** Die Unterlagen verlassen das Haus. Die
+Code-Ausführung ist **nicht ZDR-fähig** (Containerdaten bis zu 30 Tage bei
+Anthropic). Vor dem Einsatz in 427 VIZ klären, ob die Vertragsbedingungen des
+LBIH das zulassen (Punkt 4 der Skill-Übergabe).
+
+**Einschalten:** `.\setup-pruefung-ki.ps1 -SkillsZip <Pfad>\skills_pruefung_ghba.zip`
+– entpackt die Skills nach `G:\01 Projekte\_Pruefstation\Skills`
+(= `/DriveShare/01 Projekte/_Pruefstation/Skills`), fragt den API-Schlüssel
+verdeckt ab, trägt `ANTHROPIC_API_KEY` und `PRUEF_SKILLS_PFAD` in die
+NAS-`docker-compose.yml` ein, erstellt den Container neu und prüft die
+Verbindung zur API. Ohne Schlüssel zeigt die App einen Hinweis statt des Knopfs.
+
+**Skills ändern:** Datei im Skill-Ordner auf der NAS bearbeiten – beim
+nächsten Lauf wird automatisch eine neue Version hochgeladen.
 
 ---
 
@@ -119,6 +136,11 @@ POST   /api/pruefstation/vorgaenge/:id/text  {titel,art,text}   Text als .txt-An
 PATCH  /api/pruefstation/vorgaenge/:id/dateien {rel,art,kategorie,notiz}
 GET    /api/pruefstation/vorgaenge/:id/dateien/download?rel=
 DELETE /api/pruefstation/vorgaenge/:id/dateien?rel=  nur über die App hochgeladene Dateien
+GET    /api/pruefstation/ki-status                   Prüfung mit Claude eingeschaltet?
+POST   /api/pruefstation/vorgaenge/:id/pruefung {nachricht?}   Lauf starten / Rückfrage beantworten (202)
+GET    /api/pruefstation/vorgaenge/:id/pruefung      Status, Runden, Entwurfsdateien
+GET    /api/pruefstation/vorgaenge/:id/pruefung/datei?name=
+POST   /api/pruefstation/vorgaenge/:id/pruefung/freigeben {dateien}   in „… geprüft JJJJ-MM-TT" ablegen (Projekt-Admin)
 ```
 
 Datenhaltung: Tabelle `pruef_vorgaenge` (JSON je Vorgang, `makeStore`). Die

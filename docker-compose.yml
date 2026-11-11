@@ -42,6 +42,10 @@ services:
       # SYNOLOGY_FS_USER: "svc-komplizen"
       # SYNOLOGY_FS_PASS: ""
       # PRUEFSTATION_ROOTS: "/Projekte"       # optional: erlaubte Wurzelordner (Komma)
+      # ── Prüfstation: Prüfung mit Claude (setup-pruefung-ki.ps1 trägt beides ein) ──
+      # Unterlagen gehen an die Claude API (außer Haus). Schlüssel nie in Git.
+      # ANTHROPIC_API_KEY: ""
+      # PRUEF_SKILLS_PFAD: "/DriveShare/01 Projekte/_Pruefstation/Skills"
       # ── E-Mail-Versand via Microsoft Graph (OAuth2) ──────────────────────────
       # Bevorzugter Weg: kein Passwort, keine MFA, kein Konflikt mit den
       # Microsoft-365-Sicherheitsstandards. Werte aus der in Entra registrierten

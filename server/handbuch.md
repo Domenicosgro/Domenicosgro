@@ -476,6 +476,48 @@ Wer an die Dateien eines Projekts will, findet sie dort.
 sich Issues erfassen, die mit Blickpunkt gespeichert werden und sich aus dem
 Protokoll heraus öffnen lassen.
 
+## Prüfstation – Nachträge und Abschlagsrechnungen prüfen
+
+Die **Prüfstation** öffnest du über die Kachel **Prüfstation** im
+Projekt-Dashboard. Eine Übersicht über alle Projekte gibt es unter
+`/pruefstation` bzw. über die Kachel auf der Startseite.
+
+**Prüfordner festlegen (einmal je Projekt, Projekt-Admin):** Links oben
+„Prüfordner des Projekts" → bei Nachträge bzw. Abschlagsrechnungen auf
+„festlegen" → zum Ordner auf der NAS durchklicken, z. B.
+`DriveShare › 01 Projekte › 427 VIZ › 08 Objektüberwachung › 02 Nachtragsprüfung`
+→ „Diesen Ordner verknüpfen".
+
+**Neuen Prüfvorgang anlegen:** „Neu" → Art (Nachtrag, Abschlagsrechnung,
+Sonstige Prüfung), Nummer (z. B. NA 011 oder 3. AR Bau), Titel → „Anlegen".
+Unter dem Prüfordner wird automatisch der Ordner angelegt („Nachtrag 011");
+gibt es ihn schon, wird er verknüpft. Mit „Ordner ändern" lässt sich ein
+Vorgang mit einem beliebigen anderen NAS-Ordner verknüpfen.
+
+**Unterlagen hochladen:** Das zu prüfende Original (Nachtragsschreiben,
+Kostenaufstellung, Rechnung) in „Prüfdokumente" ziehen. Einigungen,
+E-Mail-Verläufe, Stellungnahmen, Protokolle und Leistungsnachweise in „Anlagen
+zur Prüfung" ziehen — sie landen im Unterordner „Anlagen zur Prüfung". Einen
+E-Mail-Verlauf kannst du auch als Text einfügen („E-Mail-Text einfügen").
+Unter „Hinweise des Bearbeiters" steht, worauf bei diesem Vorgang zu achten ist.
+
+**Prüfung mit Claude starten:** Im Abschnitt „Prüfung mit Claude" auf
+„Prüfung starten". Claude liest Prüfdokumente, Anlagen und Hinweise und
+arbeitet nach dem Skill Nachtragsprüfung bzw. Rechnungsprüfung LBIH. Das dauert
+einige Minuten. Rückfragen (z. B. Leistungsstand je Position) beantwortest du im
+Feld darunter und mit „Senden". Ein eigener Claude-Zugang ist nicht nötig.
+
+**Ergebnisse freigeben:** Die erzeugten Dateien (Anschreiben, Prüfvermerk,
+grün markierter Nachtrag) stehen zuerst als **Entwurf** da und lassen sich
+herunterladen. Ein **Projekt-Admin** wählt sie aus und klickt „Freigeben und
+ablegen" — dann liegen sie im Vorgangsordner unter „Nachtrag geprüft
+JJJJ-MM-TT" bzw. „Rechnung geprüft JJJJ-MM-TT".
+
+Gut zu wissen: Löschen lassen sich nur Dateien, die über die Prüfstation
+hochgeladen wurden; Originale im Projektordner bleiben unangetastet. Die
+Prüfung mit Claude läuft über die Claude API von Anthropic, die Unterlagen
+verlassen dafür das Haus.
+
 ---
 
 ## Die Projektdatenbank
