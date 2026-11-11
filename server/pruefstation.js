@@ -168,6 +168,7 @@ function registerPruefstation(app, { db, fileStation, requireAuth, writeLimiter,
         .map(p => ({
           id: p.id, name: p.name, fsPath: p.fsPath || '',
           pruefOrdner: { nachtrag: '', rechnung: '', sonstiges: '', ...(p.pruefOrdner || {}) },
+          pruefWissen: Array.isArray(p.pruefWissen) ? p.pruefWissen : [],
           canManage: isProjectManager(p, req.user),
         }))
         .sort((a, b) => String(a.name).localeCompare(String(b.name), 'de'))
@@ -196,6 +197,36 @@ function registerPruefstation(app, { db, fileStation, requireAuth, writeLimiter,
       }
       res.status(409).json({ error: 'Projekt wurde gerade geändert – bitte erneut versuchen.' })
     } catch (e) { res.status(e.status || 500).json({ error: e.message }) }
+  })
+
+  // Projektwissen: Ordner, die bei jeder Prüfung des Projekts mitgehen
+  // (LV, Schnittstellenliste, Bieterantworten, Klärungsliste, Schriftverkehr).
+  app.put('/api/pruefstation/projects/:id/wissen', requireAuth, writeLimiter, (req, res) => {
+    try {
+      const project = db.projects.get(req.params.id)
+      if (!project) return res.status(404).json({ error: 'Projekt nicht gefunden.' })
+      if (!isProjectManager(project, req.user)) return res.status(403).json({ error: 'Nur Projekt-Administratoren können das Projektwissen festlegen.' })
+      const roh = Array.isArray(req.body?.ordner) ? req.body.ordner : []
+      if (roh.length > 15) return res.status(400).json({ error: 'Höchstens 15 Ordner.' })
+      const pruefWissen = []
+      for (const o of roh) {
+        const p = cleanPath(o)
+        if (!p) return res.status(400).json({ error: `Ordnerpfad nicht erlaubt: ${o}` })
+        if (!pruefWissen.includes(p)) pruefWissen.push(p)
+      }
+      for (let i = 0; i < 3; i++) {
+        const cur = db.projects.get(req.params.id)
+        const { _version, _updatedAt, ...data } = cur
+        const updatedAt = new Date().toISOString()
+        const r = db.projects.update(cur.id, { ...data, pruefWissen, updatedAt }, _version, req.user)
+        if (!r.conflict) {
+          broadcast?.('project', 'update', cur.id, updatedAt)
+          logEvent('PRUEF_WISSEN', req, `project=${cur.id} n=${pruefWissen.length}`)
+          return res.json({ pruefWissen })
+        }
+      }
+      res.status(409).json({ error: 'Projekt wurde gerade geändert – bitte erneut versuchen.' })
+    } catch (e) { res.status(500).json({ error: e.message }) }
   })
 
   // ── Ordnerauswahl auf der NAS ────────────────────────────────────────────────

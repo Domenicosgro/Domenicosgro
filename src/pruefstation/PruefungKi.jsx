@@ -188,6 +188,15 @@ export default function PruefungKi({ vorgang, project, onChange }) {
           </div>
         )}
 
+        {daten?.unterlagen?.length > 0 && (
+          <details className="text-xs text-gray-500">
+            <summary className="cursor-pointer">Datengrundlage des letzten Laufs: {daten.unterlagen.length} Unterlagen</summary>
+            <ul className="mt-1 space-y-0.5 max-h-60 overflow-y-auto">
+              {daten.unterlagen.map((u, i) => <li key={i} className="truncate" title={u.rolle}><span className="text-night">{u.name}</span> · {u.rolle}</li>)}
+            </ul>
+          </details>
+        )}
+
         {p.usage && (
           <p className="text-[11px] text-gray-400">
             {Math.round((p.usage.input + p.usage.output) / 1000)} Tsd. Token · ca. {kosten.toFixed(2).replace('.', ',')} USD

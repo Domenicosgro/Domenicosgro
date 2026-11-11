@@ -136,7 +136,9 @@ export default function Pruefstation({ standalone = false, fixedProjectId = '', 
         {/* Liste */}
         <aside className="space-y-3 lg:sticky lg:top-16">
           {currentProject && (
-            <ProjektOrdner project={currentProject} onSaved={(o) => updateProjectOrdner(currentProject.id, o)} />
+            <ProjektOrdner project={currentProject}
+              onSaved={(o) => updateProjectOrdner(currentProject.id, o)}
+              onSavedWissen={(w) => setProjects(ps => ps.map(p => p.id === currentProject.id ? { ...p, pruefWissen: w } : p))} />
           )}
           <div className="flex gap-2">
             {fixedProjectId ? <div className="flex-1" /> :
@@ -292,13 +294,23 @@ const ORDNER_ARTEN = [
   ['sonstiges', 'Sonstige Prüfungen'],
 ]
 
-function ProjektOrdner({ project, onSaved }) {
+function ProjektOrdner({ project, onSaved, onSavedWissen }) {
   const ordner = project.pruefOrdner || {}
   const unset  = ORDNER_ARTEN.filter(([k]) => !ordner[k]).length
   const [open,   setOpen]   = useState(unset === ORDNER_ARTEN.length && project.canManage)
   const [picker, setPicker] = useState(null)    // Art, für die gewählt wird
   const [err,    setErr]    = useState(null)
   const [saved,  setSaved]  = useState(false)
+
+  const wissen = project.pruefWissen || []
+  const saveWissen = async (liste) => {
+    setPicker(null); setErr(null)
+    try {
+      const r = await api(`/api/pruefstation/projects/${project.id}/wissen`, { method: 'PUT', body: { ordner: liste } })
+      onSavedWissen?.(r.pruefWissen)
+      setSaved(true); setTimeout(() => setSaved(false), 1500)
+    } catch (e) { setErr(e.message) }
+  }
 
   const save = async (art, path) => {
     setPicker(null); setErr(null)
@@ -334,16 +346,32 @@ function ProjektOrdner({ project, onSaved }) {
               <p className={`truncate ${ordner[k] ? 'text-night' : 'text-gray-400 italic'}`} title={ordner[k] || ''}>{ordner[k] || 'nicht festgelegt'}</p>
             </div>
           ))}
+          <div className="text-xs pt-2 border-t border-gray-100">
+            <div className="flex items-center justify-between gap-2">
+              <span className="font-medium text-gray-600">Projektwissen für die Prüfung</span>
+              {project.canManage && (
+                <button className="text-brand-600 hover:underline flex items-center gap-0.5" onClick={() => setPicker('__wissen')}><Link2 size={11} /> Ordner hinzufügen</button>
+              )}
+            </div>
+            <p className="text-[11px] text-gray-400 mb-1">LV, Schnittstellenliste, Bieterantworten, Klärungsliste, Schriftverkehr – geht bei jeder Prüfung mit (inkl. Unterordner). Protokolle und Notizen aus dem Protokolltool kommen automatisch dazu.</p>
+            {wissen.length === 0 && <p className="text-gray-400 italic">noch kein Ordner</p>}
+            {wissen.map(w => (
+              <div key={w} className="flex items-center gap-1">
+                <p className="truncate flex-1 text-night" title={w}>{w}</p>
+                {project.canManage && <button className="text-gray-400 hover:text-red-600" title="Entfernen" onClick={() => saveWissen(wissen.filter(x => x !== w))}><X size={11} /></button>}
+              </div>
+            ))}
+          </div>
           {!project.canManage && <p className="text-[11px] text-gray-400">Festlegen können Projekt-Administratoren.</p>}
           {err && <p className="text-xs text-red-700">{err}</p>}
         </div>
       )}
       {picker && (
         <FolderPicker
-          startPath={ordner[picker] || ordner.nachtrag || ''}
+          startPath={picker === '__wissen' ? (project.fsPath || '') : (ordner[picker] || ordner.nachtrag || '')}
           projectPath={project.fsPath}
           suggestedName=""
-          onSelect={(p) => save(picker, p)}
+          onSelect={(p) => (picker === '__wissen' ? saveWissen([...wissen, p]) : save(picker, p))}
           onClose={() => setPicker(null)}
         />
       )}

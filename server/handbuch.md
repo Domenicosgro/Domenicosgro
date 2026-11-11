@@ -488,6 +488,15 @@ Projekt-Dashboard. Eine Übersicht über alle Projekte gibt es unter
 `DriveShare › 01 Projekte › 427 VIZ › 08 Objektüberwachung › 02 Nachtragsprüfung`
 → „Diesen Ordner verknüpfen".
 
+**Projektwissen festlegen (einmal je Projekt, Projekt-Admin):** Im selben
+Kasten unter „Projektwissen für die Prüfung" → „Ordner hinzufügen" → Ordner mit
+Vertragsunterlagen wählen (LV, Schnittstellenliste, Bieterantworten,
+Klärungsliste, Schriftverkehr). Diese Ordner gehen samt Unterordnern bei jeder
+Prüfung mit. Protokolle, Maßnahmen und Notizen aus dem Protokolltool sowie die
+Arbeitsnotizen und Prüfvermerke der anderen Nachträge kommen automatisch dazu.
+So arbeitet Claude auf derselben Grundlage wie im Projektwissen und muss
+weniger nachfragen.
+
 **Neuen Prüfvorgang anlegen:** „Neu" → Art (Nachtrag, Abschlagsrechnung,
 Sonstige Prüfung), Nummer (z. B. NA 011 oder 3. AR Bau), Titel → „Anlegen".
 Unter dem Prüfordner wird automatisch der Ordner angelegt („Nachtrag 011");

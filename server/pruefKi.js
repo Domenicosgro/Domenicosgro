@@ -35,6 +35,10 @@ const EFFORT = () => process.env.PRUEF_KI_EFFORT || 'high'
 const SKILL_FUER_ART = { nachtrag: 'nachtragspruefung', rechnung: 'rechnungspruefung' }
 const MAX_RUNDEN = 12            // pause_turn-Fortsetzungen je Lauf
 const MAX_DATEI  = 100 * 1024 * 1024
+const MAX_GESAMT = 400 * 1024 * 1024   // je Lauf
+const MAX_WISSEN = 300                 // Dateien je Projektwissen-Ordner
+
+const ohneHtml = (s) => String(s || '').replace(/<\/(p|li|div|h\d)>/gi, ' ').replace(/<br\s*\/?>/gi, ' ').replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/\s+/g, ' ').trim()
 
 let Anthropic = null, toFile = null
 function sdk() {
@@ -177,14 +181,100 @@ function registerPruefKi(app, deps) {
     }
     if (!liste.some(d => d.rolle === 'Prüfdokument')) throw new Error('Im Vorgangsordner liegt kein Prüfdokument.')
 
+    // Ergebnisse der anderen Vorgänge im selben Prüfordner (Stundensätze,
+    // Abgrenzungen, Doppelvergütung): Arbeitsnotizen und der jüngste Prüfstand.
+    if (basis) {
+      const eigener = folder.split('/').pop()
+      for (const d of (await listeSicher(basis)).filter(e => e.isdir && e.name !== eigener && !e.name.startsWith('_'))) {
+        const inhalt = await listeSicher(d.path)
+        for (const f of inhalt.filter(e => !e.isdir && /^Arbeitsnotiz.*\.(md|txt|docx)$/i.test(e.name))) {
+          liste.push({ path: f.path, name: `${d.name} - ${f.name}`, rolle: `Arbeitsnotiz anderer Vorgang (${d.name})` })
+        }
+        const stand = inhalt.filter(e => e.isdir && /geprüft|geprueft/i.test(e.name)).sort((a, b) => b.name.localeCompare(a.name))[0]
+        if (stand) {
+          for (const f of (await listeSicher(stand.path)).filter(e => !e.isdir && /^(Pruefvermerk|Prüfvermerk|Arbeitsnotiz|Anschreiben_LBIH_[^_]+(_Index\d+)?\.pdf$)/i.test(e.name))) {
+            liste.push({ path: f.path, name: `${d.name} - ${f.name}`, rolle: `Prüfergebnis anderer Vorgang (${d.name}, ${stand.name})` })
+          }
+        }
+      }
+    }
+
+    // Projektwissen: vom Projekt-Admin festgelegte Ordner (LV, Schnittstellen-
+    // liste, Bieterantworten, Klärungsliste, Schriftverkehr …), rekursiv.
+    for (const w of project?.pruefWissen || []) {
+      try {
+        const dateien = await rekursivBegrenzt(w, 4, MAX_WISSEN)
+        const wurzel = w.split('/').pop()
+        for (const f of dateien) liste.push({ path: f.path, name: `${wurzel} - ${f.rel.replace(/\//g, ' - ')}`, rolle: `Projektwissen (${wurzel}/${f.rel})`, size: f.size })
+      } catch (e) { console.warn('[pruefKi] Projektwissen', w, e.message) }
+    }
+
     const { toFile: tf } = sdk()
     const hochgeladen = []
+    const namen = []
+    const ausgelassen = []
+    let summe = 0
     for (const d of liste) {
-      const buf = await nasDatei(d.path)
-      const meta = await client().files.upload({ file: await tf(buf, d.name) })
-      hochgeladen.push({ ...d, fileId: meta.id, size: buf.length })
+      if (d.size && (d.size > MAX_DATEI || summe + d.size > MAX_GESAMT)) { ausgelassen.push(`${d.name} (zu groß)`); continue }
+      let buf
+      try { buf = await nasDatei(d.path) } catch (e) { ausgelassen.push(`${d.name} (${e.message})`); continue }
+      if (summe + buf.length > MAX_GESAMT) { ausgelassen.push(`${d.name} (Gesamtgröße erreicht)`); continue }
+      summe += buf.length
+      const name = uniqueName(cleanName(d.name), namen)
+      namen.push(name)
+      const meta = await client().files.upload({ file: await tf(buf, name) })
+      hochgeladen.push({ ...d, name, fileId: meta.id, size: buf.length })
     }
+
+    // Protokolle und Notizen des Projekts aus dem Protokolltool als Text
+    const protokolle = protokollText(project)
+    if (protokolle) {
+      const name = uniqueName('Protokolle und Notizen aus Komplizen.md', namen)
+      const meta = await client().files.upload({ file: await tf(Buffer.from(protokolle, 'utf8'), name) })
+      hochgeladen.push({ name, rolle: 'Besprechungsprotokolle, Maßnahmen und Akten-/Telefonnotizen des Projekts (Protokolltool)', fileId: meta.id, size: protokolle.length })
+    }
+    hochgeladen.ausgelassen = ausgelassen
     return hochgeladen
+  }
+
+  async function rekursivBegrenzt(basis, tiefe, maxAnzahl, rel = '', out = []) {
+    if (out.length >= maxAnzahl) return out
+    for (const e of await fileStation.listFolder(rel ? `${basis}/${rel}` : basis)) {
+      if (out.length >= maxAnzahl) break
+      if (e.name.startsWith('.') || e.name.startsWith('~$') || e.name === '#recycle' || e.name === '@eaDir') continue
+      const r = rel ? `${rel}/${e.name}` : e.name
+      if (e.isdir) { if (tiefe > 1) await rekursivBegrenzt(basis, tiefe - 1, maxAnzahl, r, out) }
+      else out.push({ rel: r, path: e.path, size: e.size })
+    }
+    return out
+  }
+
+  // Protokolle (Punkte, Ergebnisse, Maßnahmen) und Notizen eines Projekts
+  function protokollText(project) {
+    if (!project) return ''
+    const z = [`# Protokolle und Notizen – ${project.name}`, '', 'Auszug aus dem Protokolltool (Komplizen). Datum je Eintrag beachten.', '']
+    const prot = db.protocols.list().filter(p => p.projectId === project.id)
+      .sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')))
+    for (const p of prot) {
+      z.push(`## ${p.meetingType || 'Besprechung'} vom ${p.date || '?'}${p.location ? ` (${ohneHtml(p.location)})` : ''}`)
+      for (const it of p.agendaItems || []) {
+        const t = [ohneHtml(it.topic), ohneHtml(it.discussion), it.result ? `Ergebnis: ${ohneHtml(it.result)}` : ''].filter(Boolean).join(' – ')
+        if (t) z.push(`- ${it.no ? it.no + ' ' : ''}${t}`)
+      }
+      for (const a of p.actionItems || []) {
+        const t = ohneHtml(a.description)
+        if (t) z.push(`- Maßnahme: ${t}${a.responsible ? ` · zuständig ${a.responsible}` : ''}${a.deadline ? ` · bis ${a.deadline}` : ''}${a.status ? ` · ${a.status}` : ''}`)
+      }
+      z.push('')
+    }
+    const notizen = db.notes.list().filter(n => n.projectId === project.id)
+      .sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')))
+    if (notizen.length) z.push('# Akten- und Telefonnotizen', '')
+    for (const n of notizen) {
+      z.push(`## ${n.type === 'telefonnotiz' ? 'Telefonnotiz' : 'Aktennotiz'} vom ${n.date || (n._updatedAt || '').slice(0, 10)}: ${ohneHtml(n.subject || n.title)}`)
+      z.push(ohneHtml(n.content || n.text), '')
+    }
+    return prot.length || notizen.length ? z.join('\n') : ''
   }
 
   function auftrag(v, project, unterlagen, skillName) {
@@ -211,7 +301,12 @@ function registerPruefKi(app, deps) {
       : 'Prüfe nach den üblichen Regeln der Objektüberwachung von GHBA.')
     z.push('Lege jede Ergebnisdatei (DOCX, PDF, Arbeitsnotiz) in $OUTPUT_DIR ab und liste das Verzeichnis im selben Befehl auf.')
     z.push('Nichts selbst versenden. Die Ergebnisse legt der Prüfer nach Freigabe in den Projektordner.')
-    z.push('Fehlen Angaben, ist die Einigung unklar oder sieht der Skill eine Abfrage beim Prüfer vor (z. B. Leistungsstand je Position), dann stelle die Fragen gesammelt, nummeriert und beende die Antwort – nicht raten.')
+    if (unterlagen.ausgelassen?.length) z.push(`Nicht mitgeschickt (Größe/Fehler): ${unterlagen.ausgelassen.join('; ')}`)
+    z.push('')
+    z.push('So gehst du mit fehlenden Angaben um:')
+    z.push('1. Erst selbst nachsehen: Projektwissen, Protokolle und Notizen, Ergebnisse und Arbeitsnotizen der anderen Vorgänge, Anlagen. Durchsuche die Dateien mit Code (z. B. pdftotext + grep), bevor du etwas als fehlend einstufst.')
+    z.push('2. Was sich nicht klären lässt, aber eine vertretbare Bewertung nicht verhindert: mit einer begründeten Annahme weiterarbeiten und sie im Ergebnis unter „Offene Punkte" bzw. in der Arbeitsnotiz kennzeichnen.')
+    z.push('3. Nur fragen, wenn ohne die Angabe kein vertretbares Ergebnis möglich ist (z. B. Einigung liegt nicht vor oder widerspricht sich; bei Abschlagsrechnungen der Leistungsstand, den der Skill ausdrücklich beim Prüfer abfragt). Dann höchstens fünf Fragen, nummeriert, jeweils mit deinem Vorschlag als Antwort, und alles andere vorher fertigstellen.')
     z.push('Schließe mit einer kurzen Zusammenfassung: Ergebnis, Beträge netto/brutto, offene Punkte, erzeugte Dateien.')
     return z.join('\n')
   }

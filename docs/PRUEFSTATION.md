@@ -58,6 +58,8 @@ können, ruft der **Server** Claude auf – mit dem API-Schlüssel des Büros.
 |---|---|
 | Skill | `nachtragspruefung` / `rechnungspruefung` aus `PRUEF_SKILLS_PFAD` (NAS) lesen, als **Custom Skill** bei Anthropic anlegen; bei Änderung neue Version (SHA-256 in `app_state.pruef_skill_<name>`). **Die Skills liegen nicht in Git** – sie enthalten Projektdaten, das Repo ist öffentlich. |
 | Unterlagen | Prüfdokumente, „Anlagen zur Prüfung", `Vorlage_*` und `_Standard/` aus dem Prüfordner → Files API → `container_upload` |
+| Datengrundlage (wie das claude.ai-Projektwissen) | **Projektwissen** je Projekt (`project.pruefWissen`, bis 15 NAS-Ordner, rekursiv bis 4 Ebenen, je Ordner höchstens 300 Dateien); **Protokolle, Maßnahmen und Notizen** des Projekts aus der DB als `Protokolle und Notizen aus Komplizen.md`; **andere Vorgänge** im Prüfordner: `Arbeitsnotiz*` und Prüfvermerk/Anschreiben des jüngsten „… geprüft"-Ordners. Je Lauf höchstens 400 MB, Ausgelassenes wird Claude mitgeteilt. Die Liste steht in der App unter „Datengrundlage des letzten Laufs". |
+| Rückfragen sparsam | Auftrag: erst selbst in den Unterlagen suchen, sonst mit gekennzeichneter Annahme weiterarbeiten; fragen nur, wenn kein vertretbares Ergebnis möglich ist – höchstens fünf Fragen mit Antwortvorschlag |
 | Anfrage | `claude-opus-5-5`, Effort `high`, Code-Ausführung `code_execution_20260521`, Container-Skills: Custom + Anthropic `pdf` + `docx`, Streaming, `pause_turn` wird fortgesetzt; Rückfallmodell bei Ablehnung (`fallbacks: "default"`) |
 | Ergebnis | Dateien aus `$OUTPUT_DIR` → `/data/pruefung/<vorgang>/ergebnisse/` (**Entwurf**) |
 | Rückfragen | Antwort in der App → gleiche Unterhaltung, **gleicher Container** (`verlauf.json`) |
@@ -130,6 +132,7 @@ Ordnerauswahl auf die Projektfreigabe begrenzen.
 GET    /api/pruefstation/status                      NAS konfiguriert?, erlaubte Wurzeln
 GET    /api/pruefstation/projects                    zugängliche Projekte (+ fsPath, pruefOrdner)
 PUT    /api/pruefstation/projects/:id/ordner {nachtrag,rechnung,sonstiges}  Prüfordner (Projekt-Admin)
+PUT    /api/pruefstation/projects/:id/wissen {ordner:[…]}   Projektwissen-Ordner (Projekt-Admin)
 GET    /api/pruefstation/browse?path=                Ordner/Dateien; ohne path: Freigaben
 POST   /api/pruefstation/folders        {parent,name} Ordner anlegen
 GET    /api/pruefstation/vorgaenge[?projectId=]
