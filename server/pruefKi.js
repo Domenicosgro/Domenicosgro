@@ -257,6 +257,7 @@ function registerPruefKi(app, deps) {
           for (const o of b.content.content || []) if (o.file_id) neueDateien.push(o.file_id)
         }
       }
+      verlauf.dateiIds = [...new Set([...(verlauf.dateiIds || []), ...neueDateien])]
       const t = msg.content.filter(b => b.type === 'text').map(b => b.text).join('\n').trim()
       if (t) text = t
 
@@ -291,6 +292,44 @@ function registerPruefKi(app, deps) {
     return { text, usage, geholt }
   }
 
+  // ── Dateien bei Anthropic löschen ───────────────────────────────────────────
+  // Über die Files API hochgeladene und erzeugte Dateien bleiben dort, bis sie
+  // ausdrücklich gelöscht werden. Gelöscht wird, sobald ein Lauf ersetzt wird,
+  // der Vorgang nicht mehr existiert oder 30 Tage nichts mehr passiert ist
+  // (dann ist auch der Container abgelaufen und keine Rückfrage mehr möglich).
+  async function dateienBeiAnthropicLoeschen(verlauf) {
+    const ids = [...new Set([...(verlauf?.unterlagen || []).map(u => u.fileId), ...(verlauf?.dateiIds || [])].filter(Boolean))]
+    let ok = 0
+    for (const id of ids) {
+      try { await client().files.delete(id); ok++ }
+      catch (e) { if (e?.status === 404) ok++; else console.warn('[pruefKi] Löschen', id, e.message) }
+    }
+    return { ok, gesamt: ids.length }
+  }
+
+  async function aufraeumen() {
+    if (!konfiguriert()) return
+    let eintraege = []
+    try { eintraege = fs.readdirSync(DATA_DIR) } catch { return }
+    const grenze = Date.now() - 30 * 24 * 3600 * 1000
+    for (const vid of eintraege) {
+      if (laufend.has(vid)) continue
+      const datei = verlaufDatei(vid)
+      let alt = false
+      try { alt = fs.statSync(datei).mtimeMs < grenze } catch { continue }
+      const weg = !db.pruefVorgaenge.get(vid)
+      if (!alt && !weg) continue
+      const verlauf = ladeVerlauf(vid)
+      if (verlauf?.geloescht) continue
+      const r = await dateienBeiAnthropicLoeschen(verlauf)
+      if (weg) fs.rmSync(path.join(DATA_DIR, vid), { recursive: true, force: true })
+      else if (r.ok === r.gesamt) speichereVerlauf(vid, { ...verlauf, geloescht: new Date().toISOString() })
+      console.log(`[pruefKi] Aufgeräumt: ${vid} (${r.ok}/${r.gesamt} Dateien bei Anthropic gelöscht)`)
+    }
+  }
+  setTimeout(() => aufraeumen().catch(() => {}), 60_000)
+  setInterval(() => aufraeumen().catch(() => {}), 6 * 3600 * 1000).unref?.()
+
   function ergebnisListe(vid) {
     const dir = path.join(DATA_DIR, vid, 'ergebnisse')
     try {
@@ -321,7 +360,9 @@ function registerPruefKi(app, deps) {
         }
         setPruefung(vid, { schritt: 'Unterlagen von der NAS laden' })
         const unterlagen = await sammleUnterlagen(v, project)
-        // Alter Entwurf gehört zu einem früheren Lauf
+        // Alter Entwurf gehört zu einem früheren Lauf – auch bei Anthropic entfernen
+        const alt = ladeVerlauf(vid)
+        if (alt && !alt.geloescht) await dateienBeiAnthropicLoeschen(alt)
         fs.rmSync(path.join(DATA_DIR, vid), { recursive: true, force: true })
         verlauf = {
           skills, containerId: null, usage: { input: 0, output: 0 },
@@ -379,7 +420,9 @@ function registerPruefKi(app, deps) {
     if (laufend.has(v.id)) return res.status(409).json({ error: 'Für diesen Vorgang läuft bereits eine Prüfung.' })
     if (laufend.size >= 3) return res.status(429).json({ error: 'Es laufen gerade drei Prüfungen – bitte kurz warten.' })
     const nachricht = typeof req.body?.nachricht === 'string' ? req.body.nachricht.trim().slice(0, 20000) : ''
-    if (nachricht && !ladeVerlauf(v.id)) return res.status(400).json({ error: 'Es gibt noch keinen Lauf, auf den sich die Antwort bezieht.' })
+    const bisher = ladeVerlauf(v.id)
+    if (nachricht && !bisher) return res.status(400).json({ error: 'Es gibt noch keinen Lauf, auf den sich die Antwort bezieht.' })
+    if (nachricht && bisher?.geloescht) return res.status(400).json({ error: 'Dieser Lauf ist älter als 30 Tage und bei Anthropic gelöscht – bitte „Neu prüfen“.' })
     logEvent('PRUEF_KI_START', req, `vorgang=${v.id} folge=${nachricht ? 1 : 0}`)
     starteLauf(v, req.user, nachricht)    // läuft im Hintergrund weiter
     res.status(202).json({ ok: true })

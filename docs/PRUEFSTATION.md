@@ -66,7 +66,15 @@ können, ruft der **Server** Claude auf – mit dem API-Schlüssel des Büros.
 Höchstens drei Läufe gleichzeitig, einer je Vorgang. Kosten je Lauf werden
 angezeigt (Token × Listenpreis Opus 5.5).
 
-**Datenschutz/Vertraulichkeit:** Die Unterlagen verlassen das Haus. Die
+**Datenschutz/Vertraulichkeit:** Laut Anthropic werden API-Daten **nicht zum
+Training** verwendet, es sei denn, das Büro stimmt ausdrücklich zu (Doku
+„API and data retention“: *„Retained data is never used for model training
+without your express permission.“*). Über die Files API hochgeladene und
+erzeugte Dateien bleiben dort, bis sie gelöscht werden – die App löscht sie,
+sobald ein Lauf durch „Neu prüfen“ ersetzt wird, der Vorgang gelöscht ist oder
+30 Tage nichts passiert ist (Prüfung alle 6 h). Ausnahme bei Anthropic: von den
+automatischen Sicherheitssystemen markierte Inhalte bis zu 2 Jahre.
+Die Unterlagen verlassen das Haus. Die
 Code-Ausführung ist **nicht ZDR-fähig** (Containerdaten bis zu 30 Tage bei
 Anthropic). Vor dem Einsatz in 427 VIZ klären, ob die Vertragsbedingungen des
 LBIH das zulassen (Punkt 4 der Skill-Übergabe).
