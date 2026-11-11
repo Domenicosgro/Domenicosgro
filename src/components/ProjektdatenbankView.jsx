@@ -14,7 +14,8 @@ const isServer = typeof window !== 'undefined' && !!window.__SERVER_MODE__
 /**
  * Zentrale Projektdatenbank: Projekte werden hier angelegt und verwaltet
  * (Codierung, Gesellschaft, Vertrag, Leistungsphasen, Team, Generalplanung).
- * Bearbeitung nur durch System-/Projektadmins (canEdit je Projekt).
+ * Angelegt werden Projekte vom System-Admin; die Projektdaten pflegt danach
+ * jeder Nutzer, der auf das Projekt zugreifen darf (canEdit je Projekt).
  */
 export default function ProjektdatenbankView({ projects, allContacts, canEdit, serverUser, onCreate, onUpdateProject, onBack }) {
   const [selectedId, setSelectedId] = useState(null)

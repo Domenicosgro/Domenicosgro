@@ -24,6 +24,7 @@ import MaengelView           from './components/MaengelView'
 import DateiablageView       from './components/DateiablageView'
 import ProjektdatenView      from './components/ProjektdatenView'
 import ProjektdatenbankView  from './components/ProjektdatenbankView'
+import Assistent             from './components/Assistent'
 import { hashPassword, uid } from './utils'
 import { buildProjectArchivePdf, downloadPdfBase64 } from './archivePdf'
 import { deriveKey, encryptJSON, decryptJSON, newSalt } from './crypto'
@@ -596,6 +597,18 @@ export default function App() {
           onClose={() => setBimPopup(null)}
         />
       )}
+      {/* Der Assistent hängt hier und damit in jeder Ansicht — er soll nicht
+          dort aufhören, wo man gerade eine Frage hätte. Das offene Projekt gibt
+          ihm den Schwerpunkt; gelesen wird trotzdem nur, was für die
+          angemeldete Person freigegeben ist (server/kontext.js). Nur im
+          Server-Modus: ohne Server gibt es keine Anmeldung und keine KI. */}
+      {isServer && (
+        <Assistent
+          projektId={selectedProjectId}
+          projektName={projectsWithContacts?.find(p => p.id === selectedProjectId)?.name || null}
+          benutzerName={effectiveUser?.displayName || effectiveUser?.username || null}
+        />
+      )}
       <WebUpdateBanner />
     </>
   )
@@ -918,10 +931,10 @@ export default function App() {
     )
   }
 
-  // Projektdatenbank bearbeiten dürfen System- und Projektadmins
-  const canEditProjektdaten = (project) => !isServer || effectiveUser?.role === 'admin'
-    || project.projectAdminUser === serverUser?.username
-    || project.projectAdmins?.includes(serverUser?.username)
+  // Projektdaten pflegt jeder, der das Projekt sehen darf – zugriffsbeschränkte
+  // Projekte erreichen die übrigen Nutzer ohnehin nicht. Neue Projekte legt
+  // weiterhin der Systemadmin in der Projektdatenbank an.
+  const canEditProjektdaten = () => true
 
   if (view === 'project-daten') {
     const project = projectsWithContacts.find(p => p.id === selectedProjectId)

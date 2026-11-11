@@ -207,8 +207,15 @@ Domenicosgro/
 │   ├── gelaende.js                # Gelände-Daten je Kalenderwoche (Dashboard-Integration)
 │   ├── fileStation.js             # Synology File Station (Service-Konto): list/download/upload/mkdir/delete
 │   ├── pruefstation.js            # Prüfstation: Prüfvorgänge + verknüpfte NAS-Ordner (/api/pruefstation/*)
+│   ├── assistent.js               # Assistent: Routen, Verlauf, SSE zum Browser (§15)
+│   ├── kontext.js                 # Rückgriff: Systemkopf aus dem, was die Person sehen darf
+│   ├── ki.js                      # Einzige Stelle, die das Dashboard kennt (Weg zur KI-Farm)
+│   ├── handbuch.md                # Nutzerhandbuch – Laufzeitdatei, der Assistent liest sie
 │   ├── pm2.config.js              # PM2-Konfiguration für direkten Linux-Betrieb (ohne Docker)
 │   └── package.json               # Nur Server-Abhängigkeiten (kein Electron, kein Vite)
+│
+├── pruefungen/                    # Prüfskripte (nicht im Produktionsabbild)
+│   └── pruefung-assistent.js      # 75 Prüfungen: Rechtegrenze, Rückgriff, Strom, Fehlerwege
 │
 └── electron/                      # Desktop-Variante (optional)
     ├── main.js                    # Electron-Hauptprozess
@@ -368,6 +375,8 @@ Ein-Befehl-Deploy, komplett passwortlos via SSH-Key:
 | `pruef_vorgaenge` | Prüfstation: Prüfvorgänge (Ordnerverknüpfung, Datei-Metadaten, Hinweise) |
 | `app_state` | Key-Value-Speicher (z.B. Scheduler-Zeitstempel) |
 | `store` | Generischer Key-Value-Store (Logo etc.) |
+| `chats` | Unterhaltungen mit dem Assistenten (je Benutzer) |
+| `chat_messages` | deren Nachrichten inkl. Knoten, Dauer und Fundstellen (`ON DELETE CASCADE`) |
 
 Persistenz im WAL-Modus; `makeStore()` kapselt CRUD + optimistische Versionierung.
 
@@ -525,6 +534,21 @@ GET   /api/admin/sessions  ·  DELETE /api/admin/sessions/:username
 GET   /api/admin/deletion-requests  ·  POST …/:id/{approve,reject}
 POST  /api/admin/release-report-test                        wöchentlichen Report manuell auslösen
 ```
+
+**Assistent** (`server/assistent.js`, siehe §15)
+```
+GET    /api/assistent/status                 ist eine KI da, wie viele Projekte freigegeben
+GET    /api/assistent/chats                  eigene Unterhaltungen
+POST   /api/assistent/chats                  neue Unterhaltung  {projektId?}
+GET    /api/assistent/chats/:id              Unterhaltung mit Nachrichten
+POST   /api/assistent/chats/:id/titel        umbenennen
+DELETE /api/assistent/chats/:id              löschen (Nachrichten per CASCADE)
+POST   /api/assistent/chats/:id/fragen       fragen → SSE: quellen, text…, fertig | fehler
+```
+Fremde Unterhaltungen ergeben **404, nicht 403** – ein 403 würde bestätigen,
+dass es sie gibt. Ein Dienstschlüssel (`X-API-Key` → `__apikey__`) bekommt hier
+**403**: Er gehört zu keinem Menschen und sieht in `canAccessProject` jedes
+Projekt; ein Assistent darauf hätte keine Rechtegrenze.
 
 **Statische Auslieferung**
 ```
@@ -826,3 +850,307 @@ git pull origin claude/protocol-tool-meetings-tIoZX
 - Wetterabruf setzt Internetzugang der NAS und einen gepflegten **Ort** in den Projektdaten voraus.
 - Gelände: Zuteilung per Drag (Person auf Projekt ziehen) ist noch nicht gebaut – Phase 2 des Musters.
 - Gelände: ob die Embed-Shell des Dashboards eine externe `meta.embed_src` akzeptiert, ist noch nicht praktisch geprüft (Rückfall: `embed_mode = 'link'`).
+
+---
+
+## 15. (K)ompl(I)ze — der Assistent auf den Projektdaten
+
+> Seit 04.11.2026. Erste von mehreren Integrationen, die je einen eigenen
+> Assistenten bekommen. Das Papier dazu:
+> `komplizen-dashboard/docs/ARCHITEKTUR_ASSISTENTEN.md`.
+
+Beantwortet zwei Arten von Fragen: zu den Bauprojekten dieses Büros und zur
+Bedienung des Programms. **Er liest nur** – anlegen, speichern und versenden
+bleibt bei den Menschen.
+
+### 15.0 Wie er heißt
+
+In der Oberfläche heißt er **(K)ompl(I)ze**. Die Klammern greifen das
+(K)-Logo des Hauses auf, und die beiden eingeklammerten Buchstaben ergeben
+zusammen „KI" – das Wort steckt also im Namen, ohne dass es jemand
+hinschreiben müsste. Dargestellt wird es in `Assistent.jsx` über die kleine
+Komponente `Name`; die Klammerbuchstaben stehen in Sky (`#8FBEFF`).
+
+**Nur die Anzeige trägt diesen Namen.** Die Routen heißen weiter
+`/api/assistent/*`, die Dateien ebenso. Ein Name, der sich nach außen ändern
+darf, soll nicht an Pfaden hängen, die danach alle mitwandern müssten.
+
+Dieselbe Überlegung gilt auf der anderen Seite: Die KI-Rechner heißen seit
+dem 04.11.2026 **`Komplize <letzte Stelle der IP>`** (`Komplize 54`,
+`Komplize 190`), weil ihr Name unter jeder Antwort steht. Vorher standen dort
+das Kürzel eines Kollegen und eine Kartenbezeichnung.
+
+### 15.1 Die zwei Entscheidungen, auf denen alles steht
+
+**Der Bot lebt hier, nicht im Dashboard.** Naheliegend wäre das Gegenteil
+gewesen: Dort steht schon ein Assistent, dort steht die KI-Farm, und die
+Leitung zu den Projektdaten gibt es seit September (`/api/stammdaten/*`).
+Dagegen steht eine Zeile in `canAccessProject`:
+
+```js
+if (username === '__apikey__') return true
+```
+
+Der Dienstschlüssel des Dashboards sieht **jedes** Projekt, auch die
+zugangsbeschränkten. Für die Personalplanung ist das richtig; ein Chatbot
+darauf hätte genau die Grenze aufgehoben, um die es geht. Hier dagegen liegt
+die Sitzung des Menschen, und `server/kontext.js` bekommt `canAccessProject`
+hereingereicht – dieselbe Funktion, die auch die Oberfläche benutzt.
+
+**Mit den KI-Rechnern spricht trotzdem nur das Dashboard.** Dort entscheidet
+`ki._reservieren` nach Rang, gemeldeter GPU-Last und dem Schalter „nur leicht",
+welche Karte eine Anfrage bekommt – das ist der Schutz für den Menschen, der an
+der Maschine sitzt. Eine eigene Leitung zu LM Studio liefe daran vorbei.
+
+### 15.2 Die Dateien
+
+| Datei | Aufgabe |
+|---|---|
+| `server/ki.js` | Einzige Stelle, die das Dashboard kennt. Schickt `POST /api/ki/dienst/unterhalten` mit `X-KI-Key`, liest den SSE-Strom zurück. Wirft nie – jeder Fehlschlag kommt als `fehler`-Ereignis. |
+| `server/kontext.js` | Der Rückgriff: baut den Systemkopf aus dem, was die Person sehen darf. Stichwortsuche, Zeichenbudget, Quellenangaben. |
+| `server/assistent.js` | Die Routen, der Verlauf, das Strömen zum Browser. |
+| `server/handbuch.md` | Das Nutzerhandbuch – **Laufzeitdatei**, keine reine Doku. Lag vorher als `Komplizen_Protokolle_Quelldokument.md` oben; das Produktionsabbild kopiert nur `server/` und `dist/`, dort wäre es nie angekommen. |
+| `src/components/Assistent.jsx` | Das Fenster. Hängt in `wrap()` in `App.jsx`, also in jeder Ansicht. |
+| `server/neuigkeiten.md` | Die Neuigkeiten selbst – **Laufzeitdatei**, von Menschen geschrieben (§15.3b) |
+| `server/neuigkeiten.js` | Liest sie, merkt sich Gesehenes |
+| `pruefungen/pruefung-assistent.js` | 111 Einzelprüfungen gegen echten Server und Attrappe. |
+
+### 15.3 Wie der Systemkopf entsteht (`kontext.js`)
+
+1. **Projekte filtern** mit `canAccessProject`. Protokolle und Notizen ohne
+   Projektbezug bleiben sichtbar – genau wie in `GET /api/protocols`.
+2. **Schwerpunkt bestimmen**: das offene Projekt, sonst ein in der Frage
+   genanntes – aber nur bei **genau einem** Treffer. Bei zweien wäre die Wahl
+   geraten, und eine geratene Mappe verdrängt echte Fundstellen.
+3. **Stücke bewerten**: Protokollpunkte, Aufgaben, Bemerkungen, Notizen.
+   Abdeckung zählt mehr als Häufigkeit – sonst gewinnt immer der längste Text.
+4. **Füllen bis zum Budget.** **Weggelassen wird, nicht abgeschnitten**: Ein
+   mitten im Satz gekappter Protokollpunkt sieht für das Modell aus wie ein
+   vollständiger. Was nicht mehr hineinpasste, wird gezählt und mitgeteilt.
+
+### 15.3a Zwei Fehler des ersten Betriebstags (04.11.2026)
+
+Beide fielen erst im Echtbetrieb auf, beide sind gemessen.
+
+**Das Fenster lief über.** Das Budget stand auf 17 000 Zeichen, gegriffen aus
+dem Limit des Dashboards (`KI_MAX_INPUT` = 24 000). Maßgeblich ist aber das
+Fenster des Modells, und LM Studio lädt `qwen3-14b` mit **8192 Token**:
+
+```
+Kopf 17000 + Verlauf 6000 + Antwort 1500 Token  ->  0 Zeichen Antwort
+Kopf  9000 + Verlauf 3000 + Antwort  900 Token  ->  561 Zeichen, 3,2 s
+```
+
+Die erste Frage einer Unterhaltung passte noch, die zweite nicht mehr — dann
+kam **gar nichts**. Ein übergelaufenes Fenster meldet keinen Fehler. Genau das
+war der „abgerissen"-Fehler im Betrieb.
+
+Zeichen je Token, gemessen am Handbuch über `usage.prompt_tokens`: 3,47 / 3,43
+/ 3,38 / 3,40. Gerechnet wird mit **3,2**. Das Budget leitet sich jetzt aus
+`KI_FENSTER_TOKEN` ab (Vorgabe 8192) — wird LM Studio größer geladen, gehört
+die Zahl dort angepasst.
+
+**„Irgendein Wort getroffen" war kein Auswahlkriterium.** Gemessen an den
+ersten echten Fragen:
+
+| Frage | Fundstellen vorher |
+|---|---|
+| „Hallo Test!" | 44 |
+| „nochmal" | 29 |
+| „wie kann ich ein neues projekt anlagen?" | 42 |
+
+„Projekt" und „Protokoll" stehen in jedem Protokoll — wer danach sucht, findet
+alles, und alles finden ist dasselbe wie nichts finden. Bei der Bedienfrage
+verdrängten 42 Protokollschnipsel genau den Handbuchabschnitt mit der Antwort.
+
+Drei Regeln dagegen:
+
+1. **Seltenheit statt Vorkommen.** Jedes Suchwort wiegt `log(N/df)`. Wörter in
+   mehr als 40 % aller Stellen (`ALLERWELT_AB`) fliegen ganz heraus — und
+   stehen danach auch nicht mehr in der Quellenangabe, sonst behauptete die
+   Oberfläche, danach sei gesucht worden.
+2. **Abstand zur besten Stelle.** Mindestens 35 % ihrer Punkte
+   (`STELLEN_SCHWELLE`), höchstens 10 Stellen (`STELLEN_HOECHSTENS`).
+3. **Wortanfang statt Teilzeichenkette.** Vorher traf „hin" das Wort
+   „Hinweis" und „test" das Wort „Testlauf". Das Wortende bleibt frei, damit
+   „Projekt" auch „Projekte" trifft — im Deutschen hängt an jedem Wort etwas
+   dran.
+
+Dazu drei Regeln für die Art, wie Menschen wirklich tippen — alle drei
+stammen aus echten Fehlschlägen am 04.11.2026, bei denen der Bot mangels
+Fundstelle eine Oberfläche **erfunden** hat:
+
+4. **Schreibweisen angleichen** (`angleichen`): `ß`→`ss`, `ä`→`ae`, `ö`→`oe`,
+   `ü`→`ue`, auf beiden Seiten. „Wie schliesse ich ab?" fand „abschließen"
+   nicht und erfand eine Schaltfläche „Freigeben", die es nicht gibt.
+5. **Zusammengesetzte Wörter rückwärts** — der deutscheste Fall: Jemand fragt
+   nach dem „Maßnahmenpunkt", im Handbuch steht „Maßnahmen". Das Fragewort ist
+   **länger** als das Wort im Text. Gilt **nur** für Wörter, die wörtlich
+   nirgends vorkommen. Die erste Fassung ließ die Regel immer gelten — mit der
+   Folge, dass „Protokollkette" auf jeden Abschnitt mit „Protokoll" passte,
+   dadurch als Allerweltswort galt und ganz herausfiel. Die Hilfsregel begrub
+   genau die Stelle, die sie finden sollte.
+6. **Fachwörter tragen allein.** Ein Wort ab sechs Zeichen, das in höchstens
+   zwei Abschnitten steht, genügt für sich: „Info-Punkt", „Projektordner".
+   Kurze nicht — „Test" steht auch in „E-Mail-Test", und ein Gruß soll keinen
+   Handbuchabschnitt holen.
+
+Das Handbuch braucht ansonsten **zwei** tragende Wörter oder eines ab vier
+Zeichen in der Überschrift. Es ist die Nebenquelle: Bei einer Frage nach der
+Sprinklerzentrale soll es nicht mitkommen, nur weil dort irgendwo „hin"
+vorkommt.
+
+Ein Wort, das **nirgends** vorkommt, gilt dabei nicht als nichtssagend,
+sondern als erfolglos gesucht — „Reykjavik" wird in der Quellenangabe genannt.
+Dass sich das von einem bloßen „nochmal" nicht unterscheiden lässt, ist kein
+Mangel: Für die Antwort gilt in beiden Fällen dasselbe, nämlich sich an die
+Unterhaltung zu halten und nichts zu erfinden.
+
+**Was bewusst nicht in den Kopf kommt:** E-Mail-Adressen und Telefonnummern der
+Kontakte. Für „wer macht die Statik?" braucht das Modell sie nicht, und was
+nicht im Kopf steht, kann in keiner weitergeleiteten Antwort auftauchen.
+Verschlüsselte Kontakte bleiben ohnehin draußen – der Schlüssel liegt im
+Browser.
+
+Gesucht wird mit Stichwörtern, nicht nach Bedeutung. Bei 66 Protokollen in 21
+Projekten reicht das und ist nachprüfbar: Man kann sehen, **warum** etwas
+gefunden wurde. Der Preis sind Synonyme – deshalb sagt die Anweisung dem Modell
+ausdrücklich, es soll das Fehlen von Material benennen statt es zu überbrücken,
+und: *„Behaupte nie, etwas existiere nicht – sage, dass du es nicht findest."*
+Was fehlt, kann auch hinter einer fehlenden Freigabe liegen.
+
+### 15.3b Neuigkeiten: die Sprechblase beim Anmelden
+
+Seit 04.11.2026 begrüßt (K)ompl(I)ze jeden mit Namen und zeigt, was sich im
+Programm geändert hat — als Sprechblase über seinem Knopf. Ein Klick auf
+„Mehr dazu" öffnet den Chat, der Text steht dort als erste Nachricht, und ab
+da lässt sich nachfragen.
+
+**Der Text kommt aus `server/neuigkeiten.md`, nicht aus dem Modell.** Wer
+eine Verbesserung baut, schreibt sie im selben Commit dort hinein —
+versioniert, gegengelesen, nicht erfindbar. Dieselbe Rollenteilung wie bei
+den Fundstellen: Die Wahrheit ist von Menschen, die Erläuterung vom Modell.
+(`BUILD_ID` taugt dafür nicht: Das ist ein Zeitstempel.)
+
+| Stück | Wo |
+|---|---|
+| Die Texte | `server/neuigkeiten.md`, Überschrift `## <kennung> \| <Titel>` |
+| Das Lesen | `server/neuigkeiten.js` |
+| Wer was gesehen hat | Tabelle `neuigkeit_gesehen` |
+| Die Sprechblase | `Assistent.jsx`, Komponente `Blase` |
+
+Vier Entscheidungen, die man an der Umsetzung sieht:
+
+1. **Die Kennung darf sich nie ändern**, der Titel schon. Die Kennung merkt
+   sich, wer den Eintrag gesehen hat — wird sie geändert, erscheint er bei
+   allen erneut.
+2. **Nichts von vor der eigenen Anmeldung, höchstens drei auf einmal.** Wer
+   heute dazukommt, soll nicht die Versionsgeschichte eines Jahres vorgesetzt
+   bekommen; wer drei Wochen weg war, keine Wand.
+3. **Der Text wird beim Öffnen wirklich gespeichert**, nicht nur angezeigt.
+   Sonst stünde er auf dem Schirm, aber nicht im Verlauf — und die erste
+   Nachfrage („wie meinst du das?") ginge ins Leere.
+4. **Bilder als `<img>` mit `data:`-URL, nie als eingebettetes SVG.** In einem
+   `<img>` führt ein SVG keine Skripte aus. Die Dateien stammen aus dem
+   eigenen Projekt und sind gegengelesen — die Oberfläche soll aber nicht
+   davon abhängen, dass das so bleibt.
+
+**Die Begrüßung steht an zwei Stellen**, und das ist Absicht:
+
+* in der **Sprechblase**, wenn es etwas Neues gibt,
+* im **Fenster selbst**, bei jedem Öffnen.
+
+Die erste Fassung hatte sie nur in der Sprechblase — und die erscheint nur
+an Tagen mit Neuigkeiten, also fast nie. Wer den Assistenten öffnet, soll
+immer begrüßt werden; eine tägliche Blase nur zum Grüßen wäre dagegen
+Belästigung.
+
+**Sie kostet keinen KI-Aufruf.** „Guten Morgen, Anna" ist ein `if` über die
+Uhrzeit. Dafür belegt niemand einen Platz auf einer Grafikkarte.
+
+### 15.3c Bilder: SVG statt Bildmodell
+
+Gemessen am 04.11.2026: Das 35B schreibt ein brauchbares Erklärbild als
+**SVG** in rund 22 Sekunden, in den Hausfarben. Ein Bildmodell gibt es in
+der Farm nicht (nachgesehen: ein LLM, ein VLM, ein Einbettungsmodell — das
+VLM *liest* Bilder, es malt keine).
+
+Das ist kein Mangel, sondern die bessere Wahl:
+
+- **SVG ist Text.** Man sieht vor dem Ausliefern, ob es stimmt.
+- **Ein Diffusionsmodell malt überzeugende Bildschirmfotos von einer
+  Oberfläche, die es nicht gibt.** Im Hilfetext ist das schlimmer als gar
+  kein Bild — genauso wie eine erfundene Antwort mit Quellenangabe.
+- Geht es wirklich um „wo ist der neue Knopf", ist ein **echtes
+  Bildschirmfoto** jedem erzeugten überlegen. Dann gehört ein PNG daneben.
+
+22 Sekunden sind zu lang für eine Sprechblase. Das Bild entsteht deshalb
+**beim Schreiben der Neuigkeit**, wird angesehen und mit ausgeliefert — nicht
+beim Anzeigen.
+
+### 15.3d Das Handbuch ist die Wahrheit über die Bedienung
+
+`server/handbuch.md` ist **keine Dokumentation, sondern eine Laufzeitdatei.**
+Was dort falsch steht, sagt der Bot falsch; was fehlt, erfindet er im
+Zweifel. Am 04.11.2026 fiel auf, dass es den Stand von vor etlichen
+Versionen beschrieb:
+
+* **Falsch:** „Neues Projekt → Projektname eingeben". In Wahrheit entsteht ein
+  Projekt in der **Projektdatenbank** (Nummer, Kürzel, Bezeichnung, nur
+  Admins) und wird danach über „Projekt hinzufügen" auf das
+  Protokoll-Dashboard geholt. `NewProjectModal` wird **nur** von
+  `ProjektdatenbankView` benutzt — daran ist es nachzusehen.
+* **Fehlend:** Projektdatenbank, Projekt-Dashboard, Zugangsbeschränkung,
+  Freimeldung, Notizbuch, Baudokumentation, Mängel, Dateiablage, BIM,
+  Info-Punkte, Mitarbeiter, Learning-Plattform.
+
+**Zwei Regeln für künftige Änderungen:**
+
+1. **Wer eine Funktion ändert, ändert das Handbuch mit** — im selben Commit,
+   wie bei `neuigkeiten.md`. Sonst erklärt der Bot eine Oberfläche, die es
+   nicht mehr gibt.
+2. **Überschriften enthalten die Wörter, mit denen gefragt wird.** Nicht
+   „Abschließen", sondern „Protokoll abschließen, schließen und sperren".
+   Nicht „Import", sondern „Protokolle importieren". Die Überschrift ist die
+   stärkste Spur für die Suche; ein Hauptwort allein genügt nicht, weil es in
+   jedem zweiten Abschnitt steht.
+
+Geprüft wird das: `pruefung-assistent.js` hält fest, dass die Abschnitte zu
+Projektdatenbank, Zugangsbeschränkung, Freimeldung, Notizbuch,
+Baudokumentation und Projekt-Dashboard da sind, dass „Neues Projekt anlegen"
+die Projektdatenbank, die drei Pflichtfelder und die Adminrechte nennt — und
+dass die alte, falsche Anleitung **nicht mehr** darin steht.
+
+### 15.4 Die Fundstellen stehen über der Antwort
+
+Sie kommen auch zuerst an: Der Server schickt das `quellen`-Ereignis, bevor das
+Modell das erste Wort geschrieben hat. Wer liest, worauf sich eine Antwort
+stützt, **bevor** er die Antwort liest, glaubt ihr so weit, wie sie es verdient.
+Steht dort „Keine Fundstellen", ist das die wichtigste Zeile auf dem Schirm.
+
+### 15.5 Einrichten
+
+```
+KI_DASHBOARD_URL=http://192.168.178.250:5050
+KI_DASHBOARD_KEY=<derselbe wie KI_DIENST_SCHLUESSEL im Dashboard>
+KI_TIMEOUT_MS=180000
+```
+
+Fehlt eines von beiden, **erscheint der Knopf gar nicht**. Ein Chatfenster, das
+auf jede Frage mit einem Verbindungsfehler antwortet, sieht nach einem kaputten
+Programm aus statt nach einer Funktion, die hier nicht eingeschaltet ist.
+
+### 15.6 Prüfen
+
+```bash
+node pruefungen/pruefung-assistent.js
+```
+
+Startet einen echten Server mit leerer Datenbank im Temp-Verzeichnis und eine
+Attrappe des Dashboards, die **jede Anfrage mitschreibt**. Das ist die Naht, an
+der sich nachlesen lässt, was der Systemkopf wirklich enthielt – die Rechtegrenze
+lässt sich nicht behaupten, nur messen.
+
+Mit `--vorschau` bleibt am Ende alles stehen (Anmeldung `anna` sieht beide
+Projekte, `bert` nur eines), um die Oberfläche anzusehen. Portblock: 3477
+Anwendung, 3478 Attrappe.

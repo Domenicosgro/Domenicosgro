@@ -59,6 +59,9 @@ services:
       GRAPH_CLIENT_ID:     "<client>"
       GRAPH_CLIENT_SECRET: "<secret>"               # NIE in Git
       GRAPH_SENDER:        "Protokoll@ghbarchitekten.de"
+      STAMMDATEN_KEY:      "<schluessel>"                # Dashboard liest Projekte/Mitarbeiter
+      KI_DASHBOARD_URL:    "http://192.168.178.250:5050" # Assistent: Weg zur KI-Farm
+      KI_DASHBOARD_KEY:    "<schluessel>"                # = KI_DIENST_SCHLUESSEL im Dashboard
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/health"]
       interval: 30s
@@ -88,6 +91,28 @@ DB und Sessions überleben den Container-Tausch → im Browser genügt Neuladen.
 
 ---
 
+## 4a. (K)ompl(I)ze — der Assistent (Chatbot auf den Projektdaten)
+
+Das Protokolltool bringt seinen **eigenen** Assistenten mit. Er liest nur, und
+nur das, was die fragende Person auch in der Oberfläche sehen darf.
+
+| Punkt | Wert |
+|---|---|
+| Braucht | `KI_DASHBOARD_URL` + `KI_DASHBOARD_KEY` (≥ 24 Zeichen) |
+| Gegenstück | Dashboard: `KI_DIENST_SCHLUESSEL`, Route `POST /api/ki/dienst/unterhalten` |
+| Ohne das | Der Knopf erscheint nicht – kein halbes Fenster mit Verbindungsfehlern |
+| Daten | verlassen diesen Container **nicht als Daten**: Der Systemkopf wird hier gebaut, das Dashboard liefert nur die Antwort |
+
+Warum der Umweg über das Dashboard und nicht direkt zu LM Studio: Dort
+entscheidet `ki._reservieren` nach Rang, GPU-Last und dem Schalter „nur leicht",
+welche Karte eine Anfrage bekommt. Eine eigene Leitung liefe daran vorbei und
+würde auf einer Karte rechnen, an der jemand sitzt.
+
+Begründung in voller Länge: `komplizen-dashboard/docs/ARCHITEKTUR_ASSISTENTEN.md`.
+Einzelheiten hier: `CLAUDE.md` §15.
+
+---
+
 ## 5. Abnahme-Checkliste
 
 - [ ] Container läuft, `docker compose ps` = **healthy**
@@ -96,6 +121,9 @@ DB und Sessions überleben den Container-Tausch → im Browser genügt Neuladen.
 - [ ] E-Mail-Test erfolgreich (Graph)
 - [ ] Einladungs-/Freimelde-Link zeigt die **öffentliche** URL
 - [ ] Secrets nur in der NAS-`docker-compose.yml`
+- [ ] (K)ompl(I)ze: Knopf unten rechts erscheint, eine Frage bekommt Fundstellen
+      genannt und darunter „beantwortet von Komplize 54" (sonst stimmen die
+      beiden KI-Schlüssel nicht überein)
 
 ---
 

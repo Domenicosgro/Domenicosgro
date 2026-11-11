@@ -201,6 +201,49 @@ db.exec(`
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     read_at    TEXT
   );
+
+  -- Unterhaltungen mit dem Assistenten. Je Person die eigenen; wer fragt,
+  -- sieht nur seine. project_id merkt sich, in welchem Projekt das Gespraech
+  -- begonnen hat -- die Rechte werden aber bei JEDER Frage neu geprueft, nie
+  -- aus dem Gespraech uebernommen. Wird eine Freigabe entzogen, soll die alte
+  -- Unterhaltung nicht zur Hintertuer werden.
+  CREATE TABLE IF NOT EXISTS chats (
+    id         TEXT PRIMARY KEY,
+    username   TEXT NOT NULL,
+    title      TEXT NOT NULL DEFAULT 'Neue Unterhaltung',
+    project_id TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE INDEX IF NOT EXISTS idx_chats_user ON chats (username, updated_at DESC);
+
+  CREATE TABLE IF NOT EXISTS chat_messages (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    chat_id    TEXT NOT NULL REFERENCES chats(id) ON DELETE CASCADE,
+    role       TEXT NOT NULL,
+    content    TEXT NOT NULL,
+    -- Woher die Antwort kam und was dafuer gefunden wurde. Steht mit in der
+    -- Zeile, damit beim Nachlesen sichtbar bleibt, worauf sie sich stuetzte.
+    model      TEXT,
+    node       TEXT,
+    duration_s REAL,
+    sources    TEXT,
+    error      TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE INDEX IF NOT EXISTS idx_chat_messages_chat ON chat_messages (chat_id, id);
+
+  -- Wer welche Neuigkeit gesehen hat. Die Neuigkeiten selbst stehen in
+  -- server/neuigkeiten.md -- hier steht nur, wer sie weggeklickt hat.
+  -- Die Kennung kommt aus der Datei und aendert sich nie; aendert jemand
+  -- sie doch, erscheint der Eintrag bei allen erneut. Das ist gewollt und
+  -- in der Datei beschrieben.
+  CREATE TABLE IF NOT EXISTS neuigkeit_gesehen (
+    username    TEXT NOT NULL,
+    kennung     TEXT NOT NULL,
+    gesehen_am  TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (username, kennung)
+  );
 `)
 
 // ── Migration from legacy key-value store ─────────────────────────────────────
@@ -518,6 +561,54 @@ const notifications = {
   prune()                       { return _nPrune.run().changes },
 }
 
+// ── Unterhaltungen mit dem Assistenten ────────────────────────────────────────
+// Jede Abfrage nimmt den Benutzernamen mit, nicht nur die chat_id. So kann es
+// keine Stelle geben, an der die Prüfung „gehört das mir?" vergessen wird --
+// eine fremde chat_id trifft dann einfach keine Zeile.
+const _cInsert = db.prepare("INSERT INTO chats (id, username, title, project_id) VALUES (@id, @username, @title, @projectId)")
+const _cMine   = db.prepare('SELECT * FROM chats WHERE username = ? ORDER BY updated_at DESC LIMIT ?')
+const _cOne    = db.prepare('SELECT * FROM chats WHERE id = ? AND username = ?')
+const _cTitle  = db.prepare("UPDATE chats SET title = @title, updated_at = datetime('now') WHERE id = @id AND username = @username")
+const _cTouch  = db.prepare("UPDATE chats SET updated_at = datetime('now') WHERE id = ?")
+const _cDel    = db.prepare('DELETE FROM chats WHERE id = ? AND username = ?')
+const _cPrune  = db.prepare("DELETE FROM chats WHERE updated_at < datetime('now', '-365 days')")
+
+const _mInsert = db.prepare(`INSERT INTO chat_messages
+  (chat_id, role, content, model, node, duration_s, sources, error)
+  VALUES (@chatId, @role, @content, @model, @node, @durationS, @sources, @error)`)
+const _mList   = db.prepare('SELECT * FROM chat_messages WHERE chat_id = ? ORDER BY id')
+
+const chats = {
+  create({ id, username, title = 'Neue Unterhaltung', projectId = null }) {
+    _cInsert.run({ id, username, title, projectId })
+    return _cOne.get(id, username)
+  },
+  listFor(username, limit = 100) { return _cMine.all(username, limit) },
+  mine(id, username)             { return _cOne.get(id, username) },
+  rename(id, username, title)    { return _cTitle.run({ id, username, title }).changes > 0 },
+  touch(id)                      { _cTouch.run(id) },
+  remove(id, username)           { return _cDel.run(id, username).changes > 0 },
+  prune()                        { return _cPrune.run().changes },
+
+  messages(chatId) { return _mList.all(chatId) },
+  addMessage({ chatId, role, content, model = null, node = null,
+               durationS = null, sources = null, error = null }) {
+    _mInsert.run({ chatId, role, content, model, node, durationS,
+                   sources: sources ? JSON.stringify(sources) : null, error })
+    _cTouch.run(chatId)
+  },
+}
+
+// ── Gesehene Neuigkeiten ──────────────────────────────────────────────────────
+const _ngSetzen = db.prepare("INSERT INTO neuigkeit_gesehen (username, kennung) VALUES (?, ?) ON CONFLICT(username, kennung) DO NOTHING")
+const _ngListe  = db.prepare('SELECT kennung FROM neuigkeit_gesehen WHERE username = ?')
+
+const neuigkeiten = {
+  gesehenVon(username)          { return _ngListe.all(username).map(r => r.kennung) },
+  merken(username, kennung)     { _ngSetzen.run(username, kennung) },
+  merkenViele(username, liste)  { for (const k of liste) _ngSetzen.run(username, k) },
+}
+
 // ── App-State (kleiner Key-Value-Speicher, z.B. Reporting-Zeitstempel) ─────────
 const _asGet = db.prepare('SELECT value FROM app_state WHERE key = ?')
 const _asSet = db.prepare("INSERT INTO app_state (key, value, updated_at) VALUES (@key, @value, datetime('now')) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')")
@@ -547,5 +638,7 @@ module.exports = {
   deletionRequests,
   releaseTokens,
   notifications,
+  chats,
+  neuigkeiten,
   appState,
 }

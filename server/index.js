@@ -4046,6 +4046,19 @@ app.post('/api/admin/release-report-test', requireAuth, requireAdmin, async (req
 // Siehe server/stammdaten.js und komplizen-dashboard/docs/ARCHITEKTUR_STAMMDATEN.md
 require('./stammdaten').registerStammdaten(app, db, requireStammdaten)
 
+// ── Assistent ────────────────────────────────────────────────────────────────
+// Der Chatbot dieser Anwendung. Er liest Projekte, Protokolle, Aufgaben und
+// Notizen -- aber nur die, die die fragende Person auch sehen darf, und dafuer
+// bekommt er canAccessProject hier mitgegeben. Dieselbe Funktion, die auch die
+// Oberflaeche benutzt; eine zweite waere die, die eines Tages abweicht.
+//
+// Mit den KI-Rechnern spricht er nicht selbst, sondern ueber das Dashboard
+// (server/ki.js). Das ist kein Umweg aus Ordnungsliebe: Dort entscheidet
+// ki._reservieren nach Rang, GPU-Last und "nur leicht", welche Karte eine
+// Anfrage bekommt. Eine eigene Leitung wuerde daran vorbeilaufen.
+require('./assistent').registerAssistent(app, db, requireAuth,
+                                         canAccessProject, logEvent)
+
 // ── Spiegel: vollstaendige Projektdokumente ──────────────────────────────────
 // Fuer den Umzug der Projektdatenbank ins Dashboard. Getrennt von den
 // Stammdaten, weil es hier um das VOLLSTAENDIGE Dokument geht (inkl.
@@ -4551,12 +4564,12 @@ app.patch('/api/projects/:id', requireAuth, writeLimiter, (req, res) => {
       projectAdminUser:   existing.projectAdminUser,
       projectAdmins:      existing.projectAdmins,
     }
-    // Projektdatenbank (projectData) darf nur von System- oder Projektadmins
-    // geändert werden – für alle anderen wird die Server-Kopie wiederhergestellt.
-    const requester = req.user !== '__apikey__' && req.user !== '__anonymous__' ? db.users.get(req.user) : null
-    const mayEditData = req.user === '__apikey__' || !db.users.hasAny()
-      || requester?.role === 'admin' || isProjectAdmin(existing, req.user)
-    if (!mayEditData) safeData.projectData = existing.projectData
+    // Die Projektdaten (projectData: Codierung, Leistungsphasen, Vertrag)
+    // pflegt jeder, der auf das Projekt zugreifen darf. Sie entstehen im
+    // Projektalltag, nicht am Admin-Schreibtisch, und waren als Admin-Feld
+    // regelmäßig veraltet. Die Zugriffsbeschränkung oben bleibt maßgeblich:
+    // Wer das Projekt nicht sehen darf, kommt hier gar nicht erst an.
+    // Angelegt und gelöscht werden Projekte weiterhin nur vom Systemadmin.
     const result = db.projects.update(req.params.id, safeData, version, req.user)
     if (result.notFound) return res.status(404).json({ error: 'Nicht gefunden.' })
     if (result.conflict) return res.status(409).json({
