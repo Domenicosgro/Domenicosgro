@@ -56,6 +56,17 @@ Vorher klären (aus der Skill-Übergabe):
 
 Die Prüfstation nutzt die File-Station-Anbindung der Dateiablage (`server/fileStation.js`).
 
+**Automatisch (empfohlen):** `.\setup-pruefstation.ps1` vom Entwickler-PC aus.
+Das Skript legt das Service-Konto `svc-komplizen` mit Zufallspasswort an, gibt
+ihm Lese- und Schreibrecht auf die abgefragte(n) Freigabe(n), trägt
+`SYNOLOGY_FS_USER`, `SYNOLOGY_FS_PASS` und `PRUEFSTATION_ROOTS` in die
+NAS-`docker-compose.yml` ein (mit Sicherungskopie `.bak-…`), erstellt den
+Container neu und prüft die File-Station-Anmeldung. Es fragt einmal nach dem
+sudo-Passwort von `Deploy`. Das Passwort steht danach nur in der
+docker-compose.yml auf der NAS. Ein erneuter Aufruf setzt ein neues Passwort.
+
+Von Hand:
+
 1. In DSM ein **Service-Konto** anlegen (z. B. `svc-komplizen`) mit **Lese- und
    Schreibrecht** auf die Projektfreigabe(n). Nur lesen reicht nicht: die
    Prüfstation legt Ordner an und lädt Dateien hoch.
