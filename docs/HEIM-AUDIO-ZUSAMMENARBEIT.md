@@ -23,22 +23,36 @@
 | Ansichten | **Alle**, **Sherwood**, **Camelot** – für Gruppen/Raumszenarien vorbereitet, noch nicht aktiv |
 | Gruppen/Zusammenschaltung | wird getestet, sobald weitere Lautsprecher da sind |
 | Fehlt für Einzelbetrieb | **Spotify-Bürokonto** |
-| Git-Zugang | wird separat eingerichtet |
+| Git-Zugang | Repo wird gerade gebaut, Ablauf siehe Abschnitt 2 |
 
 ---
 
-## 2. Noch offen – Code und Repository
+## 2. Git-Zugang (Repository wird gerade gebaut)
+
+Vorgehen nach `docs/ANLEITUNG-GIT-ZUGANG-KI.md`. Wichtig: Eine Einladung als
+Collaborator reicht für Claude/Codex **nicht** – die Apps muss der **Besitzer des
+Repos** auf seinem Konto installieren.
+
+| Schritt | Wer | Erledigt |
+|---|---|---|
+| Besitzer festlegen (Konto oder Organisation) | | ☐ |
+| Repo **privat** anlegen, Code hochladen | Sven | ☐ |
+| Domenico als Collaborator einladen | Besitzer | ☐ |
+| **Claude-App** installieren („Only select repositories" → Audio-Repo) | Besitzer | ☐ |
+| **Codex-App** für dasselbe Repo freigeben | Besitzer | ☐ |
+| Kontrolle: Repo → Settings → **GitHub Apps** zeigt beide | Besitzer | ☐ |
+| `AGENTS.md` + `CLAUDE.md` („Lies und befolge AGENTS.md.") | | ☐ |
+| `.gitignore` für Secrets, `*.example`-Vorlage im Repo | | ☐ |
+| Issue-Vorlage + Labels (`idee`, `in-arbeit`, `umgesetzt`, `doppelt`, `entscheidung-noetig`) | | ☐ |
+| GitHub Actions: Tests bei jedem PR | | ☐ |
 
 | Frage | Antwort |
 |---|---|
-| Wo liegt das Repository? (GitHub/Gitea/…, URL) | |
-| Wer bekommt Zugriff? (Domenico, Codex, Claude) | |
-| Haupt-Branch, Arbeitsweise (Pull Requests?) | |
+| Repo-URL / Besitzer | |
+| Haupt-Branch (`main` = live?) | |
 | Sprache / Framework | |
 | Lokal starten zum Entwickeln – wie? | |
 | Gibt es Tests / README? | |
-
----
 
 ## 3. Noch offen – Betrieb auf der NAS
 
@@ -92,7 +106,7 @@
 
 | Frage | Antwort |
 |---|---|
-| Darf Codex/Claude Pull Requests öffnen? Wer gibt frei? | |
+| Wer liest Pull Requests von Codex/Claude gegen und mergt? | |
 | Kanal für Absprachen (Issues, Chat, …) | |
 | Bekannte Probleme / Baustellen | |
 | Was soll auf keinen Fall angefasst werden? | |
