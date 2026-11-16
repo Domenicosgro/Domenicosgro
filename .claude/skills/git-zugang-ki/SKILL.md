@@ -1,12 +1,17 @@
 ---
 name: git-zugang-ki
-description: Richtet ein GitHub-Repository so ein, dass Menschen, Claude und Codex gemeinsam daran arbeiten können – Besitzer festlegen, Claude-/Codex-App installieren, AGENTS.md/CLAUDE.md, .gitignore, Labels, Issue-Vorlage, Tests. Verwenden bei einem neuen Projekt oder Repo, wenn jemand Claude oder Codex Zugriff geben will, wenn mehrere Personen (z. B. Sven, Nico) und KI-Agenten an einem Repo arbeiten sollen, bei Fehlern wie "not found / no access", "repository not found", "same-named repository already attached", oder wenn eine Kopie/ein Spiegel eines fremden Repos nötig ist.
+description: Gemeinsame Arbeitsbasis für Claude und Codex. Richtet ein GitHub-Repository so ein, dass Menschen, Claude und Codex gemeinsam daran arbeiten können – Besitzer festlegen, Claude-/Codex-App installieren, AGENTS.md/CLAUDE.md, .gitignore, Labels, Issue-Vorlage, Tests. Verwenden bei einem neuen Projekt oder Repo, wenn jemand Claude oder Codex Zugriff geben will, wenn mehrere Personen (z. B. Sven, Nico) und KI-Agenten an einem Repo arbeiten sollen, bei Fehlern wie "not found / no access", "repository not found", "same-named repository already attached", oder wenn eine Kopie/ein Spiegel eines fremden Repos nötig ist.
 ---
 
 # Git-Zugang für Claude und Codex
 
 Erfahrungswissen aus Lernkomplize und KOMPLIZEN Büro-Audio. Gilt für jedes neue
 Projekt, an dem Menschen und KI-Agenten gemeinsam arbeiten.
+
+**Dieser Skill ist für beide Agenten derselbe** – Claude (Domenico) und Codex
+(Sven) lesen dieselbe Datei. „Der Agent" meint im Folgenden immer den, der den
+Skill gerade ausführt. Wer etwas ändert, ändert es hier für beide (siehe
+„Pflege" am Ende).
 
 ## Der Kernsatz
 
@@ -35,7 +40,7 @@ PR oder Issue.
 2. Den passenden Abschnitt unten abarbeiten und dem Menschen **genau die Schritte**
    nennen, die nur er tun kann (App installieren, einladen) – mit Link.
 3. Was im Repo liegt (`AGENTS.md`, `CLAUDE.md`, `.gitignore`, Vorlagen), legt
-   Claude selbst an – aus `vorlagen/` in diesem Skill, angepasst ans Projekt.
+   der Agent selbst an – aus `vorlagen/` in diesem Skill, angepasst ans Projekt.
 4. Am Ende die Kurz-Checkliste ausgeben, abgehakt nach tatsächlichem Stand.
 
 ## Neues Projekt – Ablauf
@@ -49,9 +54,13 @@ PR oder Issue.
    Kontrolle: Repo → Settings → **GitHub Apps** (nicht „Collaborators").
 4. **Codex-App** genauso für dasselbe Repo freigeben (ChatGPT/Codex → GitHub verbinden).
 5. **Weitere Menschen** als Collaborator einladen.
-6. **Claude-Sitzung mit genau diesem Repo starten** (beim Start das Repo wählen;
-   in einer laufenden Cloud-Sitzung lässt es sich auch nachträglich hinzufügen).
-   Prüfen: claude.ai → Einstellungen → GitHub-Integration → „Repository-Status prüfen".
+6. **Sitzung mit genau diesem Repo starten**
+   - *Claude:* beim Start das Repo wählen (in einer laufenden Cloud-Sitzung lässt es
+     sich auch nachträglich hinzufügen). Prüfen: claude.ai → Einstellungen →
+     GitHub-Integration → „Repository-Status prüfen".
+   - *Codex:* in Codex eine Umgebung für dieses Repo anlegen bzw. das Repo beim
+     Auftrag auswählen. Erscheint es nicht, ist die Codex-App nicht auf dem
+     Besitzerkonto freigegeben.
 7. **Repo-Grundausstattung** anlegen (siehe unten).
 
 ## Repo-Grundausstattung
@@ -112,6 +121,7 @@ Sitzung nur mit dem Hauptrepo.
 |---|---|---|
 | `repository not found` bei `git push` | Zielrepo existiert noch nicht | Erst auf github.com anlegen |
 | Claude: „not found / no access" | App nicht auf dem Besitzerkonto installiert | Besitzer installiert die Claude-App |
+| Codex: Repo erscheint nicht zur Auswahl | Codex-App nicht für dieses Repo freigegeben | Besitzer gibt das Repo in der Codex-GitHub-Verbindung frei |
 | Claude: „same-named repository already attached" | Zwei gleichnamige Repos in einer Sitzung | Neue Sitzung nur mit dem Hauptrepo |
 | Merge-Konflikt im PR | `main` hat sich geändert | `main` in den Branch mergen, Konflikte lokal lösen – nicht im Web-Editor bei vielen Dateien |
 | Hook: „unpushed commits, no remote branch" | Lokaler Branchname ≠ Name auf GitHub | Branch umbenennen bzw. Tracking setzen |
@@ -125,3 +135,13 @@ Sitzung nur mit dem Hauptrepo.
 - [ ] `.gitignore` für Konfiguration/Geheimnisse, `*.example`-Vorlage im Repo
 - [ ] GitHub Actions: Tests bei jedem PR
 - [ ] (später) Auto-Deploy nur von `main`, Secrets im Environment, eigener Server-Zugang
+
+## Pflege – eine Quelle für beide Agenten
+
+- Die **maßgebliche Fassung** dieses Skills liegt in einem Repo (derzeit
+  `domenicosgro/domenicosgro`, Ordner `.claude/skills/git-zugang-ki/`; Ziel: ein
+  eigenes gemeinsames Repo für Skills).
+- Änderungen nur dort, per Pull Request – Sven oder Domenico liest gegen.
+- Danach installieren beide neu (siehe `README.md` in diesem Ordner). Nie eine
+  lokale Kopie still abändern, sonst arbeiten Claude und Codex mit verschiedenen
+  Regeln.
