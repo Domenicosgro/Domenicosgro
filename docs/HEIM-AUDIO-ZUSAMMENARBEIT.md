@@ -1,127 +1,112 @@
-# Audio-Anwendung – Infos für die Zusammenarbeit
+# KOMPLIZEN Büro-Audio – Infos für die Zusammenarbeit
 
-> **Zum Ausfüllen durch Sven** (bzw. Domenico).
-> Ziel: Domenico, Sven und Codex/Claude können gemeinsam an der bestehenden
-> Anwendung `https://192.168.178.250:18098/audio/` weiterarbeiten. Später soll sie
-> eine Anwendung im Synology-Dashboard werden.
+> Ziel: Domenico, Sven und Codex/Claude arbeiten gemeinsam an der bestehenden
+> Audio-App weiter. Später soll sie eine Anwendung im Synology-Dashboard werden.
 >
 > **Keine Passwörter, Tokens oder Schlüssel hier eintragen.** Nur notieren, *wo*
-> sie liegen (z. B. „in `.env` auf der NAS").
-
-Ausgefüllt von: ________ · Datum: ________
+> sie liegen.
 
 ---
 
-## 1. Was läuft unter `:18098/audio/`?
+## 1. Bekannt (laut Sven, 16.11.2026)
+
+| Punkt | Stand |
+|---|---|
+| Name | KOMPLIZEN Büro-Audio |
+| Adresse | `192.168.178.250:18098/audio/` (Synology) |
+| Anmeldung | Domänenkonto (z. B. `ds`) |
+| Einrichter der App | `sb` (Sven), `ds` (Domenico) |
+| Lautsprecher | **Robin** – Bose SoundTouch 20, steht zum Testen bei Sven |
+| Kette | App ↔ Home Assistant ↔ Robin – funktioniert |
+| Funktionen heute | Robin im Bürogrundriss · Zustand, Quelle, Lautstärke auslesen · Position bearbeiten · Pegel einstellen · 14 Internetradiosender (u. a. radioeins, Deutschlandfunk, FluxFM) |
+| Hörbar getestet | radioeins |
+| Ansichten | **Alle**, **Sherwood**, **Camelot** – für Gruppen/Raumszenarien vorbereitet, noch nicht aktiv |
+| Gruppen/Zusammenschaltung | wird getestet, sobald weitere Lautsprecher da sind |
+| Fehlt für Einzelbetrieb | **Spotify-Bürokonto** |
+| Git-Zugang | wird separat eingerichtet |
+
+---
+
+## 2. Noch offen – Code und Repository
 
 | Frage | Antwort |
 |---|---|
-| Name der Anwendung / des Dienstes | |
-| Selbst gebaut oder fertiges Programm? (welches, Version) | |
-| Was kann sie heute? (kurz) | |
-| Was soll als Nächstes dazukommen? | |
-| Wer nutzt sie heute? | |
+| Wo liegt das Repository? (GitHub/Gitea/…, URL) | |
+| Wer bekommt Zugriff? (Domenico, Codex, Claude) | |
+| Haupt-Branch, Arbeitsweise (Pull Requests?) | |
+| Sprache / Framework | |
+| Lokal starten zum Entwickeln – wie? | |
+| Gibt es Tests / README? | |
 
 ---
 
-## 2. Code und Repository
+## 3. Noch offen – Betrieb auf der NAS
 
 | Frage | Antwort |
 |---|---|
-| Gibt es ein Git-Repository? URL (GitHub/Gitea/…) | |
-| Wem gehört es? Ist es privat? | |
-| Haupt-Branch (`main`/`master`/…) | |
-| Wenn kein Repo: wo liegt der Code? (Pfad auf NAS/PC) | |
-| Programmiersprache / Framework | |
-| Gibt es eine README oder Doku? Wo? | |
-| Gibt es Tests? Wie startet man sie? | |
-| Wie startet man die Anwendung lokal zum Entwickeln? | |
+| Container-Name(n), Image | |
+| Ordner auf der NAS, Lage der `docker-compose.yml` | |
+| Daten und Logs – wo? | |
+| Wer stellt Port 18098 und den Pfad `/audio/` bereit? (App selbst, DSM-Reverse-Proxy, …) | |
+| Wie wird eine neue Version eingespielt? Wer darf das? | |
+| Health-Endpunkt vorhanden? (`/api/health`) | |
+| Backup? | |
+| Wo liegen Secrets (HA-Token usw.)? | |
 
 ---
 
-## 3. Betrieb auf der NAS
+## 4. Noch offen – Home Assistant und Geräte
 
 | Frage | Antwort |
 |---|---|
-| Läuft sie als Docker-Container? Container-Name(n) | |
-| Image-Name / wo wird es gebaut? | |
-| Ordner auf der NAS (z. B. `/volume1/docker/…`) | |
-| Wo liegt die `docker-compose.yml`? | |
-| Wo liegen die Daten (Volumes)? | |
-| Wo liegen die Logs? | |
-| Interner Port / Außenport | |
-| Wer stellt `https` und den Pfad `/audio/` bereit? (DSM-Reverse-Proxy, nginx, App selbst) | |
-| Welches Zertifikat? (selbst signiert, Let's Encrypt, …) | |
-| Wie wird eine neue Version eingespielt? (Befehle/Skript) | |
-| Gibt es einen Health-Endpunkt? (`/api/health` o. ä.) | |
-| Gibt es ein Backup? Wie/wo? | |
-
----
-
-## 4. Anmeldung und Zugänge
-
-| Frage | Antwort |
-|---|---|
-| Wie meldet man sich an der Anwendung an? (gar nicht, eigenes Konto, DSM, Home Assistant) | |
-| Welche Benutzer gibt es? | |
-| Wo liegen Secrets/Tokens? (Datei, ENV, DSM) | |
-| Hat Domenico Admin-Zugang zur Anwendung? | |
-| SSH auf die NAS: welcher Benutzer wird für Deploys genutzt? | |
-| Fernzugriff von außen? (VPN, QuickConnect, Portfreigabe) | |
-
----
-
-## 5. Verbindungen zu anderen Diensten
-
-| Dienst | Genutzt? | Adresse / Port | Wie angebunden? (Integration, API, Token) |
-|---|---|---|---|
-| Home Assistant | | | |
-| Music Assistant | | | |
-| Spotify (welches Konto, Premium?) | | | |
-| Bose-Lautsprecher | | | |
-| Weitere | | | |
+| HA-Adresse und Installationsart (Container / HA OS in VM) | |
+| Wie spricht die App mit HA? (REST, WebSocket, Token) | |
+| Welche HA-Integration für Robin? (Bose SoundTouch?) | |
+| Woher kommen die 14 Radiosender? (feste Liste in der App, HA, TuneIn, …) | |
+| Robin: feste IP-Adresse? | |
+| Welche weiteren Lautsprecher kommen wohin? (Sherwood, Camelot, …) | |
+| Wo ist der Bürogrundriss abgelegt? | |
 
 ### Lautsprecher
 
-| Raum | Bose-Modell | IP-Adresse (fest?) | Anbindung (SoundTouch/AirPlay/Chromecast/…) | Funktioniert? |
+| Name | Modell | Raum / Ansicht | IP (fest?) | Status |
 |---|---|---|---|---|
+| Robin | Bose SoundTouch 20 | Test bei Sven | | läuft |
 | | | | | |
 | | | | | |
-| | | | | |
-
-### Home Assistant
-
-| Frage | Antwort |
-|---|---|
-| Installationsart (Container / HA OS in VM / …) | |
-| Adresse | |
-| Version | |
-| Wo liegt die Konfiguration? Ist sie in Git? | |
-| Relevante Integrationen / Automationen | |
 
 ---
 
-## 6. Zusammenarbeit
+## 5. Noch offen – Spotify
 
 | Frage | Antwort |
 |---|---|
-| Wie wollen wir Änderungen austauschen? (Pull Requests, direkt auf `main`, …) | |
-| Wer darf auf die NAS deployen? | |
+| Wer legt das Spotify-Bürokonto an? (Premium nötig) | |
+| Wie soll es eingebunden werden? (Spotify Connect direkt auf Robin, über HA, Music Assistant, …) | |
+| Wo liegen die Zugangsdaten danach? | |
+| Hinweis: Boses SoundTouch-Cloud wurde 2026 abgeschaltet – geht Spotify auf Robin noch? | |
+
+---
+
+## 6. Noch offen – Zusammenarbeit
+
+| Frage | Antwort |
+|---|---|
 | Darf Codex/Claude Pull Requests öffnen? Wer gibt frei? | |
-| Bevorzugter Kanal für Absprachen (Issues, Chat, …) | |
+| Kanal für Absprachen (Issues, Chat, …) | |
 | Bekannte Probleme / Baustellen | |
 | Was soll auf keinen Fall angefasst werden? | |
 
 > Hinweis für die Agenten: Codex und Claude laufen in der Cloud und erreichen die
-> NAS (`192.168.178.x`) **nicht**. Sie arbeiten nur im Repository; testen im Haus
+> NAS (`192.168.178.x`) **nicht**. Sie arbeiten nur im Repository; testen im Büro
 > müssen Sven oder Domenico.
 
 ---
 
-## 7. Später: Anwendung im Dashboard
+## 7. Später – Anwendung im Dashboard
 
 | Frage | Antwort |
 |---|---|
-| Soll Port 18098 / Pfad `/audio/` so bleiben? | |
-| Anmeldung künftig über DSM (wie die anderen Dashboard-Apps)? | |
-| Was soll die Dashboard-Kachel anzeigen? (Status, aktueller Titel, …) | |
+| Bleibt es bei Port 18098 / Pfad `/audio/`? | |
+| Anmeldung wie die anderen Dashboard-Apps (DSM)? Ist das schon so? | |
+| Was soll die Dashboard-Kachel zeigen? (Status, laufender Sender, …) | |
