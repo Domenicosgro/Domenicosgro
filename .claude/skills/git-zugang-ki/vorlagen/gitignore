@@ -1,0 +1,22 @@
+# Geheimnisse und echte Konfiguration – nur *.example gehört ins Repo
+.env
+.env.*
+!.env.example
+*.config.ps1
+!*.config.example.ps1
+secrets/
+*.pem
+*.key
+
+# Laufzeitdaten
+data/
+logs/
+*.db
+*.db-shm
+*.db-wal
+
+# Abhängigkeiten und Build
+node_modules/
+dist/
+__pycache__/
+.venv/
