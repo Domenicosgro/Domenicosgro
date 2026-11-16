@@ -58,6 +58,17 @@ Containern, mindestens 32 zufällige Bytes. **Nur** in der jeweiligen
 | `iat`, `exp` | Unix-Sekunden; `exp = iat + 60` |
 | `nonce` | zufällig; Audio akzeptiert jede Nonce **nur einmal** |
 
+**Referenz und Testvektor:** `sso_referenz.py` (nur Standardbibliothek,
+`python sso_referenz.py` prüft sich selbst). Mit Geheimnis
+`nur-zum-testen-niemals-produktiv-0123456789abcdef`, `iat 1763300000`, Nonce
+`AAAAAAAAAAAAAAAAAAAAAA`, Anmeldename `GEHBAUER\DS`, Name `Domenico S.` muss
+jede Umsetzung exakt dieses Token erzeugen bzw. akzeptieren (JSON kompakt, Felder
+in der Reihenfolge `aud, sub, name, iat, exp, nonce`):
+
+```
+eyJhdWQiOiJidWVyby1hdWRpbyIsInN1YiI6ImRzIiwibmFtZSI6IkRvbWVuaWNvIFMuIiwiaWF0IjoxNzYzMzAwMDAwLCJleHAiOjE3NjMzMDAwNjAsIm5vbmNlIjoiQUFBQUFBQUFBQUFBQUFBQUFBQUFBQSJ9.2w8Ao1cs5voUkKka9MD6qNlzwQ_IYfw3cw_rqvV2lwk
+```
+
 **Übergabe:** `GET https://192.168.178.250:18098/audio/sso?t=<token>`
 
 **Prüfung in Audio, in dieser Reihenfolge:** Format → Signatur (zeitkonstanter
