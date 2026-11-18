@@ -245,7 +245,7 @@ export default function MaengelView({ project, protocols = [], serverUser, onBac
       defect.location ? `Ort/Bauteil: ${defect.location}` : '',
       defect.description ? `Beschreibung: ${defect.description}` : '',
       defect.dueDate ? `Frist zur Behebung: ${formatDate(defect.dueDate)}` : '',
-      '', 'Wir bitten um fristgerechte Behebung und Rückmeldung.', '', brand.name,
+      '', 'Wir bitten um fristgerechte Behebung und Rückmeldung.', '', brand.appShort,
     ].filter(l => l !== '').join('\n')
     window.open(`mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`, '_blank')
   }

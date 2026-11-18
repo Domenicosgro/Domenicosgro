@@ -70,7 +70,7 @@ dort widerrufen – danach ist auch die Gelände-Einbettung tot.
   "week": "2026-W38", "weekLabel": "KW 38", "monday": "2026-09-14",
   "projects": [{
     "id": "…", "kind": "project|service|absence", "name": "0801 KITA Musterweg",
-    "short": "0801 KITA", "gesellschaft": "GHBA", "lphLabel": "LPH 2, 3",
+    "short": "0801 KITA", "gesellschaft": "Komplizen", "lphLabel": "LPH 2, 3",
     "state": "idee|fundament|rohbau|fertig|labor|buero|urlaub|krank",
     "saturation": "ok|unter|ueber",
     "personDays": 3.5, "headcount": 2, "sollDays": 6.75, "teamSize": 2,

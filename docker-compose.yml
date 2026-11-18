@@ -23,7 +23,7 @@ services:
       LOG_PATH: "/logs"
       # ── Betreiber: Name, Kürzel, Logo, Farben ───────────────────────────────
       # Alles, was beim Wechsel auf ein anderes Büro anders ist. Ohne Eintrag
-      # gelten die Werte von GHBA/Komplizen — am laufenden Betrieb ändert sich
+      # gelten die Werte von Komplizen — am laufenden Betrieb ändert sich
       # also nichts. Ein anderes Büro trägt hier seine Werte ein und muss keine
       # Zeile Code anfassen. Welche Variable was steuert: server/betreiber.js.
       #
@@ -33,8 +33,8 @@ services:
       # APP_SHORT:      "Komplizen"           # davon abgeleitet: "<Kurzname> Mitarbeiter", "<Kurzname> Prüfstation"
       # APP_NAME_STAFF: "Komplizen Mitarbeiter"
       # APP_NAME_CHECK: "Komplizen Prüfstation"
-      # BRAND_NAME:     "GHBA"
-      # BRAND_LONG:     "Gehbauer | Helten | Bickel | Sgró Architekten Partnerschaft GmbB"
+      # BRAND_NAME:     "KOMPLIZEN"
+      # BRAND_LONG:     "Komplizen Industrieplanung und Architektur"
       # OFFICE_NAME:    "Komplizen Industrieplanung und Architektur"   # so nennt der Assistent das Büro
       #
       # Logo der System-Mails: Datei im ausgelieferten dist/-Verzeichnis.
@@ -42,10 +42,10 @@ services:
       # BRAND_LOGO:         "Logo_Komplizen_sky1.png"
       #
       # Absender, falls weder SMTP_FROM noch GRAPH_SENDER gesetzt ist. Ohne
-      # Eintrag wird er aus BRAND_NAME gebaut (GHBA wird noreply@ghba). Im
+      # Eintrag wird er aus BRAND_NAME gebaut (KOMPLIZEN wird noreply@komplizen). Im
       # laufenden Betrieb greift das nie – es verhindert nur, dass bei einem
       # Konfigurationsfehler Post unter fremdem Namen rausgeht.
-      # MAIL_FALLBACK_FROM: "noreply@ghba"
+      # MAIL_FALLBACK_FROM: "noreply@komplizen"
       #
       # Farben der System-Mails und der Systemseiten (Freimeldung, Freigaben).
       # Die Oberfläche selbst nimmt ihre Farben aus Tailwind.

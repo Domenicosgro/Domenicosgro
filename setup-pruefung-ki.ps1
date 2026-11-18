@@ -1,7 +1,7 @@
 # setup-pruefung-ki.ps1
 # Schaltet in der Pruefstation die Pruefung mit Claude ein - einmalig.
 #
-#   1. entpackt die Skills (skills_pruefung_ghba.zip) in den Skill-Ordner auf
+#   1. entpackt die Skills (ZIP aus der Skill-Uebergabe) in den Skill-Ordner auf
 #      der NAS (Standard: G:\01 Projekte\_Pruefstation\Skills)
 #   2. traegt ANTHROPIC_API_KEY und PRUEF_SKILLS_PFAD in die docker-compose.yml
 #      auf der NAS ein (vorher Sicherungskopie)
@@ -12,7 +12,7 @@
 # docker-compose.yml auf der NAS - nicht in Git, nicht auf diesem PC.
 # Schluessel anlegen: https://console.anthropic.com -> API Keys
 #
-# Aufruf:  .\setup-pruefung-ki.ps1 -SkillsZip "C:\Users\DS\Downloads\skills_pruefung_ghba.zip"
+# Aufruf:  .\setup-pruefung-ki.ps1 -SkillsZip "<Pfad zur Skill-ZIP>"
 #
 # Skript ist reines ASCII (PowerShell 5.1).
 

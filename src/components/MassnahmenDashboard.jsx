@@ -65,7 +65,7 @@ function buildActionsText(responsible, projectName, items) {
       const desc = item.title && item.description ? `\n  ${item.description}` : ''
       return `• ${head}${art ? ` [${art}]` : ''}${desc}\n  Protokoll: ${item._protocolNo || '–'} | Frist: ${dl} | Status: ${STATUS[item.status] || item.status}`
     }),
-    '', brand.name,
+    '', brand.appShort,
   ]
   return lines.join('\n')
 }

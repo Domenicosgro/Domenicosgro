@@ -1,22 +1,25 @@
 /**
  * Betreiberangaben – alles, was beim Wechsel auf ein anderes Büro anders ist.
  *
- * Bis hierher stand „GHBA" an rund fünfzig Stellen im Code: in jeder
- * System-E-Mail, in jeder Systemseite, im Fenstertitel, auf der Anmeldeseite.
- * Wer die Anwendung weitergibt, müsste sie alle suchen. Deshalb stehen sie
- * jetzt an einer Stelle und kommen aus Umgebungsvariablen.
+ * Der Name des Betreibers stand einmal an rund fünfzig Stellen im Code: in
+ * jeder System-E-Mail, in jeder Systemseite, im Fenstertitel, auf der
+ * Anmeldeseite. Wer die Anwendung weitergibt, müsste sie alle suchen.
+ * Deshalb stehen sie jetzt hier und kommen aus Umgebungsvariablen.
  *
- * Die Voreinstellungen sind die von GHBA/Komplizen – ohne gesetzte Variablen
- * ändert sich am laufenden Betrieb nichts. Ein anderes Büro trägt seine Werte
- * in die docker-compose.yml ein und muss keine Datei anfassen.
+ * Wie gut das taugt, hat sich im November 2026 gezeigt: aus GHBA wurde
+ * Komplizen, auch offiziell. Zu ändern waren zwei Vorgaben in dieser Datei
+ * und zwei in src/brand.js – nicht fünfzig Stellen im Code.
+ *
+ * Die Voreinstellungen sind die von Komplizen. Ein anderes Büro trägt seine
+ * Werte in die docker-compose.yml ein und muss keine Datei anfassen.
  *
  * Gesetzt wird das in der Umgebung des Containers:
  *   APP_NAME            Name der Anwendung       (Standard: Komplizen Protokolle)
  *   APP_SHORT           Kurzname für Ableitungen (Standard: Komplizen)
  *   APP_NAME_STAFF      Name der Mitarbeiter-App (Standard: <APP_SHORT> Mitarbeiter)
  *   APP_NAME_CHECK      Name der Prüfstation     (Standard: <APP_SHORT> Prüfstation)
- *   BRAND_NAME          Kürzel des Betreibers    (Standard: GHBA)
- *   BRAND_LONG          Vollständiger Name       (Standard: Gehbauer | Helten | …)
+ *   BRAND_NAME          Kürzel des Betreibers    (Standard: KOMPLIZEN)
+ *   BRAND_LONG          Vollständiger Name       (Standard: Komplizen Industrieplanung …)
  *   OFFICE_NAME         Büroname für den Assistenten (Standard: Komplizen Industrie…)
  *   BRAND_LOGO          Logodatei in dist/       (Standard: Logo_Komplizen_sky1.png)
  *   BRAND_COLOR_DARK    Kopfband der E-Mails     (Standard: #000040)
@@ -38,11 +41,12 @@ const brand = {
   appShort: env('APP_SHORT', 'Komplizen'),
 
   // Kürzel des Betreibers – Kopfband und Fußzeile der System-E-Mails
-  name:     env('BRAND_NAME', 'GHBA'),
-  nameLong: env('BRAND_LONG', 'Gehbauer | Helten | Bickel | Sgró Architekten Partnerschaft GmbB'),
+  name:     env('BRAND_NAME', 'KOMPLIZEN'),
+  nameLong: env('BRAND_LONG', 'Komplizen Industrieplanung und Architektur'),
 
   // Wie der Assistent das Büro nennt, für das er arbeitet. Kann vom Kürzel
-  // abweichen: GHBA ist die Gesellschaft, Komplizen die Marke nach außen.
+  // abweichen, wenn Gesellschaft und Marke verschiedene Namen tragen – bei
+  // Komplizen ist das seit der Umbenennung dasselbe.
   officeName: env('OFFICE_NAME', 'Komplizen Industrieplanung und Architektur'),
 
   // Logo der System-E-Mails. Die Datei liegt im ausgelieferten dist/-Verzeichnis;
@@ -67,7 +71,7 @@ brand.appNameCheck = env('APP_NAME_CHECK', `${brand.appShort} Prüfstation`)
 // Absender der letzten Instanz. Im Betrieb greift immer SMTP_FROM oder
 // GRAPH_SENDER – das hier fängt nur den Fall ab, dass keine der beiden
 // gesetzt ist. Aus dem Kürzel wird eine zulässige Adresse gebaut: nur
-// Buchstaben und Zahlen, klein geschrieben (GHBA wird noreply@ghba).
+// Buchstaben und Zahlen, klein geschrieben (KOMPLIZEN wird noreply@komplizen).
 const kuerzelFuerMail = brand.name.toLowerCase().replace(/[^a-z0-9]/g, '') || 'protokolltool'
 brand.mailFrom = env('MAIL_FALLBACK_FROM', `noreply@${kuerzelFuerMail}`)
 

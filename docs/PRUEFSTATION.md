@@ -81,7 +81,7 @@ Code-Ausführung ist **nicht ZDR-fähig** (Containerdaten bis zu 30 Tage bei
 Anthropic). Vor dem Einsatz in 427 VIZ klären, ob die Vertragsbedingungen des
 LBIH das zulassen (Punkt 4 der Skill-Übergabe).
 
-**Einschalten:** `.\setup-pruefung-ki.ps1 -SkillsZip <Pfad>\skills_pruefung_ghba.zip`
+**Einschalten:** `.\setup-pruefung-ki.ps1 -SkillsZip <Pfad zur Skill-ZIP>`
 – entpackt die Skills nach `G:\01 Projekte\_Pruefstation\Skills`
 (= `/DriveShare/01 Projekte/_Pruefstation/Skills`), fragt den API-Schlüssel
 verdeckt ab, trägt `ANTHROPIC_API_KEY` und `PRUEF_SKILLS_PFAD` in die

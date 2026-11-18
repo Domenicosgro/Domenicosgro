@@ -69,7 +69,7 @@ Protokolltool: `STAMMDATEN_KEY` in der NAS-`docker-compose.yml`.
   "id": "p-484",
   "name": "484 HMG Neubau Produktionshalle",
   "nummer": "484", "kuerzel": "HMG", "bezeichnung": "Neubau Produktionshalle",
-  "gesellschaft": "GHBA", "vertrag": "Objektplanung", "generalplanung": false,
+  "gesellschaft": "Komplizen", "vertrag": "Objektplanung", "generalplanung": false,
   "beauftragung": { "lph": [2, 3], "pre": ["machbarkeit"], "beauftragt": true },
   "team": [
     { "id": "t1", "name": "Anna Berg", "username": "aberg",

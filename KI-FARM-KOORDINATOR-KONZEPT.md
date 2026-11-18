@@ -74,7 +74,7 @@ Folgt exakt dem bestehenden Muster (`CLAUDE.md` §0, §12):
 | Ein Container pro App | eigenes Image, eigener Container, **eigener Außenport** (z. B. 3003) |
 | Health-Endpunkt | `GET /api/health` |
 | Einheitliche Anmeldung | **Synology-DSM-Login** über `SYNOLOGY_URL` |
-| Branding | GHBA (Arial) für System-E-Mails/öffentliche Seiten |
+| Branding | KOMPLIZEN (Arial) für System-E-Mails/öffentliche Seiten |
 | Secrets | nur in der NAS-`docker-compose.yml`, nie in Git |
 | Reverse-Proxy | z. B. `https://apps.<firma>.de/ki` → `http://localhost:3003` |
 

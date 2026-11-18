@@ -6,7 +6,7 @@
  * die Anwendung ohne Server — lokal im Browser oder als Electron-App —, gibt
  * es kein `window.__BRAND__`; dann greifen die Vorgaben hier.
  *
- * Die Vorgaben sind die von GHBA/Komplizen, damit sich am laufenden Betrieb
+ * Die Vorgaben sind die von Komplizen, damit sich am laufenden Betrieb
  * nichts ändert. Ein anderes Büro setzt die Umgebungsvariablen am Server und
  * muss keine Datei anfassen.
  */
@@ -23,8 +23,8 @@ export const brand = {
   appName:  wert('appName',  'Komplizen Protokolle'),
   appShort: wert('appShort', 'Komplizen'),
   // Kürzel des Betreibers – Grußzeile unter E-Mails, die der Browser öffnet
-  name:     wert('name',     'GHBA'),
-  nameLong: wert('nameLong', 'Gehbauer | Helten | Bickel | Sgró Architekten Partnerschaft GmbB'),
+  name:     wert('name',     'KOMPLIZEN'),
+  nameLong: wert('nameLong', 'Komplizen Industrieplanung und Architektur'),
   // Die beiden eigenständigen Oberflächen
   appNameStaff: wert('appNameStaff', 'Komplizen Mitarbeiter'),
   appNameCheck: wert('appNameCheck', 'Komplizen Prüfstation'),

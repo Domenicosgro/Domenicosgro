@@ -38,7 +38,7 @@ Datenbank, eigenem Container und eigenem Volume.
 | **Fester interner Port** | 3000 (jede App bekommt einen eigenen Port; Reverse-Proxy mappt nach außen) |
 | **Health-Endpunkt** | `GET /api/health` → vom Dashboard/Reverse-Proxy für Statusanzeige nutzbar |
 | **Einheitliche Anmeldung** | **Synology-DSM-Login** (siehe §6) → ein Benutzerverzeichnis für alle Apps |
-| **Einheitliches Branding** | System-E-Mails/öffentliche Seiten = **GHBA** (CI-übergreifend) |
+| **Einheitliches Branding** | System-E-Mails/öffentliche Seiten = **KOMPLIZEN** (CI-übergreifend) |
 
 > **Wichtig für neue Apps im selben Dashboard:** Diesem Muster folgen –
 > eigener Ordner unter `/volume1/docker/<app>/`, eigenes `docker-compose.yml`,
@@ -495,7 +495,7 @@ POST /api/actions/send-email                          Aufgaben-E-Mail je Verantw
 POST /api/actions/release-link                         Token holen/erzeugen
 GET  /api/freimeldung/:token                           offene Aufgaben (JSON, ohne Login)
 POST /api/freimeldung/:token                           Freimeldung absenden (Begründung + Anhänge)
-GET  /freimeldung/:token                               eigenständige HTML-Seite (GHBA, Arial, kein Login)
+GET  /freimeldung/:token                               eigenständige HTML-Seite (KOMPLIZEN, Arial, kein Login)
 POST /api/actions/:protocolId/:actionId/approve        Freimeldung genehmigen (Admin)
 POST /api/actions/:protocolId/:actionId/reject         ablehnen + Notiz
 GET  /api/projects/:id/release-tokens                  aktive Links (Manager)
@@ -592,12 +592,12 @@ Zwei Wege, gekapselt (`mailerStatus`, `verifyMailer`, `sendMail`):
 2. **SMTP (nodemailer, Fallback)** – nur ohne `GRAPH_*` und mit `SMTP_HOST`.
    ⚠ Mit aktiven Sicherheitsstandards gesperrt (Basic-Auth deaktiviert).
 
-**Branding aller System-E-Mails/öffentlichen Seiten: `GHBA`, Schriftart Arial.**
+**Branding aller System-E-Mails/öffentlichen Seiten: `KOMPLIZEN`, Schriftart Arial.**
 Die App-Oberfläche bleibt „Komplizen" (neue CI noch nicht offiziell).
 
 - App-/Link-Adressen via `getAppUrl(req)` → `PUBLIC_URL` oder Request-Host.
 - Aufgaben-E-Mail: **From** = zentrale Adresse, **Reply-To** = E-Mail des
-  eingeloggten Nutzers, Anzeigename `"… (GHBA)"`; enthält Freimelde-Button und
+  eingeloggten Nutzers, Anzeigename `"… (KOMPLIZEN)"`; enthält Freimelde-Button und
   löst eine **Bestätigungs-E-Mail an alle Projektadministratoren** aus.
 
 **Microsoft-Graph-Einrichtung (einmalig, Admin):** Entra → App-Registrierung →
@@ -644,7 +644,7 @@ die App nennt dann im Fehlertext die fehlende Berechtigung.
 was beim Wechsel auf ein anderes Büro anders ist: Name der Anwendung, Kürzel
 des Betreibers, Büroname für den Assistenten, Logodatei und die vier Farben
 der System-E-Mails. Alles kommt aus Umgebungsvariablen, Voreinstellung ist
-GHBA/Komplizen — ohne gesetzte Variablen ändert sich nichts.
+Komplizen — ohne gesetzte Variablen ändert sich nichts.
 
 ```
 Server       const betreiber = require('./betreiber')
@@ -659,7 +659,8 @@ Den Weg dazwischen geht `sendHtml`: Es ersetzt beim Ausliefern den `<title>`
 und speist `window.__BRAND__` ein. Ohne Server (lokal, Electron) greifen die
 Vorgaben in `src/brand.js`.
 
-> **Regel:** Kein neues „GHBA" und kein neues „Komplizen" im Code. Wer einen
+> **Regel:** Kein harter Name des Betreibers im Code – weder „KOMPLIZEN" noch
+> der alte „KOMPLIZEN", den es bis November 2026 gab. Wer einen
 > Namen hart einträgt, macht die Anwendung für jedes andere Büro unbrauchbar —
 > und findet ihn beim nächsten Mal nicht wieder. Die Probe dafür:
 >
@@ -808,7 +809,7 @@ Für jede weitere Anwendung im Synology-Dashboard analog zu dieser App:
 4. `GET /api/health` bereitstellen (Healthcheck + Dashboard-Status).
 5. **DSM-Login** über `SYNOLOGY_URL` (gemeinsames Benutzerverzeichnis).
 6. Reverse-Proxy-Eintrag (Pfad oder Subdomain) in DSM ergänzen.
-7. System-E-Mails/öffentliche Seiten im **GHBA**-Branding (Arial).
+7. System-E-Mails/öffentliche Seiten im **KOMPLIZEN**-Branding (Arial).
 8. Deploy-Skript nach Vorbild `deploy-nas.ps1` (build → save → `scp -O` → ssh-swap).
 9. Secrets nur in der NAS-`docker-compose.yml`, **niemals in Git**.
 

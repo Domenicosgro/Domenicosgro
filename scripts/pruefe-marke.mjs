@@ -18,6 +18,8 @@ import { join, relative, sep } from 'node:path'
 
 const WURZEL = new URL('..', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1')
 const ORDNER = ['src', 'server']
+// Gesucht wird auch der alte Name GHBA: das Büro heißt seit November 2026
+// Komplizen, und der alte soll nicht über eine kopierte Zeile zurückkommen.
 const MARKE  = /ghba|komplizen/i
 
 /**
