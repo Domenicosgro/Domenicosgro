@@ -64,6 +64,13 @@ const brand = {
 brand.appNameStaff = env('APP_NAME_STAFF', `${brand.appShort} Mitarbeiter`)
 brand.appNameCheck = env('APP_NAME_CHECK', `${brand.appShort} Prüfstation`)
 
+// Absender der letzten Instanz. Im Betrieb greift immer SMTP_FROM oder
+// GRAPH_SENDER – das hier fängt nur den Fall ab, dass keine der beiden
+// gesetzt ist. Aus dem Kürzel wird eine zulässige Adresse gebaut: nur
+// Buchstaben und Zahlen, klein geschrieben (GHBA wird noreply@ghba).
+const kuerzelFuerMail = brand.name.toLowerCase().replace(/[^a-z0-9]/g, '') || 'protokolltool'
+brand.mailFrom = env('MAIL_FALLBACK_FROM', `noreply@${kuerzelFuerMail}`)
+
 // Was der Browser bekommt: in die ausgelieferte Seite als window.__BRAND__
 // eingespeist. Farben sind nicht dabei – die Oberfläche hat ihre eigenen.
 brand.forClient = () => ({

@@ -577,7 +577,7 @@ function esc(s) {
 
 // ── Einladungs-E-Mail bauen ───────────────────────────────────────────────────
 function buildInviteMail({ username, displayName, email, appUrl, isSynology, passwordNote }) {
-  const from        = process.env.SMTP_FROM || process.env.GRAPH_SENDER || process.env.SMTP_USER || 'noreply@ghba'
+  const from        = process.env.SMTP_FROM || process.env.GRAPH_SENDER || process.env.SMTP_USER || betreiber.mailFrom
   const shortcutUrl = `${appUrl}/shortcut`
   const tpl         = getEmailSettings().invite
 
@@ -889,7 +889,7 @@ app.post('/api/actions/send-email', requireAuth, async (req, res) => {
       releaseUrl = `${getAppUrl(req)}/freimeldung/${tk.token}`
     }
 
-    const from     = process.env.SMTP_FROM || process.env.GRAPH_SENDER || process.env.SMTP_USER || 'noreply@ghba'
+    const from     = process.env.SMTP_FROM || process.env.GRAPH_SENDER || process.env.SMTP_USER || betreiber.mailFrom
     const today    = new Date().toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })
     const projStr  = projectName || 'Unbekanntes Projekt'
     const taskTpl  = getEmailSettings().task_assignment
@@ -1516,7 +1516,7 @@ app.post('/api/projects/:id/plan-reviews/:reviewId/send-email', requireAuth, asy
       due:       dueStr,
     }
 
-    const from        = process.env.SMTP_FROM || process.env.GRAPH_SENDER || process.env.SMTP_USER || 'noreply@ghba'
+    const from        = process.env.SMTP_FROM || process.env.GRAPH_SENDER || process.env.SMTP_USER || betreiber.mailFrom
     const sender      = req.user !== '__apikey__' && req.user !== '__anonymous__' ? db.users.get(req.user) : null
     const senderName  = sender?.display_name || null
     const replyTo     = sender?.email || null
@@ -2456,7 +2456,7 @@ app.post('/api/projects/:id/request-delete', requireAuth, async (req, res) => {
       const appUrl  = getAppUrl(req)
       const approveUrl = `${appUrl}/api/delete-approve/${token}`
       const rejectUrl  = `${appUrl}/api/delete-reject/${token}`
-      const from    = process.env.SMTP_FROM || process.env.GRAPH_SENDER || process.env.SMTP_USER || 'noreply@ghba'
+      const from    = process.env.SMTP_FROM || process.env.GRAPH_SENDER || process.env.SMTP_USER || betreiber.mailFrom
       const today   = new Date().toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })
       const protoLine = protocolCount > 0
         ? `<tr><td style="color:#6b7280;padding-right:16px;white-space:nowrap;">Protokolle</td><td>${protocolCount} (werden nicht gelöscht, aber vom Projekt getrennt)</td></tr>`
@@ -2668,7 +2668,7 @@ app.post('/api/projects/:id/request-archive', requireAuth, async (req, res) => {
         const appUrl     = getAppUrl(req)
         const approveUrl = `${appUrl}/api/archive-approve/${token}`
         const rejectUrl  = `${appUrl}/api/archive-reject/${token}`
-        const from = process.env.SMTP_FROM || process.env.GRAPH_SENDER || process.env.SMTP_USER || 'noreply@ghba'
+        const from = process.env.SMTP_FROM || process.env.GRAPH_SENDER || process.env.SMTP_USER || betreiber.mailFrom
         const html = `<!DOCTYPE html><html><body style="font-family:Arial,sans-serif;color:#222;font-size:14px;line-height:1.5">
           <p><strong>${esc(requesterName)}</strong> bittet um Freigabe der Archivierung des Projekts
           <strong>„${esc(projName)}"</strong> (${protocolCount} Protokoll${protocolCount !== 1 ? 'e' : ''}).</p>
@@ -2826,7 +2826,7 @@ app.post('/api/admin/deletion-requests/:id/reject', requireAuth, requireAdmin, (
 
 // Absender für ${MARKE}-Systemmails
 function systemFrom() {
-  const addr = process.env.SMTP_FROM || process.env.GRAPH_SENDER || process.env.SMTP_USER || 'noreply@ghba'
+  const addr = process.env.SMTP_FROM || process.env.GRAPH_SENDER || process.env.SMTP_USER || betreiber.mailFrom
   return { addr, from: `"${MARKE}" <${addr}>` }
 }
 
@@ -4268,7 +4268,7 @@ app.post('/api/protocols/:id/send-email', requireAuth, async (req, res) => {
     if (!to) return res.status(400).json({ error: '"to" erwartet.' })
     if (!mailer.mailerStatus().configured) return res.status(400).json({ error: 'E-Mail-Versand nicht konfiguriert.' })
 
-    const from        = process.env.SMTP_FROM || process.env.GRAPH_SENDER || process.env.SMTP_USER || 'noreply@ghba'
+    const from        = process.env.SMTP_FROM || process.env.GRAPH_SENDER || process.env.SMTP_USER || betreiber.mailFrom
     const sender      = req.user !== '__apikey__' && req.user !== '__anonymous__' ? db.users.get(req.user) : null
     const senderName  = sender?.display_name || null
     const replyTo     = sender?.email || null
@@ -4512,7 +4512,7 @@ app.patch('/api/projects/:id/access', requireAuth, writeLimiter, (req, res) => {
       const oldAdmins = new Set(Array.isArray(p.projectAdmins) ? p.projectAdmins : [])
       const newAdmins = (updated.projectAdmins ?? []).filter(u => !oldAdmins.has(u))
       if (newAdmins.length > 0) {
-        const from        = process.env.SMTP_FROM || process.env.GRAPH_SENDER || process.env.SMTP_USER || 'noreply@ghba'
+        const from        = process.env.SMTP_FROM || process.env.GRAPH_SENDER || process.env.SMTP_USER || betreiber.mailFrom
         const assignedBy  = db.users.get(req.user)
         const byName      = assignedBy?.display_name || req.user
         const appUrl      = getAppUrl(req)
@@ -4705,7 +4705,7 @@ app.post('/api/notes/:id/send-email', requireAuth, async (req, res) => {
     if (!to) return res.status(400).json({ error: '"to" erwartet.' })
     if (!mailer.mailerStatus().configured) return res.status(400).json({ error: 'E-Mail-Versand nicht konfiguriert.' })
 
-    const from    = process.env.SMTP_FROM || process.env.GRAPH_SENDER || process.env.SMTP_USER || 'noreply@ghba'
+    const from    = process.env.SMTP_FROM || process.env.GRAPH_SENDER || process.env.SMTP_USER || betreiber.mailFrom
     const sender  = req.user !== '__apikey__' && req.user !== '__anonymous__' ? db.users.get(req.user) : null
     const replyTo = sender?.email || null
     const fromAddress = sender?.display_name ? `"${sender.display_name} (${MARKE})" <${from}>` : from
@@ -4822,7 +4822,7 @@ app.post('/api/notebooks/:projectId/send-email', requireAuth, async (req, res) =
     const { to, subject, html: bodyHtml, pdfBase64, pdfFilename } = req.body
     if (!to) return res.status(400).json({ error: '"to" erwartet.' })
     const nbTpl       = getEmailSettings().notebook
-    const from        = process.env.SMTP_FROM || process.env.GRAPH_SENDER || process.env.SMTP_USER || 'noreply@ghba'
+    const from        = process.env.SMTP_FROM || process.env.GRAPH_SENDER || process.env.SMTP_USER || betreiber.mailFrom
     const sender      = req.user !== '__apikey__' && req.user !== '__anonymous__' ? db.users.get(req.user) : null
     const replyTo     = sender?.email || null
     const fromAddress = sender?.display_name ? `"${sender.display_name} (${MARKE})" <${from}>` : from
@@ -4880,7 +4880,7 @@ app.post('/api/projects/:id/diary/send-email', requireAuth, async (req, res) => 
     if (!to || (Array.isArray(to) && to.length === 0)) return res.status(400).json({ error: '"to" erwartet.' })
 
     const tpl         = getEmailSettings().diary || {}
-    const from        = process.env.SMTP_FROM || process.env.GRAPH_SENDER || process.env.SMTP_USER || 'noreply@ghba'
+    const from        = process.env.SMTP_FROM || process.env.GRAPH_SENDER || process.env.SMTP_USER || betreiber.mailFrom
     const sender      = req.user !== '__apikey__' && req.user !== '__anonymous__' ? db.users.get(req.user) : null
     const replyTo     = sender?.email || null
     const fromAddress = sender?.display_name ? `"${sender.display_name} (${MARKE})" <${from}>` : from

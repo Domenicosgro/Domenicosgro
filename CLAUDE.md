@@ -661,9 +661,24 @@ Vorgaben in `src/brand.js`.
 
 > **Regel:** Kein neues „GHBA" und kein neues „Komplizen" im Code. Wer einen
 > Namen hart einträgt, macht die Anwendung für jedes andere Büro unbrauchbar —
-> und findet ihn beim nächsten Mal nicht wieder. Prüfen lässt sich das mit
-> `grep -rn "GHBA\|Komplizen" src/ server/ --include=*.js --include=*.jsx`:
-> Treffer darf es nur in `betreiber.js` und `brand.js` geben.
+> und findet ihn beim nächsten Mal nicht wieder. Die Probe dafür:
+>
+> ```
+> npm run pruefe:marke
+> ```
+>
+> Sie meldet jede Zeile, die den Namen hart enthält, und gibt 1 zurück.
+> Kommentare sind ausgenommen – die erscheinen nirgends. Ausgenommen sind
+> auch sechs technische Kennungen, an denen Datenbestand und
+> Schnittstellen hängen: der Dateiname der Datenbank (`komplizen.db` –
+> Umbenennen legt eine neue, leere an), die Kennung Richtung Dashboard,
+> der Sitzungsname der DSM-Anmeldung, der Prozessname. Sie stehen mit
+> Begründung in `scripts/pruefe-marke.mjs`. Wer eine weitere Ausnahme
+> braucht, trägt sie dort ein – mit Begründung, nicht stillschweigend.
+>
+> Ein reines `grep` reicht nicht: es übersieht Kleinschreibung oder meldet
+> mit `-i` die begründeten Kennungen mit – und eine Probe mit Fehlalarm
+> wird beim dritten Mal ignoriert.
 
 ---
 

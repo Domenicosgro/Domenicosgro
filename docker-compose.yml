@@ -41,6 +41,12 @@ services:
       # Fehlt sie, setzen die Mails statt des Bildes das Kürzel als Überschrift.
       # BRAND_LOGO:         "Logo_Komplizen_sky1.png"
       #
+      # Absender, falls weder SMTP_FROM noch GRAPH_SENDER gesetzt ist. Ohne
+      # Eintrag wird er aus BRAND_NAME gebaut (GHBA wird noreply@ghba). Im
+      # laufenden Betrieb greift das nie – es verhindert nur, dass bei einem
+      # Konfigurationsfehler Post unter fremdem Namen rausgeht.
+      # MAIL_FALLBACK_FROM: "noreply@ghba"
+      #
       # Farben der System-Mails und der Systemseiten (Freimeldung, Freigaben).
       # Die Oberfläche selbst nimmt ihre Farben aus Tailwind.
       # BRAND_COLOR_DARK:   "#000040"   # Kopfband
