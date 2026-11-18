@@ -4,6 +4,7 @@ import LoginScreen from '../components/LoginScreen'
 import SessionExpiredModal from '../components/SessionExpiredModal'
 import Pruefstation from './Pruefstation'
 import { tokenOf } from './api'
+import brand from '../brand'
 
 // ── Prüfstation ──────────────────────────────────────────────────────────────
 // Eigenständige Oberfläche unter /pruefstation. Links die Prüfvorgänge (nach
@@ -56,14 +57,14 @@ export default function PruefstationApp() {
       </div>
     )
   }
-  if (!user) return <LoginScreen onLogin={setUser} title="Komplizen Prüfstation" />
+  if (!user) return <LoginScreen onLogin={setUser} title={brand.appNameCheck} />
 
   return (
     <>
       <header className="no-print sticky top-0 z-30 bg-night text-light px-4 sm:px-6 lg:px-10 py-2 flex items-center justify-between gap-3">
         <div className="flex items-center gap-2 min-w-0">
           <ScanSearch size={18} className="text-sky flex-shrink-0" />
-          <span className="font-semibold truncate">Komplizen Prüfstation</span>
+          <span className="font-semibold truncate">{brand.appNameCheck}</span>
           <span className="hidden sm:inline text-xs text-light/60 truncate">· Nachträge und Rechnungen prüfen</span>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">

@@ -4,6 +4,7 @@ import { ArrowLeft, AlertTriangle, CheckSquare, Square, Filter, X, Lock, BarChar
 import { ACTION_STATUSES, PRIORITIES, ACTION_ARTEN, formatDate, buildProtocolNo, getChainNo,
          statusBadge, priorityBadge, artBadge, emptyActionItem,
          supersededActionIds, isMirrorAction } from '../utils'
+import brand from '../brand'
 import FreimeldungBadge from './FreimeldungBadge'
 import ContactAutocomplete from './ContactAutocomplete'
 
@@ -64,7 +65,7 @@ function buildActionsText(responsible, projectName, items) {
       const desc = item.title && item.description ? `\n  ${item.description}` : ''
       return `• ${head}${art ? ` [${art}]` : ''}${desc}\n  Protokoll: ${item._protocolNo || '–'} | Frist: ${dl} | Status: ${STATUS[item.status] || item.status}`
     }),
-    '', 'GHBA',
+    '', brand.name,
   ]
   return lines.join('\n')
 }

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { X, UserPlus, Users, Key, Eye, EyeOff, Loader, Trash2, Printer, Download, Pencil, Check, KeyRound, HardDrive, Upload, Mail, Send, Settings2, Search, AlertTriangle, Shield, ShieldOff, LogOut, Activity, RefreshCw, UserCheck, CheckSquare, Square } from 'lucide-react'
 import { formatDate } from '../utils'
+import brand from '../brand'
 
 // Initialen aus Anzeigename bzw. Benutzername (z. B. "Max Mustermann" → "MM")
 function userInitials(u) {
@@ -187,7 +188,7 @@ function printUsers(users) {
       tr:nth-child(even) td { background: #f5f5f5; }
       .pw { font-family: monospace; }
     </style></head><body>
-    <h1>Benutzerliste – Komplizen Protokolle</h1>
+    <h1>Benutzerliste – ${brand.appName}</h1>
     <p>Erstellt am ${new Date().toLocaleDateString('de-DE')} &nbsp;|&nbsp; Vertraulich – nur für den Administrator</p>
     <table>
       <thead><tr>

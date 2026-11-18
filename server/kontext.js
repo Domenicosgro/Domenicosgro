@@ -25,6 +25,7 @@
 // soll das Fehlen von Material benennen statt es zu überbrücken.
 // ─────────────────────────────────────────────────────────────────────────────
 
+const betreiber = require('./betreiber')
 const fs = require('fs')
 const path = require('path')
 
@@ -490,8 +491,8 @@ function stueckeSammeln(protokolle, notizen, projektNamen) {
 
 // ── Der Systemkopf ───────────────────────────────────────────────────────────
 
-const ANWEISUNG = `Du bist der Assistent im Programm „Komplizen Protokolle" des Büros
-Komplizen Industrieplanung und Architektur. Du hilfst bei zwei Dingen:
+const ANWEISUNG = `Du bist der Assistent im Programm „${betreiber.appName}" des Büros
+${betreiber.officeName}. Du hilfst bei zwei Dingen:
 Fragen zu den Bauprojekten dieses Büros und Fragen zur Bedienung des
 Programms.
 

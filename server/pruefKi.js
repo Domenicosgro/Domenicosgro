@@ -26,6 +26,7 @@
 //   PRUEF_KI_MODELL     optional, Vorgabe claude-opus-5-5
 //   PRUEF_KI_EFFORT     optional, Vorgabe high
 
+const betreiber = require('./betreiber')
 const fs     = require('fs')
 const path   = require('path')
 const crypto = require('crypto')
@@ -229,7 +230,7 @@ function registerPruefKi(app, deps) {
     // Protokolle und Notizen des Projekts aus dem Protokolltool als Text
     const protokolle = protokollText(project)
     if (protokolle) {
-      const name = uniqueName('Protokolle und Notizen aus Komplizen.md', namen)
+      const name = uniqueName(`Protokolle und Notizen aus ${betreiber.appShort}.md`, namen)
       const meta = await client().files.upload({ file: await tf(Buffer.from(protokolle, 'utf8'), name) })
       hochgeladen.push({ name, rolle: 'Besprechungsprotokolle, Maßnahmen und Akten-/Telefonnotizen des Projekts (Protokolltool)', fileId: meta.id, size: protokolle.length })
     }
@@ -252,7 +253,7 @@ function registerPruefKi(app, deps) {
   // Protokolle (Punkte, Ergebnisse, Maßnahmen) und Notizen eines Projekts
   function protokollText(project) {
     if (!project) return ''
-    const z = [`# Protokolle und Notizen – ${project.name}`, '', 'Auszug aus dem Protokolltool (Komplizen). Datum je Eintrag beachten.', '']
+    const z = [`# Protokolle und Notizen – ${project.name}`, '', `Auszug aus dem Protokolltool (${betreiber.appShort}). Datum je Eintrag beachten.`, '']
     const prot = db.protocols.list().filter(p => p.projectId === project.id)
       .sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')))
     for (const p of prot) {
@@ -279,7 +280,7 @@ function registerPruefKi(app, deps) {
 
   function auftrag(v, project, unterlagen, skillName) {
     const z = []
-    z.push(`Prüfvorgang aus der Prüfstation (GHBA).`)
+    z.push(`Prüfvorgang aus der Prüfstation (${betreiber.name}).`)
     z.push(`Projekt: ${project?.name || '–'}`)
     z.push(`Art: ${v.art === 'rechnung' ? 'Abschlagsrechnung' : v.art === 'nachtrag' ? 'Nachtrag' : 'Sonstige Prüfung'}`)
     if (v.nummer) z.push(`Nummer: ${v.nummer}${v.index ? ` · Index ${v.index}` : ''}`)
@@ -298,7 +299,7 @@ function registerPruefKi(app, deps) {
     z.push('')
     z.push(skillName
       ? `Arbeite nach dem Skill „${skillName}“.`
-      : 'Prüfe nach den üblichen Regeln der Objektüberwachung von GHBA.')
+      : `Prüfe nach den üblichen Regeln der Objektüberwachung von ${betreiber.name}.`)
     z.push('Lege jede Ergebnisdatei (DOCX, PDF, Arbeitsnotiz) in $OUTPUT_DIR ab und liste das Verzeichnis im selben Befehl auf.')
     z.push('Nichts selbst versenden. Die Ergebnisse legt der Prüfer nach Freigabe in den Projektordner.')
     if (unterlagen.ausgelassen?.length) z.push(`Nicht mitgeschickt (Größe/Fehler): ${unterlagen.ausgelassen.join('; ')}`)
@@ -324,7 +325,7 @@ function registerPruefKi(app, deps) {
         model: MODELL(),
         max_tokens: 64000,
         output_config: { effort: EFFORT() },
-        system: 'Du arbeitest für GHBA (Gehbauer | Helten | Bickel | Sgró Architekten Partnerschaft GmbB) als Prüfassistenz der Objekt-/Bauüberwachung. Antworte auf Deutsch, sachlich und knapp. Halte dich strikt an den geladenen Skill und an die Hinweise des Bearbeiters.',
+        system: `Du arbeitest für ${betreiber.name} (${betreiber.nameLong}) als Prüfassistenz der Objekt-/Bauüberwachung. Antworte auf Deutsch, sachlich und knapp. Halte dich strikt an den geladenen Skill und an die Hinweise des Bearbeiters.`,
         container: containerParam,
         tools: [{ type: 'code_execution_20260521', name: 'code_execution' }],
         messages: verlauf.messages,

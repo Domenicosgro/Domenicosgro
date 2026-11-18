@@ -3,6 +3,7 @@ import { ArrowLeft, Plus, Camera, Trash2, Pencil, X, Loader, AlertCircle, Mail,
          ArrowRight, MapPin, AlertOctagon } from 'lucide-react'
 import { formatDate, uid } from '../utils'
 import { savePhoto, loadPhotoUrl, removePhoto } from '../photoUtils'
+import brand from '../brand'
 
 const isServer = typeof window !== 'undefined' && !!window.__SERVER_MODE__
 const authHeaders = () => {
@@ -244,7 +245,7 @@ export default function MaengelView({ project, protocols = [], serverUser, onBac
       defect.location ? `Ort/Bauteil: ${defect.location}` : '',
       defect.description ? `Beschreibung: ${defect.description}` : '',
       defect.dueDate ? `Frist zur Behebung: ${formatDate(defect.dueDate)}` : '',
-      '', 'Wir bitten um fristgerechte Behebung und Rückmeldung.', '', 'GHBA',
+      '', 'Wir bitten um fristgerechte Behebung und Rückmeldung.', '', brand.name,
     ].filter(l => l !== '').join('\n')
     window.open(`mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`, '_blank')
   }

@@ -1,5 +1,5 @@
 /**
- * Komplizen Protokolle – Express/SQLite Backend
+ * Protokolltool – Express/SQLite Backend
  *
  * Startet mit: node server/index.js
  * Produktionsstart: pm2 start server/pm2.config.js
@@ -12,9 +12,19 @@
  *   ALLOWED_ORIGINS  – Kommaliste erlaubter CORS-Origins
  *   HTTPS_CERT       – Pfad zum TLS-Zertifikat (PEM) für HTTPS
  *   HTTPS_KEY        – Pfad zum TLS-Schlüssel (PEM) für HTTPS
+ *
+ *   Name, Kürzel, Logo und Farben des Betreibers: siehe server/betreiber.js
  */
 
 'use strict'
+
+const betreiber = require('./betreiber')
+// Marke und Farben des Betreibers an einer Stelle (siehe server/betreiber.js):
+// MARKE steht in jeder System-E-Mail und auf jeder Systemseite, FARBE gibt
+// deren Kopfband und Hintergrund. Beides kommt aus Umgebungsvariablen, die
+// Voreinstellung ist ${MARKE} – ohne gesetzte Variablen ändert sich nichts.
+const MARKE = betreiber.name
+const FARBE = betreiber.colors
 
 const express   = require('express')
 const cors      = require('cors')
@@ -459,7 +469,7 @@ app.get('/shortcut', (req, res) => {
   const icon  = `${url}/logo.png`
   const content = `[InternetShortcut]\r\nURL=${url}\r\nIconFile=${icon}\r\nIconIndex=0\r\n`
   res.setHeader('Content-Type', 'application/octet-stream')
-  res.setHeader('Content-Disposition', 'attachment; filename="Komplizen Protokolle.url"')
+  res.setHeader('Content-Disposition', `attachment; filename="${betreiber.appName}.url"`)
   res.send(content)
 })
 
@@ -571,13 +581,13 @@ function buildInviteMail({ username, displayName, email, appUrl, isSynology, pas
   const shortcutUrl = `${appUrl}/shortcut`
   const tpl         = getEmailSettings().invite
 
-  const logoPath = path.join(__dirname, '../dist/Logo_Komplizen_sky1.png')
+  const logoPath = path.join(__dirname, '../dist', betreiber.logoFile)
   const logoAttachment = fs.existsSync(logoPath)
-    ? [{ filename: 'Logo_Komplizen_sky1.png', path: logoPath, cid: 'logo@komplizen' }]
+    ? [{ filename: betreiber.logoFile, path: logoPath, cid: 'logo@app' }]
     : []
   const logoTag = logoAttachment.length
-    ? '<img src="cid:logo@komplizen" alt="GHBA" style="height:80px;display:block;margin:0 auto;">'
-    : '<h2 style="color:#1e3a5f;text-align:center;margin:0;font-family:Arial,sans-serif;">GHBA</h2>'
+    ? `<img src="cid:logo@app" alt="${MARKE}" style="height:80px;display:block;margin:0 auto;">`
+    : `<h2 style="color:${FARBE.dark};text-align:center;margin:0;font-family:Arial,sans-serif;">${MARKE}</h2>`
 
   // „Synology-NAS-Passwort" sagte Empfängern außerhalb der IT nichts – sie
   // fragten nach. Jetzt steht da, woran sie es erkennen: derselbe Zugang wie
@@ -606,13 +616,13 @@ function buildInviteMail({ username, displayName, email, appUrl, isSynology, pas
           <p style="color:#7ab3d4;margin:8px 0 0 0;font-size:11px;letter-spacing:2px;text-transform:uppercase;">Einladung</p>
         </td></tr>
         <tr><td style="padding:32px 40px 0 40px;">
-          <p style="font-size:22px;font-weight:bold;color:#1e3a5f;margin:0 0 8px 0;">Willkommen, ${displayName}!</p>
+          <p style="font-size:22px;font-weight:bold;color:${FARBE.dark};margin:0 0 8px 0;">Willkommen, ${displayName}!</p>
           <p style="margin:0 0 24px 0;color:#6b7280;">${esc(tpl.greeting)}</p>
         </td></tr>
         <tr><td style="padding:0 40px;">
-          <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;border:1px solid #e2e8f0;border-left:4px solid #1e3a5f;">
+          <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;border:1px solid #e2e8f0;border-left:4px solid ${FARBE.dark};">
             <tr><td style="padding:20px 24px;">
-              <p style="margin:0 0 12px 0;font-weight:bold;color:#1e3a5f;font-size:11px;text-transform:uppercase;letter-spacing:1px;">Deine Zugangsdaten</p>
+              <p style="margin:0 0 12px 0;font-weight:bold;color:${FARBE.dark};font-size:11px;text-transform:uppercase;letter-spacing:1px;">Deine Zugangsdaten</p>
               <table cellpadding="4" cellspacing="0">
                 <tr><td style="color:#6b7280;white-space:nowrap;padding-right:16px;">Adresse</td>      <td><a href="${appUrl}" style="color:#2563eb;font-weight:bold;">${appUrl}</a></td></tr>
                 <tr><td style="color:#6b7280;white-space:nowrap;padding-right:16px;">Benutzername</td> <td style="font-family:monospace;font-weight:bold;">${username}</td></tr>
@@ -623,7 +633,7 @@ function buildInviteMail({ username, displayName, email, appUrl, isSynology, pas
           ${pwHint}
         </td></tr>
         <tr><td style="padding:24px 40px 0 40px;">
-          <p style="font-weight:bold;color:#1e3a5f;font-size:11px;text-transform:uppercase;letter-spacing:1px;margin:0 0 10px 0;">Als App auf dem Desktop installieren</p>
+          <p style="font-weight:bold;color:${FARBE.dark};font-size:11px;text-transform:uppercase;letter-spacing:1px;margin:0 0 10px 0;">Als App auf dem Desktop installieren</p>
           <table width="100%" cellpadding="0" cellspacing="0" style="background:#f0f7ff;border:1px solid #bfdbfe;margin-bottom:12px;">
             <tr><td style="padding:14px 18px;">
               <p style="margin:0 0 6px 0;font-weight:bold;color:#1e40af;">Microsoft Edge (empfohlen – funktioniert sofort)</p>
@@ -633,7 +643,7 @@ function buildInviteMail({ username, displayName, email, appUrl, isSynology, pas
                 <li>Klicke in der Adresszeile auf das <strong>Installieren-Symbol</strong> <span style="font-family:monospace;background:#e5e7eb;padding:1px 5px;">⊕</span></li>
                 <li>„Installieren" bestätigen – fertig!</li>
               </ol>
-              <p style="margin:8px 0 0 0;font-size:12px;color:#6b7280;">Die App erscheint im Startmenü und auf dem Desktop mit dem GHBA-Logo. Edge ist auf jedem Windows-PC bereits vorinstalliert.</p>
+              <p style="margin:8px 0 0 0;font-size:12px;color:#6b7280;">Die App erscheint im Startmenü und auf dem Desktop mit dem ${MARKE}-Logo. Edge ist auf jedem Windows-PC bereits vorinstalliert.</p>
             </td></tr>
           </table>
           <p style="margin:12px 0 6px 0;font-size:12px;color:#374151;"><strong>Ich nutze Chrome</strong> – einmalige Einstellung (1 Minute):</p>
@@ -651,7 +661,7 @@ function buildInviteMail({ username, displayName, email, appUrl, isSynology, pas
           <p style="margin:8px 0 0 0;font-size:12px;color:#9ca3af;">Alternative: <a href="${shortcutUrl}" style="color:#6b7280;">Browser-Verknüpfung herunterladen</a></p>
         </td></tr>
         <tr><td style="padding:24px 40px 0 40px;">
-          <p style="font-weight:bold;color:#1e3a5f;font-size:11px;text-transform:uppercase;letter-spacing:1px;margin:0 0 10px 0;">Was ist GHBA?</p>
+          <p style="font-weight:bold;color:${FARBE.dark};font-size:11px;text-transform:uppercase;letter-spacing:1px;margin:0 0 10px 0;">Was ist ${MARKE}?</p>
           <ul style="margin:0;padding-left:20px;color:#374151;line-height:1.8;">
             <li>Besprechungsprotokolle erstellen und verwalten</li>
             <li>Maßnahmen und Aufgaben nachverfolgen</li>
@@ -889,7 +899,7 @@ app.post('/api/actions/send-email', requireAuth, async (req, res) => {
     const sender      = req.user !== '__apikey__' && req.user !== '__anonymous__' ? db.users.get(req.user) : null
     const senderName  = sender?.display_name || null
     const replyTo     = sender?.email || null
-    const fromAddress = senderName ? `"${senderName} (GHBA)" <${from}>` : from
+    const fromAddress = senderName ? `"${senderName} (${MARKE})" <${from}>` : from
 
     const STATUS_LABELS   = { offen: 'Offen', in_arbeit: 'In Arbeit', erledigt: 'Erledigt', verschoben: 'Verschoben' }
     const PRIORITY_LABELS = { hoch: 'Hoch', mittel: 'Mittel', niedrig: 'Niedrig' }
@@ -900,7 +910,7 @@ app.post('/api/actions/send-email', requireAuth, async (req, res) => {
       const overdue     = item.deadline && item.status !== 'erledigt' && item.deadline < todayIso
       const isDone      = item.status === 'erledigt'
       const rowBg       = overdue ? '#FEF2F2' : isDone ? '#F0FDF4' : '#FFFFFF'
-      const descColor   = overdue ? '#DC2626' : isDone ? '#6B7280' : '#000040'
+      const descColor   = overdue ? '#DC2626' : isDone ? '#6B7280' : FARBE.dark
       const deadlineFmt = item.deadline
         ? new Date(item.deadline + 'T12:00:00').toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })
         : '–'
@@ -918,41 +928,41 @@ app.post('/api/actions/send-email', requireAuth, async (req, res) => {
 
     const html = `<!DOCTYPE html>
 <html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
-<body style="margin:0;padding:0;background:#F0F0F0;font-family:Arial,sans-serif;font-size:14px;color:#1F2937;">
-  <table width="100%" cellpadding="0" cellspacing="0" style="background:#F0F0F0;padding:32px 16px;">
+<body style="margin:0;padding:0;background:${FARBE.page};font-family:Arial,sans-serif;font-size:14px;color:#1F2937;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:${FARBE.page};padding:32px 16px;">
     <tr><td align="center">
       <table width="620" cellpadding="0" cellspacing="0" style="background:#FFF;border:1px solid #E5E7EB;max-width:620px;width:100%;">
-        <tr><td style="background:#000040;padding:28px 36px;">
-          <p style="margin:0;color:#8FBEFF;font-size:11px;letter-spacing:2px;text-transform:uppercase;">GHBA</p>
-          <p style="margin:6px 0 0 0;color:#FBFFE6;font-size:20px;font-weight:bold;">Ihre Aufgaben</p>
-          <p style="margin:4px 0 0 0;color:#8FBEFF;font-size:14px;font-weight:600;">${projStr}</p>
-          <p style="margin:6px 0 0 0;color:#8FBEFF;font-size:12px;">Stand: ${today}</p>
+        <tr><td style="background:${FARBE.dark};padding:28px 36px;">
+          <p style="margin:0;color:${FARBE.accent};font-size:11px;letter-spacing:2px;text-transform:uppercase;">${MARKE}</p>
+          <p style="margin:6px 0 0 0;color:${FARBE.light};font-size:20px;font-weight:bold;">Ihre Aufgaben</p>
+          <p style="margin:4px 0 0 0;color:${FARBE.accent};font-size:14px;font-weight:600;">${projStr}</p>
+          <p style="margin:6px 0 0 0;color:${FARBE.accent};font-size:12px;">Stand: ${today}</p>
         </td></tr>
         <tr><td style="padding:28px 36px 16px 36px;">
-          <p style="margin:0;font-size:15px;color:#000040;">Guten Tag, <strong>${responsible}</strong>,</p>
+          <p style="margin:0;font-size:15px;color:${FARBE.dark};">Guten Tag, <strong>${responsible}</strong>,</p>
           <p style="margin:10px 0 0 0;color:#4B5563;">${esc(applyTpl(taskTpl.intro, { project: projStr, count: String(items.length) }))}</p>
         </td></tr>
         ${releaseUrl ? `<tr><td style="padding:0 36px 8px 36px;">
-          <table cellpadding="0" cellspacing="0"><tr><td style="background:#000040;">
-            <a href="${releaseUrl}" style="display:inline-block;padding:11px 22px;color:#FBFFE6;font-size:14px;font-weight:bold;text-decoration:none;font-family:Arial,sans-serif;">Aufgaben online freimelden</a>
+          <table cellpadding="0" cellspacing="0"><tr><td style="background:${FARBE.dark};">
+            <a href="${releaseUrl}" style="display:inline-block;padding:11px 22px;color:${FARBE.light};font-size:14px;font-weight:bold;text-decoration:none;font-family:Arial,sans-serif;">Aufgaben online freimelden</a>
           </td></tr></table>
           <p style="margin:8px 0 0 0;font-size:12px;color:#6B7280;">Erledigte Aufgaben können Sie über diesen Link mit kurzer Begründung (und optional Nachweisen) freimelden. Die Freigabe erfolgt in der nächsten Besprechung.</p>
         </td></tr>` : ''}
         <tr><td style="padding:0 36px 28px 36px;">
           <table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #E5E7EB;border-collapse:collapse;">
             <thead>
-              <tr style="background:#000040;">
-                <th style="padding:9px 12px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:#8FBEFF;font-weight:600;">Protokoll</th>
-                <th style="padding:9px 12px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:#8FBEFF;font-weight:600;">Aufgabe</th>
-                <th style="padding:9px 12px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:#8FBEFF;font-weight:600;">Frist</th>
-                <th style="padding:9px 12px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:#8FBEFF;font-weight:600;">Priorität</th>
-                <th style="padding:9px 12px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:#8FBEFF;font-weight:600;">Status</th>
+              <tr style="background:${FARBE.dark};">
+                <th style="padding:9px 12px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:${FARBE.accent};font-weight:600;">Protokoll</th>
+                <th style="padding:9px 12px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:${FARBE.accent};font-weight:600;">Aufgabe</th>
+                <th style="padding:9px 12px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:${FARBE.accent};font-weight:600;">Frist</th>
+                <th style="padding:9px 12px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:${FARBE.accent};font-weight:600;">Priorität</th>
+                <th style="padding:9px 12px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:${FARBE.accent};font-weight:600;">Status</th>
               </tr>
             </thead>
             <tbody>${rows}</tbody>
           </table>
         </td></tr>
-        <tr><td style="padding:20px 36px;border-top:1px solid #E5E7EB;background:#F0F0F0;text-align:center;">
+        <tr><td style="padding:20px 36px;border-top:1px solid #E5E7EB;background:${FARBE.page};text-align:center;">
           <p style="margin:0;color:#9CA3AF;font-size:12px;">${esc(taskTpl.footer)}${senderName ? ` · Gesendet von ${senderName}` : ''} · ${today}</p>
         </td></tr>
       </table>
@@ -1012,21 +1022,21 @@ app.post('/api/actions/send-email', requireAuth, async (req, res) => {
             const sentByLine = senderName ? `Versendet von <strong>${senderName}</strong>` : 'Automatischer Versand'
             const confirmHtml = `<!DOCTYPE html>
 <html lang="de"><head><meta charset="utf-8"></head>
-<body style="margin:0;padding:0;background:#F0F0F0;font-family:Arial,sans-serif;font-size:14px;color:#1F2937;">
-  <table width="100%" cellpadding="0" cellspacing="0" style="background:#F0F0F0;padding:32px 16px;">
+<body style="margin:0;padding:0;background:${FARBE.page};font-family:Arial,sans-serif;font-size:14px;color:#1F2937;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:${FARBE.page};padding:32px 16px;">
     <tr><td align="center">
       <table width="580" cellpadding="0" cellspacing="0" style="background:#FFF;border:1px solid #E5E7EB;max-width:580px;width:100%;">
-        <tr><td style="background:#000040;padding:24px 32px;">
-          <p style="margin:0;color:#8FBEFF;font-size:11px;letter-spacing:2px;text-transform:uppercase;">GHBA</p>
-          <p style="margin:6px 0 0 0;color:#FBFFE6;font-size:18px;font-weight:bold;">Aufgaben-E-Mail versendet</p>
-          <p style="margin:4px 0 0 0;color:#8FBEFF;font-size:13px;">${projStr}</p>
+        <tr><td style="background:${FARBE.dark};padding:24px 32px;">
+          <p style="margin:0;color:${FARBE.accent};font-size:11px;letter-spacing:2px;text-transform:uppercase;">${MARKE}</p>
+          <p style="margin:6px 0 0 0;color:${FARBE.light};font-size:18px;font-weight:bold;">Aufgaben-E-Mail versendet</p>
+          <p style="margin:4px 0 0 0;color:${FARBE.accent};font-size:13px;">${projStr}</p>
         </td></tr>
         <tr><td style="padding:24px 32px;">
           <p style="margin:0 0 12px 0;color:#4B5563;">${sentByLine} am ${today}.</p>
           <table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #E5E7EB;">
             <tr style="background:#F9FAFB;">
               <td style="padding:8px 12px;font-size:12px;font-weight:600;color:#6B7280;text-transform:uppercase;letter-spacing:.05em;width:40%;">Empfänger</td>
-              <td style="padding:8px 12px;font-size:13px;color:#000040;font-weight:600;">${responsible}</td>
+              <td style="padding:8px 12px;font-size:13px;color:${FARBE.dark};font-weight:600;">${responsible}</td>
             </tr>
             <tr>
               <td style="padding:8px 12px;font-size:12px;font-weight:600;color:#6B7280;text-transform:uppercase;letter-spacing:.05em;border-top:1px solid #E5E7EB;">E-Mail-Adresse</td>
@@ -1037,22 +1047,22 @@ app.post('/api/actions/send-email', requireAuth, async (req, res) => {
               <td style="padding:8px 12px;font-size:13px;color:#374151;border-top:1px solid #E5E7EB;">${items.length} Aufgabe${items.length !== 1 ? 'n' : ''}</td>
             </tr>
           </table>
-          <p style="margin:20px 0 8px 0;font-size:13px;font-weight:600;color:#000040;">Versendete Aufgaben</p>
+          <p style="margin:20px 0 8px 0;font-size:13px;font-weight:600;color:${FARBE.dark};">Versendete Aufgaben</p>
           <table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #E5E7EB;border-collapse:collapse;">
             <thead>
-              <tr style="background:#000040;">
-                <th style="padding:9px 12px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:#8FBEFF;font-weight:600;">Protokoll</th>
-                <th style="padding:9px 12px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:#8FBEFF;font-weight:600;">Aufgabe</th>
-                <th style="padding:9px 12px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:#8FBEFF;font-weight:600;">Frist</th>
-                <th style="padding:9px 12px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:#8FBEFF;font-weight:600;">Priorität</th>
-                <th style="padding:9px 12px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:#8FBEFF;font-weight:600;">Status</th>
+              <tr style="background:${FARBE.dark};">
+                <th style="padding:9px 12px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:${FARBE.accent};font-weight:600;">Protokoll</th>
+                <th style="padding:9px 12px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:${FARBE.accent};font-weight:600;">Aufgabe</th>
+                <th style="padding:9px 12px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:${FARBE.accent};font-weight:600;">Frist</th>
+                <th style="padding:9px 12px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:${FARBE.accent};font-weight:600;">Priorität</th>
+                <th style="padding:9px 12px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:${FARBE.accent};font-weight:600;">Status</th>
               </tr>
             </thead>
             <tbody>${rows}</tbody>
           </table>
         </td></tr>
-        <tr><td style="padding:16px 32px;border-top:1px solid #E5E7EB;background:#F0F0F0;text-align:center;">
-          <p style="margin:0;color:#9CA3AF;font-size:11px;">GHBA · Automatische Bestätigung · ${today}</p>
+        <tr><td style="padding:16px 32px;border-top:1px solid #E5E7EB;background:${FARBE.page};text-align:center;">
+          <p style="margin:0;color:#9CA3AF;font-size:11px;">${MARKE} · Automatische Bestätigung · ${today}</p>
         </td></tr>
       </table>
     </td></tr>
@@ -1076,7 +1086,7 @@ app.post('/api/actions/send-email', requireAuth, async (req, res) => {
                 return `• ${head}${art}${desc}\n  Protokoll: ${item._protocolNo || '–'} | Frist: ${dl} | Status: ${STATUS_LABELS[item.status] || item.status}`
               }),
               '',
-              'GHBA · Automatische Bestätigung',
+              `${MARKE} · Automatische Bestätigung`,
             ].join('\n')
             for (const adminEmail of adminEmails) {
               mailer.sendMail({
@@ -1510,7 +1520,7 @@ app.post('/api/projects/:id/plan-reviews/:reviewId/send-email', requireAuth, asy
     const sender      = req.user !== '__apikey__' && req.user !== '__anonymous__' ? db.users.get(req.user) : null
     const senderName  = sender?.display_name || null
     const replyTo     = sender?.email || null
-    const fromAddress = senderName ? `"${senderName} (GHBA)" <${from}>` : from
+    const fromAddress = senderName ? `"${senderName} (${MARKE})" <${from}>` : from
     const subject     = applyTpl(tpl.subject, vars)
     const appUrl      = getAppUrl(req)
 
@@ -2381,16 +2391,16 @@ function renderSimplePage(title, bodyHtml) {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>${title} – GHBA</title>
+  <title>${title} – ${MARKE}</title>
   <style>
     *{box-sizing:border-box;margin:0;padding:0}
     body{font-family:Arial,sans-serif;font-size:14px;color:#1f2937;background:#f3f4f6;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}
     .card{background:white;border:1px solid #e5e7eb;max-width:500px;width:100%}
-    .hdr{background:#000040;color:#fbffe6;padding:20px 28px}
-    .hdr small{font-size:10px;text-transform:uppercase;letter-spacing:2px;color:#8fbeff;display:block;margin-bottom:4px}
+    .hdr{background:${FARBE.dark};color:#fbffe6;padding:20px 28px}
+    .hdr small{font-size:10px;text-transform:uppercase;letter-spacing:2px;color:${FARBE.accent};display:block;margin-bottom:4px}
     .hdr h1{font-size:17px;font-weight:bold}
     .body{padding:24px 28px}
-    .info{background:#f8fafc;border:1px solid #e2e8f0;border-left:4px solid #000040;padding:14px 16px;margin-bottom:16px}
+    .info{background:#f8fafc;border:1px solid #e2e8f0;border-left:4px solid ${FARBE.dark};padding:14px 16px;margin-bottom:16px}
     .info p{font-size:12px;color:#6b7280;margin-top:3px}
     .warn{background:#fef2f2;border:1px solid #fecaca;border-left:4px solid #dc2626;padding:12px 16px;margin-bottom:16px;font-size:13px;color:#991b1b}
     .ok{background:#f0fdf4;border:1px solid #bbf7d0;border-left:4px solid #16a34a;padding:12px 16px;font-size:13px;color:#14532d}
@@ -2404,8 +2414,8 @@ function renderSimplePage(title, bodyHtml) {
   </style>
 </head>
 <body><div class="card">
-  <div class="hdr"><small>GHBA</small><h1>${title}</h1></div>
-  <div class="body">${bodyHtml}<div class="ftr">GHBA – Projektverwaltung</div></div>
+  <div class="hdr"><small>${MARKE}</small><h1>${title}</h1></div>
+  <div class="body">${bodyHtml}<div class="ftr">${MARKE} – Projektverwaltung</div></div>
 </div></body></html>`
 }
 
@@ -2458,17 +2468,17 @@ app.post('/api/projects/:id/request-delete', requireAuth, async (req, res) => {
 <table width="100%" cellpadding="0" cellspacing="0" style="background:#f3f4f6;padding:32px 16px;">
 <tr><td align="center">
 <table width="520" cellpadding="0" cellspacing="0" style="background:#fff;border:1px solid #e5e7eb;max-width:520px;width:100%;">
-  <tr><td style="background:#000040;padding:24px 36px;">
-    <p style="margin:0 0 4px 0;font-size:10px;text-transform:uppercase;letter-spacing:2px;color:#8fbeff;">GHBA</p>
+  <tr><td style="background:${FARBE.dark};padding:24px 36px;">
+    <p style="margin:0 0 4px 0;font-size:10px;text-transform:uppercase;letter-spacing:2px;color:${FARBE.accent};">${MARKE}</p>
     <p style="margin:0;font-size:18px;font-weight:bold;color:#fbffe6;">Löschanfrage für ein Projekt</p>
   </td></tr>
   <tr><td style="padding:28px 36px 0 36px;">
     <p style="margin:0 0 18px 0;color:#374151;">Ein Benutzer möchte ein Projekt löschen und benötigt Ihre Freigabe als Administrator.</p>
-    <table cellpadding="4" cellspacing="0" style="background:#f8fafc;border:1px solid #e2e8f0;border-left:4px solid #000040;width:100%;padding:16px;">
+    <table cellpadding="4" cellspacing="0" style="background:#f8fafc;border:1px solid #e2e8f0;border-left:4px solid ${FARBE.dark};width:100%;padding:16px;">
       <tr><td style="padding:14px 16px;" colspan="2">
         <p style="margin:0 0 10px 0;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#6b7280;">Details der Anfrage</p>
         <table cellpadding="3" cellspacing="0">
-          <tr><td style="color:#6b7280;padding-right:16px;white-space:nowrap;">Projekt</td><td style="font-weight:bold;color:#000040;">${projName}</td></tr>
+          <tr><td style="color:#6b7280;padding-right:16px;white-space:nowrap;">Projekt</td><td style="font-weight:bold;color:${FARBE.dark};">${projName}</td></tr>
           <tr><td style="color:#6b7280;padding-right:16px;white-space:nowrap;">Angefragt von</td><td>${requesterName}</td></tr>
           <tr><td style="color:#6b7280;padding-right:16px;white-space:nowrap;">Datum</td><td>${today}</td></tr>
           ${protoLine}
@@ -2489,7 +2499,7 @@ app.post('/api/projects/:id/request-delete', requireAuth, async (req, res) => {
     <p style="margin:12px 0 0 0;font-size:11px;color:#9ca3af;">Sie können die Anfrage auch im AdminPanel unter dem Tab „Löschanfragen" bearbeiten.</p>
   </td></tr>
   <tr><td style="padding:16px 36px;border-top:1px solid #e5e7eb;text-align:center;">
-    <p style="margin:0;font-size:11px;color:#9ca3af;">GHBA · ${today}</p>
+    <p style="margin:0;font-size:11px;color:#9ca3af;">${MARKE} · ${today}</p>
   </td></tr>
 </table></td></tr></table>
 </body></html>`
@@ -2667,9 +2677,9 @@ app.post('/api/projects/:id/request-archive', requireAuth, async (req, res) => {
             <a href="${approveUrl}" style="display:inline-block;background:#16a34a;color:#fff;padding:8px 16px;text-decoration:none;margin-right:8px">Archivierung genehmigen</a>
             <a href="${rejectUrl}" style="display:inline-block;background:#6b7280;color:#fff;padding:8px 16px;text-decoration:none">Ablehnen</a>
           </p>
-          <p style="color:#888;margin-top:18px">GHBA · Projektverwaltung</p>
+          <p style="color:#888;margin-top:18px">${MARKE} · Projektverwaltung</p>
         </body></html>`
-        const text = `${requesterName} bittet um Freigabe der Archivierung des Projekts "${projName}" (${protocolCount} Protokolle).\n\nGenehmigen: ${approveUrl}\nAblehnen:  ${rejectUrl}\n\nGHBA`
+        const text = `${requesterName} bittet um Freigabe der Archivierung des Projekts "${projName}" (${protocolCount} Protokolle).\n\nGenehmigen: ${approveUrl}\nAblehnen:  ${rejectUrl}\n\n${MARKE}`
         for (const admin of admins) {
           try {
             await mailer.sendMail({ from, to: admin.email, subject: `Archivierungsanfrage: Projekt „${projName}"`, html, text })
@@ -2810,14 +2820,14 @@ app.post('/api/admin/deletion-requests/:id/reject', requireAuth, requireAdmin, (
 // Alles wird direkt am actionItem gespeichert (releaseRequest + releaseHistory),
 // nur das Token-Mapping liegt in einer eigenen Tabelle.
 //
-// Systemmails/-seiten dieses Bereichs sind mit „GHBA" gebrandet (neue CI noch
+// Systemmails/-seiten dieses Bereichs sind mit „${MARKE}" gebrandet (neue CI noch
 // nicht offiziell) und nutzen durchgehend die Schriftart Arial.
 // ══════════════════════════════════════════════════════════════════════════════
 
-// Absender für GHBA-Systemmails
+// Absender für ${MARKE}-Systemmails
 function systemFrom() {
   const addr = process.env.SMTP_FROM || process.env.GRAPH_SENDER || process.env.SMTP_USER || 'noreply@ghba'
-  return { addr, from: `"GHBA" <${addr}>` }
+  return { addr, from: `"${MARKE}" <${addr}>` }
 }
 
 function fmtDateDe(iso) {
@@ -2831,8 +2841,8 @@ function fmtDateDe(iso) {
 // ── E-Mail-Einstellungen (Templates + Zeitplanung) ────────────────────────────
 const EMAIL_DEFAULTS = {
   invite: {
-    subject:  'Willkommen bei GHBA, {name}!',
-    greeting: 'Du wurdest eingeladen, GHBA zu nutzen – unser gemeinsames Tool für Besprechungsprotokolle und Projektdokumentation.',
+    subject:  `Willkommen bei ${MARKE}, {name}!`,
+    greeting: `Du wurdest eingeladen, ${MARKE} zu nutzen – unser gemeinsames Tool für Besprechungsprotokolle und Projektdokumentation.`,
     footer:   'Viel Erfolg und willkommen im Team!',
   },
   protocol: {
@@ -2842,7 +2852,7 @@ const EMAIL_DEFAULTS = {
     no_next_meeting: 'Ein Termin für die nächste Besprechung wird gesondert bekannt gegeben.',
     actions_note:  'Die aus dem Protokoll resultierenden Aufgaben werden separat versendet.',
     reply_note:    'Für Rückfragen stehen wir gerne zur Verfügung.',
-    footer:        'GHBA',
+    footer:        MARKE,
   },
   protocol_review: {
     subject:      'Protokoll zur Freigabe – {project}{date_sep}{date}',
@@ -2850,46 +2860,46 @@ const EMAIL_DEFAULTS = {
     detail:       'Bitte prüfen Sie das Protokoll und teilen Sie uns Ihre Anmerkungen oder Ihre Freigabe durch Antwort auf diese E-Mail mit.',
     deadline_note: 'Wir bitten um Ihre Rückmeldung bis zum {deadline}.',
     silence_note: 'Sofern bis dahin keine Rückmeldung erfolgt, betrachten wir das Protokoll als freigegeben.',
-    footer:       'GHBA',
+    footer:       MARKE,
   },
   note: {
     subject:  '{type} – {note_subject}',
     greeting: 'Guten Tag,',
     intro:    'anbei erhalten Sie eine {type} zum Projekt {project}.',
-    footer:   'GHBA',
+    footer:   MARKE,
   },
   notebook: {
     subject:  'Notizbuch – {project}',
     greeting: 'Guten Tag,',
     intro:    'anbei erhalten Sie einen Auszug aus dem Notizbuch zum Projekt {project}.',
-    footer:   'GHBA',
+    footer:   MARKE,
   },
   diary: {
     subject:  'Baudokumentation – {project} – Stand {date}',
     greeting: 'Guten Tag,',
     intro:    'anbei erhalten Sie die Baudokumentation zum Projekt {project}.',
-    footer:   'GHBA',
+    footer:   MARKE,
   },
   task_assignment: {
     subject: 'Ihre Aufgaben – {project} – Stand {date}',
     intro:   'nachfolgend finden Sie eine Übersicht Ihrer Aufgaben aus dem Projekt {project}. Wir bitten Sie, die Aufgaben fristgerecht zu erfüllen. Der Status wird in der folgenden Projektbesprechung entsprechend aktualisiert.',
-    footer:  'GHBA',
+    footer:  MARKE,
   },
   plan_review: {
     subject: 'Planprüfung – {project} – {plan}',
     intro:   'Ihnen wurde ein Prüfvermerk zur Planprüfung im Projekt {project} zugewiesen. Wir bitten Sie, die Prüfung fristgerecht vorzunehmen.',
-    footer:  'GHBA · Planprüfung',
+    footer:  `${MARKE} · Planprüfung`,
   },
   release_notification: {
     subject: 'Neue Freimeldung – {project}',
     intro:   '{responsible} hat {count} Aufgabe(n) im Projekt {project} freigemeldet. Die Freimeldung erscheint im Protokoll an der jeweiligen Aufgabe als Hinweis „Freimeldung angefordert" und kann dort geprüft und genehmigt werden.',
-    footer:  'GHBA · Aufgabenverwaltung',
+    footer:  `${MARKE} · Aufgabenverwaltung`,
   },
   weekly_report: {
     subject:        'Projektstatus – {project}',
     releases_intro: 'Folgende Aufgaben wurden in den letzten 7 Tagen genehmigt:',
     open_intro:     'Folgende Aufgaben sind aktuell noch offen oder in Bearbeitung:',
-    footer:         'GHBA · Projektstatus',
+    footer:         `${MARKE} · Projektstatus`,
     schedule_day:   5,    // 0=So, 1=Mo, 2=Di, 3=Mi, 4=Do, 5=Fr, 6=Sa
     schedule_hour:  10,
     // Abschnitte des Projektstatus (im Admin-Bereich schaltbar)
@@ -3137,7 +3147,7 @@ app.post('/api/freimeldung/:token', async (req, res) => {
     db.releaseTokens.touch(row.token)
     touched.forEach(pid => broadcast('protocol', 'update', pid, nowIso))
 
-    // Projektverantwortliche benachrichtigen (GHBA-Systemmail)
+    // Projektverantwortliche benachrichtigen (${MARKE}-Systemmail)
     if (accepted > 0 && mailer.mailerStatus().configured) {
       notifyManagersOfRelease(row, accepted, getAppUrl(req)).catch(e =>
         console.warn('[freimeldung] Benachrichtigung fehlgeschlagen:', e.message))
@@ -3181,8 +3191,8 @@ async function notifyManagersOfRelease(tokenRow, count, appUrl) {
 <body style="margin:0;padding:0;background:#f3f4f6;font-family:Arial,sans-serif;font-size:14px;color:#1f2937;">
 <table width="100%" cellpadding="0" cellspacing="0" style="background:#f3f4f6;padding:32px 16px;"><tr><td align="center">
 <table width="520" cellpadding="0" cellspacing="0" style="background:#fff;border:1px solid #e5e7eb;max-width:520px;width:100%;">
-  <tr><td style="background:#000040;padding:24px 36px;">
-    <p style="margin:0 0 4px 0;font-size:10px;text-transform:uppercase;letter-spacing:2px;color:#8fbeff;font-family:Arial,sans-serif;">GHBA</p>
+  <tr><td style="background:${FARBE.dark};padding:24px 36px;">
+    <p style="margin:0 0 4px 0;font-size:10px;text-transform:uppercase;letter-spacing:2px;color:${FARBE.accent};font-family:Arial,sans-serif;">${MARKE}</p>
     <p style="margin:0;font-size:18px;font-weight:bold;color:#fbffe6;font-family:Arial,sans-serif;">Neue Freimeldung</p>
   </td></tr>
   <tr><td style="padding:28px 36px;font-family:Arial,sans-serif;">
@@ -3282,22 +3292,22 @@ function renderReleasePage(tokenRow) {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Freimeldung – GHBA</title>
+  <title>Freimeldung – ${MARKE}</title>
   <style>
     *{box-sizing:border-box;margin:0;padding:0;font-family:Arial,sans-serif}
     body{font-size:14px;color:#1f2937;background:#f3f4f6;min-height:100vh;padding:24px}
     .wrap{max-width:720px;margin:0 auto;background:#fff;border:1px solid #e5e7eb}
-    .hdr{background:#000040;color:#fbffe6;padding:22px 28px}
-    .hdr small{font-size:10px;text-transform:uppercase;letter-spacing:2px;color:#8fbeff;display:block;margin-bottom:4px}
+    .hdr{background:${FARBE.dark};color:#fbffe6;padding:22px 28px}
+    .hdr small{font-size:10px;text-transform:uppercase;letter-spacing:2px;color:${FARBE.accent};display:block;margin-bottom:4px}
     .hdr h1{font-size:18px;font-weight:bold}
-    .hdr p{font-size:13px;color:#8fbeff;margin-top:4px}
+    .hdr p{font-size:13px;color:${FARBE.accent};margin-top:4px}
     .body{padding:24px 28px}
     .intro{color:#4b5563;margin-bottom:18px;line-height:1.6}
     .task{border:1px solid #e5e7eb;border-left:4px solid #cbd5e1;margin-bottom:14px}
-    .task.sel{border-left-color:#000040;background:#f8fafc}
+    .task.sel{border-left-color:${FARBE.dark};background:#f8fafc}
     .task-head{display:flex;gap:10px;align-items:flex-start;padding:12px 14px;cursor:pointer}
     .task-head input{margin-top:3px;width:16px;height:16px;flex-shrink:0}
-    .task-desc{font-weight:bold;color:#000040}
+    .task-desc{font-weight:bold;color:${FARBE.dark}}
     .task-meta{font-size:12px;color:#6b7280;margin-top:3px}
     .task-body{padding:0 14px 14px 40px;display:none}
     .task.sel .task-body{display:block}
@@ -3306,7 +3316,7 @@ function renderReleasePage(tokenRow) {
     input[type=file]{font-size:13px}
     .pending{font-size:12px;color:#92400e;background:#fffbeb;border:1px solid #fde68a;padding:3px 8px;display:inline-block;margin-top:4px}
     .actions{margin-top:18px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
-    .btn{background:#000040;color:#fff;border:none;padding:11px 22px;font-size:14px;font-weight:bold;cursor:pointer}
+    .btn{background:${FARBE.dark};color:#fff;border:none;padding:11px 22px;font-size:14px;font-weight:bold;cursor:pointer}
     .btn:disabled{opacity:.5;cursor:not-allowed}
     .msg{padding:12px 16px;margin-bottom:16px;font-size:13px}
     .msg.ok{background:#f0fdf4;border:1px solid #bbf7d0;border-left:4px solid #16a34a;color:#14532d}
@@ -3318,7 +3328,7 @@ function renderReleasePage(tokenRow) {
 <body>
   <div class="wrap">
     <div class="hdr">
-      <small>GHBA</small>
+      <small>${MARKE}</small>
       <h1>Freimeldung von Aufgaben</h1>
       <p id="sub">${projName ? projName + ' · ' : ''}${tokenRow.responsible}</p>
     </div>
@@ -3330,7 +3340,7 @@ function renderReleasePage(tokenRow) {
         <button class="btn" id="submitBtn">Freimeldung beantragen</button>
         <span id="selcount" style="font-size:12px;color:#6b7280"></span>
       </div>
-      <div class="ftr">GHBA · Aufgabenverwaltung</div>
+      <div class="ftr">${MARKE} · Aufgabenverwaltung</div>
     </div>
   </div>
 <script>
@@ -3705,7 +3715,7 @@ function statusSection(title, intro, headBg, headColor, cols, rowsHtml) {
   ).join('')
   return `
     <tr><td style="padding:20px 36px 8px 36px;">
-      <p style="margin:0 0 10px 0;font-size:13px;font-weight:bold;color:#000040;text-transform:uppercase;letter-spacing:1px;font-family:Arial,sans-serif;">${title}</p>
+      <p style="margin:0 0 10px 0;font-size:13px;font-weight:bold;color:${FARBE.dark};text-transform:uppercase;letter-spacing:1px;font-family:Arial,sans-serif;">${title}</p>
       ${intro ? `<p style="margin:0 0 12px 0;color:#4B5563;font-size:13px;font-family:Arial,sans-serif;">${esc(intro)}</p>` : ''}
       <table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #E5E7EB;border-collapse:collapse;">
         <thead><tr style="background:${headBg};">${ths}</tr></thead>
@@ -3731,7 +3741,7 @@ function buildProjectStatusHtml(projName, data, tpl, sections) {
         <tr>
           <td style="padding:14px 16px;font-family:Arial,sans-serif;">
             <span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:${ampel.color};margin-right:8px;vertical-align:middle;"></span>
-            <span style="font-size:14px;font-weight:bold;color:#000040;vertical-align:middle;">${ampel.label}</span>
+            <span style="font-size:14px;font-weight:bold;color:${FARBE.dark};vertical-align:middle;">${ampel.label}</span>
             <span style="font-size:12px;color:#6B7280;margin-left:12px;vertical-align:middle;">
               ${data.overdueCount > 0 ? `<strong style="color:#DC2626;">${data.overdueCount} überfällig</strong> · ` : ''}
               ${data.openCount} offen · ${data.releases.length} diese Woche freigemeldet
@@ -3743,16 +3753,16 @@ function buildProjectStatusHtml(projName, data, tpl, sections) {
 
   if (sections.meetings) {
     const rows = data.meetings.map(m => trOpen
-      + td(`<strong style="color:#000040;">${fmtDl(m.date)}</strong>${m.time ? ' · ' + esc(m.time) + ' Uhr' : ''}`, 'white-space:nowrap;')
+      + td(`<strong style="color:${FARBE.dark};">${fmtDl(m.date)}</strong>${m.time ? ' · ' + esc(m.time) + ' Uhr' : ''}`, 'white-space:nowrap;')
       + td(esc(m.type)) + td(esc(m.location || '–')) + '</tr>').join('')
-    parts.push(statusSection('Nächste Besprechungstermine', null, '#000040', '#8FBEFF',
+    parts.push(statusSection('Nächste Besprechungstermine', null, FARBE.dark, FARBE.accent,
       ['Termin', 'Besprechung', 'Ort'], rows))
   }
 
   if (sections.overdue) {
     const rows = data.overdueTasks.map(t => trOpen
       + td(t.no || '–', 'color:#6B7280;white-space:nowrap;')
-      + td(`<strong style="color:#000040;">${esc(t.description)}</strong>`)
+      + td(`<strong style="color:${FARBE.dark};">${esc(t.description)}</strong>`)
       + td(esc(t.responsible || '–'), 'white-space:nowrap;')
       + td(`<strong style="color:#DC2626;">${fmtDl(t.deadline)} ⚠</strong>`, 'white-space:nowrap;')
       + '</tr>').join('')
@@ -3763,7 +3773,7 @@ function buildProjectStatusHtml(projName, data, tpl, sections) {
   if (sections.releases) {
     const rows = data.releases.map(r => trOpen
       + td(r.no || '–', 'color:#6B7280;white-space:nowrap;')
-      + td(`<strong style="color:#000040;">${esc(r.description)}</strong>`)
+      + td(`<strong style="color:${FARBE.dark};">${esc(r.description)}</strong>`)
       + td(esc(r.responsible || '–'), 'white-space:nowrap;')
       + td(fmtDateDe(r.approvedAt), 'white-space:nowrap;') + '</tr>').join('')
     parts.push(statusSection('Diese Woche freigemeldete Aufgaben', tpl.releases_intro,
@@ -3773,7 +3783,7 @@ function buildProjectStatusHtml(projName, data, tpl, sections) {
   if (sections.pending) {
     const rows = data.pendingReleases.map(r => trOpen
       + td(r.no || '–', 'color:#6B7280;white-space:nowrap;')
-      + td(`<strong style="color:#000040;">${esc(r.description)}</strong>`)
+      + td(`<strong style="color:${FARBE.dark};">${esc(r.description)}</strong>`)
       + td(esc(r.responsible || '–'), 'white-space:nowrap;')
       + td(r.requestedAt ? fmtDateDe(r.requestedAt) : '–', 'white-space:nowrap;') + '</tr>').join('')
     parts.push(statusSection('Ausstehende Freimeldungen', 'Diese Freimeldungen warten auf Genehmigung durch die Projektleitung:',
@@ -3783,20 +3793,20 @@ function buildProjectStatusHtml(projName, data, tpl, sections) {
   if (sections.open) {
     const rows = data.openTasks.map(t => trOpen
       + td(t.no || '–', 'color:#6B7280;white-space:nowrap;')
-      + td(`<strong style="color:#000040;">${esc(t.description)}</strong>`)
+      + td(`<strong style="color:${FARBE.dark};">${esc(t.description)}</strong>`)
       + td(esc(t.responsible || '–'), 'white-space:nowrap;')
       + td(fmtDl(t.deadline), 'white-space:nowrap;')
       + td(`<strong style="color:${PRIORITY_COLOR[t.priority] || '#6B7280'};">${PRIORITY_LABEL[t.priority] || t.priority}</strong>`, 'white-space:nowrap;font-size:11px;')
       + td(STATUS_LABEL[t.status] || t.status, 'white-space:nowrap;font-size:11px;') + '</tr>').join('')
     parts.push(statusSection('Offene Aufgaben', tpl.open_intro,
-      '#000040', '#8FBEFF', ['Nr.', 'Aufgabe', 'Verantwortlich', 'Frist', 'Priorität', 'Status'], rows))
+      FARBE.dark, FARBE.accent, ['Nr.', 'Aufgabe', 'Verantwortlich', 'Frist', 'Priorität', 'Status'], rows))
   }
 
   if (sections.reviews) {
     const rows = [
       ...data.planReviewsOpen.map(r => trOpen
         + td(`#${r.no}`, 'color:#6B7280;white-space:nowrap;')
-        + td(`<strong style="color:#000040;">${esc(r.title)}</strong><br><span style="color:#6B7280;font-size:11px;">${esc(r.plan)}</span>`)
+        + td(`<strong style="color:${FARBE.dark};">${esc(r.title)}</strong><br><span style="color:#6B7280;font-size:11px;">${esc(r.plan)}</span>`)
         + td(esc(r.assignedTo || '–'), 'white-space:nowrap;')
         + td(r.overdue ? `<strong style="color:#DC2626;">${fmtDl(r.dueDate)} ⚠</strong>` : fmtDl(r.dueDate), 'white-space:nowrap;')
         + td(REVIEW_STATUS_LABEL[r.status] || r.status, 'white-space:nowrap;font-size:11px;') + '</tr>'),
@@ -3813,7 +3823,7 @@ function buildProjectStatusHtml(projName, data, tpl, sections) {
 
   if (sections.issues) {
     const rows = data.bimIssuesOpen.map(i => trOpen
-      + td(`<strong style="color:#000040;">${esc(i.title)}</strong>${i.isNew ? ' <span style="color:#0E7490;font-size:10px;font-weight:bold;">NEU</span>' : ''}`)
+      + td(`<strong style="color:${FARBE.dark};">${esc(i.title)}</strong>${i.isNew ? ' <span style="color:#0E7490;font-size:10px;font-weight:bold;">NEU</span>' : ''}`)
       + td(esc(i.assignedTo || '–'), 'white-space:nowrap;')
       + td(fmtDl(i.dueDate), 'white-space:nowrap;')
       + td(`<strong style="color:${PRIORITY_COLOR[i.priority] || '#6B7280'};">${PRIORITY_LABEL[i.priority] || i.priority}</strong>`, 'white-space:nowrap;font-size:11px;')
@@ -3824,7 +3834,7 @@ function buildProjectStatusHtml(projName, data, tpl, sections) {
 
   if (sections.docs) {
     const rows = data.newDocs.map(d => trOpen
-      + td(`<strong style="color:#000040;">${esc(d.title)}</strong>`)
+      + td(`<strong style="color:${FARBE.dark};">${esc(d.title)}</strong>`)
       + td(esc(d.kind), 'white-space:nowrap;')
       + td(esc(d.by || '–'), 'white-space:nowrap;') + '</tr>').join('')
     parts.push(statusSection('Neue Dokumente', 'In der letzten Woche hochgeladen:',
@@ -3833,7 +3843,7 @@ function buildProjectStatusHtml(projName, data, tpl, sections) {
 
   if (sections.notes) {
     const rows = data.newNotes.map(n => trOpen
-      + td(`<strong style="color:#000040;">${esc(n.subject)}</strong>`)
+      + td(`<strong style="color:${FARBE.dark};">${esc(n.subject)}</strong>`)
       + td(esc(n.type), 'white-space:nowrap;') + '</tr>').join('')
     parts.push(statusSection('Neue Akten- / Telefonnotizen', 'In der letzten Woche erfasst (intern):',
       '#374151', '#D1D5DB', ['Betreff', 'Art'], rows))
@@ -3841,17 +3851,17 @@ function buildProjectStatusHtml(projName, data, tpl, sections) {
 
   return `<!DOCTYPE html>
 <html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
-<body style="margin:0;padding:0;background:#F0F0F0;font-family:Arial,sans-serif;font-size:14px;color:#1F2937;">
-  <table width="100%" cellpadding="0" cellspacing="0" style="background:#F0F0F0;padding:32px 16px;"><tr><td align="center">
+<body style="margin:0;padding:0;background:${FARBE.page};font-family:Arial,sans-serif;font-size:14px;color:#1F2937;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:${FARBE.page};padding:32px 16px;"><tr><td align="center">
     <table width="680" cellpadding="0" cellspacing="0" style="background:#FFF;border:1px solid #E5E7EB;max-width:680px;width:100%;">
-      <tr><td style="background:#000040;padding:28px 36px;">
-        <p style="margin:0;color:#8FBEFF;font-size:11px;letter-spacing:2px;text-transform:uppercase;font-family:Arial,sans-serif;">GHBA</p>
-        <p style="margin:6px 0 0 0;color:#FBFFE6;font-size:20px;font-weight:bold;font-family:Arial,sans-serif;">Projektstatus</p>
-        <p style="margin:4px 0 0 0;color:#8FBEFF;font-size:14px;font-weight:600;font-family:Arial,sans-serif;">${esc(projName)}</p>
-        <p style="margin:6px 0 0 0;color:#8FBEFF;font-size:12px;font-family:Arial,sans-serif;">Stand ${today}</p>
+      <tr><td style="background:${FARBE.dark};padding:28px 36px;">
+        <p style="margin:0;color:${FARBE.accent};font-size:11px;letter-spacing:2px;text-transform:uppercase;font-family:Arial,sans-serif;">${MARKE}</p>
+        <p style="margin:6px 0 0 0;color:${FARBE.light};font-size:20px;font-weight:bold;font-family:Arial,sans-serif;">Projektstatus</p>
+        <p style="margin:4px 0 0 0;color:${FARBE.accent};font-size:14px;font-weight:600;font-family:Arial,sans-serif;">${esc(projName)}</p>
+        <p style="margin:6px 0 0 0;color:${FARBE.accent};font-size:12px;font-family:Arial,sans-serif;">Stand ${today}</p>
       </td></tr>
       ${parts.join('')}
-      <tr><td style="padding:20px 36px;border-top:1px solid #E5E7EB;background:#F0F0F0;text-align:center;font-family:Arial,sans-serif;">
+      <tr><td style="padding:20px 36px;border-top:1px solid #E5E7EB;background:${FARBE.page};text-align:center;font-family:Arial,sans-serif;">
         <p style="margin:0;color:#9CA3AF;font-size:12px;">${esc(tpl.footer)} · ${today}</p>
       </td></tr>
     </table>
@@ -4089,13 +4099,33 @@ const distDir = path.join(__dirname, '../dist')
 // Dateiname über eine Factory (serveHtmlFile) und nicht als Positionsargument.
 const serveHtml = serveHtmlFile('index.html')
 function serveHtmlFile(file) { return (_req, res) => sendHtml(res, file) }
+
+// Welche Seite welchen Namen trägt. Die gebaute Datei enthält noch den Namen
+// aus dem Quelltext – der Server setzt beim Ausliefern den ein, der für diesen
+// Betreiber konfiguriert ist (siehe server/betreiber.js).
+const SEITENTITEL = {
+  'index.html':           () => betreiber.appName,
+  'personalplanung.html': () => betreiber.appNameStaff,
+  'pruefstation.html':    () => betreiber.appNameCheck,
+}
+
 function sendHtml(res, file, extraVars = []) {
   const htmlPath = path.join(distDir, file)
   if (!fs.existsSync(htmlPath)) {
     return res.status(503).send('Frontend nicht gebaut. Bitte zuerst "npm run build" ausführen.')
   }
   let html = fs.readFileSync(htmlPath, 'utf8')
+  const titel = SEITENTITEL[file]
+  if (titel) {
+    html = html
+      .replace(/<title>[^<]*<\/title>/i, `<title>${esc(titel())}</title>`)
+      .replace(/(<meta name="apple-mobile-web-app-title" content=")[^"]*(")/i,
+               `$1${esc(betreiber.appShort)}$2`)
+  }
   const vars = ['window.__SERVER_MODE__=true']
+  // Name und Kürzel des Betreibers für die Oberfläche. Ohne Server (lokaler
+  // Betrieb, Electron) greifen die Vorgaben in src/brand.js.
+  vars.push(`window.__BRAND__=${JSON.stringify(betreiber.forClient())}`)
   if (API_KEY) vars.push(`window.__API_KEY__=${JSON.stringify(API_KEY)}`)
   vars.push(...extraVars)
   html = html.replace('</head>', `<script>${vars.join(';')}</script></head>`)
@@ -4242,7 +4272,7 @@ app.post('/api/protocols/:id/send-email', requireAuth, async (req, res) => {
     const sender      = req.user !== '__apikey__' && req.user !== '__anonymous__' ? db.users.get(req.user) : null
     const senderName  = sender?.display_name || null
     const replyTo     = sender?.email || null
-    const fromAddress = senderName ? `"${senderName} (GHBA)" <${from}>` : from
+    const fromAddress = senderName ? `"${senderName} (${MARKE})" <${from}>` : from
 
     const projStr     = protocol.projectName || 'Unbekanntes Projekt'
     const meetingType = protocol.meetingType || 'Besprechung'
@@ -4286,7 +4316,7 @@ app.post('/api/protocols/:id/send-email', requireAuth, async (req, res) => {
     let midHtml, midText
     if (isReview) {
       const deadlineHtml = deadlineStr
-        ? `<tr><td style="padding:0 36px 4px 36px;color:#000040;font-size:14px;"><strong>${esc(applyTpl(tpl.deadline_note, { deadline: deadlineStr }))}</strong></td></tr>
+        ? `<tr><td style="padding:0 36px 4px 36px;color:${FARBE.dark};font-size:14px;"><strong>${esc(applyTpl(tpl.deadline_note, { deadline: deadlineStr }))}</strong></td></tr>
            <tr><td style="padding:2px 36px 4px 36px;color:#6B7280;font-size:13px;">${esc(tpl.silence_note)}</td></tr>`
         : ''
       midHtml = deadlineHtml
@@ -4297,7 +4327,7 @@ app.post('/api/protocols/:id/send-email', requireAuth, async (req, res) => {
     } else {
       midHtml =
         (nextStr
-          ? `<tr><td style="padding:0 36px 4px 36px;color:#000040;font-size:14px;"><strong>Nächste Besprechung:</strong> ${nextStr}</td></tr>`
+          ? `<tr><td style="padding:0 36px 4px 36px;color:${FARBE.dark};font-size:14px;"><strong>Nächste Besprechung:</strong> ${nextStr}</td></tr>`
           : `<tr><td style="padding:0 36px 4px 36px;color:#6B7280;font-size:14px;">${esc(tpl.no_next_meeting)}</td></tr>`)
         + (hasActions ? `<tr><td style="padding:8px 36px 0 36px;color:#4B5563;font-size:14px;">${esc(tpl.actions_note)}</td></tr>` : '')
       midText = [
@@ -4308,19 +4338,19 @@ app.post('/api/protocols/:id/send-email', requireAuth, async (req, res) => {
 
     const html = `<!DOCTYPE html>
 <html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
-<body style="margin:0;padding:0;background:#F0F0F0;font-family:Arial,sans-serif;font-size:14px;color:#1F2937;">
-  <table width="100%" cellpadding="0" cellspacing="0" style="background:#F0F0F0;padding:32px 16px;">
+<body style="margin:0;padding:0;background:${FARBE.page};font-family:Arial,sans-serif;font-size:14px;color:#1F2937;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:${FARBE.page};padding:32px 16px;">
     <tr><td align="center">
       <table width="620" cellpadding="0" cellspacing="0" style="background:#FFF;border:1px solid #E5E7EB;max-width:620px;width:100%;">
-        <tr><td style="background:#000040;padding:28px 36px;">
-          <p style="margin:0;color:#8FBEFF;font-size:11px;letter-spacing:2px;text-transform:uppercase;">GHBA${isReview ? ' · Freigabe erbeten' : ''}</p>
-          <p style="margin:6px 0 0 0;color:#FBFFE6;font-size:20px;font-weight:bold;">${meetingType}${isReview ? ' – zur Freigabe' : ''}</p>
-          ${subtitleStr ? `<p style="margin:4px 0 0 0;color:#FBFFE6;font-size:15px;font-weight:600;">${esc(subtitleStr)}</p>` : ''}
-          <p style="margin:4px 0 0 0;color:#8FBEFF;font-size:14px;font-weight:600;">${projStr}</p>
-          ${protoDate ? `<p style="margin:6px 0 0 0;color:#8FBEFF;font-size:12px;">Datum der Besprechung: ${protoDate}</p>` : ''}
+        <tr><td style="background:${FARBE.dark};padding:28px 36px;">
+          <p style="margin:0;color:${FARBE.accent};font-size:11px;letter-spacing:2px;text-transform:uppercase;">${MARKE}${isReview ? ' · Freigabe erbeten' : ''}</p>
+          <p style="margin:6px 0 0 0;color:${FARBE.light};font-size:20px;font-weight:bold;">${meetingType}${isReview ? ' – zur Freigabe' : ''}</p>
+          ${subtitleStr ? `<p style="margin:4px 0 0 0;color:${FARBE.light};font-size:15px;font-weight:600;">${esc(subtitleStr)}</p>` : ''}
+          <p style="margin:4px 0 0 0;color:${FARBE.accent};font-size:14px;font-weight:600;">${projStr}</p>
+          ${protoDate ? `<p style="margin:6px 0 0 0;color:${FARBE.accent};font-size:12px;">Datum der Besprechung: ${protoDate}</p>` : ''}
         </td></tr>
         <tr><td style="padding:28px 36px 8px 36px;">
-          <p style="margin:0;font-size:15px;color:#000040;">Guten Tag,</p>
+          <p style="margin:0;font-size:15px;color:${FARBE.dark};">Guten Tag,</p>
           <p style="margin:10px 0 0 0;color:#4B5563;">${esc(introText)}</p>
           <p style="margin:10px 0 0 0;color:#4B5563;">${esc(tpl.detail)}</p>
         </td></tr>
@@ -4329,7 +4359,7 @@ app.post('/api/protocols/:id/send-email', requireAuth, async (req, res) => {
         <tr><td style="padding:16px 36px 28px 36px;color:#4B5563;font-size:14px;">
           ${esc(isReview ? '' : tpl.reply_note)}
         </td></tr>
-        <tr><td style="padding:20px 36px;border-top:1px solid #E5E7EB;background:#F0F0F0;text-align:center;">
+        <tr><td style="padding:20px 36px;border-top:1px solid #E5E7EB;background:${FARBE.page};text-align:center;">
           <p style="margin:0;color:#9CA3AF;font-size:12px;">${esc(tpl.footer)}${senderName ? ` · Gesendet von ${senderName}` : ''} · ${today}</p>
         </td></tr>
       </table>
@@ -4494,29 +4524,29 @@ app.patch('/api/projects/:id/access', requireAuth, writeLimiter, (req, res) => {
           const displayName = u.display_name || username
           const html = `<!DOCTYPE html>
 <html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
-<body style="margin:0;padding:0;background:#F0F0F0;font-family:Arial,sans-serif;font-size:14px;color:#1F2937;">
-  <table width="100%" cellpadding="0" cellspacing="0" style="background:#F0F0F0;padding:32px 16px;">
+<body style="margin:0;padding:0;background:${FARBE.page};font-family:Arial,sans-serif;font-size:14px;color:#1F2937;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:${FARBE.page};padding:32px 16px;">
     <tr><td align="center">
       <table width="620" cellpadding="0" cellspacing="0" style="background:#FFF;border:1px solid #E5E7EB;max-width:620px;width:100%;">
-        <tr><td style="background:#000040;padding:28px 36px;">
-          <p style="margin:0;color:#8FBEFF;font-size:11px;letter-spacing:2px;text-transform:uppercase;">GHBA</p>
-          <p style="margin:6px 0 0 0;color:#FBFFE6;font-size:20px;font-weight:bold;">Projektadministrator</p>
-          <p style="margin:4px 0 0 0;color:#8FBEFF;font-size:14px;">${projName}</p>
+        <tr><td style="background:${FARBE.dark};padding:28px 36px;">
+          <p style="margin:0;color:${FARBE.accent};font-size:11px;letter-spacing:2px;text-transform:uppercase;">${MARKE}</p>
+          <p style="margin:6px 0 0 0;color:${FARBE.light};font-size:20px;font-weight:bold;">Projektadministrator</p>
+          <p style="margin:4px 0 0 0;color:${FARBE.accent};font-size:14px;">${projName}</p>
         </td></tr>
         <tr><td style="padding:28px 36px 16px 36px;">
-          <p style="margin:0;font-size:15px;color:#000040;">Guten Tag, ${displayName},</p>
+          <p style="margin:0;font-size:15px;color:${FARBE.dark};">Guten Tag, ${displayName},</p>
           <p style="margin:12px 0 0 0;color:#4B5563;">Sie wurden von <strong>${byName}</strong> als <strong>Projektadministrator</strong> für das Projekt <strong>${projName}</strong> ernannt.</p>
           <p style="margin:10px 0 0 0;color:#4B5563;">Als Projektadministrator können Sie den Projektzugang, Co-Administratoren, Autoren und Freimelde-Links verwalten.</p>
-          ${appUrl ? `<p style="margin:20px 0 0 0;"><a href="${appUrl}" style="background:#000040;color:#FBFFE6;padding:10px 22px;text-decoration:none;font-weight:bold;font-size:14px;display:inline-block;">Zur Anwendung</a></p>` : ''}
+          ${appUrl ? `<p style="margin:20px 0 0 0;"><a href="${appUrl}" style="background:${FARBE.dark};color:${FARBE.light};padding:10px 22px;text-decoration:none;font-weight:bold;font-size:14px;display:inline-block;">Zur Anwendung</a></p>` : ''}
         </td></tr>
-        <tr><td style="padding:20px 36px;border-top:1px solid #E5E7EB;background:#F0F0F0;text-align:center;">
-          <p style="margin:0;color:#9CA3AF;font-size:12px;">GHBA · ${today}</p>
+        <tr><td style="padding:20px 36px;border-top:1px solid #E5E7EB;background:${FARBE.page};text-align:center;">
+          <p style="margin:0;color:#9CA3AF;font-size:12px;">${MARKE} · ${today}</p>
         </td></tr>
       </table>
     </td></tr>
   </table>
 </body></html>`
-          const text = `Guten Tag, ${displayName},\n\nSie wurden von ${byName} als Projektadministrator für das Projekt „${projName}" ernannt.\n\nAls Projektadministrator können Sie den Projektzugang, Co-Administratoren, Autoren und Freimelde-Links verwalten.\n\n${appUrl ? 'Zur Anwendung: ' + appUrl + '\n\n' : ''}GHBA`
+          const text = `Guten Tag, ${displayName},\n\nSie wurden von ${byName} als Projektadministrator für das Projekt „${projName}" ernannt.\n\nAls Projektadministrator können Sie den Projektzugang, Co-Administratoren, Autoren und Freimelde-Links verwalten.\n\n${appUrl ? 'Zur Anwendung: ' + appUrl + '\n\n' : ''}${MARKE}`
           mailer.sendMail({
             from, to: u.email,
             subject: `Projektadministrator – ${projName}`,
@@ -4678,7 +4708,7 @@ app.post('/api/notes/:id/send-email', requireAuth, async (req, res) => {
     const from    = process.env.SMTP_FROM || process.env.GRAPH_SENDER || process.env.SMTP_USER || 'noreply@ghba'
     const sender  = req.user !== '__apikey__' && req.user !== '__anonymous__' ? db.users.get(req.user) : null
     const replyTo = sender?.email || null
-    const fromAddress = sender?.display_name ? `"${sender.display_name} (GHBA)" <${from}>` : from
+    const fromAddress = sender?.display_name ? `"${sender.display_name} (${MARKE})" <${from}>` : from
 
     const noteTpl     = getEmailSettings().note
     const NOTE_TYPE_LABELS = { aktennotiz: 'Aktennotiz', telefonnotiz: 'Telefonnotiz', besprochen: 'Besprechungsnotiz' }
@@ -4702,18 +4732,18 @@ app.post('/api/notes/:id/send-email', requireAuth, async (req, res) => {
 
     const html = `<!DOCTYPE html>
 <html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
-<body style="margin:0;padding:0;background:#F0F0F0;font-family:Arial,sans-serif;font-size:14px;color:#1F2937;">
-  <table width="100%" cellpadding="0" cellspacing="0" style="background:#F0F0F0;padding:32px 16px;">
+<body style="margin:0;padding:0;background:${FARBE.page};font-family:Arial,sans-serif;font-size:14px;color:#1F2937;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:${FARBE.page};padding:32px 16px;">
     <tr><td align="center">
       <table width="620" cellpadding="0" cellspacing="0" style="background:#FFF;border:1px solid #E5E7EB;max-width:620px;width:100%;">
-        <tr><td style="background:#000040;padding:28px 36px;">
-          <p style="margin:0;color:#8FBEFF;font-size:11px;letter-spacing:2px;text-transform:uppercase;">GHBA</p>
-          <p style="margin:6px 0 0 0;color:#FBFFE6;font-size:20px;font-weight:bold;">${typeLabel}</p>
-          ${projName  ? `<p style="margin:4px 0 0 0;color:#8FBEFF;font-size:14px;">${esc(projName)}</p>` : ''}
-          ${dateStr   ? `<p style="margin:6px 0 0 0;color:#8FBEFF;font-size:12px;">Datum: ${dateStr}${note.time ? ', ' + note.time + ' Uhr' : ''}</p>` : ''}
+        <tr><td style="background:${FARBE.dark};padding:28px 36px;">
+          <p style="margin:0;color:${FARBE.accent};font-size:11px;letter-spacing:2px;text-transform:uppercase;">${MARKE}</p>
+          <p style="margin:6px 0 0 0;color:${FARBE.light};font-size:20px;font-weight:bold;">${typeLabel}</p>
+          ${projName  ? `<p style="margin:4px 0 0 0;color:${FARBE.accent};font-size:14px;">${esc(projName)}</p>` : ''}
+          ${dateStr   ? `<p style="margin:6px 0 0 0;color:${FARBE.accent};font-size:12px;">Datum: ${dateStr}${note.time ? ', ' + note.time + ' Uhr' : ''}</p>` : ''}
         </td></tr>
         <tr><td style="padding:28px 36px 12px 36px;">
-          <p style="margin:0;font-size:15px;color:#000040;">${esc(greeting)}</p>
+          <p style="margin:0;font-size:15px;color:${FARBE.dark};">${esc(greeting)}</p>
           <p style="margin:10px 0 0 0;color:#4B5563;">${esc(introText)}</p>
           ${pdfBase64 ? `<p style="margin:10px 0 0 0;color:#4B5563;">Die <strong>${esc(typeLabel)}</strong> ist dieser E-Mail als <strong>PDF-Anlage</strong> beigefügt.</p>` : ''}
         </td></tr>
@@ -4722,7 +4752,7 @@ app.post('/api/notes/:id/send-email', requireAuth, async (req, res) => {
           <p style="margin:0 0 8px 0;font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:#9CA3AF;">Inhalt</p>
           <div style="font-size:14px;color:#1F2937;line-height:1.6;">${note.content || '<p style="color:#9CA3AF;">Kein Inhalt.</p>'}</div>
         </td></tr>
-        <tr><td style="padding:20px 36px;border-top:1px solid #E5E7EB;background:#F0F0F0;text-align:center;">
+        <tr><td style="padding:20px 36px;border-top:1px solid #E5E7EB;background:${FARBE.page};text-align:center;">
           <p style="margin:0;color:#9CA3AF;font-size:12px;">${esc(noteTpl.footer)}${creatorName ? ` · Gesendet von ${esc(creatorName)}` : ''} · ${today}</p>
         </td></tr>
       </table>
@@ -4795,7 +4825,7 @@ app.post('/api/notebooks/:projectId/send-email', requireAuth, async (req, res) =
     const from        = process.env.SMTP_FROM || process.env.GRAPH_SENDER || process.env.SMTP_USER || 'noreply@ghba'
     const sender      = req.user !== '__apikey__' && req.user !== '__anonymous__' ? db.users.get(req.user) : null
     const replyTo     = sender?.email || null
-    const fromAddress = sender?.display_name ? `"${sender.display_name} (GHBA)" <${from}>` : from
+    const fromAddress = sender?.display_name ? `"${sender.display_name} (${MARKE})" <${from}>` : from
     const nbToday     = new Date().toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })
     const nbCreator   = sender?.display_name || null
     const nbVars      = { project: proj.name || 'Projekt' }
@@ -4803,17 +4833,17 @@ app.post('/api/notebooks/:projectId/send-email', requireAuth, async (req, res) =
     const nbIntro     = applyTpl(nbTpl.intro, nbVars)
     const html = `<!DOCTYPE html>
 <html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
-<body style="margin:0;padding:0;background:#F0F0F0;font-family:Arial,sans-serif;font-size:14px;color:#1F2937;">
-  <table width="100%" cellpadding="0" cellspacing="0" style="background:#F0F0F0;padding:32px 16px;">
+<body style="margin:0;padding:0;background:${FARBE.page};font-family:Arial,sans-serif;font-size:14px;color:#1F2937;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:${FARBE.page};padding:32px 16px;">
     <tr><td align="center">
       <table width="620" cellpadding="0" cellspacing="0" style="background:#FFF;border:1px solid #E5E7EB;max-width:620px;width:100%;">
-        <tr><td style="background:#000040;padding:28px 36px;">
-          <p style="margin:0;color:#8FBEFF;font-size:11px;letter-spacing:2px;text-transform:uppercase;">GHBA</p>
-          <p style="margin:6px 0 0 0;color:#FBFFE6;font-size:20px;font-weight:bold;">Notizbuch</p>
-          <p style="margin:4px 0 0 0;color:#8FBEFF;font-size:14px;">${esc(proj.name || 'Projekt')}</p>
+        <tr><td style="background:${FARBE.dark};padding:28px 36px;">
+          <p style="margin:0;color:${FARBE.accent};font-size:11px;letter-spacing:2px;text-transform:uppercase;">${MARKE}</p>
+          <p style="margin:6px 0 0 0;color:${FARBE.light};font-size:20px;font-weight:bold;">Notizbuch</p>
+          <p style="margin:4px 0 0 0;color:${FARBE.accent};font-size:14px;">${esc(proj.name || 'Projekt')}</p>
         </td></tr>
         <tr><td style="padding:28px 36px 12px 36px;">
-          <p style="margin:0;font-size:15px;color:#000040;">${esc(nbTpl.greeting)}</p>
+          <p style="margin:0;font-size:15px;color:${FARBE.dark};">${esc(nbTpl.greeting)}</p>
           <p style="margin:10px 0 0 0;color:#4B5563;">${esc(nbIntro)}${nbCreator ? ` Gesendet von <strong>${esc(nbCreator)}</strong>.` : ''}</p>
           ${pdfBase64 ? `<p style="margin:10px 0 0 0;color:#4B5563;">Das Notizbuch ist dieser E-Mail als <strong>PDF-Anlage</strong> beigefügt.</p>` : ''}
         </td></tr>
@@ -4821,7 +4851,7 @@ app.post('/api/notebooks/:projectId/send-email', requireAuth, async (req, res) =
           <p style="margin:0 0 8px 0;font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:#9CA3AF;">Inhalt</p>
           <div style="font-size:14px;color:#1F2937;line-height:1.6;">${bodyHtml || '<p style="color:#9CA3AF;">Kein Inhalt.</p>'}</div>
         </td></tr>
-        <tr><td style="padding:20px 36px;border-top:1px solid #E5E7EB;background:#F0F0F0;text-align:center;">
+        <tr><td style="padding:20px 36px;border-top:1px solid #E5E7EB;background:${FARBE.page};text-align:center;">
           <p style="margin:0;color:#9CA3AF;font-size:12px;">${esc(nbTpl.footer)}${nbCreator ? ` · Gesendet von ${esc(nbCreator)}` : ''} · ${nbToday}</p>
         </td></tr>
       </table>
@@ -4853,7 +4883,7 @@ app.post('/api/projects/:id/diary/send-email', requireAuth, async (req, res) => 
     const from        = process.env.SMTP_FROM || process.env.GRAPH_SENDER || process.env.SMTP_USER || 'noreply@ghba'
     const sender      = req.user !== '__apikey__' && req.user !== '__anonymous__' ? db.users.get(req.user) : null
     const replyTo     = sender?.email || null
-    const fromAddress = sender?.display_name ? `"${sender.display_name} (GHBA)" <${from}>` : from
+    const fromAddress = sender?.display_name ? `"${sender.display_name} (${MARKE})" <${from}>` : from
     const todayLabel  = new Date().toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })
     const creator     = sender?.display_name || null
     const vars        = { project: proj.name || 'Projekt', date: todayLabel }
@@ -4865,17 +4895,17 @@ app.post('/api/projects/:id/diary/send-email', requireAuth, async (req, res) => 
 
     const html = `<!DOCTYPE html>
 <html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
-<body style="margin:0;padding:0;background:#F0F0F0;font-family:Arial,sans-serif;font-size:14px;color:#1F2937;">
-  <table width="100%" cellpadding="0" cellspacing="0" style="background:#F0F0F0;padding:32px 16px;">
+<body style="margin:0;padding:0;background:${FARBE.page};font-family:Arial,sans-serif;font-size:14px;color:#1F2937;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:${FARBE.page};padding:32px 16px;">
     <tr><td align="center">
       <table width="620" cellpadding="0" cellspacing="0" style="background:#FFF;border:1px solid #E5E7EB;max-width:620px;width:100%;">
-        <tr><td style="background:#000040;padding:28px 36px;">
-          <p style="margin:0;color:#8FBEFF;font-size:11px;letter-spacing:2px;text-transform:uppercase;">GHBA</p>
-          <p style="margin:6px 0 0 0;color:#FBFFE6;font-size:20px;font-weight:bold;">Baudokumentation</p>
-          <p style="margin:4px 0 0 0;color:#8FBEFF;font-size:14px;">${esc(proj.name || 'Projekt')}</p>
+        <tr><td style="background:${FARBE.dark};padding:28px 36px;">
+          <p style="margin:0;color:${FARBE.accent};font-size:11px;letter-spacing:2px;text-transform:uppercase;">${MARKE}</p>
+          <p style="margin:6px 0 0 0;color:${FARBE.light};font-size:20px;font-weight:bold;">Baudokumentation</p>
+          <p style="margin:4px 0 0 0;color:${FARBE.accent};font-size:14px;">${esc(proj.name || 'Projekt')}</p>
         </td></tr>
         <tr><td style="padding:28px 36px 12px 36px;">
-          <p style="margin:0;font-size:15px;color:#000040;">${esc(tpl.greeting || 'Guten Tag,')}</p>
+          <p style="margin:0;font-size:15px;color:${FARBE.dark};">${esc(tpl.greeting || 'Guten Tag,')}</p>
           <p style="margin:10px 0 0 0;color:#4B5563;">${esc(intro)}${creator ? ` Gesendet von <strong>${esc(creator)}</strong>.` : ''}</p>
           ${message ? `<p style="margin:12px 0 0 0;color:#1F2937;white-space:pre-wrap;">${esc(message)}</p>` : ''}
           ${pdfBase64 ? `<p style="margin:12px 0 0 0;color:#4B5563;">Die Baudokumentation ist dieser E-Mail als <strong>PDF-Anlage</strong> beigefügt.</p>` : ''}
@@ -4887,8 +4917,8 @@ app.post('/api/projects/:id/diary/send-email', requireAuth, async (req, res) => 
             ${dateRange ? ` · Zeitraum ${esc(dateRange)}` : ''}
           </p>
         </td></tr>
-        <tr><td style="padding:20px 36px;border-top:1px solid #E5E7EB;background:#F0F0F0;text-align:center;">
-          <p style="margin:0;color:#9CA3AF;font-size:12px;">${esc(tpl.footer || 'GHBA')}${creator ? ` · Gesendet von ${esc(creator)}` : ''} · ${todayLabel}</p>
+        <tr><td style="padding:20px 36px;border-top:1px solid #E5E7EB;background:${FARBE.page};text-align:center;">
+          <p style="margin:0;color:#9CA3AF;font-size:12px;">${esc(tpl.footer || MARKE)}${creator ? ` · Gesendet von ${esc(creator)}` : ''} · ${todayLabel}</p>
         </td></tr>
       </table>
     </td></tr>
@@ -5079,7 +5109,7 @@ app.use((err, req, res, _next) => {
 
 // ── Server starten ────────────────────────────────────────────────────────────
 const onListen = (protocol) => () => {
-  console.log(`✓ Komplizen Protokolle läuft auf ${protocol}://${HOST}:${PORT}`)
+  console.log(`✓ ${betreiber.appName} läuft auf ${protocol}://${HOST}:${PORT}`)
   console.log(`  Datenbank     : ${process.env.DB_PATH || path.join(__dirname, '../data')}`)
   console.log(`  API-Schlüssel : ${API_KEY ? 'Aktiv (X-API-Key)' : 'Deaktiviert'}`)
   console.log(`  CORS          : ${allowedOrigins ? allowedOrigins.join(', ') : 'Alle erlaubt'}`)

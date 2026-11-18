@@ -638,6 +638,33 @@ die App nennt dann im Fehlertext die fehlende Berechtigung.
 `.btn-ghost`, `.btn-danger`, `.input`, `.select`, `.card`, `.badge-{blue|green|yellow|red|gray}`.
 **Farben:** `brand` (Blautöne), `night`, `sky`, `concrete`, `light`.
 
+### Name und Marke des Betreibers — nie hart eintragen
+
+`server/betreiber.js` (Server) und `src/brand.js` (Oberfläche) halten alles,
+was beim Wechsel auf ein anderes Büro anders ist: Name der Anwendung, Kürzel
+des Betreibers, Büroname für den Assistenten, Logodatei und die vier Farben
+der System-E-Mails. Alles kommt aus Umgebungsvariablen, Voreinstellung ist
+GHBA/Komplizen — ohne gesetzte Variablen ändert sich nichts.
+
+```
+Server       const betreiber = require('./betreiber')
+             MARKE = betreiber.name        in jeder System-Mail
+             FARBE = betreiber.colors      Kopfband, Hintergrund
+Oberfläche   import brand from '../brand'
+             brand.appName                 Fenstertitel, Anmeldung, Kopfzeile
+             brand.name                    Grusszeile unter Mail-Entwürfen
+```
+
+Den Weg dazwischen geht `sendHtml`: Es ersetzt beim Ausliefern den `<title>`
+und speist `window.__BRAND__` ein. Ohne Server (lokal, Electron) greifen die
+Vorgaben in `src/brand.js`.
+
+> **Regel:** Kein neues „GHBA" und kein neues „Komplizen" im Code. Wer einen
+> Namen hart einträgt, macht die Anwendung für jedes andere Büro unbrauchbar —
+> und findet ihn beim nächsten Mal nicht wieder. Prüfen lässt sich das mit
+> `grep -rn "GHBA\|Komplizen" src/ server/ --include=*.js --include=*.jsx`:
+> Treffer darf es nur in `betreiber.js` und `brand.js` geben.
+
 ---
 
 ## 10. Wichtige Muster & Logik
@@ -750,6 +777,9 @@ Print/PDF (`window.print()`, `@page A4`).
 11. **DSM-Login braucht erreichbares `SYNOLOGY_URL`** (Port 5000/5001); fällt die NAS-API aus, schlägt der Login fehl.
 12. **SMTP Microsoft 365** mit Sicherheitsstandards gesperrt → Graph nutzen.
 13. **ParticipantsList** (Teilnehmer im Protokoll) ≠ **BeteiligtenModal** (Projektbeteiligtenliste).
+14. **Marke nie hart eintragen** → `betreiber.js` / `brand.js` (siehe §9). Platzhalter
+    wie `${MARKE}` wirken nur in Template-Literalen — in einem einfachen String
+    stehen sie wörtlich in der E-Mail.
 
 ---
 

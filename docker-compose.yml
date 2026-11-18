@@ -21,6 +21,32 @@ services:
       PUBLIC_URL: "http://192.168.178.250:3000"
       DB_PATH: "/data"
       LOG_PATH: "/logs"
+      # ── Betreiber: Name, Kürzel, Logo, Farben ───────────────────────────────
+      # Alles, was beim Wechsel auf ein anderes Büro anders ist. Ohne Eintrag
+      # gelten die Werte von GHBA/Komplizen — am laufenden Betrieb ändert sich
+      # also nichts. Ein anderes Büro trägt hier seine Werte ein und muss keine
+      # Zeile Code anfassen. Welche Variable was steuert: server/betreiber.js.
+      #
+      # Der Name steht im Fenstertitel, auf der Anmeldeseite und in der
+      # Kopfzeile; das Kürzel im Kopfband und in der Fußzeile jeder System-Mail.
+      # APP_NAME:       "Komplizen Protokolle"
+      # APP_SHORT:      "Komplizen"           # davon abgeleitet: "<Kurzname> Mitarbeiter", "<Kurzname> Prüfstation"
+      # APP_NAME_STAFF: "Komplizen Mitarbeiter"
+      # APP_NAME_CHECK: "Komplizen Prüfstation"
+      # BRAND_NAME:     "GHBA"
+      # BRAND_LONG:     "Gehbauer | Helten | Bickel | Sgró Architekten Partnerschaft GmbB"
+      # OFFICE_NAME:    "Komplizen Industrieplanung und Architektur"   # so nennt der Assistent das Büro
+      #
+      # Logo der System-Mails: Datei im ausgelieferten dist/-Verzeichnis.
+      # Fehlt sie, setzen die Mails statt des Bildes das Kürzel als Überschrift.
+      # BRAND_LOGO:         "Logo_Komplizen_sky1.png"
+      #
+      # Farben der System-Mails und der Systemseiten (Freimeldung, Freigaben).
+      # Die Oberfläche selbst nimmt ihre Farben aus Tailwind.
+      # BRAND_COLOR_DARK:   "#000040"   # Kopfband
+      # BRAND_COLOR_ACCENT: "#8FBEFF"   # Schrift auf dem Kopfband
+      # BRAND_COLOR_LIGHT:  "#FBFFE6"   # Überschrift im Kopfband
+      # BRAND_COLOR_PAGE:   "#F0F0F0"   # Seitenhintergrund
       # ── Einbettung der Gelände-Ansicht ins Komplizen-Dashboard ──────────────
       # Ohne Eintrag bleibt es bei frame-ancestors 'self': /gelaende läuft im
       # Browser, das Dashboard-iframe bleibt leer. Hier die Dashboard-Adresse

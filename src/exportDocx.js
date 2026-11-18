@@ -4,6 +4,7 @@ import {
   Paragraph, Table, TableCell, TableRow, TextRun, VerticalAlign, WidthType,
 } from 'docx'
 import { buildProtocolNo, formatDate } from './utils'
+import brand from './brand'
 
 // ── HTML helpers ──────────────────────────────────────────────────────────────
 
@@ -495,7 +496,7 @@ export async function exportDocx(protocol, chainNo = null, logoDataUrl = null, r
   ]
 
   const doc = new Document({
-    creator:     'Komplizen Protokolle',
+    creator:     brand.appName,
     title:       protocolNo,
     description: `${protocol.meetingType} – ${protocol.projectName}`,
     styles: {

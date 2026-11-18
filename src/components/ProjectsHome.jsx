@@ -5,6 +5,7 @@ import { Plus, Trash2, Search, ChevronRight, FileText, Users, FolderOpen,
          ShieldCheck, Loader, CalendarClock, Copy, Link2, UserCog, GraduationCap,
          Archive, ArchiveRestore, FileDown, Smartphone, Database, CheckSquare, ScanSearch } from 'lucide-react'
 import ProjectAdminPanel from './ProjectAdminPanel'
+import brand from '../brand'
 import GlobalSearch from './GlobalSearch'
 import NotificationBell from './NotificationBell'
 import QrInstallModal from './QrInstallModal'
@@ -396,7 +397,7 @@ export default function ProjectsHome({ projects, protocols, onCreate, onUpdate, 
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-stretch justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Komplizen Protokolle</h1>
+          <h1 className="text-2xl font-bold text-gray-900">{brand.appName}</h1>
           <p className="text-sm text-gray-500 mt-0.5">Projekte &amp; Besprechungsprotokolle</p>
         </div>
         <div className="flex flex-wrap items-stretch gap-2 self-start sm:self-auto">

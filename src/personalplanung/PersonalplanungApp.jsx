@@ -3,6 +3,7 @@ import { CalendarClock, LogOut, ExternalLink, ShieldAlert, Loader } from 'lucide
 import LoginScreen from '../components/LoginScreen'
 import SessionExpiredModal from '../components/SessionExpiredModal'
 import MitarbeiterView from '../components/MitarbeiterView'
+import brand from '../brand'
 
 // ── Mitarbeiter & Projektteams als eigenständige Anwendung ──────────────────
 // Die Wochenplanung ist ins Dashboard umgezogen (docs/UMZUG_PERSONALPLANUNG.md
@@ -62,7 +63,7 @@ export default function PersonalplanungApp() {
       </div>
     )
   }
-  if (isServer && !user) return <LoginScreen onLogin={handleLogin} title="Komplizen Mitarbeiter" />
+  if (isServer && !user) return <LoginScreen onLogin={handleLogin} title={brand.appNameStaff} />
 
   // Personalplanung obliegt dem Software-Admin (wie bisher im Protokolltool)
   if (isServer && user?.role !== 'admin') {
@@ -89,7 +90,7 @@ export default function PersonalplanungApp() {
       <header className="no-print sticky top-0 z-30 bg-night text-light px-4 sm:px-6 lg:px-10 py-2 flex items-center justify-between gap-3">
         <div className="flex items-center gap-2 min-w-0">
           <CalendarClock size={18} className="text-sky flex-shrink-0" />
-          <span className="font-semibold truncate">Komplizen Mitarbeiter</span>
+          <span className="font-semibold truncate">{brand.appNameStaff}</span>
           <span className="hidden sm:inline text-xs text-light/60 truncate">· Stammdaten der eigenen Organisation</span>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
