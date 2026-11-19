@@ -1,6 +1,12 @@
 # Feature-Konzept: Fotos von der Baustelle in die Baudokumentation
 
-**Stand:** 19. November 2026 · Entwurf zur Entscheidung, nichts davon ist gebaut
+**Stand:** 19. November 2026 · nichts davon ist gebaut
+
+> **Entschieden am 19.11.2026:** Die Fotos machen unsere eigenen Bauleiter.
+> Damit gilt **Weg A** (Abschnitt 4): VPN auf die Diensthandys, kein
+> Entwicklungsaufwand für die Erreichbarkeit. Zu bauen ist Abschnitt 5 —
+> die Ablage im Projektordner. Weg B und C sind damit zurückgestellt;
+> sie stehen hier nur, falls später doch Fremdfirmen liefern sollen.
 
 ---
 
@@ -64,7 +70,7 @@ Arbeit ist oder sechs Wochen.
 
 ## 4. Drei Wege, mit Empfehlung
 
-### Weg A — VPN auf die Diensthandys *(Empfehlung, wenn nur eigene Leute fotografieren)*
+### Weg A — VPN auf die Diensthandys *(gewählt)*
 
 Auf die Handys der Bauleiter kommt ein VPN-Zugang (WireGuard über DSM, oder
 Tailscale). Danach ist die PWA von der Baustelle aus da, als eigene Anwendung,
@@ -79,7 +85,7 @@ mit Kamera.
 Wenn die Fotos von euren eigenen Leuten kommen, ist hier Schluss. Dann brauchst
 du von allem Folgenden nichts.
 
-### Weg B — Einwurfseite auf komplizen.tech, die NAS holt ab *(Empfehlung, wenn auch Fremdfirmen fotografieren)*
+### Weg B — Einwurfseite auf komplizen.tech, die NAS holt ab *(zurückgestellt)*
 
 Auf einer Subdomain (`fotos.komplizen.tech`) liegt eine kleine, eigenständige
 Seite — selbst als Anwendung installierbar. Sie kann genau eines: Fotos
@@ -114,6 +120,27 @@ Baustellen-Handy ──▶ fotos.komplizen.tech ──▶ (NAS fragt alle 2 Min:
   die Bilder müssen nach dem Abholen tatsächlich gelöscht werden — nicht nur aus
   der Übersicht.
 
+**Befund zu komplizen.tech** (am 19.11.2026 von außen nachgesehen, ohne
+Anmeldung — die Anmeldeseite, die Antwort-Header und das öffentliche
+`login.js`):
+
+| | |
+|---|---|
+| Hoster | IONOS, `217.160.0.223`, Apache, Standard-Webspace mit Rate-Limit-Headern (`X-WS-RateLimit-Limit: 1000`) |
+| Was dort läuft | Eine private Familien-Lernplattform. „Nur für eingeladene Personen", Anmeldung über einen Familiencode der Eltern, Kinderkonten mit Lernständen. Zuletzt deployt 17.11.2026, 22:21, Commit `b673bb1` |
+| Technisch | Serverseitige Anwendung mit Sitzungen (`vary: Cookie`), API-Routen über Rewrite (`/api/account`, `/api/family`, `/api/recovery`), Deploy mit Commit-Stand im Fußtext. Ob PHP oder Node lässt sich von außen nicht sagen — die Kennung ist bewusst nicht gesetzt |
+| Sicherheitslage | Sorgfältig: CSP, HSTS, `noindex`, `nosniff`, `frame-ancestors none`, `referrer-policy: no-referrer`. `permissions-policy: camera=(self)` — Kamerazugriff ist dort schon freigegeben |
+| Subdomains | `lern.`, `app.`, `fotos.`, `protokoll.` existieren alle nicht. Die Anwendung liegt direkt auf `www` |
+
+Technisch würde das Paket eine Einwurfschleuse also tragen. Es gibt aber einen
+Einwand, der nichts mit Technik zu tun hat: auf demselben Hosting-Paket lägen
+dann **Lernstände von Kindern und Projektdaten des Büros**. Das sind zwei
+verschiedene Verantwortlichkeiten — privat und geschäftlich — auf einem
+Vertrag, einer Domain, einem Datenbestand. Fällt die Schleuse auf, hängt das
+Private mit dran; fragt umgekehrt ein Auftraggeber nach dem Hosting der
+Projektdaten, steht die Antwort schlecht da. Falls Weg B je gebraucht wird,
+gehört er auf einen eigenen Vertrag und eine Bürodomain, nicht hierher.
+
 ### Weg C — Subdomain zeigt auf die NAS *(möglich, aber nicht meine Empfehlung)*
 
 `protokoll.komplizen.tech` wird per DNS auf die Büro-IP gelegt, Port 443
@@ -130,10 +157,11 @@ Zertifikat.
   Blick in die Zugriffsprotokolle. Das ist laufende Arbeit, nicht ein
   Häkchen.
 
-**Mein Rat:** Weg A sofort, weil er nichts kostet und die Bauleiter morgen
-fotografieren können. Weg B dann, wenn Fremdfirmen wirklich mitliefern sollen.
-Weg C nur, wenn A und B beide ausfallen — und dann mit den Maßnahmen oben, nicht
-ohne.
+**Entscheidung:** Weg A. Die Bauleiter fotografieren, und für sie ist VPN der
+kürzeste und sicherste Weg — er kostet keine Zeile Code. Weg B bleibt liegen,
+bis Fremdfirmen wirklich liefern sollen, und wandert dann auf einen eigenen
+Vertrag. Weg C nur, wenn A und B beide ausfallen, und dann mit den Maßnahmen
+oben, nicht ohne.
 
 ---
 
@@ -225,7 +253,7 @@ hast — nur noch nicht für Fremdfirmen.
 | **1** | Ablage im Projektordner (5.1–5.3), VPN auf die Diensthandys (Weg A) | Eigene Leute fotografieren von der Baustelle, die Originale liegen im Projektordner |
 | **2** | Eingangskorb am Projekt: Fotos, die noch keinem Tag zugewiesen sind, mit Zuweisung per Klick | Fotos müssen nicht im Moment der Aufnahme einem Bericht zugeordnet werden |
 | **3** | Fotos aus dem Projektordner im Tool auswählen und anhängen | Bilder, die jemand von Hand aufs Laufwerk gelegt hat, kommen in den Bericht |
-| **4** | Einwurfseite auf komplizen.tech plus Abrufschleife (Weg B) | Fremdfirmen und Bauherr liefern Fotos, ohne Konto und ohne VPN |
+| ~~4~~ | ~~Einwurfseite plus Abrufschleife (Weg B)~~ | *Zurückgestellt — nur nötig, wenn Fremdfirmen liefern sollen* |
 
 Stufe 1 ist überschaubar — der Schreibzugriff auf die NAS ist fertig, es geht um
 die Anbindung im Bautagebuch und den Upload-Weg. Stufe 4 ist die große.
@@ -234,17 +262,22 @@ die Anbindung im Bautagebuch und den Upload-Weg. Stufe 4 ist die große.
 
 ## 7. Was ich nicht entscheiden kann
 
-**Wer fotografiert?** Nur eure Bauleiter, oder auch Fremdfirmen und Bauherr?
-Davon hängt ab, ob Stufe 4 gebraucht wird — und damit, ob das Vorhaben klein
-oder groß ist.
-
-**Was ist komplizen.tech für ein Paket?** Reiner Webspace mit PHP, oder lässt
-sich dort etwas eigenes laufen lassen? Habt ihr die DNS-Verwaltung selbst in der
-Hand, um eine Subdomain zu setzen? Für Weg B genügt PHP; für Weg C genügt ein
-DNS-Eintrag. Beides muss ich wissen, bevor ich daran baue.
+*Die Frage, wer fotografiert, ist beantwortet: die eigenen Bauleiter. Die Frage
+nach komplizen.tech ebenfalls — siehe Befund in Abschnitt 4.*
 
 **Gibt es auf dem G-Laufwerk schon eine Ordnung für Baustellenfotos?** Wenn ja,
 den Pfad darin — dann legen wir die Bilder genau dort ab.
+
+**Steht das VPN schon?** Auf der Synology gibt es das Paket „VPN Server"
+(WireGuard oder OpenVPN); eine Alternative ist Tailscale, das ohne Portfreigabe
+auskommt. Wenn noch keines läuft, ist das der erste Schritt — und er gehört
+nicht in diese Anwendung, sondern in die NAS-Verwaltung.
+
+**Dienst- oder Privathandys?** Auf einem Diensthandy ist ein VPN-Profil
+unproblematisch. Auf dem privaten Handy eines Mitarbeiters ist es eine
+Vereinbarung, nicht eine Einstellung: das Gerät bekommt damit Zugang ins
+Büronetz. Bei privaten Geräten lieber nur die Protokoll-App über einen
+beschränkten Zugang erreichbar machen als das ganze Netz.
 
 **Hat die NAS Platz?** Ein Projekt mit zwei Jahren Bauzeit, zwei Begehungen pro
 Woche, zehn Fotos je Begehung, 6 MB je Foto: rund 12 GB für ein Projekt. Das ist
