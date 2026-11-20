@@ -126,7 +126,7 @@ Anmeldung — die Anmeldeseite, die Antwort-Header und das öffentliche
 
 | | |
 |---|---|
-| Hoster | IONOS, `217.160.0.223`, Apache, Standard-Webspace mit Rate-Limit-Headern (`X-WS-RateLimit-Limit: 1000`) |
+| Hoster | IONOS, Apache, Standard-Webspace mit Rate-Limit-Headern (`X-WS-RateLimit-Limit: 1000`) |
 | Was dort läuft | Eine private Familien-Lernplattform. „Nur für eingeladene Personen", Anmeldung über einen Familiencode der Eltern, Kinderkonten mit Lernständen. Zuletzt deployt 17.11.2026, 22:21, Commit `b673bb1` |
 | Technisch | Serverseitige Anwendung mit Sitzungen (`vary: Cookie`), API-Routen über Rewrite (`/api/account`, `/api/family`, `/api/recovery`), Deploy mit Commit-Stand im Fußtext. Ob PHP oder Node lässt sich von außen nicht sagen — die Kennung ist bewusst nicht gesetzt |
 | Sicherheitslage | Sorgfältig: CSP, HSTS, `noindex`, `nosniff`, `frame-ancestors none`, `referrer-policy: no-referrer`. `permissions-policy: camera=(self)` — Kamerazugriff ist dort schon freigegeben |
@@ -172,22 +172,59 @@ dir das G-Laufwerk bringt.
 
 ### 5.1 Ablage im Projektordner
 
-Beim Speichern eines Tagesberichts wandert jedes Foto in Originalauflösung in
-den Projektordner:
+**Das G-Laufwerk ist die NAS.** Nachgesehen am 20.11.2026: `G:` ist eine
+Freigabe genau derselben Synology, auf die auch der Deploy geht (die Adressen
+stehen in `deploy-nas.config.ps1`, nicht hier). Die Ablage braucht also keinen
+Umweg — der vorhandene Schreibzugriff über die File Station trifft genau dieses
+Laufwerk.
+
+**Es gibt schon eine Ordnung, und sie ist durchgezogen.** In `G:\01 Projekte`
+liegen 152 Projekte. 52 davon sind in der Objektüberwachung, und **alle 52**
+haben denselben Ordner, alle gefüllt:
 
 ```
-{project.fsPath}/Baudokumentation/2026-11-19/
-    2026-11-19 Foto 01 Bewehrung Achse C.jpg
-    2026-11-19 Foto 02.jpg
+01 Projekte\{Projekt}\02 Planung\02 LP 8\02 Baustellenfotos_Bautagebuch\
 ```
 
-Die laufende Nummer ist dieselbe, mit der der Bericht auf das Foto verweist —
-wer im Bericht „Foto 2" liest, findet auf dem Laufwerk dieselbe Zahl. Die
-Bildunterschrift hängt im Dateinamen, wenn es eine gibt.
+Darin liegen die Fotos nach Tagen, im Format, das wir brauchen — teils mit
+einem Zusatz hinter dem Datum:
 
-Der Unterordner `Baudokumentation` ist eine Annahme von mir. Wenn es im Büro
-schon eine Ordnung für Baustellenfotos gibt, nenne mir den Pfad, dann bauen wir
-den nach statt einen zweiten daneben.
+```
+2012-11-01\
+2012-12-17 Kinderspatenstich\
+2013-01-14\
+```
+
+**Die Ebene darunter ist uneinheitlich benannt.** Der Fotoordner heißt je
+Projekt anders, weil die Nummer mitgewachsen ist: `04 Baustellenfotos` (13×),
+`03 Baustellenfotos` (13×), `1 Baustellenfotos` (8×), `02 Baustellenfotos`
+(5×), `2 Baustellenfotos` (2×). Daneben steht meist ein Bautagebuch-Ordner,
+auch der mit wechselnder Nummer (`02 Bautagebuch` 8×, `01 Bautagebuch` 4×).
+
+**Deshalb darf die Anwendung die Nummer nicht erraten.** Der Entwurf:
+
+1. Je Projekt wird der Fotoordner **einmal hinterlegt**, so wie heute schon der
+   Projektordner — ein zweites Feld `project.fsFotoPath`, relativ zum
+   Projektordner.
+2. Beim ersten Mal **schlägt die Anwendung vor**, was sie findet: sie sieht in
+   `02 Planung\02 LP 8\02 Baustellenfotos_Bautagebuch` nach einem Unterordner,
+   dessen Name auf „Baustellenfotos" endet, und bietet ihn zur Bestätigung an.
+   Findet sie keinen, bietet sie an, einen anzulegen.
+3. Darunter je Berichtstag ein Ordner `2026-11-20`, wie in der vorhandenen
+   Ordnung. Ein Zusatz hinter dem Datum bleibt möglich.
+
+Die Dateinamen tragen die laufende Nummer, mit der der Bericht auf das Foto
+verweist — wer im Bericht „Foto 2" liest, findet auf dem Laufwerk dieselbe
+Zahl. Die Bildunterschrift hängt im Namen, wenn es eine gibt:
+
+```
+2026-11-20 Foto 01 Bewehrung Achse C.jpg
+2026-11-20 Foto 02.jpg
+```
+
+Offen bleibt, ob auch das **PDF der Baudokumentation** in den
+Bautagebuch-Ordner daneben soll. Technisch derselbe Griff, und es würde die
+Papierablage ersetzen — aber das ist eine eigene Entscheidung.
 
 **Wichtig für die Umsetzung:** Die Ablage darf den Eintrag nicht blockieren.
 Erst wird der Bericht gespeichert, dann abgelegt — mit Statusanzeige am Foto und
@@ -265,13 +302,30 @@ die Anbindung im Bautagebuch und den Upload-Weg. Stufe 4 ist die große.
 *Die Frage, wer fotografiert, ist beantwortet: die eigenen Bauleiter. Die Frage
 nach komplizen.tech ebenfalls — siehe Befund in Abschnitt 4.*
 
-**Gibt es auf dem G-Laufwerk schon eine Ordnung für Baustellenfotos?** Wenn ja,
-den Pfad darin — dann legen wir die Bilder genau dort ab.
+*Die Ordnung auf dem G-Laufwerk ist gefunden und in Abschnitt 5.1
+beschrieben — sie wird nachgebaut, nicht ersetzt.*
 
-**Steht das VPN schon?** Auf der Synology gibt es das Paket „VPN Server"
-(WireGuard oder OpenVPN); eine Alternative ist Tailscale, das ohne Portfreigabe
-auskommt. Wenn noch keines läuft, ist das der erste Schritt — und er gehört
-nicht in diese Anwendung, sondern in die NAS-Verwaltung.
+**Wo läuft das VPN?** Auf der NAS offenbar nicht. Nachgesehen am 20.11.2026,
+von diesem Rechner aus, nur lesend:
+
+| Prüfung | Ergebnis |
+|---|---|
+| DSM erreichbar | Ja, die Verwaltungsoberfläche antwortet |
+| VPN-Server-Paket | **Nicht sichtbar.** Die API-Liste führt nur `SYNO.Core.Network.VPN.*` — das ist DSM als VPN-*Client* (ausgehende Profile), nicht der VPN-*Server* |
+| OpenVPN über TCP, PPTP | beide zu |
+| OpenVPN/UDP, WireGuard | **nicht prüfbar** von hier aus — UDP antwortet nicht |
+| SSH als Deploy-Konto | Schlüssel ist dort nicht autorisiert; das Deploy-Skript fragt nach dem Passwort. Ein Passwort gebe ich nicht ein, also kein Blick in `/var/packages` |
+
+Das Handbuch sagt, von außen gehe es nur per VPN — irgendein Weg existiert also.
+Nach diesem Befund liegt er **nicht auf der NAS**, sondern in der
+Netzinfrastruktur des Büros. Wo genau, lässt sich ohne Portscan im Firmennetz
+nicht sagen, und den mache ich nicht ungefragt. Wer das Netz betreut, weiß es
+in einem Satz.
+
+**Das ist jetzt der erste Schritt** — und er gehört nicht in diese Anwendung,
+sondern in die Netz- und NAS-Verwaltung: entweder das vorhandene VPN auf die
+Handys bringen, oder auf der NAS das Paket „VPN Server" einrichten (WireGuard
+braucht eine Portfreigabe), oder Tailscale, das ohne Freigabe auskommt.
 
 **Dienst- oder Privathandys?** Auf einem Diensthandy ist ein VPN-Profil
 unproblematisch. Auf dem privaten Handy eines Mitarbeiters ist es eine
