@@ -1,6 +1,8 @@
 # Feature-Konzept: Fotos von der Baustelle in die Baudokumentation
 
-**Stand:** 19. November 2026 · nichts davon ist gebaut
+**Stand:** 21. November 2026 · **Abschnitt 5 ist gebaut** (Ablage im
+Projektordner). Offen bleibt Abschnitt 4, Weg A: das VPN auf die Handys.
+Das liegt bei der Netzbetreuung, nicht in dieser Anwendung.
 
 > **Entschieden am 19.11.2026:** Die Fotos machen unsere eigenen Bauleiter.
 > Damit gilt **Weg A** (Abschnitt 4): VPN auf die Diensthandys, kein

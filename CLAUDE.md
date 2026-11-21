@@ -393,6 +393,8 @@ Persistenz im WAL-Modus; `makeStore()` kapselt CRUD + optimistische Versionierun
   allowedUsers: [...],            // freigegebene Autoren
   hoaiServices: [...],            // HOAI-Leistungsbilder (optional)
   linkedFolders: [...],           // verknüpfte Synology-Freigabe-Links
+  fsPath,                         // NAS-Projektordner (absolut), Dateiablage
+  fsFotoPath,                     // Fotoordner der Baudokumentation, RELATIV zu fsPath
   tiles: [...],                   // Schnellzugriff-Kacheln (Editor-Sidebar)
   logo,                           // Büro-/Eigen-Logo (base64) – Fallback auf globales Logo
   clientLogo,                     // Auftraggeber-Logo (base64)
@@ -724,6 +726,36 @@ prüft zusätzlich das Vollformat, Fallback über Protokoll-Teilnehmer.
 ### Teilnehmer-Panel ein-/ausblendbar
 `ProtocolEditor` hat einen Toggle (Persistenz in `localStorage`,
 `kp_show_participants`).
+
+### Baudokumentation: Originalfotos im Projektordner
+Zwei Fassungen je Foto. Im Bericht steht die verkleinerte (`photoUtils.js`,
+1200 px / 120 KB – sonst sprengt der Fotoanhang die 3-MB-Grenze des
+Mailversands), das **Original** geht in den Projektordner auf der NAS.
+
+- **Ablageort:** `{project.fsPath}/{project.fsFotoPath}/JJJJ-MM-TT/` mit
+  Dateiname `2026-11-21 Foto 03 Bildunterschrift.jpg`. Die Nummer ist die
+  Stelle des Fotos **im Bericht** – damit ist PDF ↔ Datei eindeutig.
+  Ein vorhandener Tagesordner wird wiederverwendet, auch mit Zusatz im Namen
+  („2026-11-21 Spatenstich").
+- **`fsFotoPath` wird nie geraten.** Der Ordner heißt in allen Projekten
+  „… Baustellenfotos_Bautagebuch" unter `02 Planung/02 LP 8`, aber die
+  vorangestellte Nummer wechselt (01–04). `GET …/bautagebuch/fotoordner`
+  sucht bis zur 3. Ebene (max. 40 List-Aufrufe), der Mensch bestätigt im
+  `FotoOrdnerDialog`; hinterlegt wird über die Projektdaten wie `fsPath`.
+- **Rohdaten-Upload**, nicht base64 in JSON: `POST …/bautagebuch/:entryId/fotos`
+  mit `express.raw`, Query `fotoId`+`name`. Datum, Nummer und Bildunterschrift
+  kommen aus dem Bericht, nicht vom Client – die Ablage kann nicht abweichen.
+- **Warteschlange** `src/fotoOriginale.js` (IndexedDB, Blob statt base64).
+  Das Speichern wartet nicht auf den Upload; Durchlauf nach dem Speichern,
+  beim Öffnen, bei `online` und von Hand. Ein Schloss je Projekt verhindert
+  Doppeldateien; der Server meldet ein bereits abgelegtes Foto mit
+  `{ bereits: true }` statt es zweimal zu schreiben.
+- Ergebnis steht am Foto im Bericht (`fsPath`, `fsStatus`, `originalSize`),
+  geschrieben vom **Server**. Bei Versionskonflikt bleibt die Datei liegen und
+  nur der Vermerk fehlt (Log `BTB_FOTO_VERMERK`) – nie ein zweiter Upload.
+- Server: `server/bautagebuchFotos.js`. Testlauf ohne NAS:
+  `npm run pruefe:fotoablage` (30 Prüfungen – Ordnersuche, Tagesordner,
+  Dateiname, Vermerk, Doppelsendung, Pfadausbruch).
 
 ### Notizbuch (projektintern, 2 Ebenen)
 Projekt-Dashboard-Kachel „Notizbuch" → `NotizbuchView.jsx`. Ebene 1 = Hauptthema,

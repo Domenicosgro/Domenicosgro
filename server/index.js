@@ -1975,6 +1975,17 @@ require('./pruefstation').registerPruefstation(app, {
   })
 }
 
+// ── Baudokumentation: Originalfotos in den Projektordner ─────────────────────
+// Details: server/bautagebuchFotos.js
+{
+  const ps = require('./pruefstation')
+  require('./bautagebuchFotos').registerBautagebuchFotos(app, {
+    db, fileStation, requireAuth, writeLimiter, getAccessibleProject, isProjectManager,
+    logEvent, broadcast, cleanName: ps.cleanName, uniqueName: ps.uniqueName,
+    displayName: planDisplayName,
+  })
+}
+
 // ── Personalplanung: Mitarbeiter-Stammdaten (Arbeitszeitmodelle) ──────────────
 // ── Sync: "Eigene Organisation"-Kontakte → Benutzer + Personalplanung ──────────
 // Einseitige Spiegelung. Quelle: alle Kontakte mit category==='organisation'

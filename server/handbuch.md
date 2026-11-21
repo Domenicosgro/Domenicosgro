@@ -452,6 +452,43 @@ und verfolgt Mängel bis zur Beseitigung.
 > Das ist der Unterschied zu Protokollen und Notizbuch, die beim Tippen
 > sichern.
 
+### Fotos: Original im Projektordner, kleine Fassung im Bericht
+
+Jedes Foto wird zweimal verwahrt. Im Bericht steht eine verkleinerte Fassung —
+die muss klein bleiben, sonst lässt sich die Baudokumentation nicht per E-Mail
+versenden. Das **Original in voller Auflösung** legt die Anwendung beim
+Speichern in den Projektordner auf der NAS, dorthin, wo das Büro
+Baustellenfotos ohnehin sucht:
+
+```
+<Projektordner> › 02 Planung › 02 LP 8 › … Baustellenfotos_Bautagebuch
+    › 2026-11-21
+        › 2026-11-21 Foto 01 Bewehrung Achse C.jpg
+        › 2026-11-21 Foto 02.jpg
+```
+
+Je Berichtstag ein Ordner, und die Nummer im Dateinamen ist die Nummer des
+Fotos im Bericht — so findet man zu jedem Bild im PDF die Originaldatei und
+umgekehrt. Die Bildunterschrift, die du am Foto einträgst, steht im
+Dateinamen mit.
+
+**Einmal je Projekt festzulegen:** Oben unter dem Projektnamen steht, wohin die
+Originale gehen. Steht dort „Fotoordner festlegen", einmal darauf klicken — die
+Anwendung sucht den Ordner im Projektordner und schlägt ihn vor, weil er in
+jedem Projekt eine andere Nummer vorweg trägt (`02 Baustellenfotos_Bautagebuch`,
+`04 Baustellenfotos`, …). Geraten wird er nicht. Gibt es keinen, lässt sich
+einer anlegen (Projekt-Admin).
+
+**Ohne Netz auf der Baustelle:** Der Bericht wird gespeichert wie bisher, die
+Originale warten. Ein Streifen oben zählt mit, wie viele noch offen sind; sie
+gehen von selbst hinaus, sobald wieder Verbindung besteht — beim nächsten
+Öffnen der Baudokumentation oder über „Jetzt ablegen". Unter den Miniaturen
+steht ein Haken, sobald die Originale im Projektordner liegen.
+
+> Dafür muss das Gerät den Server erreichen, also im Büronetz oder über VPN
+> sein. Ohne Fotoordner im Projekt bleiben die Originale liegen, der Bericht
+> und seine Fotos sind davon nicht betroffen.
+
 ---
 
 ## Info-Punkte

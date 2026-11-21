@@ -6,6 +6,7 @@ import { ArrowLeft, Plus, Camera, Trash2, Pencil, X, Loader, AlertCircle, Printe
 import { formatDate, uid, emptyContact, diaryConfigFor, distributionFor } from '../utils'
 import { compressToBase64, savePhotoBase64, loadPhotoUrl, removePhoto } from '../photoUtils'
 import { outboxAdd, outboxList, outboxRemove } from '../offlineStore'
+import { originalAdd, originalList, originalClear, originaleSenden } from '../fotoOriginale'
 import ContactAutocomplete from './ContactAutocomplete'
 import RichTextEditor, { toHtml, stripHtml } from './RichTextEditor'
 import PrintSheet from './PrintSheet'
@@ -293,7 +294,10 @@ function EntryForm({ entry, onSave, onCancel, projectId, firmOptions = [], onAdd
     return () => clearTimeout(t)
   }, [form.date, form.daytime])   // eslint-disable-line react-hooks/exhaustive-deps
   const [photos,    setPhotos]    = useState(entry?.photos || [])   // bereits abgelegte Fotos {id,name}
-  const [newPhotos, setNewPhotos] = useState([])                    // frisch aufgenommene {base64,name} – Ablage erst beim Speichern
+  // Frisch aufgenommene Fotos: {base64, name, caption, original}. `base64` ist
+  // die verkleinerte Fassung für den Bericht, `original` die unveränderte
+  // Datei vom Gerät – sie wandert beim Speichern in den Projektordner.
+  const [newPhotos, setNewPhotos] = useState([])
   const [uploading, setUploading] = useState(false)
   const [error,     setError]     = useState(null)
   const fileRef = useRef(null)
@@ -304,7 +308,7 @@ function EntryForm({ entry, onSave, onCancel, projectId, firmOptions = [], onAdd
     try {
       for (const file of Array.from(files || [])) {
         const base64 = await compressToBase64(file)
-        setNewPhotos(prev => [...prev, { base64, name: file.name || 'foto.jpg', caption: '' }])
+        setNewPhotos(prev => [...prev, { base64, name: file.name || 'foto.jpg', caption: '', original: file }])
       }
     } catch (e) { setError(`Foto konnte nicht verarbeitet werden: ${e.message}`) }
     finally { setUploading(false) }
@@ -578,6 +582,139 @@ function EntryForm({ entry, onSave, onCancel, projectId, firmOptions = [], onAdd
   )
 }
 
+// Bytes des Originals besorgen – entweder aus der Datei, die gerade vom Gerät
+// kam, oder aus den Bytes, die schon in der Warteschlange liegen.
+//
+// Gespeichert werden immer die Bytes, nie die Datei selbst: eine Datei-Referenz
+// vom Handy (Kamera, Fotos-App) überlebt einen Neustart des Browsers nicht
+// zuverlässig, und genau das muss die Warteschlange aushalten – aufgenommen auf
+// der Baustelle, abgelegt Stunden später im Büronetz.
+async function originalBytesOf(p) {
+  if (p?.originalBytes) return { bytes: p.originalBytes, typ: p.originalTyp || 'image/jpeg' }
+  if (!p?.original) return null
+  try { return { bytes: await p.original.arrayBuffer(), typ: p.original.type || 'image/jpeg' } }
+  catch { return null }
+}
+
+// ── Ablageordner für die Originalfotos ───────────────────────────────────────
+// Der Ordner wird einmal je Projekt hinterlegt, nicht geraten: er heißt überall
+// „… Baustellenfotos_Bautagebuch" unter „02 Planung / 02 LP 8", aber die
+// vorangestellte Nummer wechselt von Projekt zu Projekt. Der Server sucht und
+// schlägt vor, bestätigt wird von Hand – einmal, dann nie wieder.
+function FotoOrdnerDialog({ projectId, info, onUebernehmen, onClose }) {
+  const vorschlaege = info?.vorschlaege || []
+  const [wahl,   setWahl]   = useState(info?.rel || vorschlaege[0]?.rel || '')
+  const [eigen,  setEigen]  = useState('')
+  const [busy,   setBusy]   = useState(false)
+  const [fehler, setFehler] = useState(null)
+
+  const uebernehmen = (rel) => {
+    const r = String(rel || '').trim().replace(/^\/+|\/+$/g, '')
+    if (!r) { setFehler('Kein Ordner gewählt.'); return }
+    onUebernehmen(r)
+    onClose()
+  }
+
+  // Ordner auf der NAS neu anlegen (nur Projekt-Admins) und gleich hinterlegen
+  const anlegen = async () => {
+    const rel = eigen.trim().replace(/^\/+|\/+$/g, '')
+    if (!rel) { setFehler('Bitte einen Pfad angeben, z. B. 02 Planung/02 LP 8/02 Baustellenfotos_Bautagebuch.'); return }
+    setBusy(true); setFehler(null)
+    try {
+      const res = await fetch(`/api/projects/${projectId}/bautagebuch/fotoordner`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: JSON.stringify({ rel }),
+      })
+      const d = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(d.error || `Fehler ${res.status}`)
+      uebernehmen(d.rel || rel)
+    } catch (e) { setFehler(e.message) }
+    finally { setBusy(false) }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4 no-print" onClick={onClose}>
+      <div className="bg-white w-full max-w-xl max-h-[85vh] overflow-y-auto shadow-xl" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200">
+          <h3 className="font-semibold text-night flex items-center gap-2"><Camera size={16} className="text-brand-600" /> Ablageordner für die Fotos</h3>
+          <button className="btn-ghost p-1" onClick={onClose}><X size={15} /></button>
+        </div>
+        <div className="p-5 space-y-4">
+          <p className="text-xs text-gray-500">
+            Hierher legt die Baudokumentation die Originalfotos – in voller Auflösung,
+            je Berichtstag ein Unterordner. Im Bericht selbst bleibt die verkleinerte
+            Fassung für den Versand.
+          </p>
+          {info?.fsPath
+            ? <p className="text-xs text-gray-400">Projektordner: <span className="font-mono">{info.fsPath}</span></p>
+            : <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 px-3 py-2">
+                Für dieses Projekt ist kein NAS-Projektordner hinterlegt. Das geschieht zuerst in der Dateiablage.
+              </p>}
+
+          {fehler && (
+            <p className="text-sm text-red-700 bg-red-50 border border-red-200 px-3 py-2 flex items-center gap-2">
+              <AlertCircle size={13} /> {fehler}
+            </p>
+          )}
+
+          {vorschlaege.length > 0 && (
+            <div>
+              <p className="text-xs font-medium text-gray-500 mb-1.5">Im Projektordner gefunden</p>
+              <div className="space-y-1">
+                {vorschlaege.map(v => (
+                  <label key={v.rel} className="flex items-start gap-2 px-3 py-2 border border-gray-200 hover:bg-gray-50 cursor-pointer">
+                    <input type="radio" name="fotoordner" className="mt-0.5" checked={wahl === v.rel} onChange={() => setWahl(v.rel)} />
+                    <span className="text-sm">
+                      <span className="font-medium text-night">{v.name}</span>
+                      <span className="block text-[11px] text-gray-400 font-mono">{v.rel}</span>
+                    </span>
+                  </label>
+                ))}
+              </div>
+              <button className="btn-primary mt-3 text-sm" onClick={() => uebernehmen(wahl)} disabled={!wahl}>
+                Diesen Ordner übernehmen
+              </button>
+            </div>
+          )}
+
+          {vorschlaege.length === 0 && info?.rel && (
+            <p className="text-sm text-gray-600">
+              Hinterlegt ist <span className="font-mono">{info.rel}</span>
+              {info.vorhanden ? ' – der Ordner ist erreichbar.' : ' – dieser Ordner ist derzeit nicht erreichbar.'}
+            </p>
+          )}
+
+          {vorschlaege.length === 0 && !info?.rel && info?.fsPath && (
+            <p className="text-sm text-gray-600">
+              Im Projektordner ist kein Fotoordner zu finden. Trage unten den Pfad ein oder lege einen an.
+            </p>
+          )}
+
+          <div className="border-t border-gray-200 pt-4">
+            <label className="block text-xs font-medium text-gray-500 mb-1">
+              Anderer Ordner · Pfad relativ zum Projektordner
+            </label>
+            <input className="input font-mono text-xs" value={eigen} onChange={e => setEigen(e.target.value)}
+              placeholder="02 Planung/02 LP 8/02 Baustellenfotos_Bautagebuch" />
+            <div className="flex gap-2 mt-2">
+              <button className="btn-secondary text-sm" onClick={() => uebernehmen(eigen)} disabled={!eigen.trim()}>
+                Übernehmen
+              </button>
+              <button className="btn-secondary text-sm" onClick={anlegen} disabled={!eigen.trim() || busy}>
+                {busy ? <Loader size={13} className="animate-spin" /> : <Plus size={13} />}
+                {busy ? 'Legt an…' : 'Auf der NAS anlegen'}
+              </button>
+            </div>
+            <p className="text-[11px] text-gray-400 mt-1.5">
+              Anlegen dürfen nur Projekt-Admins. Ein vorhandener Ordner wird nur übernommen, nicht verändert.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function BautagebuchView({ project, serverUser, logoDataUrl, clientLogoDataUrl, onUpdateProject, onBack }) {
   const [entries, setEntries] = useState([])
   const [pending, setPending] = useState([])    // Offline-Warteschlange
@@ -601,6 +738,15 @@ export default function BautagebuchView({ project, serverUser, logoDataUrl, clie
   // Für den Versand: nur die gewählten Berichte werden gerendert (Kopfzeile,
   // Fotonummern und Anhang beziehen sich dann auf diese Auswahl).
   const [printIds, setPrintIds] = useState(null)
+
+  // Fotoablage im Projektordner (siehe server/bautagebuchFotos.js):
+  // `fotoOrdner` ist das, was der Server über den hinterlegten Ordner weiß,
+  // `offeneOriginale` die Zahl der Fotos, die noch auf die NAS warten.
+  const [fotoOrdner,      setFotoOrdner]      = useState(null)
+  const [offeneOriginale, setOffeneOriginale] = useState(0)
+  const [ablageBusy,      setAblageBusy]      = useState(false)
+  const [ablageHinweis,   setAblageHinweis]   = useState(null)
+  const [ordnerOpen,      setOrdnerOpen]      = useState(false)
 
   // Teilfelder eines gespeicherten Eintrags ändern (Server: optimistisch versioniert)
   const patchEntry = useCallback(async (entry, patch) => {
@@ -687,9 +833,79 @@ export default function BautagebuchView({ project, serverUser, logoDataUrl, clie
 
   useEffect(() => { load(); loadPending() }, [load, loadPending])
 
-  // Automatischer Sync-Versuch, sobald der Browser wieder online meldet
+  // ── Fotoablage im Projektordner ───────────────────────────────────────────
+  // Welcher Ordner ist hinterlegt, und gibt es ihn noch? Ist keiner hinterlegt,
+  // liefert der Server Vorschläge aus dem Projektordner mit.
+  const loadFotoOrdner = useCallback(async () => {
+    if (!isServer) return
+    try {
+      const res = await fetch(`/api/projects/${project.id}/bautagebuch/fotoordner`, { headers: authHeaders() })
+      setFotoOrdner(res.ok ? await res.json() : null)
+    } catch { setFotoOrdner(null) }
+  }, [project.id, project.fsFotoPath])  // eslint-disable-line react-hooks/exhaustive-deps
+
+  const zaehleOffene = useCallback(async () => {
+    if (!isServer) return
+    setOffeneOriginale((await originalList(project.id)).length)
+  }, [project.id])
+
+  // Wartende Originale auf die NAS schieben. Läuft nebenher – ein fehlender
+  // Ordner oder eine fehlende Verbindung ist kein Fehler, sondern ein Hinweis.
+  const legeOriginaleAb = useCallback(async ({ still = false } = {}) => {
+    if (!isServer) return
+    if ((await originalList(project.id)).length === 0) { setOffeneOriginale(0); return }
+    setAblageBusy(true)
+    try {
+      const r = await originaleSenden(project.id, authHeaders())
+      setOffeneOriginale(r.offen)
+      // Ein zweiter Anlauf, während der erste noch läuft: nichts melden,
+      // der laufende Durchlauf erzählt es gleich selbst.
+      if (r.grund === 'laeuft') return r
+      if (r.grund === 'fotoordner' || r.grund === 'projektordner') {
+        setAblageHinweis(r.fehler || 'Für dieses Projekt ist kein Fotoordner hinterlegt.')
+      } else if (r.grund === 'offline') {
+        setAblageHinweis(still ? null : 'Keine Verbindung zum Server – die Originale warten weiter.')
+      } else if (r.fehler) {
+        setAblageHinweis(r.fehler)
+      } else {
+        setAblageHinweis(null)
+      }
+      if (r.abgelegt > 0) { load(); loadFotoOrdner() }
+      return r
+    } finally { setAblageBusy(false) }
+  }, [project.id, load, loadFotoOrdner])
+
+  // Beim Öffnen nachsehen und gleich versuchen, Wartendes abzulegen
   useEffect(() => {
-    const h = () => syncOutbox()
+    if (!isServer) return
+    loadFotoOrdner()
+    zaehleOffene().then(() => { if (navigator.onLine) legeOriginaleAb({ still: true }) })
+  }, [loadFotoOrdner, zaehleOffene])  // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Originale der neu erfassten Fotos in die Warteschlange legen. Im Bericht
+  // steht schon die verkleinerte Fassung; hier wartet nur das Original auf den
+  // Projektordner. Die beiden Listen laufen parallel – `saved[i]` gehört zu
+  // `rohe[i]`, weil sie in derselben Reihenfolge entstanden sind.
+  const stelleOriginaleEin = useCallback(async (entryId, saved, rohe) => {
+    if (!isServer || !entryId) return
+    let eingestellt = 0
+    for (let i = 0; i < saved.length; i++) {
+      if (!saved[i]?.id) continue
+      const o = await originalBytesOf(rohe[i])
+      if (!o) continue
+      if (await originalAdd({
+        id: saved[i].id, projectId: project.id, entryId,
+        bytes: o.bytes, typ: o.typ, name: rohe[i].name || 'foto.jpg',
+      })) eingestellt++
+    }
+    if (eingestellt > 0) await zaehleOffene()
+    return eingestellt
+  }, [project.id, zaehleOffene])
+
+  // Automatischer Sync-Versuch, sobald der Browser wieder online meldet –
+  // erst die Einträge, dann die wartenden Fotooriginale.
+  useEffect(() => {
+    const h = () => { syncOutbox(); legeOriginaleAb({ still: true }) }
     window.addEventListener('online', h)
     return () => window.removeEventListener('online', h)
   })
@@ -706,8 +922,9 @@ export default function BautagebuchView({ project, serverUser, logoDataUrl, clie
     let synced = 0
     try {
       for (const item of items) {
+        const rohe   = item.pendingPhotos || []
         const photos = []
-        for (const p of (item.pendingPhotos || [])) {
+        for (const p of rohe) {
           photos.push(await savePhotoBase64(p.base64, p.name).then(saved => ({ ...saved, caption: p.caption || "" })))
         }
         const res = await fetch(`/api/projects/${project.id}/diary`, {
@@ -715,6 +932,9 @@ export default function BautagebuchView({ project, serverUser, logoDataUrl, clie
           body: JSON.stringify({ ...item.form, photos }),
         })
         if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `Fehler ${res.status}`)
+        // Erst jetzt gibt es die Bericht-Id, auf die sich die Ablage bezieht
+        const angelegt = await res.json().catch(() => null)
+        await stelleOriginaleEin(angelegt?.id, photos, rohe)
         await outboxRemove(item.id)
         synced++
       }
@@ -727,8 +947,9 @@ export default function BautagebuchView({ project, serverUser, logoDataUrl, clie
     } finally {
       setSyncing(false)
       loadPending()
+      legeOriginaleAb({ still: true })
     }
-  }, [project.id, syncing, load, loadPending])
+  }, [project.id, syncing, load, loadPending, stelleOriginaleEin, legeOriginaleAb])
 
   // Beim Öffnen automatisch versuchen, Wartendes zu übertragen
   useEffect(() => {
@@ -738,9 +959,19 @@ export default function BautagebuchView({ project, serverUser, logoDataUrl, clie
   }, [project.id])  // eslint-disable-line react-hooks/exhaustive-deps
 
   const queueOffline = async (form, newPhotos) => {
+    // Die Originale wandern als Bytes mit in die Warteschlange – nicht als
+    // Datei-Referenz, die einen Neustart nicht übersteht (siehe originalBytesOf).
+    const pendingPhotos = []
+    for (const p of newPhotos) {
+      const o = await originalBytesOf(p)
+      pendingPhotos.push({
+        base64: p.base64, name: p.name, caption: p.caption || '',
+        originalBytes: o?.bytes, originalTyp: o?.typ,
+      })
+    }
     await outboxAdd({
       id: uid(), kind: 'diary', projectId: project.id,
-      form, pendingPhotos: newPhotos,
+      form, pendingPhotos,
       queuedAt: new Date().toISOString(),
     })
     setNotice('Offline gespeichert – wird synchronisiert, sobald der Server wieder erreichbar ist.')
@@ -762,6 +993,7 @@ export default function BautagebuchView({ project, serverUser, logoDataUrl, clie
             body: JSON.stringify({ data: { ...data, ...merged }, version: _version }),
           })
           if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `Fehler ${res.status}`)
+          await stelleOriginaleEin(editing.id, savedNew, newPhotos)
         } else {
           persistLocal(entries.map(e => e.id === editing.id ? { ...e, ...merged, updatedAt: new Date().toISOString() } : e))
         }
@@ -777,6 +1009,8 @@ export default function BautagebuchView({ project, serverUser, logoDataUrl, clie
               body: JSON.stringify({ ...form, photos: [...(form.photos || []), ...savedNew] }),
             })
             if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `Fehler ${res.status}`)
+            const angelegt = await res.json().catch(() => null)
+            await stelleOriginaleEin(angelegt?.id, savedNew, newPhotos)
           } catch (e) {
             // Netzwerkfehler (Server nicht erreichbar) → in die Warteschlange
             if (e instanceof TypeError || /fetch|network/i.test(e.message)) {
@@ -791,7 +1025,12 @@ export default function BautagebuchView({ project, serverUser, logoDataUrl, clie
         }
       }
       setEditing(null)
-      if (isServer) load()
+      if (isServer) {
+        load()
+        // Die Originale wandern nebenher in den Projektordner – der Bericht ist
+        // gespeichert, niemand soll auf 20 Fotos à 6 MB warten müssen.
+        legeOriginaleAb({ still: true })
+      }
     } catch (e) { setError(`Speichern fehlgeschlagen: ${e.message}`) }
   }
 
@@ -877,6 +1116,17 @@ export default function BautagebuchView({ project, serverUser, logoDataUrl, clie
               <BookOpen size={22} className="text-brand-600" /> Baudokumentation
             </h1>
             <p className="text-sm text-gray-500 mt-0.5">{project.name} · {entries.length} Eintr{entries.length === 1 ? 'ag' : 'äge'}</p>
+            {/* Wohin die Originalfotos gehen – leise, aber jederzeit nachsehbar */}
+            {isServer && fotoOrdner && onUpdateProject && (
+              <button className="text-[11px] text-gray-400 hover:text-brand-600 mt-0.5 flex items-center gap-1 no-print"
+                onClick={() => setOrdnerOpen(true)}
+                title="Ablageordner für die Originalfotos im Projektordner">
+                <Camera size={10} />
+                {fotoOrdner.rel && fotoOrdner.vorhanden
+                  ? <span className="font-mono truncate max-w-[22rem]">Originale → {fotoOrdner.rel}</span>
+                  : <span>Fotoordner festlegen</span>}
+              </button>
+            )}
           </div>
         </div>
         <div className="flex gap-2 items-center no-print">
@@ -917,6 +1167,54 @@ export default function BautagebuchView({ project, serverUser, logoDataUrl, clie
             {syncing ? 'Synchronisiert…' : 'Jetzt synchronisieren'}
           </button>
         </div>
+      )}
+
+      {/* Fotoablage: Originale, die noch in den Projektordner müssen.
+          Taucht nur auf, wenn etwas zu tun ist – im Normalfall läuft die
+          Ablage beim Speichern durch und niemand sieht diesen Streifen. */}
+      {isServer && (offeneOriginale > 0 || ablageHinweis) && (
+        <div className="flex items-center gap-3 bg-sky-50 border border-sky-200 px-4 py-2.5 no-print">
+          <Camera size={15} className="text-sky-700 flex-shrink-0" />
+          <span className="text-sm text-sky-900 flex-1">
+            {offeneOriginale > 0
+              ? `${offeneOriginale} Originalfoto${offeneOriginale === 1 ? ' wartet' : 's warten'} auf den Projektordner.`
+              : 'Fotoablage'}
+            {ablageHinweis && <span className="block text-xs text-sky-700 mt-0.5">{ablageHinweis}</span>}
+          </span>
+          {fotoOrdner?.rel && fotoOrdner?.vorhanden ? (
+            <button className="btn-secondary text-xs" onClick={() => legeOriginaleAb()} disabled={ablageBusy}>
+              {ablageBusy ? <Loader size={13} className="animate-spin" /> : <RefreshCw size={13} />}
+              {ablageBusy ? 'Legt ab…' : 'Jetzt ablegen'}
+            </button>
+          ) : (
+            <button className="btn-secondary text-xs" onClick={() => setOrdnerOpen(true)}>Ordner festlegen</button>
+          )}
+          {offeneOriginale > 0 && (
+            <button className="btn-ghost p-1.5 text-gray-400 hover:text-red-600"
+              title="Wartende Originale verwerfen – die verkleinerten Fassungen im Bericht bleiben"
+              onClick={async () => {
+                if (!confirm(`${offeneOriginale} wartende Originalfoto${offeneOriginale === 1 ? '' : 's'} verwerfen?\n\nDie Fotos im Bericht bleiben erhalten – nur die Ablage der Originaldateien im Projektordner entfällt dann endgültig.`)) return
+                await originalClear(project.id)
+                setAblageHinweis(null)
+                zaehleOffene()
+              }}>
+              <Trash2 size={14} />
+            </button>
+          )}
+        </div>
+      )}
+
+      {ordnerOpen && (
+        <FotoOrdnerDialog
+          projectId={project.id}
+          info={fotoOrdner}
+          onUebernehmen={(rel) => {
+            onUpdateProject?.(project.id, { fsFotoPath: rel })
+            setAblageHinweis(null)
+            // Der Ordner steht – jetzt kann das Wartende weg
+            setTimeout(() => { loadFotoOrdner(); legeOriginaleAb({ still: true }) }, 400)
+          }}
+          onClose={() => setOrdnerOpen(false)} />
       )}
 
       {editing && (
@@ -1098,13 +1396,29 @@ export default function BautagebuchView({ project, serverUser, logoDataUrl, clie
               {/* Bildschirm: Miniaturen mit Nummer. Im Ausdruck stehen die
                   Fotos großformatig im Fotoanhang. */}
               {photos.length > 0 && (
-                <div className="flex gap-2 flex-wrap mt-3 no-print">
-                  {photos.map(p => (
-                    <div key={p.id} className="w-24">
-                      <PhotoThumb photoId={p.id} no={p.no} size="w-24 h-24" />
-                      {p.caption && <p className="text-[10px] text-gray-500 mt-0.5 leading-tight">{p.caption}</p>}
-                    </div>
-                  ))}
+                <div className="mt-3 no-print">
+                  <div className="flex gap-2 flex-wrap">
+                    {photos.map(p => (
+                      <div key={p.id} className="w-24">
+                        <PhotoThumb photoId={p.id} no={p.no} size="w-24 h-24" />
+                        {p.caption && <p className="text-[10px] text-gray-500 mt-0.5 leading-tight">{p.caption}</p>}
+                      </div>
+                    ))}
+                  </div>
+                  {/* Wo liegen die Originale? Der Haken steht erst, wenn die
+                      Datei wirklich im Projektordner liegt. */}
+                  {isServer && (() => {
+                    const abgelegt = photos.filter(p => p.fsPath).length
+                    if (abgelegt === 0) return null
+                    return (
+                      <p className="text-[10px] text-gray-400 mt-1.5 flex items-center gap-1">
+                        <CheckCircle2 size={10} className="text-green-600" />
+                        {abgelegt === photos.length
+                          ? `Originale im Projektordner${photos.length > 1 ? ` (${photos.length})` : ''}`
+                          : `${abgelegt} von ${photos.length} Originalen im Projektordner`}
+                      </p>
+                    )
+                  })()}
                 </div>
               )}
               </div>

@@ -11,7 +11,8 @@
     "electron:dev": "concurrently \"vite\" \"wait-on http://localhost:5173 && cross-env NODE_ENV=development electron .\"",
     "electron:build:win": "vite build && electron-builder --win --publish never",
     "electron:build:mac": "vite build && electron-builder --mac --publish never",
-    "electron:build:all": "vite build && electron-builder --win --mac --publish never"
+    "electron:build:all": "vite build && electron-builder --win --mac --publish never",
+    "pruefe:fotoablage": "node scripts/pruefe-fotoablage.js"
   },
   "dependencies": {
     "@azure/msal-node": "^5.2.2",
