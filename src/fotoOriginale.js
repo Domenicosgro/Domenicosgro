@@ -93,19 +93,25 @@ const laeuft = new Set()
  * angefragt – das ist keine Störung, sondern eine offene Einstellung.
  * Rückgabe: { abgelegt, offen, grund, fehler }
  */
-export async function originaleSenden(projectId, headers = {}) {
+export async function originaleSenden(projectId, headers = {}, { pfad } = {}) {
   if (laeuft.has(projectId)) {
     return { abgelegt: 0, offen: (await originalList(projectId)).length, grund: 'laeuft', fehler: '' }
   }
   laeuft.add(projectId)
   try {
-    return await sendeDurchlauf(projectId, headers)
+    return await sendeDurchlauf(projectId, headers, pfad || standardPfad)
   } finally {
     laeuft.delete(projectId)
   }
 }
 
-async function sendeDurchlauf(projectId, headers) {
+// Wohin die Bytes gehen. Vorgabe ist die Projektroute des Protokolltools; die
+// schlanke Baustellen-Oberfläche (src/baustelle/) schickt dieselben Bytes
+// über ihre eigene Fassade, zur selben Ablage.
+const standardPfad = (projectId, satz) =>
+  `/api/projects/${encodeURIComponent(projectId)}/bautagebuch/${encodeURIComponent(satz.entryId)}/fotos`
+
+async function sendeDurchlauf(projectId, headers, pfad) {
   const liste = await originalList(projectId)
   let abgelegt = 0
   let grund = null
@@ -114,7 +120,7 @@ async function sendeDurchlauf(projectId, headers) {
   for (const satz of liste) {
     if (!navigator.onLine) { grund = 'offline'; break }
     if (!satz.entryId || !satz.bytes) { await originalRemove(satz.id); continue }
-    const url = `/api/projects/${encodeURIComponent(projectId)}/bautagebuch/${encodeURIComponent(satz.entryId)}/fotos`
+    const url = pfad(projectId, satz)
       + `?fotoId=${encodeURIComponent(satz.id)}&name=${encodeURIComponent(satz.name || 'foto.jpg')}`
     try {
       // Rohdaten, keine Verpackung. Der Content-Type muss octet-stream sein –

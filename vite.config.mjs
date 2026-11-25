@@ -40,6 +40,7 @@ export default defineConfig({
         main:            resolve(__dirname, 'index.html'),
         personalplanung: resolve(__dirname, 'personalplanung.html'),
         pruefstation:    resolve(__dirname, 'pruefstation.html'),
+        baustelle:       resolve(__dirname, 'baustelle.html'),
       },
     },
   },

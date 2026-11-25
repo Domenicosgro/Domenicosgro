@@ -67,6 +67,7 @@ const brand = {
 // Die Nebenanwendungen heißen wie der Kurzname, sofern nichts anderes gesetzt ist
 brand.appNameStaff = env('APP_NAME_STAFF', `${brand.appShort} Mitarbeiter`)
 brand.appNameCheck = env('APP_NAME_CHECK', `${brand.appShort} Prüfstation`)
+brand.appNameSite  = env('APP_NAME_SITE',  `${brand.appShort} Baustelle`)
 
 // Absender der letzten Instanz. Im Betrieb greift immer SMTP_FROM oder
 // GRAPH_SENDER – das hier fängt nur den Fall ab, dass keine der beiden
@@ -84,6 +85,7 @@ brand.forClient = () => ({
   nameLong:     brand.nameLong,
   appNameStaff: brand.appNameStaff,
   appNameCheck: brand.appNameCheck,
+  appNameSite:  brand.appNameSite,
 })
 
 module.exports = brand

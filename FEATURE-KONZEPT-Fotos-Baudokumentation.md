@@ -1,8 +1,9 @@
 # Feature-Konzept: Fotos von der Baustelle in die Baudokumentation
 
-**Stand:** 21. November 2026 · **Abschnitt 5 ist gebaut** (Ablage im
-Projektordner). Offen bleibt Abschnitt 4, Weg A: das VPN auf die Handys.
-Das liegt bei der Netzbetreuung, nicht in dieser Anwendung.
+**Stand:** 25. November 2026 · **Abschnitt 5 ist gebaut** (Ablage im
+Projektordner), und dazu die **schlanke Handy-Oberfläche** samt eigener
+Schnittstelle (Abschnitt 9, neu). Offen bleibt Abschnitt 4, Weg A: das VPN auf
+die Handys. Das liegt bei der Netzbetreuung, nicht in dieser Anwendung.
 
 > **Entschieden am 19.11.2026:** Die Fotos machen unsere eigenen Bauleiter.
 > Damit gilt **Weg A** (Abschnitt 4): VPN auf die Diensthandys, kein
@@ -289,7 +290,8 @@ hast — nur noch nicht für Fremdfirmen.
 
 | Stufe | Inhalt | Nutzen danach |
 |---|---|---|
-| **1** | Ablage im Projektordner (5.1–5.3), VPN auf die Diensthandys (Weg A) | Eigene Leute fotografieren von der Baustelle, die Originale liegen im Projektordner |
+| **1** ✓ | Ablage im Projektordner (5.1–5.3), VPN auf die Diensthandys (Weg A) | Eigene Leute fotografieren von der Baustelle, die Originale liegen im Projektordner |
+| **1b** ✓ | Schlanke Handy-Oberfläche mit eigener Schnittstelle (Abschnitt 9) | Auf der Baustelle wird nicht das ganze Tool geladen, und die Fläche nach außen wäre klein |
 | **2** | Eingangskorb am Projekt: Fotos, die noch keinem Tag zugewiesen sind, mit Zuweisung per Klick | Fotos müssen nicht im Moment der Aufnahme einem Bericht zugeordnet werden |
 | **3** | Fotos aus dem Projektordner im Tool auswählen und anhängen | Bilder, die jemand von Hand aufs Laufwerk gelegt hat, kommen in den Bericht |
 | ~~4~~ | ~~Einwurfseite plus Abrufschleife (Weg B)~~ | *Zurückgestellt — nur nötig, wenn Fremdfirmen liefern sollen* |
@@ -352,3 +354,76 @@ keine Hürde, aber es sollte vorher jemand ausgerechnet haben.
 - **Keine Aussage zur Beweiskraft.** Ein Foto mit Zeitstempel aus unserem System
   ist kein beglaubigtes Dokument. Was vor Gericht trägt, entscheidet nicht die
   Software.
+
+---
+
+## 9. Die Handy-Oberfläche (gebaut am 25.11.2026)
+
+Nachtrag zu Abschnitt 2, wo noch steht: „Die Handy-Anwendung, die du dir
+wünschst, existiert technisch schon: die PWA." Das stimmt, aber es ist die
+ganze PWA — 5,4 MB Bündel und eine Oberfläche, die für einen Bürobildschirm
+gebaut ist. Dazu gibt es jetzt **eine eigene, schlanke Oberfläche**: `/baustelle`.
+
+Sie deckt bewusst nicht das Spektrum des Tools ab, sondern das, worum es auf
+der Baustelle geht — **die Projektdatenbank und die Baudokumentation**:
+
+- Projekt wählen (Name, Nummer, Ort, letzter Bericht)
+- Tagesbericht anlegen: Tag, Tageshälfte, Wetter (automatisch), Firmen vor Ort,
+  ausgeführte Arbeiten, Bemerkungen, Besonderes, Baufortschritt
+- fotografieren — kleine Fassung in den Bericht, Original in den Projektordner
+- die letzten 14 Tage ansehen, eigene Berichte nachbearbeiten
+- ohne Netz weiterarbeiten: der Bericht wird auf dem Gerät gespeichert und
+  geht von selbst hinaus, sobald Verbindung besteht
+
+Nicht dabei: Protokolle, Mängel, Kontakte, Freimeldungen, Nachtrags- und
+Rechnungsprüfung, Dateiablage, BIM.
+
+### 9.1 Warum das mehr ist als eine schlankere Maske
+
+Eine schlanke Maske vor den vorhandenen Routen spart Ladezeit, aber nichts an
+Zugriff: wer angemeldet ist, holt sich mit zwei Zeilen das Protokollarchiv.
+Deshalb hat die Oberfläche eine **eigene Schnittstelle** mit acht Routen
+(`/api/baustelle/*`, `server/baustelle.js`) statt der rund 125 des Tools.
+
+Das ändert die Lage in Abschnitt 3: Die Frage war „wie weit öffnen wir das
+Büronetz, und für wen". Bisher hieß jede Antwort darauf *alles oder nichts* —
+Weg C hätte die ganze Anwendung ins Internet gestellt, Anmeldung über
+DSM-Konten inbegriffen. Jetzt gibt es eine dritte Möglichkeit: **diese eine
+Fläche** nach außen legen und den Rest zulassen. Das ist kein neuer Weg,
+sondern ein kleinerer Weg C — und er bleibt eine eigene Entscheidung.
+
+**Offen und nicht entschieden:** Ob die Fassade je nach außen geht. Der Port
+ist zu, das VPN bleibt der Weg. Was dafür noch zu klären wäre, wenn es
+irgendwann ansteht: Zwei-Faktor-Pflicht für die Konten, die sie benutzen
+dürfen, eine eigene Anmeldung getrennt von DSM, und ein Blick in die
+Zugriffsprotokolle als laufende Arbeit.
+
+### 9.2 Was die Fassade schützt
+
+Nicht nur, was sie *nicht* herausgibt, sondern auch, was sie nicht kaputt
+machen kann:
+
+- **Datensparsamkeit:** Die Projektliste nennt Name, Nummer, Ort und ob der
+  Fotoordner hinterlegt ist. Kein Bauherr, keine Kontakte, kein Vertrag, kein
+  Team. Berichte gehen als Fließtext hinaus, Behinderungen und Abnahmen gar
+  nicht.
+- **Feld-Weißliste:** Was das Handy nicht kennt, bleibt beim Ändern unberührt.
+  Eine schlanke Oberfläche darf nie leeren, was sie nicht anzeigt.
+- **Der Ablagevermerk des Originals bleibt stehen**, auch wenn das Handy eine
+  ältere Fotoliste schickt.
+- **Nur eigene, frische, unformatierte Berichte** sind vom Handy aus änderbar.
+  Ein im Büro formatierter Bericht ist gesperrt, statt die Formatierung still
+  zu verlieren.
+- **Doppelt gesendet heißt nicht doppelt im Büro:** jeder Bericht trägt eine
+  eigene Kennung.
+
+Nachprüfbar ohne NAS und ohne Browser: `npm run pruefe:baustelle`
+(53 Prüfungen, darunter „die Fassade hat keine weiteren Routen").
+
+### 9.3 Was als Nächstes naheliegt
+
+**Mängel auf der Baustelle erfassen.** Bewusst nicht in dieser Runde: Mängel
+liegen in einem eigenen Speicher und haben Status, Fristen und
+Verantwortliche. Sobald die Bauleiter das Ding in der Hand haben, wird es der
+erste Wunsch sein — die Fassade ist darauf vorbereitet, aber die Entscheidung
+steht noch an.

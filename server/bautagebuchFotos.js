@@ -191,60 +191,68 @@ function registerBautagebuchFotos(app, deps) {
   // Rumpf = Rohdaten des Fotos. Query: fotoId (das Foto im Bericht), name
   // (Dateiname vom Gerät). Datum, Nummer und Bildunterschrift kommen aus dem
   // Bericht selbst – so kann die Ablage nicht vom Bericht abweichen.
-  app.post('/api/projects/:id/bautagebuch/:entryId/fotos', requireAuth, writeLimiter,
-    express.raw({ type: 'application/octet-stream', limit: '100mb' }),
-    async (req, res) => {
-      try {
-        const project = getAccessibleProject(req, res)
-        if (!project) return
-        if (nichtKonfiguriert(res)) return
+  // Der Griff selbst – unter zwei Wegen angemeldet (siehe unten).
+  const fotoHandler = async (req, res) => {
+    try {
+      const project = getAccessibleProject(req, res)
+      if (!project) return
+      if (nichtKonfiguriert(res)) return
 
-        const o = ordner(project)
-        if (!o.root) return res.status(409).json({ error: 'Kein NAS-Projektordner hinterlegt.', grund: 'projektordner' })
-        if (!o.foto) return res.status(409).json({ error: 'Für dieses Projekt ist kein Fotoordner hinterlegt – in der Baudokumentation festlegen.', grund: 'fotoordner' })
+      const o = ordner(project)
+      if (!o.root) return res.status(409).json({ error: 'Kein NAS-Projektordner hinterlegt.', grund: 'projektordner' })
+      if (!o.foto) return res.status(409).json({ error: 'Für dieses Projekt ist kein Fotoordner hinterlegt – in der Baudokumentation festlegen.', grund: 'fotoordner' })
 
-        const entry = db.diaryEntries.get(req.params.entryId)
-        if (!entry || entry.projectId !== project.id) return res.status(404).json({ error: 'Bericht nicht gefunden.' })
-        if (!Buffer.isBuffer(req.body) || !req.body.length) return res.status(400).json({ error: 'Leere Datei.' })
+      const entry = db.diaryEntries.get(req.params.entryId)
+      if (!entry || entry.projectId !== project.id) return res.status(404).json({ error: 'Bericht nicht gefunden.' })
+      if (!Buffer.isBuffer(req.body) || !req.body.length) return res.status(400).json({ error: 'Leere Datei.' })
 
-        const fotos = Array.isArray(entry.photos) ? entry.photos : []
-        const i = fotos.findIndex(p => p && p.id === req.query.fotoId)
-        if (i < 0) return res.status(404).json({ error: 'Foto gehört nicht zu diesem Bericht.' })
-        const datum = /^\d{4}-\d{2}-\d{2}$/.test(entry.date || '') ? entry.date : new Date().toISOString().slice(0, 10)
+      const fotos = Array.isArray(entry.photos) ? entry.photos : []
+      const i = fotos.findIndex(p => p && p.id === req.query.fotoId)
+      if (i < 0) return res.status(404).json({ error: 'Foto gehört nicht zu diesem Bericht.' })
+      const datum = /^\d{4}-\d{2}-\d{2}$/.test(entry.date || '') ? entry.date : new Date().toISOString().slice(0, 10)
 
-        // Schon abgelegt (z. B. doppelt gesendete Warteschlange) – nichts tun
-        if (fotos[i].fsPath) return res.json({ pfad: fotos[i].fsPath, bereits: true })
+      // Schon abgelegt (z. B. doppelt gesendete Warteschlange) – nichts tun
+      if (fotos[i].fsPath) return res.json({ pfad: fotos[i].fsPath, bereits: true })
 
-        const ziel      = await tagesordner(o.foto, datum)
-        const vorhanden = (await fileStation.listFolder(ziel)).map(f => f.name)
-        const name      = uniqueName(dateiname(datum, i + 1, fotos[i].caption, req.query.name), vorhanden)
-        const endung    = name.slice(name.lastIndexOf('.')).toLowerCase()
-        const pfad      = await fileStation.uploadFile(ziel, name, req.body, BILD_TYPEN[endung] || 'image/jpeg')
+      const ziel      = await tagesordner(o.foto, datum)
+      const vorhanden = (await fileStation.listFolder(ziel)).map(f => f.name)
+      const name      = uniqueName(dateiname(datum, i + 1, fotos[i].caption, req.query.name), vorhanden)
+      const endung    = name.slice(name.lastIndexOf('.')).toLowerCase()
+      const pfad      = await fileStation.uploadFile(ziel, name, req.body, BILD_TYPEN[endung] || 'image/jpeg')
 
-        // Ergebnis am Foto im Bericht vermerken. Der Server schreibt mit der
-        // aktuellen Version – der Nutzer bearbeitet den Bericht in der Zeit
-        // vielleicht weiter, und eine Ablage soll ihn nicht ausbremsen.
-        const frisch = db.diaryEntries.get(entry.id)
-        const liste  = (Array.isArray(frisch.photos) ? frisch.photos : []).map(p =>
-          p && p.id === req.query.fotoId
-            ? { ...p, fsPath: pfad, fsStatus: 'ok', fsAt: new Date().toISOString(),
-                fsBy: displayName(req.user), originalSize: req.body.length }
-            : p)
-        const { _version, _updatedAt, ...daten } = frisch
-        const ergebnis = db.diaryEntries.update(entry.id, { ...daten, photos: liste }, _version, req.user)
-        if (ergebnis?.conflict) {
-          // Der Bericht wurde gerade anderswo geändert. Die Datei liegt auf der
-          // NAS; nur der Vermerk fehlt. Der Aufrufer darf das Foto als abgelegt
-          // streichen – ein zweiter Versuch würde eine Doppeldatei anlegen.
-          logEvent('BTB_FOTO_VERMERK', req, `project=${project.id} entry=${entry.id} konflikt pfad=${pfad}`)
-        } else {
-          broadcast('diary', 'update', entry.id, new Date().toISOString())
-        }
+      // Ergebnis am Foto im Bericht vermerken. Der Server schreibt mit der
+      // aktuellen Version – der Nutzer bearbeitet den Bericht in der Zeit
+      // vielleicht weiter, und eine Ablage soll ihn nicht ausbremsen.
+      const frisch = db.diaryEntries.get(entry.id)
+      const liste  = (Array.isArray(frisch.photos) ? frisch.photos : []).map(p =>
+        p && p.id === req.query.fotoId
+          ? { ...p, fsPath: pfad, fsStatus: 'ok', fsAt: new Date().toISOString(),
+              fsBy: displayName(req.user), originalSize: req.body.length }
+          : p)
+      const { _version, _updatedAt, ...daten } = frisch
+      const ergebnis = db.diaryEntries.update(entry.id, { ...daten, photos: liste }, _version, req.user)
+      if (ergebnis?.conflict) {
+        // Der Bericht wurde gerade anderswo geändert. Die Datei liegt auf der
+        // NAS; nur der Vermerk fehlt. Der Aufrufer darf das Foto als abgelegt
+        // streichen – ein zweiter Versuch würde eine Doppeldatei anlegen.
+        logEvent('BTB_FOTO_VERMERK', req, `project=${project.id} entry=${entry.id} konflikt pfad=${pfad}`)
+      } else {
+        broadcast('diary', 'update', entry.id, new Date().toISOString())
+      }
 
-        logEvent('BTB_FOTO', req, `project=${project.id} entry=${entry.id} pfad=${pfad} size=${req.body.length}`)
-        res.status(201).json({ pfad, name, nr: i + 1 })
-      } catch (e) { res.status(502).json({ error: e.message }) }
-    })
+      logEvent('BTB_FOTO', req, `project=${project.id} entry=${entry.id} pfad=${pfad} size=${req.body.length}`)
+      res.status(201).json({ pfad, name, nr: i + 1 })
+    } catch (e) { res.status(502).json({ error: e.message }) }
+  }
+
+  // Dieselbe Ablage über zwei Wege: aus dem Büro über die Projektroute, vom
+  // Handy über die Baustellen-Fassade (server/baustelle.js). Ein Griff für
+  // beide, damit Dateiname, Tagesordner und Vermerk gleich entstehen – und
+  // damit die Fassade nicht ihre eigene Ablage mitbringt.
+  for (const pfad of ['/api/projects/:id/bautagebuch/:entryId/fotos', ...(deps.fotoPfade || [])]) {
+    app.post(pfad, requireAuth, writeLimiter,
+      express.raw({ type: 'application/octet-stream', limit: '100mb' }), fotoHandler)
+  }
 }
 
 module.exports = { registerBautagebuchFotos, cleanRel }

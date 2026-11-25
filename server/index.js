@@ -1854,7 +1854,9 @@ async function weatherFrom(baseUrl, geo, date, from, to) {
   }
 }
 
-app.get('/api/projects/:id/weather', requireAuth, async (req, res) => {
+// Als benannter Griff, weil die Baustellen-Fassade dieselbe Abfrage anbietet
+// (server/baustelle.js) – eine Wetterquelle, eine Auslegung der Tageshälften.
+const wetterHandler = async (req, res) => {
   try {
     const project = getAccessibleProject(req, res)
     if (!project) return
@@ -1906,7 +1908,8 @@ app.get('/api/projects/:id/weather', requireAuth, async (req, res) => {
   } catch (e) {
     res.status(502).json({ error: `Wetterdaten nicht abrufbar: ${e.message}. Hat der Server Internetzugang?` })
   }
-})
+}
+app.get('/api/projects/:id/weather', requireAuth, wetterHandler)
 
 // ── Dateiablage: Synology File Station je Projekt (project.fsPath) ───────────
 const fileStation = require('./fileStation')
@@ -1983,8 +1986,20 @@ require('./pruefstation').registerPruefstation(app, {
     db, fileStation, requireAuth, writeLimiter, getAccessibleProject, isProjectManager,
     logEvent, broadcast, cleanName: ps.cleanName, uniqueName: ps.uniqueName,
     displayName: planDisplayName,
+    // Die Handy-Oberfläche lädt über die Baustellen-Fassade hoch, benutzt
+    // aber genau dieselbe Ablage (server/baustelle.js).
+    fotoPfade: ['/api/baustelle/projekte/:id/berichte/:entryId/fotos'],
   })
 }
+
+// ── Baustellen-Fassade: schmale Schnittstelle für die Handy-Oberfläche ───────
+// Projekte auflisten und Tagesberichte schreiben, nichts weiter.
+// Details und Begründung: server/baustelle.js
+require('./baustelle').registerBaustelle(app, {
+  db, requireAuth, writeLimiter, getAccessibleProject, canAccessProject,
+  attachments, validAttachmentId, logEvent, broadcast,
+  displayName: planDisplayName, wetterHandler,
+})
 
 // ── Personalplanung: Mitarbeiter-Stammdaten (Arbeitszeitmodelle) ──────────────
 // ── Sync: "Eigene Organisation"-Kontakte → Benutzer + Personalplanung ──────────
@@ -4118,6 +4133,7 @@ const SEITENTITEL = {
   'index.html':           () => betreiber.appName,
   'personalplanung.html': () => betreiber.appNameStaff,
   'pruefstation.html':    () => betreiber.appNameCheck,
+  'baustelle.html':       () => betreiber.appNameSite,
 }
 
 function sendHtml(res, file, extraVars = []) {
@@ -4161,6 +4177,34 @@ app.get(['/personalplanung', '/personalplanung.html'], (req, res) => {
 app.get(['/pruefstation', '/pruefstation.html'], (req, res) => {
   if (req.path.endsWith('/')) return res.redirect(301, '/pruefstation')
   sendHtml(res, 'pruefstation.html')
+})
+// ── Baustelle: schlanke Oberfläche für das Handy ─────────────────────────────
+// Eigener Einstieg, damit auf der Baustelle nicht das ganze Bündel des
+// Protokolltools über Mobilfunk geladen wird. Inhaltlich: Projekte und
+// Baudokumentation (siehe server/baustelle.js).
+app.get(['/baustelle', '/baustelle.html'], (req, res) => {
+  if (req.path.endsWith('/')) return res.redirect(301, '/baustelle')
+  sendHtml(res, 'baustelle.html')
+})
+// ── Manifeste: Name des Betreibers einsetzen ─────────────────────────────────
+// Die gebauten Dateien tragen den Namen aus dem Quelltext. Auf dem
+// Home-Bildschirm soll aber der Name stehen, der für diesen Betreiber
+// konfiguriert ist – sonst heißt die App auf dem Handy eines anderen Büros
+// nach uns. Muss VOR express.static stehen.
+const MANIFESTE = {
+  '/manifest.json':         () => ({ name: betreiber.appName,     short_name: betreiber.appShort }),
+  '/baustelle.webmanifest': () => ({ name: betreiber.appNameSite, short_name: 'Baustelle' }),
+}
+app.get(Object.keys(MANIFESTE), (req, res) => {
+  const datei = path.join(distDir, req.path.slice(1))
+  if (!fs.existsSync(datei)) return res.status(404).end()
+  let m
+  try { m = JSON.parse(fs.readFileSync(datei, 'utf8')) }
+  catch { return res.sendFile(datei) }
+  res.setHeader('Content-Type', req.path.endsWith('.webmanifest')
+    ? 'application/manifest+json; charset=utf-8' : 'application/json; charset=utf-8')
+  res.setHeader('X-Content-Type-Options', 'nosniff')
+  res.send(JSON.stringify({ ...m, ...MANIFESTE[req.path]() }))
 })
 app.use(express.static(distDir, {
   index: false,

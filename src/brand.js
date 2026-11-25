@@ -25,9 +25,10 @@ export const brand = {
   // Kürzel des Betreibers – Grußzeile unter E-Mails, die der Browser öffnet
   name:     wert('name',     'KOMPLIZEN'),
   nameLong: wert('nameLong', 'Komplizen Industrieplanung und Architektur'),
-  // Die beiden eigenständigen Oberflächen
+  // Die eigenständigen Oberflächen neben dem Protokolltool
   appNameStaff: wert('appNameStaff', 'Komplizen Mitarbeiter'),
   appNameCheck: wert('appNameCheck', 'Komplizen Prüfstation'),
+  appNameSite:  wert('appNameSite',  'Komplizen Baustelle'),
 }
 
 export default brand

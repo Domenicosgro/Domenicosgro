@@ -489,6 +489,42 @@ steht ein Haken, sobald die Originale im Projektordner liegen.
 > sein. Ohne Fotoordner im Projekt bleiben die Originale liegen, der Bericht
 > und seine Fotos sind davon nicht betroffen.
 
+### Auf der Baustelle: die Handy-Oberfläche
+
+Für das Handy gibt es eine **eigene, schlanke Oberfläche** unter `/baustelle`.
+Sie kann genau das, was auf der Baustelle gebraucht wird: Projekt wählen,
+Tagesbericht schreiben, fotografieren. Protokolle, Mängel, Kontakte, Nachträge
+und die Dateiablage sind dort nicht dabei — die bleiben am Rechner.
+
+Sie lädt ein Zwanzigstel des Protokolltools und lässt sich wie eine eigene App
+auf den Home-Bildschirm legen (im Browser „Zur Startseite hinzufügen"). Oben
+rechts führt ein Pfeil zurück ins Protokolltool.
+
+**Was dort geht:**
+
+- **Neuer Tagesbericht** — Tag und Tageshälfte, Wetter (wird für den
+  Projektstandort automatisch geholt, lässt sich überschreiben), Firmen vor Ort
+  mit Gewerk und Zahl der Arbeitskräfte, ausgeführte Arbeiten, Bemerkungen,
+  Besonderes, Baufortschritt.
+- **Fotos** — direkt aus der Kamera oder aus der Galerie. Die kleine Fassung
+  landet im Bericht, das Original im Projektordner (siehe oben).
+- **Berichte der letzten 14 Tage** ansehen und **eigene** Berichte
+  nachbearbeiten.
+
+**Ohne Netz:** Der Bericht wird zuerst auf dem Gerät gespeichert und gesendet,
+sobald wieder Verbindung besteht — von selbst, oder über „Senden" im Streifen
+oben. Ein angefangener Bericht übersteht dabei auch das Schließen der App.
+
+> **Was dort absichtlich nicht geht:** Berichte löschen, Berichte anderer
+> Leute ändern, Berichte, die älter als 30 Tage sind, und Berichte, die im Büro
+> formatiert wurden (Listen, Fettschrift) — am Handy gäbe es nur Fließtext, die
+> Formatierung wäre still weg. In allen Fällen steht am Bericht, warum.
+
+> **Erreichbarkeit:** Auch diese Oberfläche liegt im Büronetz. Von der
+> Baustelle aus braucht das Handy eine VPN-Verbindung. Sie ist aber so gebaut,
+> dass man sie — falls das einmal gewünscht ist — getrennt vom übrigen Tool
+> zugänglich machen könnte.
+
 ---
 
 ## Info-Punkte

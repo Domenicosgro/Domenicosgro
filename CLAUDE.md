@@ -72,7 +72,7 @@ git pull origin claude/protocol-tool-meetings-tIoZX
 Erkennung im Frontend: `window.__SERVER_MODE__` (von Express injiziert),
 `window.electronAPI` (Electron-Preload).
 
-### Zwei Anwendungen und eine Einbettseite, ein Backend
+### Die Oberflächen – ein Backend
 
 | Anwendung | Einstieg | URL | Bundle |
 |---|---|---|---|
@@ -80,6 +80,7 @@ Erkennung im Frontend: `window.__SERVER_MODE__` (von Express injiziert),
 | **Personalplanung** | `personalplanung.html` → `src/personalplanung/main.jsx` → `PersonalplanungApp.jsx` | `/personalplanung` | `assets/personalplanung-*.js` |
 | **Gelände (Dashboard)** | `gelaende.html` → `src/gelaendeEntry.jsx` | `/gelaende?token=…` | `assets/gelaende-*.js` |
 | **Prüfstation** | `pruefstation.html` → `src/pruefstation/main.jsx` → `PruefstationApp.jsx` | `/pruefstation` | `assets/pruefstation-*.js` |
+| **Baustelle** (Handy) | `baustelle.html` → `src/baustelle/main.jsx` → `BaustelleApp.jsx` | `/baustelle` | `assets/baustelle-*.js` |
 
 Die Personalplanung ist seit 2026-09-11 eine **eigenständige Oberfläche**
 (eigene URL, eigene Kopfzeile, eigener Login-Titel, nur Admins), läuft aber
@@ -113,6 +114,13 @@ E-Mail-Verläufe, Stellungnahmen) im Unterordner „Anlagen zur Prüfung". Stufe
 Prüfung mit Claude über die Skills `nachtragspruefung`/`rechnungspruefung`.
 Details: `docs/PRUEFSTATION.md`, Server: `server/pruefstation.js`.
 
+**Baustelle (seit 2026-11-25)** – die schlanke Oberfläche für das Handy:
+Projekt wählen, Tagesbericht der Baudokumentation schreiben, fotografieren.
+Mehr nicht. Sie deckt bewusst nicht das ganze Tool ab (§10, „Baustelle").
+Entscheidend ist nicht die Maske, sondern die **eigene Schnittstelle**
+`/api/baustelle/*` (`server/baustelle.js`) – eine Fassade mit acht Routen vor
+denselben Daten. Prüflauf: `npm run pruefe:baustelle`.
+
 ---
 
 ## 2. Dateistruktur (Repository)
@@ -129,6 +137,7 @@ Domenicosgro/
 ├── package.json                   # Frontend + Electron-Abhängigkeiten
 ├── index.html                     # PWA-Einstieg (manifest, sw.js, apple-touch-icon)
 ├── gelaende.html                  # Vite-Einstieg: einbettbare Gelände-Seite (Dashboard)
+├── baustelle.html                 # Vite-Einstieg: schlanke Handy-Oberfläche (/baustelle)
 ├── vite.config.mjs                # erzeugt BUILD_ID → __BUILD_ID__ + dist/version.json
 ├── tailwind.config.mjs            # borderRadius: 0 (Flat Design)
 ├── postcss.config.mjs
@@ -137,6 +146,7 @@ Domenicosgro/
 │   ├── logo.png                   # Dunkles (K)-Logo → Wasserzeichen, PWA-Icon, Favicon
 │   ├── icon.png  · favicon.png
 │   ├── manifest.json              # PWA-Manifest (display: standalone)
+│   ├── baustelle.webmanifest      # PWA-Manifest der Baustellen-Oberfläche (start_url /baustelle)
 │   ├── sw.js                      # Service Worker (network-first, Cache-Fallback)
 │   ├── de.aff / de.dic            # Deutsche Wörterbücher für nspell
 │
@@ -157,6 +167,10 @@ Domenicosgro/
 │   │   ├── hex.js                 # Hex-Mathematik, Auto-Platzierung, BFS-Wegfindung
 │   │   ├── layout.js              # Quartiere, Farbfamilien, Parzellen, Deko, Zielwaben
 │   │   └── engine.js              # Three.js: Waben, Bauzustände, Figuren, Agenten, Kamera
+│   │
+│   ├── baustelle/                 # Handy-Oberfläche: Projektwahl, Tagesbericht, Warteschlange
+│   │   ├── main.jsx · api.js · warteschlange.js
+│   │   └── BaustelleApp.jsx · BerichtForm.jsx
 │   │
 │   ├── components/
 │   │   ├── ProjectsHome.jsx       # Startseite: Projektliste, Favoriten, PWA-Install, Import, Admin-Kachel
@@ -207,6 +221,8 @@ Domenicosgro/
 │   ├── gelaende.js                # Gelände-Daten je Kalenderwoche (Dashboard-Integration)
 │   ├── fileStation.js             # Synology File Station (Service-Konto): list/download/upload/mkdir/delete
 │   ├── pruefstation.js            # Prüfstation: Prüfvorgänge + verknüpfte NAS-Ordner (/api/pruefstation/*)
+│   ├── bautagebuchFotos.js        # Baudokumentation: Originalfotos in den Projektordner
+│   ├── baustelle.js               # Baustellen-Fassade: schmale Schnittstelle fürs Handy (/api/baustelle/*)
 │   ├── assistent.js               # Assistent: Routen, Verlauf, SSE zum Browser (§15)
 │   ├── kontext.js                 # Rückgriff: Systemkopf aus dem, was die Person sehen darf
 │   ├── ki.js                      # Einzige Stelle, die das Dashboard kennt (Weg zur KI-Farm)
@@ -216,6 +232,11 @@ Domenicosgro/
 │
 ├── pruefungen/                    # Prüfskripte (nicht im Produktionsabbild)
 │   └── pruefung-assistent.js      # 75 Prüfungen: Rechtegrenze, Rückgriff, Strom, Fehlerwege
+│
+├── scripts/                       # Prüfläufe, über npm run pruefe:* aufrufbar
+│   ├── pruefe-marke.mjs           # kein harter Name des Betreibers im Code
+│   ├── pruefe-fotoablage.js       # 30 Prüfungen der Fotoablage (ohne NAS)
+│   └── pruefe-baustelle.js        # 53 Prüfungen der Baustellen-Fassade (ohne NAS, ohne Browser)
 │
 └── electron/                      # Desktop-Variante (optional)
     ├── main.js                    # Electron-Hauptprozess
@@ -552,8 +573,25 @@ dass es sie gibt. Ein Dienstschlüssel (`X-API-Key` → `__apikey__`) bekommt hi
 **403**: Er gehört zu keinem Menschen und sieht in `canAccessProject` jedes
 Projekt; ein Assistent darauf hätte keine Rechtegrenze.
 
+**Baustelle** (`server/baustelle.js`, siehe §10 „Baustelle")
+```
+GET   /api/baustelle/projekte                      eigene Projekte, schmal
+GET   /api/baustelle/projekte/:id/berichte?tage=   Berichte im Fenster, als Fließtext
+POST  /api/baustelle/projekte/:id/berichte         anlegen  {clientId, …}
+PATCH …/berichte/:entryId                          nur eigene, frische, unformatierte
+POST  …/berichte/:entryId/fotos                    Original (Rohdaten) → Projektordner
+POST  /api/baustelle/projekte/:id/anhang           kleine Fassung  {id, data}
+GET   …/anhang/:anhangId                           nur Bilder an Berichten dieses Projekts
+GET   /api/baustelle/projekte/:id/wetter           wie im Büro
+```
+Diese acht Routen sind die **gesamte** Fläche der Handy-Oberfläche. Wer hier
+etwas hinzufügt, vergrößert genau das, was eines Tages nach außen gehen könnte
+— also mit Absicht, nicht aus Bequemlichkeit.
+
 **Statische Auslieferung**
 ```
+GET  /manifest.json  ·  /baustelle.webmanifest   mit dem Namen des Betreibers
+GET  /personalplanung  ·  /pruefstation  ·  /baustelle   eigene Oberflächen
 GET  /shortcut         Desktop-Verknüpfung (.url)
 GET  /{*path}          SPA-Fallback → dist/index.html
 ```
@@ -618,6 +656,11 @@ die App nennt dann im Fehlertext die fehlende Berechtigung.
 
 - `public/manifest.json` (display: standalone), `public/sw.js` (network-first),
   `index.html` registriert SW + `apple-touch-icon`.
+- Zweites Manifest `public/baustelle.webmanifest` (`start_url: /baustelle`):
+  die Baustellen-Oberfläche liegt als **eigene** App auf dem Home-Bildschirm,
+  neben dem Protokolltool. Beide Manifeste liefert der Server aus und setzt den
+  Namen des Betreibers ein (sonst heißt die App auf jedem fremden Handy nach
+  uns); `sw.js` ist für beide dasselbe.
 - Install-Prompt in `ProjectsHome.jsx` via `beforeinstallprompt`.
 - **Edge:** Installation auch ohne HTTPS (LAN). **Chrome:** braucht HTTPS/`localhost`
   (oder Flag `chrome://flags/#unsafely-treat-insecure-origin-as-secure`).
@@ -756,6 +799,58 @@ Mailversands), das **Original** geht in den Projektordner auf der NAS.
 - Server: `server/bautagebuchFotos.js`. Testlauf ohne NAS:
   `npm run pruefe:fotoablage` (30 Prüfungen – Ordnersuche, Tagesordner,
   Dateiname, Vermerk, Doppelsendung, Pfadausbruch).
+
+### Baustelle: die schmale Fläche für das Handy
+`/baustelle` (`src/baustelle/`) und `/api/baustelle/*` (`server/baustelle.js`).
+
+**Warum eine eigene Fassade und nicht nur eine schlanke Maske.** Die Maske
+spart Ladezeit (271 kB statt 5,4 MB), aber nichts an Zugriff: wer angemeldet
+ist, holt sich mit `curl` über die alten Routen das Protokollarchiv. Die
+Fassade ist der Teil, der eines Tages nach außen gelegt werden kann, ohne die
+übrigen rund 125 Routen mitzunehmen. Dasselbe Muster wie
+`server/stammdaten.js`. **Der Port ist nicht offen – das bleibt eine eigene
+Entscheidung** (Weg C in `FEATURE-KONZEPT-Fotos-Baudokumentation.md`).
+
+Die Routen, mehr gibt es nicht:
+
+| Route | Was sie tut |
+|---|---|
+| `GET /projekte` | eigene, nicht archivierte Projekte: Name, Nummer, Ort, `fotoordner`, letzter Bericht. **Kein** Bauherr, keine Kontakte, kein Vertrag, kein Team |
+| `GET /projekte/:id/berichte?tage=14` | Berichte im Fenster (max. 60 Tage), als **Fließtext** statt HTML. Behinderungen/Abnahmen gehen nicht mit hinaus |
+| `POST /projekte/:id/berichte` | Bericht anlegen, `source: 'baustelle'` |
+| `PATCH …/berichte/:entryId` | nur eigene, nur bis 30 Tage, nur unformatierte (`nurBuero`: `fremd`/`alt`/`formatiert`) |
+| `POST …/berichte/:entryId/fotos` | Original – derselbe Griff wie im Büro (`deps.fotoPfade` in `bautagebuchFotos.js`) |
+| `POST/GET …/anhang[/:id]` | kleine Fassung; Lesen nur für Bilder, die an einem Bericht **dieses** Projekts hängen |
+| `GET …/wetter` | derselbe `wetterHandler` wie im Büro |
+
+Worauf es beim Schreiben ankommt:
+
+- **Feld-Weißliste.** Was das Handy nicht kennt (`obstructions`, `inspections`,
+  `inspectedBy`), bleibt beim `PATCH` unberührt. Eine schlanke Oberfläche darf
+  nie leeren, was sie nicht anzeigt.
+- **Fotos werden gemischt, nicht ersetzt.** Der Ablagevermerk des Originals
+  (`fsPath`) bleibt stehen, auch wenn das Handy eine ältere Liste schickt.
+- **Fließtext → Absätze** wie der Rechteditor sie ablegt (`zuHtml`), damit
+  Ausdruck, PDF und `workDone` unverändert weiterlaufen. Tiptap wird **nicht**
+  mitgebaut; ein im Büro formatierter Bericht ist auf dem Handy gesperrt,
+  statt die Formatierung still zu verlieren.
+- **Wetter nur die vier bekannten Werte** (`sonnig`/`bewoelkt`/`regen`/
+  `schnee`), sonst steht im Ausdruck ein Wort, das er nicht kennt.
+- **`clientId` je Bericht.** Bricht die Verbindung ab, nachdem der Server
+  angelegt hat, bekommt der zweite Versuch denselben Bericht (200 statt 201).
+
+Im Browser: gespeichert wird **immer** in die Warteschlange
+(`src/baustelle/warteschlange.js`, IndexedDB `kp_baustelle_v1`), gesendet wird,
+sobald es geht – ein Weg mit und ohne Netz. Zwei Speicher: Bericht + kleine
+Fassungen in `berichte`, Rohdaten je Foto in `originale` (sonst würde bei jedem
+Tippen ein Satz von 100 MB neu geschrieben). Nach dem Senden wandern die
+Originale in `src/fotoOriginale.js` – die kennt den Bericht erst, wenn er eine
+Kennung hat.
+
+Testlauf ohne NAS und Browser: `npm run pruefe:baustelle` (53 Prüfungen –
+Datensparsamkeit der Projektliste, Fenster, Sperrgründe, Feld-Weißliste,
+Fotomischung, Doppelsendung, Anhanggrenzen, Projektgrenze, „keine weiteren
+Routen").
 
 ### Notizbuch (projektintern, 2 Ebenen)
 Projekt-Dashboard-Kachel „Notizbuch" → `NotizbuchView.jsx`. Ebene 1 = Hauptthema,
