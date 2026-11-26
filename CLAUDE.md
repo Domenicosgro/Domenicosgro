@@ -513,6 +513,7 @@ GET/POST/PATCH/DELETE  /api/notes[/:id]
 POST                   /api/protocols/:id/send-email       Protokoll als PDF
 POST                   /api/notes/:id/send-email
 GET/PUT                /api/notebooks/:projectId           Projekt-Notizbuch (Hauptthemen + Notizen)
+GET/POST/DELETE        /api/note-templates[/:id]           eigene Notizvorlagen des Büros
 POST                   /api/notebooks/:projectId/send-email
 ```
 
@@ -968,6 +969,40 @@ daraus das PDF.
   Anhangspeicher, dort müssen die Bilder schon drinstehen.
 - Planbilder kommen über `planBildUrl(...token)`; ein zwischenzeitlich
   gelöschter Plan lässt sein Blatt weg, statt einen leeren Rahmen zu drucken.
+
+### Notizvorlagen: mitgeliefert und eigene
+`NOTE_TEMPLATES` in `src/utils.js` (mitgeliefert) · `/api/note-templates`
+(eigene, im Key-Value-Speicher `appState` unter `note_templates`).
+
+Eine Vorlage ist ein Gerüst für einen **Zweck**: Art, Betreffvorschlag,
+Überschriften im Inhalt – und die Aufgaben, die aus so einer Notiz üblicherweise
+folgen (`tasks` mit `fristTage` als Abstand zum heutigen Tag, nicht als Datum:
+sonst schleppt die Vorlage ein fremdes Datum mit).
+
+Mitgeliefert: Telefonnotiz, Aktennotiz, Besprechungsnotiz, Memo/Kurzmitteilung,
+Ortstermin/Begehung, Entscheidungsvorlage, Abstimmung mit Behörde,
+Bemusterung/Freigabe. Das Menü zeigt den `zweck` als zweite Zeile – eine Liste
+aus acht Namen ohne Erklärung wäre nicht benutzbar.
+
+- **Anwenden auch auf eine bestehende Notiz** (`applyNoteTemplate`,
+  `VorlagenDialog` in `NotesList.jsx`). Oft merkt man erst beim Schreiben, dass
+  aus dem Anruf eine Entscheidungsvorlage wird. Drei Arten: Inhalt **anhängen**
+  (Vorgabe, mit dem Namen der Vorlage als Trennzeile), **ersetzen** (nur auf
+  Wahl, mit Rückfrage) oder **nur die Aufgaben**.
+- **Ein geschriebener Betreff wird nie überschrieben** – er ist eine
+  Entscheidung, die Vorlage nur ein Vorschlag.
+- **Eigene Vorlagen entstehen aus einer Notiz** („Als Vorlage speichern"), nicht
+  in einem Formular – so bildet ein Büro seine Formulare wirklich. Übernommen
+  werden Art, Betreff, Gerüst und Aufgaben, **ohne Zuständige** und mit den
+  Fristen als Tagesabstand (`noteToTemplate`).
+- Schreiben darf **jeder Angemeldete**: es sind Büroformulare, keine Einstellung
+  mit Folgen, und wer eine anlegt, stand gerade vor der Notiz, für die sie
+  gebraucht wird. Jede Änderung steht im Protokoll (`NOTIZVORLAGE`). Grenzen:
+  60 Vorlagen, 20 kB Inhalt, 20 Aufgaben – der Speicher ist keine Dateiablage.
+- Ohne Server (Electron/lokal) liegen die eigenen Vorlagen im Gerätespeicher
+  (`kp_note_templates`), damit die Oberfläche überall dieselbe ist.
+- **`<hr>` als Trenner überlebt den Rechteditor nicht** (Tiptap wirft es weg);
+  deshalb eine Textzeile mit dem Namen der Vorlage – die sagt ohnehin mehr.
 
 ### Notizen: Aufgaben mit Zuständigem und Frist
 `src/components/NoteTasks.jsx`, Datenfeld `note.actionItems`.

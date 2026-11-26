@@ -249,11 +249,34 @@ export const NOTE_TYPES = [
   { value: 'besprochen',   label: 'Besprechungsnotiz', color: 'badge-green'  },
 ]
 
+// Reiner Text aus HTML – hier nur, um zu erkennen, ob überhaupt etwas drinsteht.
+const stripHtml = (html) => String(html || '').replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').trim()
+
+// ── Notizvorlagen ────────────────────────────────────────────────────────────
+//
+// Eine Vorlage ist ein Gerüst für einen bestimmten Zweck: sie setzt die Art,
+// einen Betreffvorschlag, die Überschriften im Inhalt – und, wo es dazugehört,
+// gleich die Aufgaben, die aus so einer Notiz üblicherweise folgen
+// (`tasks`, mit `fristTage` als Abstand zum heutigen Tag).
+//
+// Felder:
+//   id, label  – Kennung und Name im Menü
+//   zweck      – eine Zeile: wofür man das nimmt (steht im Menü darunter)
+//   type       – aktennotiz | telefonnotiz | besprochen
+//   subject    – Betreffvorschlag
+//   content    – HTML-Gerüst (derselbe Rechteditor wie im Protokoll)
+//   tasks      – [{ description, responsible?, fristTage? }]
+//
+// Eigene Vorlagen des Büros kommen aus der Datenbank dazu (appState
+// `note_templates`, Routen /api/note-templates) und tragen `eigen: true`.
+// Sie entstehen nicht in einem Formular, sondern aus einer bestehenden Notiz:
+// „Als Vorlage speichern" – so wie ein Büro seine Formulare wirklich bildet.
 export const NOTE_TEMPLATES = [
   {
     id: 'tel',
     type: 'telefonnotiz',
     label: 'Telefonnotiz',
+    zweck: 'Wer hat angerufen, worum ging es, was folgt daraus',
     subject: 'Telefonnotiz',
     content: '<p><strong>Gesprächspartner:</strong> </p><p><strong>Thema:</strong> </p><p><strong>Ergebnis:</strong> </p><p><strong>Weiteres Vorgehen:</strong> </p>',
   },
@@ -261,6 +284,7 @@ export const NOTE_TEMPLATES = [
     id: 'akte',
     type: 'aktennotiz',
     label: 'Aktennotiz',
+    zweck: 'Sachverhalt für die Akte festhalten',
     subject: 'Aktennotiz',
     content: '<p><strong>Betreff:</strong> </p><p><strong>Sachverhalt:</strong> </p><p><strong>Ergebnis / Beschluss:</strong> </p>',
   },
@@ -268,10 +292,153 @@ export const NOTE_TEMPLATES = [
     id: 'bespr',
     type: 'besprochen',
     label: 'Besprechungsnotiz',
+    zweck: 'Kurze Besprechung ohne eigenes Protokoll',
     subject: 'Besprechungsnotiz',
     content: '<p><strong>Teilnehmer:</strong> </p><p><strong>Themen:</strong> </p><p><strong>Beschlüsse:</strong> </p><p><strong>Nächste Schritte:</strong> </p>',
   },
+  {
+    id: 'memo',
+    type: 'aktennotiz',
+    label: 'Memo / Kurzmitteilung',
+    zweck: 'Eine Seite an einen Empfänger, mit Bitte um Rückmeldung',
+    subject: 'Memo',
+    content: '<p><strong>An:</strong> </p><p><strong>Von:</strong> </p><p><strong>Betreff:</strong> </p><p>&nbsp;</p>'
+           + '<p><strong>Mitteilung:</strong> </p><p>&nbsp;</p>'
+           + '<p><strong>Bitte um Rückmeldung:</strong> </p>',
+    tasks: [{ description: 'Rückmeldung einholen', fristTage: 7 }],
+  },
+  {
+    id: 'ortstermin',
+    type: 'besprochen',
+    label: 'Ortstermin / Begehung',
+    zweck: 'Baustellenbegehung mit Feststellungen und Vereinbarungen',
+    subject: 'Ortstermin',
+    content: '<p><strong>Anwesende:</strong> </p><p><strong>Anlass der Begehung:</strong> </p>'
+           + '<p><strong>Feststellungen:</strong></p><ul><li></li></ul>'
+           + '<p><strong>Vereinbarungen:</strong></p><ul><li></li></ul>'
+           + '<p><strong>Nächste Schritte:</strong> </p>',
+    tasks: [{ description: 'Feststellungen aus der Begehung abarbeiten', fristTage: 14 }],
+  },
+  {
+    id: 'entscheidung',
+    type: 'aktennotiz',
+    label: 'Entscheidungsvorlage',
+    zweck: 'Dem Bauherrn eine Entscheidung mit Varianten vorlegen',
+    subject: 'Entscheidungsvorlage',
+    content: '<p><strong>Sachverhalt:</strong> </p>'
+           + '<p><strong>Variante 1:</strong> </p><p>Kosten / Terminfolge: </p>'
+           + '<p><strong>Variante 2:</strong> </p><p>Kosten / Terminfolge: </p>'
+           + '<p><strong>Empfehlung:</strong> </p>'
+           + '<p><strong>Entscheidung erforderlich bis:</strong> </p>'
+           + '<p><strong>Entscheidung:</strong> </p>',
+    tasks: [{ description: 'Entscheidung des Bauherrn einholen', fristTage: 7 }],
+  },
+  {
+    id: 'behoerde',
+    type: 'telefonnotiz',
+    label: 'Abstimmung mit Behörde',
+    zweck: 'Auskunft einer Behörde festhalten – mit Verbindlichkeit',
+    subject: 'Abstimmung',
+    content: '<p><strong>Stelle / Behörde:</strong> </p><p><strong>Gesprächspartner:</strong> </p>'
+           + '<p><strong>Sachverhalt:</strong> </p><p><strong>Auskunft:</strong> </p>'
+           + '<p><strong>Verbindlichkeit:</strong> mündlich / schriftlich zugesagt / unverbindlich</p>'
+           + '<p><strong>Offene Punkte:</strong> </p>',
+    tasks: [{ description: 'Auskunft schriftlich bestätigen lassen', fristTage: 10 }],
+  },
+  {
+    id: 'bemusterung',
+    type: 'besprochen',
+    label: 'Bemusterung / Freigabe',
+    zweck: 'Muster vorgelegt, entschieden, freigegeben',
+    subject: 'Bemusterung',
+    content: '<p><strong>Gegenstand:</strong> </p><p><strong>Vorgelegte Muster:</strong></p><ul><li></li></ul>'
+           + '<p><strong>Entscheidung:</strong> </p><p><strong>Auflagen / Bedingungen:</strong> </p>'
+           + '<p><strong>Freigabe erteilt am:</strong> </p>',
+    tasks: [{ description: 'Freigabe an die ausführende Firma weitergeben', fristTage: 3 }],
+  },
 ]
+
+/** Datum in `fristTage` Tagen – für die Fristen aus einer Vorlage. */
+export const fristAus = (tage) => {
+  if (tage === undefined || tage === null || tage === '') return ''
+  const d = new Date()
+  d.setDate(d.getDate() + Number(tage))
+  return d.toISOString().slice(0, 10)
+}
+
+/**
+ * Vorlage auf eine Notiz anwenden – auch auf eine bestehende.
+ *
+ * wie: {
+ *   inhalt:   'anhaengen' | 'ersetzen' | 'nichts'
+ *   betreff:  bool   – Betreff übernehmen (nur wenn er leer ist, siehe unten)
+ *   art:      bool   – Art der Notiz übernehmen
+ *   aufgaben: bool   – Aufgaben der Vorlage ergänzen
+ * }
+ *
+ * Rückgabe: Patch für die Notiz (nur die Felder, die sich ändern). Was nicht
+ * in `wie` steht, bleibt unberührt – eine Vorlage soll ergänzen können, ohne
+ * eine halb geschriebene Notiz zu überschreiben.
+ */
+export const applyNoteTemplate = (note, tpl, wie = {}) => {
+  const { inhalt = 'anhaengen', betreff = true, art = false, aufgaben = true } = wie
+  const patch = {}
+  const alt = String(note?.content || '')
+
+  if (inhalt === 'ersetzen') patch.content = tpl.content || ''
+  else if (inhalt === 'anhaengen' && (tpl.content || '')) {
+    // Trenner nur, wenn vorher wirklich etwas stand – und zwar mit dem Namen
+    // der Vorlage, damit man beim Lesen sieht, wo der zweite Teil herkommt.
+    // Eine <hr> wäre schöner, überlebt aber den Rechteditor nicht.
+    patch.content = stripHtml(alt).trim()
+      ? `${alt}<p>&nbsp;</p><p><strong>— ${tpl.label || 'Vorlage'} —</strong></p>${tpl.content}`
+      : (tpl.content || '')
+  }
+
+  // Der Betreff wird nie überschrieben: ein geschriebener Betreff ist eine
+  // Entscheidung, die Vorlage ist nur ein Vorschlag.
+  if (betreff && tpl.subject && !String(note?.subject || '').trim()) patch.subject = tpl.subject
+  if (art && tpl.type) patch.type = tpl.type
+
+  if (aufgaben && Array.isArray(tpl.tasks) && tpl.tasks.length) {
+    const vorhanden = Array.isArray(note?.actionItems) ? note.actionItems : []
+    let nr = vorhanden.reduce((m, a) => Math.max(m, a.no || 0), 0)
+    patch.actionItems = [
+      ...vorhanden,
+      ...tpl.tasks.map(a => ({
+        ...emptyNoteTask(),
+        no: ++nr,
+        description: a.description || '',
+        responsible: a.responsible || '',
+        deadline: a.deadline || fristAus(a.fristTage),
+        priority: a.priority || 'mittel',
+      })),
+    ]
+  }
+  return patch
+}
+
+/** Eine bestehende Notiz als eigene Vorlage – das Gerüst, nicht der Inhalt. */
+export const noteToTemplate = (note, label) => ({
+  id: `eigen_${uid()}`,
+  eigen: true,
+  label: String(label || note.subject || 'Eigene Vorlage').slice(0, 80),
+  zweck: 'Eigene Vorlage des Büros',
+  type: note.type || 'aktennotiz',
+  subject: String(note.subject || '').slice(0, 200),
+  content: String(note.content || ''),
+  // Aufgaben kommen ohne Zuständigen und mit dem Abstand zum heutigen Tag
+  // als Frist mit – eine Vorlage soll kein fremdes Datum mitschleppen.
+  tasks: (Array.isArray(note.actionItems) ? note.actionItems : [])
+    .filter(a => (a.description || '').trim())
+    .map(a => ({
+      description: a.description,
+      fristTage: a.deadline
+        ? Math.max(0, Math.round((Date.parse(a.deadline + 'T12:00:00') - Date.now()) / 86400000))
+        : undefined,
+    })),
+  createdAt: new Date().toISOString(),
+})
 
 export const emptyNote = (projectId = null) => ({
   id: uid(),

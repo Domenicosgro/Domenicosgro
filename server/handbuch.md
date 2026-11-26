@@ -440,6 +440,49 @@ möglich.
 Unterschied zu den **Notizen**: Die sind Akten- und Telefonnotizen mit
 Teilnehmern und Verteiler und gehen nach außen. Das Notizbuch bleibt im Team.
 
+### Vorlagen für Notizen
+
+Über **„Neue Notiz"** stehen Vorlagen für verschiedene Zwecke bereit; unter
+jedem Namen steht, wofür man sie nimmt:
+
+| Vorlage | Wofür |
+|---|---|
+| Telefonnotiz | Wer hat angerufen, worum ging es, was folgt daraus |
+| Aktennotiz | Sachverhalt für die Akte festhalten |
+| Besprechungsnotiz | Kurze Besprechung ohne eigenes Protokoll |
+| Memo / Kurzmitteilung | Eine Seite an einen Empfänger, mit Bitte um Rückmeldung |
+| Ortstermin / Begehung | Baustellenbegehung mit Feststellungen und Vereinbarungen |
+| Entscheidungsvorlage | Dem Bauherrn eine Entscheidung mit Varianten vorlegen |
+| Abstimmung mit Behörde | Auskunft einer Behörde festhalten, mit Verbindlichkeit |
+| Bemusterung / Freigabe | Muster vorgelegt, entschieden, freigegeben |
+
+Manche Vorlagen bringen **Aufgaben** mit — die Entscheidungsvorlage zum
+Beispiel „Entscheidung des Bauherrn einholen" mit einer Frist in sieben Tagen.
+Die Frist rechnet sich beim Anlegen vom heutigen Tag.
+
+**Auch für eine bestehende Notiz.** Oft merkt man erst beim Schreiben, dass aus
+dem Anruf eine Entscheidungsvorlage wird. In der offenen Notiz gibt es dafür
+**„Vorlage"**:
+
+- **Anhängen** (Vorgabe) — das Gerüst kommt unter den bisherigen Inhalt, mit
+  dem Namen der Vorlage als Trennzeile.
+- **Ersetzen** — der bisherige Inhalt wird überschrieben, mit Rückfrage.
+- **Nur Aufgaben** — der Text bleibt, nur die Aufgaben der Vorlage kommen dazu.
+
+Ein **bereits geschriebener Betreff bleibt immer stehen**; die Vorlage schlägt
+ihn nur vor, wenn das Feld leer ist.
+
+### Eigene Vorlagen
+
+Im selben Fenster lässt sich **die geöffnete Notiz als Vorlage speichern** —
+einmal gut geschrieben, dann immer wieder verwendbar. Übernommen werden Art,
+Betreff, das Gerüst des Inhalts und die Aufgaben; **ohne Zuständige**, und die
+Fristen als Abstand in Tagen statt als festes Datum.
+
+Eigene Vorlagen stehen danach im Menü „Neue Notiz" unter *Eigene Vorlagen* und
+gelten für das ganze Büro. Löschen geht im selben Fenster über das
+Mülleimer-Symbol.
+
 ### Aufgaben in einer Notiz (Akten- und Telefonnotizen)
 
 Unter dem Inhalt einer Notiz steht **„Aufgaben aus dieser Notiz"**. Jede Zeile bekommt,

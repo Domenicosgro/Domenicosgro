@@ -1,7 +1,9 @@
-import React, { useState, useCallback, useMemo } from 'react'
+import React, { useState, useEffect, useCallback, useMemo } from 'react'
 import { ArrowLeft, Plus, Trash2, Send, Mail, Phone, ChevronDown, Printer,
-         FileText, Phone as PhoneIcon, Users, Search, X, Check, Loader } from 'lucide-react'
-import { formatDate, NOTE_TYPES, NOTE_TEMPLATES, emptyNote, uid } from '../utils'
+         FileText, Phone as PhoneIcon, Users, Search, X, Check, Loader,
+         LayoutTemplate, Save, AlertCircle } from 'lucide-react'
+import { formatDate, NOTE_TYPES, NOTE_TEMPLATES, emptyNote, uid,
+         applyNoteTemplate, noteToTemplate } from '../utils'
 import RichTextEditor from './RichTextEditor'
 import NoteTasks from './NoteTasks'
 import { buildNotePdf } from '../notePdf'
@@ -346,13 +348,168 @@ function NoteEmailModal({ note, contacts, allContacts, projectName, logoDataUrl,
 const contactKey = (c) => (c.email || '').trim().toLowerCase()
   || `${(c.name || '').trim().toLowerCase()}|${(c.company || '').trim().toLowerCase()}`
 
-function NoteEditor({ note, contacts, allContacts, projectName, logoDataUrl, clientLogoDataUrl, onUpdate, onDelete, onSendEmail, protocols = [], onAddToProtocol = null }) {
+// ── Vorlage auf eine bestehende Notiz anwenden ───────────────────────────────
+//
+// Bisher gab es Vorlagen nur beim Anlegen. Das ist die Hälfte: oft merkt man
+// erst beim Schreiben, dass aus dem Anruf eine Entscheidungsvorlage wird.
+// Deshalb anwenden, ohne zu zerstören – anhängen ist die Vorgabe, ersetzen
+// muss man wählen, und ein geschriebener Betreff wird nie überschrieben.
+function VorlagenDialog({ note, vorlagen, onAnwenden, onSpeichern, onLoeschen, onClose }) {
+  const [wahl,     setWahl]     = useState(vorlagen[0]?.id || '')
+  const [inhalt,   setInhalt]   = useState('anhaengen')
+  const [mitArt,   setMitArt]   = useState(false)
+  const [mitAufg,  setMitAufg]  = useState(true)
+  const [name,     setName]     = useState('')
+  const [busy,     setBusy]     = useState(false)
+  const [fehler,   setFehler]   = useState(null)
+  const [gemerkt,  setGemerkt]  = useState(null)
+
+  const tpl = vorlagen.find(v => v.id === wahl) || null
+  const hatInhalt = !!String(note.content || '').replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').trim()
+
+  const anwenden = () => {
+    if (!tpl) return
+    if (inhalt === 'ersetzen' && hatInhalt
+        && !window.confirm('Der bisherige Inhalt dieser Notiz wird ersetzt. Fortfahren?')) return
+    onAnwenden(tpl, { inhalt, betreff: true, art: mitArt, aufgaben: mitAufg })
+    onClose()
+  }
+
+  const speichern = async () => {
+    setBusy(true); setFehler(null)
+    try {
+      const gespeichert = await onSpeichern(name.trim())
+      setGemerkt(gespeichert?.label || name.trim())
+      setName('')
+    } catch (e) { setFehler(e.message || 'Konnte nicht gespeichert werden.') }
+    finally { setBusy(false) }
+  }
+
+  const eigene   = vorlagen.filter(v => v.eigen)
+  const geliefert = vorlagen.filter(v => !v.eigen)
+
+  const zeile = (v) => (
+    <label key={v.id}
+           className={`flex items-start gap-2 px-3 py-2 border cursor-pointer ${
+             wahl === v.id ? 'border-brand-500 bg-sky/10' : 'border-gray-200 hover:bg-gray-50'}`}>
+      <input type="radio" name="kp-vorlage" className="mt-1" checked={wahl === v.id}
+             onChange={() => setWahl(v.id)} />
+      <span className="min-w-0 flex-1">
+        <span className="text-sm font-medium text-gray-900 block">{v.label}</span>
+        {v.zweck && <span className="text-xs text-gray-500 block">{v.zweck}</span>}
+        {(v.tasks || []).length > 0 && (
+          <span className="text-xs text-gray-400 block">
+            bringt {v.tasks.length} {v.tasks.length === 1 ? 'Aufgabe' : 'Aufgaben'} mit
+          </span>
+        )}
+      </span>
+      {v.eigen && onLoeschen && (
+        <button className="btn-ghost p-1 text-gray-300 hover:text-red-600 flex-shrink-0"
+                title="Eigene Vorlage löschen"
+                onClick={(e) => { e.preventDefault(); e.stopPropagation()
+                  if (window.confirm(`Vorlage „${v.label}" löschen?`)) onLoeschen(v.id) }}>
+          <Trash2 size={13} />
+        </button>
+      )}
+    </label>
+  )
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+      <div className="bg-white w-full max-w-xl border border-gray-200 shadow-2xl max-h-[90vh] overflow-auto"
+           onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 sticky top-0 bg-white">
+          <h3 className="font-semibold text-gray-900 flex items-center gap-2">
+            <LayoutTemplate size={16} className="text-brand-600" /> Vorlage verwenden
+          </h3>
+          <button className="btn-ghost p-1" onClick={onClose}><X size={16} /></button>
+        </div>
+
+        <div className="p-5 space-y-4">
+          <div className="space-y-1.5">
+            <p className="text-xs font-medium text-gray-500">Vorlagen</p>
+            {geliefert.map(zeile)}
+            {eigene.length > 0 && (
+              <>
+                <p className="text-xs font-medium text-gray-500 pt-2">Eigene Vorlagen des Büros</p>
+                {eigene.map(zeile)}
+              </>
+            )}
+          </div>
+
+          <div>
+            <p className="text-xs font-medium text-gray-500 mb-1">Inhalt</p>
+            <div className="grid grid-cols-3 gap-1">
+              {[['anhaengen', 'Anhängen'], ['ersetzen', 'Ersetzen'], ['nichts', 'Nur Aufgaben']].map(([v, l]) => (
+                <button key={v} onClick={() => setInhalt(v)}
+                  className={`text-xs px-2 py-2 border ${inhalt === v
+                    ? 'bg-brand-600 text-white border-brand-600'
+                    : 'bg-white text-gray-600 border-gray-300 hover:border-gray-400'}`}>{l}</button>
+              ))}
+            </div>
+            {inhalt === 'ersetzen' && hatInhalt && (
+              <p className="text-xs text-amber-700 mt-1">Der bisherige Inhalt dieser Notiz wird überschrieben.</p>
+            )}
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="flex items-center gap-2 text-sm text-gray-700">
+              <input type="checkbox" checked={mitAufg} onChange={e => setMitAufg(e.target.checked)} />
+              Aufgaben der Vorlage ergänzen
+            </label>
+            <label className="flex items-center gap-2 text-sm text-gray-700">
+              <input type="checkbox" checked={mitArt} onChange={e => setMitArt(e.target.checked)} />
+              Art der Notiz übernehmen{tpl ? ` (${(NOTE_TYPES.find(x => x.value === tpl.type) || {}).label || tpl.type})` : ''}
+            </label>
+            <p className="text-xs text-gray-400">
+              Ein bereits geschriebener Betreff bleibt stehen – die Vorlage schlägt ihn nur vor, wenn er leer ist.
+            </p>
+          </div>
+
+          <div className="border-t border-gray-100 pt-4">
+            <p className="text-xs font-medium text-gray-500 mb-1">Diese Notiz als Vorlage speichern</p>
+            <p className="text-xs text-gray-400 mb-2">
+              Übernommen werden Art, Betreff, das Gerüst des Inhalts und die Aufgaben – ohne
+              Zuständige, und die Fristen als Abstand in Tagen.
+            </p>
+            <div className="flex gap-2">
+              <input className="input flex-1" placeholder='Name der Vorlage, z. B. „Jour fixe Bauherr“'
+                     value={name} onChange={e => setName(e.target.value)} />
+              <button className="btn-secondary flex items-center gap-1.5" disabled={busy || !name.trim()}
+                      onClick={speichern}>
+                {busy ? <Loader size={14} className="animate-spin" /> : <Save size={14} />} Speichern
+              </button>
+            </div>
+            {gemerkt && (
+              <p className="text-xs text-green-700 mt-1 flex items-center gap-1">
+                <Check size={12} /> „{gemerkt}" steht jetzt im Vorlagenmenü.
+              </p>
+            )}
+            {fehler && (
+              <p className="text-xs text-red-700 mt-1 flex items-start gap-1">
+                <AlertCircle size={12} className="mt-0.5" /> {fehler}
+              </p>
+            )}
+          </div>
+        </div>
+
+        <div className="flex justify-end gap-2 px-5 py-4 border-t border-gray-200 sticky bottom-0 bg-white">
+          <button className="btn-secondary" onClick={onClose}>Schließen</button>
+          <button className="btn-primary" onClick={anwenden} disabled={!tpl}>Vorlage anwenden</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function NoteEditor({ note, contacts, allContacts, projectName, logoDataUrl, clientLogoDataUrl, onUpdate, onDelete, onSendEmail, protocols = [], onAddToProtocol = null, vorlagen = [], onVorlageSpeichern = null, onVorlageLoeschen = null }) {
   const set = (field) => (val) => onUpdate(note.id, { [field]: typeof val === 'object' && val?.target ? val.target.value : val })
 
   const linkedContact = contacts.find(c => c.id === note.linkedContactId)
   const typeInfo = NOTE_TYPES.find(t => t.value === note.type) ?? NOTE_TYPES[0]
 
   // Teilnehmer aus Kontakten (Projektkontakte + Kontaktdatenbank, dedupliziert)
+  const [vorlagenOffen, setVorlagenOffen] = useState(false)
   const participants = note.participants ?? []
   const participantKeys = new Set(participants.map(contactKey))
 
@@ -497,6 +654,13 @@ function NoteEditor({ note, contacts, allContacts, projectName, logoDataUrl, cli
         <div className="flex gap-2">
           <button
             className="btn-secondary flex items-center gap-1 text-sm"
+            onClick={() => setVorlagenOffen(true)}
+            title="Vorlage auf diese Notiz anwenden oder die Notiz als Vorlage speichern"
+          >
+            <LayoutTemplate size={14} /> Vorlage
+          </button>
+          <button
+            className="btn-secondary flex items-center gap-1 text-sm"
             onClick={onSendEmail}
             title="Notiz per E-Mail senden"
           >
@@ -518,6 +682,16 @@ function NoteEditor({ note, contacts, allContacts, projectName, logoDataUrl, cli
           <Trash2 size={15} />
         </button>
       </div>
+
+      {vorlagenOffen && (
+        <VorlagenDialog
+          note={note}
+          vorlagen={vorlagen}
+          onAnwenden={(tpl, wie) => onUpdate(note.id, applyNoteTemplate(note, tpl, wie))}
+          onSpeichern={(name) => onVorlageSpeichern(note, name)}
+          onLoeschen={onVorlageLoeschen}
+          onClose={() => setVorlagenOffen(false)} />
+      )}
     </div>
   )
 }
@@ -528,9 +702,61 @@ export default function NotesList({ notes, projectContacts, allContacts, project
   const [search,         setSearch]         = useState('')
   const [filterType,     setFilterType]     = useState('')
   const [showTplMenu,    setShowTplMenu]    = useState(false)
+  // Eigene Vorlagen des Büros. Im Server-Betrieb aus der Datenbank, lokal
+  // (Electron/Browser ohne Server) aus dem Gerätespeicher – damit die
+  // Oberfläche überall dieselbe ist.
+  const [eigene,         setEigene]         = useState([])
   const [showEmailModal, setShowEmailModal] = useState(false)
 
   const activeNote = notes.find(n => n.id === activeId)
+
+  const LS_KEY = 'kp_note_templates'
+
+  const ladeEigene = useCallback(async () => {
+    if (!isServer) {
+      try { setEigene(JSON.parse(localStorage.getItem(LS_KEY) || '[]')) } catch { setEigene([]) }
+      return
+    }
+    try {
+      const res = await fetch('/api/note-templates', { headers: apiHeaders() })
+      if (res.ok) setEigene(await res.json())
+    } catch { /* ohne eigene Vorlagen geht alles andere weiter */ }
+  }, [])
+
+  useEffect(() => { ladeEigene() }, [ladeEigene])
+
+  const vorlagen = useMemo(() => [...NOTE_TEMPLATES, ...eigene], [eigene])
+
+  const vorlageSpeichern = useCallback(async (note, name) => {
+    const tpl = noteToTemplate(note, name)
+    if (!isServer) {
+      const liste = [...eigene.filter(v => v.id !== tpl.id), tpl]
+        .sort((a, b) => String(a.label).localeCompare(String(b.label), 'de'))
+      localStorage.setItem(LS_KEY, JSON.stringify(liste))
+      setEigene(liste)
+      return tpl
+    }
+    const res = await fetch('/api/note-templates', {
+      method: 'POST', headers: apiHeaders(), body: JSON.stringify(tpl),
+    })
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `Fehler ${res.status}`)
+    const gespeichert = await res.json()
+    await ladeEigene()
+    return gespeichert
+  }, [eigene, ladeEigene])
+
+  const vorlageLoeschen = useCallback(async (id) => {
+    if (!isServer) {
+      const liste = eigene.filter(v => v.id !== id)
+      localStorage.setItem(LS_KEY, JSON.stringify(liste))
+      setEigene(liste)
+      return
+    }
+    try {
+      await fetch(`/api/note-templates/${encodeURIComponent(id)}`, { method: 'DELETE', headers: apiHeaders() })
+      await ladeEigene()
+    } catch { /* bleibt stehen, dann eben beim nächsten Versuch */ }
+  }, [eigene, ladeEigene])
 
   const q = search.trim().toLowerCase()
   const filtered = useMemo(() => notes.filter(n => {
@@ -543,11 +769,14 @@ export default function NotesList({ notes, projectContacts, allContacts, project
   }).sort((a, b) => (b.date || '').localeCompare(a.date || '')), [notes, q, filterType])
 
   const handleCreate = (tpl) => {
-    const id = onCreate({
-      type:    tpl.type,
-      subject: tpl.subject,
-      content: tpl.content,
-    })
+    // Die Aufgaben der Vorlage kommen mit – mit den Fristen, die die Vorlage
+    // vorsieht (fristTage ab heute). Deshalb über applyNoteTemplate und nicht
+    // über drei Felder von Hand.
+    const geruest = applyNoteTemplate(
+      { content: '', subject: '', actionItems: [] },
+      tpl,
+      { inhalt: 'ersetzen', betreff: true, art: true, aufgaben: true })
+    const id = onCreate({ type: tpl.type, subject: tpl.subject, content: tpl.content, ...geruest })
     setActiveId(id)
     setShowTplMenu(false)
   }
@@ -584,17 +813,43 @@ export default function NotesList({ notes, projectContacts, allContacts, project
             <Plus size={16} /> Neue Notiz <ChevronDown size={13} className={`transition-transform ${showTplMenu ? 'rotate-180' : ''}`} />
           </button>
           {showTplMenu && (
-            <div className="absolute right-0 top-full mt-1 z-30 bg-white border border-gray-200 shadow-lg w-52">
+            <div className="absolute right-0 top-full mt-1 z-30 bg-white border border-gray-200 shadow-lg w-80 max-h-[70vh] overflow-auto">
               {NOTE_TEMPLATES.map(tpl => (
                 <button
                   key={tpl.id}
-                  className="w-full text-left px-4 py-2.5 text-sm hover:bg-gray-50 flex items-center gap-2"
+                  className="w-full text-left px-4 py-2.5 text-sm hover:bg-gray-50 flex items-start gap-2"
                   onClick={() => handleCreate(tpl)}
                 >
-                  {TYPE_ICONS[tpl.type]}
-                  {tpl.label}
+                  <span className="mt-0.5 flex-shrink-0">{TYPE_ICONS[tpl.type]}</span>
+                  <span className="min-w-0">
+                    <span className="block">{tpl.label}</span>
+                    {tpl.zweck && <span className="block text-xs text-gray-500">{tpl.zweck}</span>}
+                  </span>
                 </button>
               ))}
+              {eigene.length > 0 && (
+                <>
+                  <div className="border-t border-gray-100" />
+                  <p className="px-4 pt-2 pb-1 text-xs font-medium text-gray-400 uppercase tracking-wide">Eigene Vorlagen</p>
+                  {eigene.map(tpl => (
+                    <button
+                      key={tpl.id}
+                      className="w-full text-left px-4 py-2.5 text-sm hover:bg-gray-50 flex items-start gap-2"
+                      onClick={() => handleCreate(tpl)}
+                    >
+                      <span className="mt-0.5 flex-shrink-0">{TYPE_ICONS[tpl.type]}</span>
+                      <span className="min-w-0">
+                        <span className="block">{tpl.label}</span>
+                        {(tpl.tasks || []).length > 0 && (
+                          <span className="block text-xs text-gray-500">
+                            mit {tpl.tasks.length} {tpl.tasks.length === 1 ? 'Aufgabe' : 'Aufgaben'}
+                          </span>
+                        )}
+                      </span>
+                    </button>
+                  ))}
+                </>
+              )}
               <div className="border-t border-gray-100" />
               <button
                 className="w-full text-left px-4 py-2.5 text-sm hover:bg-gray-50 flex items-center gap-2 text-gray-500"
@@ -697,6 +952,9 @@ export default function NotesList({ notes, projectContacts, allContacts, project
               onSendEmail={() => setShowEmailModal(true)}
               protocols={protocols}
               onAddToProtocol={onAddToProtocol}
+              vorlagen={vorlagen}
+              onVorlageSpeichern={vorlageSpeichern}
+              onVorlageLoeschen={vorlageLoeschen}
             />
           </div>
         )}

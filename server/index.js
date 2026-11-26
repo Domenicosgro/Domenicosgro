@@ -565,6 +565,90 @@ app.put('/api/admin/email-settings', requireAuth, requireAdmin, writeLimiter, (r
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
+// ── Eigene Notizvorlagen ─────────────────────────────────────────────────────
+// Die mitgelieferten Vorlagen stehen im Quelltext (NOTE_TEMPLATES in
+// src/utils.js). Hier liegen die, die das Büro selbst gebildet hat – aus einer
+// bestehenden Notiz („Als Vorlage speichern"), nicht aus einem Formular. So
+// entstehen Formulare in einem Büro wirklich: einmal gut geschrieben, dann
+// wiederverwendet.
+//
+// Gespeichert im kleinen Key-Value-Speicher, nicht in einer eigenen Tabelle:
+// es sind ein paar Gerüste, kein Datenbestand mit Beziehungen.
+//
+// Wer darf schreiben? Jeder Angemeldete. Es sind Büroformulare, keine
+// Einstellung mit Folgen – und wer eine Vorlage anlegt, stand gerade vor der
+// Notiz, für die sie gebraucht wird. Jede Änderung steht im Protokoll.
+const NOTE_TPL_KEY = 'note_templates'
+const NOTE_TPL_MAX = 60
+
+function noteTemplatesGet() {
+  try {
+    const roh = db.appState.get(NOTE_TPL_KEY)
+    const liste = roh ? JSON.parse(roh) : []
+    return Array.isArray(liste) ? liste : []
+  } catch { return [] }
+}
+
+// Was von außen kommt, wird auf die bekannten Felder zugeschnitten. Der Inhalt
+// ist HTML aus dem Rechteditor – er landet nur in der eigenen Oberfläche
+// wieder, und dieselbe Oberfläche erzeugt ihn. Länge wird begrenzt, damit der
+// Speicher nicht als Dateiablage missbraucht wird.
+function noteTemplateClean(v, by) {
+  const txt = (x, n) => String(x ?? '').slice(0, n)
+  const arten = ['aktennotiz', 'telefonnotiz', 'besprochen']
+  return {
+    id:      /^[A-Za-z0-9_-]{1,64}$/.test(String(v?.id || '')) ? v.id : `eigen_${require('crypto').randomBytes(8).toString('hex')}`,
+    eigen:   true,
+    label:   txt(v?.label, 80) || 'Eigene Vorlage',
+    zweck:   txt(v?.zweck, 160),
+    type:    arten.includes(v?.type) ? v.type : 'aktennotiz',
+    subject: txt(v?.subject, 200),
+    content: txt(v?.content, 20000),
+    tasks: (Array.isArray(v?.tasks) ? v.tasks : []).slice(0, 20).map(a => ({
+      description: txt(a?.description, 500),
+      responsible: txt(a?.responsible, 200),
+      fristTage: Number.isFinite(Number(a?.fristTage)) && Number(a.fristTage) >= 0
+        ? Math.min(365, Math.round(Number(a.fristTage))) : undefined,
+    })).filter(a => a.description),
+    createdAt: txt(v?.createdAt, 40) || new Date().toISOString(),
+    createdBy: txt(v?.createdBy, 120) || planDisplayName(by),
+  }
+}
+
+app.get('/api/note-templates', requireAuth, (_req, res) => {
+  try { res.json(noteTemplatesGet()) }
+  catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// Eine Vorlage anlegen oder ersetzen (gleiche Kennung = ersetzen).
+app.post('/api/note-templates', requireAuth, writeLimiter, (req, res) => {
+  try {
+    const sauber = noteTemplateClean(req.body, req.user)
+    if (!sauber.content && !sauber.tasks.length) {
+      return res.status(400).json({ error: 'Eine Vorlage ohne Inhalt und ohne Aufgaben wäre leer.' })
+    }
+    const liste = noteTemplatesGet().filter(v => v.id !== sauber.id)
+    if (liste.length >= NOTE_TPL_MAX) {
+      return res.status(409).json({ error: `Mehr als ${NOTE_TPL_MAX} eigene Vorlagen werden unübersichtlich – bitte zuerst aufräumen.` })
+    }
+    const neu = [...liste, sauber].sort((a, b) => String(a.label).localeCompare(String(b.label), 'de'))
+    db.appState.set(NOTE_TPL_KEY, JSON.stringify(neu))
+    logEvent('NOTIZVORLAGE', req, `gespeichert id=${sauber.id} label=${sauber.label}`)
+    res.status(201).json(sauber)
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.delete('/api/note-templates/:id', requireAuth, writeLimiter, (req, res) => {
+  try {
+    const liste = noteTemplatesGet()
+    const neu   = liste.filter(v => v.id !== req.params.id)
+    if (neu.length === liste.length) return res.status(404).json({ error: 'Vorlage nicht gefunden.' })
+    db.appState.set(NOTE_TPL_KEY, JSON.stringify(neu))
+    logEvent('NOTIZVORLAGE', req, `gelöscht id=${req.params.id}`)
+    res.json({ ok: true })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
 app.get('/api/admin/synology-status', requireAuth, requireAdmin, (_req, res) => {
   const url = process.env.SYNOLOGY_URL || ''
   res.json({ configured: !!url, url: url || null })
