@@ -1083,6 +1083,34 @@ Print/PDF (`window.print()`, `@page A4`).
 
 ## 11. Bekannte Fallstricke
 
+### `server/node_modules` darf nie ins Abbild (26.11.2026)
+`.dockerignore` enthielt `node_modules/`. **Dieses Muster trifft nur den Ordner
+ganz oben.** Ein `server/node_modules`, das beim lokalen Testen entsteht, wurde
+von `COPY server/ ./server/` ins Abbild kopiert – mit den **Windows**-Binär-
+dateien von `better-sqlite3`. Im Container gewinnt `/app/server/node_modules`
+gegen `/app/node_modules`, und der Server stirbt beim Start:
+
+```
+Error loading shared library .../better_sqlite3.node: Exec format error
+```
+
+Der Deploy meldete trotzdem „Fertig" – `compose up -d` ist zufrieden, sobald
+der Container **läuft**. Sichtbar wurde es erst als
+`ERR_CONNECTION_REFUSED` im Browser.
+
+Zwei Lehren, beide eingebaut:
+- `.dockerignore` ignoriert jetzt `**/node_modules/` – auf jeder Ebene. Der
+  Deploy baut aus der **Arbeitskopie**, nicht aus Git: was lokal herumliegt,
+  landet im Abbild.
+- `deploy-nas.ps1` prüft nach dem Start, ob der Server wirklich antwortet
+  (zehn Versuche, `/api/health` im Container), und zeigt sonst die letzten 30
+  Zeilen des Containerprotokolls und bricht mit Fehler ab.
+
+**Reproduzieren ohne NAS:** `docker build -t kp:test .` und
+`docker run --rm -p 3991:3000 kp:test` – der Absturz zeigt sich in den ersten
+Sekunden.
+
+
 1. **React Strict Mode** doppelt → `carriedForRef`/`itemCarriedFrom`-Guards.
 2. **Tiptap controlled input:** `lastEmittedRef` trennt eigene von externen Änderungen.
 3. **`window.location.reload()`** in SPA = zurück zur Startseite → `onRefresh`/`refetch*` nutzen.
@@ -1163,6 +1191,10 @@ git pull origin claude/protocol-tool-meetings-tIoZX
 - PID in `srvN.pid` merken; nach dem Test Prozess stoppen und Scratch-Dateien löschen (`srvq2.err` etc. sind temporäre Testartefakte, gehören **nicht** zum Projekt).
 - Pipe an `Select-Object` beendet den Server sofort → Start immer ohne Pipe.
 - `node -e "require('better-sqlite3')(...)"` nur aus dem Projektverzeichnis (node_modules).
+- Der Server braucht Abhängigkeiten, die **nicht** in der Wurzel liegen
+  (`nodemailer`, `puppeteer-core`, …). Für einen lokalen Lauf einmal
+  `cd server && npm ci --omit=dev`. Das legt `server/node_modules` an – das ist
+  in Ordnung (Git und Docker ignorieren es), siehe aber den Fallstrick unten.
 
 ### Zuletzt behobene Fehler (Ursache → Lösung)
 - **„Zu viele Anfragen" (429) beim Tippen** → Rate-Limits waren 300/15 min global und 120 Schreibvorgänge/min, geteilt pro IP. Jetzt 6000/15 min bzw. 600/min, gezählt **pro Nutzer** (Token, `ipKeyGenerator` als Fallback).

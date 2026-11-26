@@ -84,6 +84,24 @@ echo '[NAS] Starte Container...'
 cd $NasPath && sudo $DK compose up -d
 echo '[NAS] Loesche temporaere Datei...'
 rm -f $TempNas
+echo '[NAS] Warte auf den Server...'
+# "compose up -d" meldet Erfolg, sobald der Container LAEUFT – nicht, wenn der
+# Server auch antwortet. Stirbt er beim Start (am 26.11.2026 wegen eines
+# versehentlich mitgebauten server/node_modules), stand hier trotzdem
+# "Fertig", und der Fehler zeigte sich erst im Browser. Deshalb nachsehen.
+ok=0
+for i in 1 2 3 4 5 6 7 8 9 10; do
+  if sudo $DK exec komplizen-protokolle node -e "require('http').get('http://127.0.0.1:3000/api/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))" 2>/dev/null; then
+    ok=1; break
+  fi
+  sleep 2
+done
+if [ "`$ok" != "1" ]; then
+  echo '[NAS] FEHLER: Der Server antwortet nicht. Letzte Zeilen aus dem Container:'
+  sudo $DK logs --tail 30 komplizen-protokolle 2>&1 || true
+  exit 1
+fi
+echo '[NAS] Server antwortet.'
 echo '[NAS] Fertig.'
 "@
 

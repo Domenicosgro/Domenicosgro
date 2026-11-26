@@ -1,4 +1,11 @@
-node_modules/
+# ACHTUNG: "node_modules/" allein trifft nur den Ordner GANZ OBEN. Ein
+# server/node_modules (entsteht, sobald jemand dort fuer einen lokalen Test
+# "npm install" aufruft) landete damit im Abbild – mit den Windows-Binaerdateien
+# von better-sqlite3. Im Container gewinnt /app/server/node_modules gegen
+# /app/node_modules, und der Server stirbt beim Start mit
+# "Exec format error". Deshalb auf jeder Ebene ignorieren.
+# (Gefunden am 26.11.2026, nachdem genau das passiert ist.)
+**/node_modules/
 dist/
 .git/
 .env
