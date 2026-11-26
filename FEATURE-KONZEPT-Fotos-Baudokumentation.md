@@ -81,7 +81,12 @@ mit Kamera.
 
 - **Entwicklungsaufwand: keiner.** Die App kann das heute.
 - Zu tun bleibt nur Punkt 5 dieses Papiers: die Ablage auf dem G-Laufwerk.
-- Das Büronetz bleibt zu. Kein eingehender Port, keine neue Angriffsfläche.
+- **Korrektur vom 26.11.2026:** Hier stand „kein eingehender Port". Das gilt
+  nur für Tailscale — dort verbinden sich die Geräte nach außen, nichts klopft
+  an. **WireGuard über DSM braucht eine UDP-Freigabe.** Allerdings eine, die
+  auf Pakete ohne gültigen Schlüssel überhaupt nicht antwortet: kein
+  Anmeldeformular, kein TLS, nichts zum Durchprobieren. Gegenüber Weg C ist
+  das ein Unterschied in der Größenordnung — aber es ist nicht „nichts".
 - **Nicht geeignet für Fremdfirmen.** Niemand gibt dem Rohbauunternehmer einen
   VPN-Zugang ins Büronetz, und niemand dort würde ihn einrichten.
 
