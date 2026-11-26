@@ -46,13 +46,44 @@ if ($LASTEXITCODE -ne 0) { Write-Error "docker save fehlgeschlagen"; exit 1 }
 $sizeMb = [math]::Round((Get-Item $TarFile).Length / 1MB, 0)
 Write-Host "      fertig ($sizeMb MB)" -ForegroundColor Green
 
+# ── Wiederholung bei abgerissener Verbindung ────────────────────────────────
+# Die NAS schliesst eine SSH-Sitzung gelegentlich direkt nach der Anmeldung
+# ("Connection closed by ... port 22"), vor allem wenn kurz hintereinander
+# mehrere Deploys laufen. Das ist kein Fehler im Deploy und kein falsches
+# Passwort - beim naechsten Versuch geht es meist. Frueher brach hier der
+# ganze Lauf ab und das 479-MB-Archiv wurde weggeworfen; jetzt wird gewartet
+# und wiederholt. Jeder Versuch fragt das Passwort erneut.
+function Invoke-MitWiederholung {
+    param(
+        [scriptblock]$Befehl,
+        [string]$Was,
+        [int[]]$Wartezeiten = @(5, 15)
+    )
+    for ($i = 0; $i -le $Wartezeiten.Count; $i++) {
+        & $Befehl
+        if ($LASTEXITCODE -eq 0) { return $true }
+        if ($i -lt $Wartezeiten.Count) {
+            $s = $Wartezeiten[$i]
+            Write-Host "      $Was fehlgeschlagen - neuer Versuch in $s Sekunden ($($i + 2). von $($Wartezeiten.Count + 1))" -ForegroundColor DarkYellow
+            Start-Sleep -Seconds $s
+        }
+    }
+    return $false
+}
+
 # [3/4] Upload zur NAS
 # -O erzwingt das klassische SCP-Protokoll (Synology hat kein SFTP-Subsystem aktiv)
 Write-Host "[3/4] Upload zur NAS (SCP)..." -ForegroundColor Yellow
-scp -O $TarFile "${NasUser}@${NasIp}:${TempNas}"
-if ($LASTEXITCODE -ne 0) {
+$hochgeladen = Invoke-MitWiederholung -Was "Upload" -Befehl {
+    scp -O $TarFile "${NasUser}@${NasIp}:${TempNas}"
+}
+if (-not $hochgeladen) {
     Remove-Item $TarFile -ErrorAction SilentlyContinue
-    Write-Error "Upload fehlgeschlagen - SSH erreichbar?"
+    Write-Host ""
+    Write-Host "Upload fehlgeschlagen." -ForegroundColor Red
+    Write-Host "  Port 22 erreichbar?   Test-NetConnection $NasIp -Port 22" -ForegroundColor Gray
+    Write-Host "  Sperrt die NAS?       DSM > Systemsteuerung > Sicherheit > Schutz (Auto-Block)" -ForegroundColor Gray
+    Write-Host "  Sonst: ein paar Minuten warten und update.ps1 erneut aufrufen." -ForegroundColor Gray
     exit 1
 }
 Write-Host "      fertig" -ForegroundColor Green
@@ -109,10 +140,18 @@ echo '[NAS] Fertig.'
 $remoteCmd = $remoteCmd -replace "`r`n", "`n"
 
 # Skript per stdin uebergeben (nicht als Argument) – vermeidet PowerShell-Quoting-Probleme
-$remoteCmd | ssh -T "${NasUser}@${NasIp}"
-if ($LASTEXITCODE -ne 0) {
+# Der entfernte Teil ist wiederholbar: stop/rm schlucken Fehler, load
+# ueberschreibt, "compose up -d" baut den Container neu. Ein zweiter Lauf nach
+# einer abgerissenen Verbindung richtet also keinen Schaden an.
+$getauscht = Invoke-MitWiederholung -Was "Containerwechsel" -Befehl {
+    $remoteCmd | ssh -T "${NasUser}@${NasIp}"
+}
+if (-not $getauscht) {
     Remove-Item $TarFile -ErrorAction SilentlyContinue
-    Write-Error "SSH-Befehl fehlgeschlagen"
+    Write-Host ""
+    Write-Host "Der Containerwechsel ist fehlgeschlagen." -ForegroundColor Red
+    Write-Host "  Stand der App:  Test-NetConnection $NasIp -Port 3000" -ForegroundColor Gray
+    Write-Host "  Das Archiv liegt noch auf der NAS unter $TempNas." -ForegroundColor Gray
     exit 1
 }
 Write-Host "      fertig" -ForegroundColor Green
