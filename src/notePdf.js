@@ -184,7 +184,7 @@ export async function buildNotePdf(note, contact, projectName, logoDataUrl, clie
 
   // ── Aufgaben ──────────────────────────────────────────────────────────────
   // Ohne Aufgaben kein Abschnitt: eine leere Tabelle sagt nichts.
-  const aufgaben = (note.actionItems ?? []).filter(a => (a.description || '').trim())
+  const aufgaben = (note.actionItems ?? []).filter(a => (a.description || a.topic || '').trim())
   if (aufgaben.length > 0) {
     const STATUS_TEXT = { offen: 'Offen', in_arbeit: 'In Arbeit', erledigt: 'Erledigt', verschoben: 'Verschoben' }
     const SP = { nr: MARGIN, text: MARGIN + 14, wer: PAGE_W - MARGIN - 150, frist: PAGE_W - MARGIN - 78, status: PAGE_W - MARGIN - 36 }
@@ -194,10 +194,10 @@ export async function buildNotePdf(note, contact, projectName, logoDataUrl, clie
     ensureSpace(30)
     page.drawLine({ start: { x: MARGIN, y }, end: { x: PAGE_W - MARGIN, y }, thickness: 0.5, color: rgb(0.8, 0.8, 0.8) })
     y -= 10
-    page.drawText('AUFGABEN', { x: MARGIN, y, size: 6.5, font: fontReg, color: rgb(0.47, 0.47, 0.47) })
+    page.drawText('PUNKTE', { x: MARGIN, y, size: 6.5, font: fontReg, color: rgb(0.47, 0.47, 0.47) })
     y -= 14
 
-    for (const [k, x] of [['Nr.', SP.nr], ['Aufgabe', SP.text], ['Zuständig', SP.wer], ['Frist', SP.frist], ['Status', SP.status]]) {
+    for (const [k, x] of [['Nr.', SP.nr], ['Punkt / Ergebnis', SP.text], ['Zuständig', SP.wer], ['Frist', SP.frist], ['Status', SP.status]]) {
       page.drawText(k, { x, y, size: 7, font: fontBold, color: rgb(0.3, 0.3, 0.3) })
     }
     y -= 4
@@ -205,11 +205,19 @@ export async function buildNotePdf(note, contact, projectName, logoDataUrl, clie
     y -= 12
 
     for (const a of aufgaben) {
+      // Das Thema steht fett über dem Text der Zeile – eine eigene Spalte
+      // würde bei A4 und fünf weiteren Spalten zu schmal.
+      const themaZeilen = (a.topic || '').trim()
+        ? wrapText(a.topic.trim(), fontBold, 9, TEXT_W) : []
       const zeilen = wrapText(a.description || '', fontReg, 9, TEXT_W)
-      ensureSpace(Math.max(14, zeilen.length * 12 + 4))
+      ensureSpace(Math.max(14, (themaZeilen.length + zeilen.length) * 12 + 4))
       const kopf = y
       page.drawText(String(a.no || ''), { x: SP.nr, y: kopf, size: 9, font: fontReg, color: rgb(0.47, 0.47, 0.47) })
       let zy = kopf
+      for (const z of themaZeilen) {
+        page.drawText(z, { x: SP.text, y: zy, size: 9, font: fontBold, color: rgb(0, 0, 0) })
+        zy -= 12
+      }
       for (const z of zeilen) {
         page.drawText(z, { x: SP.text, y: zy, size: 9, font: fontReg, color: rgb(0, 0, 0) })
         zy -= 12

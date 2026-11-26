@@ -75,14 +75,18 @@ function buildNotePrintHtml(note, contact, projectName, logoDataUrl, clientLogoD
   // Aufgaben: im Ausdruck eine Tabelle wie im Protokoll. Ohne Aufgaben fehlt
   // der Abschnitt ganz – eine leere Tabelle sagt nichts.
   const STATUS_TEXT = { offen: 'Offen', in_arbeit: 'In Arbeit', erledigt: 'Erledigt', verschoben: 'Verschoben' }
-  const tasks = (note.actionItems ?? []).filter(a => (a.description || '').trim())
+  const tasks = (note.actionItems ?? []).filter(a => (a.description || a.topic || '').trim())
+  // Die Spalte „Thema" fällt weg, wenn keine Zeile eine hat – sonst steht im
+  // Ausdruck eine leere Spalte.
+  const mitThema = tasks.some(a => (a.topic || '').trim())
   const tasksHtml = tasks.length === 0 ? '' : `
     <div style="margin-top:6mm;">
-      <p style="font-size:7pt;text-transform:uppercase;letter-spacing:.05em;color:#777;margin:0 0 2mm;">Aufgaben</p>
+      <p style="font-size:7pt;text-transform:uppercase;letter-spacing:.05em;color:#777;margin:0 0 2mm;">Punkte</p>
       <table style="width:100%;border-collapse:collapse;font-size:9pt;">
         <tr>
           <th style="text-align:left;padding:1.5mm 2mm 1.5mm 0;border-bottom:1px solid #000;width:8mm;">Nr.</th>
-          <th style="text-align:left;padding:1.5mm 2mm;border-bottom:1px solid #000;">Aufgabe</th>
+          ${mitThema ? '<th style="text-align:left;padding:1.5mm 2mm;border-bottom:1px solid #000;width:32mm;">Thema</th>' : ''}
+          <th style="text-align:left;padding:1.5mm 2mm;border-bottom:1px solid #000;">Punkt / Ergebnis</th>
           <th style="text-align:left;padding:1.5mm 2mm;border-bottom:1px solid #000;width:38mm;">Zuständig</th>
           <th style="text-align:left;padding:1.5mm 2mm;border-bottom:1px solid #000;width:22mm;">Frist</th>
           <th style="text-align:left;padding:1.5mm 0 1.5mm 2mm;border-bottom:1px solid #000;width:22mm;">Status</th>
@@ -90,6 +94,7 @@ function buildNotePrintHtml(note, contact, projectName, logoDataUrl, clientLogoD
         ${tasks.map(a => `
         <tr>
           <td style="padding:1.5mm 2mm 1.5mm 0;border-bottom:1px solid #e5e5e5;vertical-align:top;color:#777;">${esc(String(a.no || ''))}</td>
+          ${mitThema ? `<td style="padding:1.5mm 2mm;border-bottom:1px solid #e5e5e5;vertical-align:top;font-weight:bold;">${esc(a.topic || '')}</td>` : ''}
           <td style="padding:1.5mm 2mm;border-bottom:1px solid #e5e5e5;vertical-align:top;">${esc(a.description)}</td>
           <td style="padding:1.5mm 2mm;border-bottom:1px solid #e5e5e5;vertical-align:top;">${esc(a.responsible || '–')}</td>
           <td style="padding:1.5mm 2mm;border-bottom:1px solid #e5e5e5;vertical-align:top;">${a.deadline ? formatDate(a.deadline) : '–'}</td>

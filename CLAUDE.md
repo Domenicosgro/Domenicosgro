@@ -981,7 +981,8 @@ sonst schleppt die Vorlage ein fremdes Datum mit).
 
 Mitgeliefert: Telefonnotiz, Aktennotiz, Besprechungsnotiz, Memo/Kurzmitteilung,
 Ortstermin/Begehung, Entscheidungsvorlage, Abstimmung mit Behörde,
-Bemusterung/Freigabe. Das Menü zeigt den `zweck` als zweite Zeile – eine Liste
+**Punkteliste/Jour fixe** (gibt fünf Themenzeilen vor: Termine, Kosten,
+Planung, Ausführung, Sonstiges) und Bemusterung/Freigabe. Das Menü zeigt den `zweck` als zweite Zeile – eine Liste
 aus acht Namen ohne Erklärung wäre nicht benutzbar.
 
 - **Anwenden auch auf eine bestehende Notiz** (`applyNoteTemplate`,
@@ -1004,8 +1005,31 @@ aus acht Namen ohne Erklärung wäre nicht benutzbar.
 - **`<hr>` als Trenner überlebt den Rechteditor nicht** (Tiptap wirft es weg);
   deshalb eine Textzeile mit dem Namen der Vorlage – die sagt ohnehin mehr.
 
-### Notizen: Aufgaben mit Zuständigem und Frist
+### Notizen: Punktetabelle mit Zuständigem und Frist
 `src/components/NoteTasks.jsx`, Datenfeld `note.actionItems`.
+
+Eine Notiz endet selten mit einem Fließtext, sondern mit Punkten. Deshalb
+stehen sie als **Tabelle mit Spalten**, nicht als Kärtchen:
+
+```
+Nr. · Thema · Punkt / Ergebnis · Zuständig · Frist · Status
+```
+
+- **Ein Punkt ohne Zuständigen und Frist ist eine Feststellung, mit beidem eine
+  Aufgabe** – derselbe Datensatz, dieselben Felder wie eine Maßnahme
+  (`emptyActionItem` plus `topic`).
+- Reihenfolge änderbar (Pfeile); die Nummern laufen mit, sonst stimmt der
+  Verweis „Punkt 3" aus dem Protokoll nach dem Verschieben nicht mehr.
+- Unter `md` wird aus der Tabelle eine gestapelte Liste – sechs Spalten sind
+  auf einem Telefon nicht zu bedienen.
+- **Nur ausgefüllte Zeilen gehen ins Protokoll.** Eine Zeile mit bloßem Thema
+  aus einer Vorlage („Termine", ohne Text, ohne Zuständigen, ohne Frist) ist
+  ein leeres Gerüst; daraus darf keine Maßnahme werden.
+- In der Maßnahme steht `Thema: Text` (ohne Text bleibt der Doppelpunkt weg).
+- Im Ausdruck fällt die Spalte „Thema" weg, wenn keine Zeile eine hat; im PDF
+  steht das Thema fett über dem Text der Zeile (eine eigene Spalte wäre bei A4
+  und fünf weiteren Spalten zu schmal).
+
 
 Eine Aktennotiz oder ein Telefonat endet oft mit „X kümmert sich bis Freitag".
 Bisher stand das im Fließtext und damit nirgends, wo jemand nachsieht. Das

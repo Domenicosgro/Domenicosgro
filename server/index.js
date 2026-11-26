@@ -4900,15 +4900,16 @@ app.post('/api/notes/:id/send-email', requireAuth, async (req, res) => {
     // nicht im Fließtext suchen muessen.
     const STATUS_TEXT = { offen: 'Offen', in_arbeit: 'In Arbeit', erledigt: 'Erledigt', verschoben: 'Verschoben' }
     const noteTasks = (Array.isArray(note.actionItems) ? note.actionItems : [])
-      .filter(a => a && (a.description || '').trim())
+      .filter(a => a && (a.description || a.topic || '').trim())
     const tasksHtml = noteTasks.length === 0 ? '' : `
       <tr><td style="padding:4px 36px 20px 36px;">
-        <p style="margin:0 0 6px 0;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:#777;">Aufgaben</p>
+        <p style="margin:0 0 6px 0;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:#777;">Punkte</p>
         <table width="100%" cellpadding="0" cellspacing="0" style="font-size:13px;color:#1F2937;border-collapse:collapse;">
           ${noteTasks.map(a => `
           <tr>
             <td style="padding:6px 8px 6px 0;border-bottom:1px solid #E5E7EB;vertical-align:top;color:#777;width:22px;">${esc(String(a.no || ''))}</td>
-            <td style="padding:6px 8px;border-bottom:1px solid #E5E7EB;vertical-align:top;">${esc(a.description)}</td>
+            <td style="padding:6px 8px;border-bottom:1px solid #E5E7EB;vertical-align:top;">${
+              (a.topic || '').trim() ? `<strong>${esc(a.topic)}</strong><br>` : ''}${esc(a.description || '')}</td>
             <td style="padding:6px 8px;border-bottom:1px solid #E5E7EB;vertical-align:top;white-space:nowrap;">${esc(a.responsible || '–')}</td>
             <td style="padding:6px 8px;border-bottom:1px solid #E5E7EB;vertical-align:top;white-space:nowrap;">${
               a.deadline ? new Date(a.deadline + 'T12:00:00').toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '–'}</td>

@@ -858,7 +858,9 @@ export default function App() {
           ...emptyActionItem(),
           id: actionId,
           no: maxNo,
-          description: `[${typLabel}${note.date ? ' ' + formatDate(note.date) : ''}] ${t.description || ''}`.trim(),
+          // „Thema: Text" – ohne Text bleibt der Doppelpunkt weg.
+          description: `[${typLabel}${note.date ? ' ' + formatDate(note.date) : ''}] `
+            + [t.topic?.trim(), t.description?.trim()].filter(Boolean).join(': '),
           responsible: t.responsible || '',
           deadline:    t.deadline || '',
           status:      t.status || 'offen',

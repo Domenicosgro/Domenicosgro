@@ -454,6 +454,7 @@ jedem Namen steht, wofür man sie nimmt:
 | Ortstermin / Begehung | Baustellenbegehung mit Feststellungen und Vereinbarungen |
 | Entscheidungsvorlage | Dem Bauherrn eine Entscheidung mit Varianten vorlegen |
 | Abstimmung mit Behörde | Auskunft einer Behörde festhalten, mit Verbindlichkeit |
+| Punkteliste / Jour fixe | Tabelle statt Fließtext: fünf Themenzeilen (Termine, Kosten, Planung, Ausführung, Sonstiges) |
 | Bemusterung / Freigabe | Muster vorgelegt, entschieden, freigegeben |
 
 Manche Vorlagen bringen **Aufgaben** mit — die Entscheidungsvorlage zum
@@ -476,29 +477,45 @@ ihn nur vor, wenn das Feld leer ist.
 
 Im selben Fenster lässt sich **die geöffnete Notiz als Vorlage speichern** —
 einmal gut geschrieben, dann immer wieder verwendbar. Übernommen werden Art,
-Betreff, das Gerüst des Inhalts und die Aufgaben; **ohne Zuständige**, und die
-Fristen als Abstand in Tagen statt als festes Datum.
+Betreff, das Gerüst des Inhalts und die **Punkte mit ihren Themen**; **ohne
+Zuständige**, und die Fristen als Abstand in Tagen statt als festes Datum.
+
+So entsteht aus einer Notiz, die sich bewährt hat, die eigene Punktetabelle des
+Büros: die Themenzeilen stehen beim nächsten Mal schon da, Zuständige und
+Fristen werden eingetragen.
 
 Eigene Vorlagen stehen danach im Menü „Neue Notiz" unter *Eigene Vorlagen* und
 gelten für das ganze Büro. Löschen geht im selben Fenster über das
 Mülleimer-Symbol.
 
-### Aufgaben in einer Notiz (Akten- und Telefonnotizen)
+### Punkte in einer Notiz (Akten- und Telefonnotizen)
 
-Unter dem Inhalt einer Notiz steht **„Aufgaben aus dieser Notiz"**. Jede Zeile bekommt,
-was eine Maßnahme im Protokoll auch hat: **Zuständigen, Frist, Zustand und
-Dringlichkeit**. Bei der Zuständigkeit stehen die Teilnehmer der Notiz oben zur
-Auswahl — wer am Telefon war, übernimmt meistens auch die Aufgabe. Eine
-überschrittene Frist färbt die Zeile.
+Unter dem Inhalt einer Notiz steht **„Punkte dieser Notiz"** — eine Tabelle:
 
-Die Aufgaben stehen im Ausdruck, im PDF und in der E-Mail der Notiz — wer etwas
+| Nr. | Thema | Punkt / Ergebnis | Zuständig | Frist | Status |
+|---|---|---|---|---|---|
+
+Ein Punkt **ohne** Zuständigen und Frist ist einfach eine Feststellung; **mit**
+beidem ist er eine Aufgabe. Es ist dieselbe Zeile — man muss sich vorher nicht
+entscheiden. Bei der Zuständigkeit stehen die Teilnehmer der Notiz oben zur
+Auswahl; wer am Telefon war, übernimmt meistens auch den Punkt. Eine
+überschrittene Frist färbt die Zeile rot.
+
+Mit den Pfeilen rechts lässt sich die Reihenfolge ändern — die Nummern laufen
+mit. Am Telefon oder Tablet wird aus der Tabelle eine gestapelte Liste.
+
+Die Punkte stehen im Ausdruck, im PDF und in der E-Mail der Notiz — wer etwas
 tun soll, muss es nicht im Fließtext suchen.
 
-**„Aufgaben ins Protokoll"** übernimmt die offenen Aufgaben als Maßnahmen in
-ein Protokoll des Projekts. Erst dort greifen Erinnerung, Freimeldung durch die
-Firma und das Maßnahmen-Dashboard. Danach führt die Maßnahme: ändert sich dort
-der Zustand, folgt die Notizaufgabe von selbst, und an der Notiz steht, dass sie
-im Protokoll weiterläuft. Eine Aufgabe wird dabei nicht zweimal übernommen.
+**„Punkte ins Protokoll"** übernimmt sie als Maßnahmen in ein Protokoll des
+Projekts; in der Maßnahme steht dann „Thema: Punkt". Erst dort greifen
+Erinnerung, Freimeldung durch die Firma und das Maßnahmen-Dashboard. Danach
+führt die Maßnahme: ändert sich dort der Zustand, folgt der Punkt in der Notiz
+von selbst, und an der Zeile steht, dass sie im Protokoll weiterläuft. Ein
+Punkt wird nicht zweimal übernommen.
+
+> Übernommen werden nur **ausgefüllte** Zeilen. Eine Zeile, in der nur ein
+> Thema aus der Vorlage steht, bleibt in der Notiz stehen.
 
 ---
 

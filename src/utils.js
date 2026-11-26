@@ -346,6 +346,23 @@ export const NOTE_TEMPLATES = [
     tasks: [{ description: 'Auskunft schriftlich bestätigen lassen', fristTage: 10 }],
   },
   {
+    id: 'punkteliste',
+    type: 'besprochen',
+    label: 'Punkteliste / Jour fixe',
+    zweck: 'Tabelle statt Fließtext: je Zeile ein Thema mit Zuständigem und Frist',
+    subject: 'Punkteliste',
+    content: '<p><strong>Anlass:</strong> </p><p><strong>Teilnehmer:</strong> </p>',
+    // Die Zeilen stehen schon da – ausgefüllt wird in der Tabelle darunter.
+    // Ohne Frist: die setzt, wer den Punkt vergibt.
+    tasks: [
+      { topic: 'Termine' },
+      { topic: 'Kosten' },
+      { topic: 'Planung' },
+      { topic: 'Ausführung' },
+      { topic: 'Sonstiges' },
+    ],
+  },
+  {
     id: 'bemusterung',
     type: 'besprochen',
     label: 'Bemusterung / Freigabe',
@@ -408,6 +425,7 @@ export const applyNoteTemplate = (note, tpl, wie = {}) => {
       ...tpl.tasks.map(a => ({
         ...emptyNoteTask(),
         no: ++nr,
+        topic: a.topic || '',
         description: a.description || '',
         responsible: a.responsible || '',
         deadline: a.deadline || fristAus(a.fristTage),
@@ -430,9 +448,10 @@ export const noteToTemplate = (note, label) => ({
   // Aufgaben kommen ohne Zuständigen und mit dem Abstand zum heutigen Tag
   // als Frist mit – eine Vorlage soll kein fremdes Datum mitschleppen.
   tasks: (Array.isArray(note.actionItems) ? note.actionItems : [])
-    .filter(a => (a.description || '').trim())
+    .filter(a => (a.description || a.topic || '').trim())
     .map(a => ({
-      description: a.description,
+      topic: a.topic || '',
+      description: a.description || '',
       fristTage: a.deadline
         ? Math.max(0, Math.round((Date.parse(a.deadline + 'T12:00:00') - Date.now()) / 86400000))
         : undefined,
@@ -464,6 +483,9 @@ export const emptyNote = (projectId = null) => ({
 export const emptyNoteTask = () => ({
   id: uid(),
   no: 1,
+  // Stichwort der Zeile („Fenster OG"). Macht aus der Aufgabenliste eine
+  // Punkteliste: Nr. · Thema · Punkt/Ergebnis · Zuständig · Frist · Status.
+  topic: '',
   description: '',
   responsible: '',
   deadline: '',
