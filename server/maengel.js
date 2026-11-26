@@ -110,4 +110,67 @@ function mangelSpiegel({ db, broadcast, logEvent, displayName }) {
   }
 }
 
-module.exports = { mangelSpiegel, AUF_MANGEL, RANG, ABGENOMMEN }
+// ─────────────────────────────────────────────────────────────────────────────
+// Dasselbe für Aufgaben aus einer Notiz
+//
+// Eine Aktennotiz endet oft mit „X kümmert sich bis Freitag". Solche Aufgaben
+// lassen sich als Maßnahme in ein Protokoll übernehmen (dort hängen Mahnwesen
+// und Freimeldung); die Maßnahme trägt dann `noteId` und `noteTaskId`.
+//
+// Ab da führt die Maßnahme, und der Zustand in der Notiz folgt ihr – sonst
+// müsste man beides pflegen und hätte nach zwei Wochen zwei Wahrheiten.
+// Hier gibt es keine Umbenennung der Zustände: Notizaufgaben benutzen
+// dieselben vier Werte wie Maßnahmen.
+// ─────────────────────────────────────────────────────────────────────────────
+function notizSpiegel({ db, broadcast, logEvent, displayName }) {
+  return function spiegle(protocolId, by, req = null) {
+    try {
+      const proto = db.protocols.get(protocolId)
+      if (!proto) return 0
+
+      // Je Notiz die betroffenen Aufgaben sammeln – eine Notiz wird höchstens
+      // einmal geschrieben, auch wenn mehrere ihrer Aufgaben im Protokoll
+      // stehen.
+      const nachNotiz = new Map()
+      for (const a of (Array.isArray(proto.actionItems) ? proto.actionItems : [])) {
+        if (!a || !a.noteId || !a.noteTaskId) continue
+        if (!RANG_NOTIZ.includes(a.status)) continue
+        if (!nachNotiz.has(a.noteId)) nachNotiz.set(a.noteId, new Map())
+        nachNotiz.get(a.noteId).set(a.noteTaskId, a.status)
+      }
+      if (!nachNotiz.size) return 0
+
+      let geaendert = 0
+      for (const [noteId, zustaende] of nachNotiz) {
+        const notiz = db.notes.get(noteId)
+        if (!notiz) continue
+        const aufgaben = Array.isArray(notiz.actionItems) ? notiz.actionItems : []
+        let etwas = false
+        const neu = aufgaben.map(t => {
+          const ziel = t && zustaende.get(t.id)
+          if (!ziel || ziel === t.status) return t
+          etwas = true
+          return { ...t, status: ziel, statusQuelle: 'massnahme', statusAm: new Date().toISOString() }
+        })
+        if (!etwas) continue
+
+        const now = new Date().toISOString()
+        const { _version, _updatedAt, ...daten } = notiz
+        const ergebnis = db.notes.update(noteId, { ...daten, actionItems: neu, updatedAt: now }, _version, by)
+        if (ergebnis && (ergebnis.conflict || ergebnis.notFound)) continue
+        geaendert++
+        if (broadcast) broadcast('note', 'update', noteId, now)
+        if (logEvent && req) logEvent('NOTIZ_AUFGABE_STATUS', req, `note=${noteId} aus=massnahme`)
+      }
+      return geaendert
+    } catch {
+      // Wie bei den Mängeln: eine fehlgeschlagene Spiegelung darf das
+      // Speichern des Protokolls nicht aufhalten.
+      return 0
+    }
+  }
+}
+
+const RANG_NOTIZ = ['offen', 'in_arbeit', 'erledigt', 'verschoben']
+
+module.exports = { mangelSpiegel, notizSpiegel, AUF_MANGEL, RANG, ABGENOMMEN }

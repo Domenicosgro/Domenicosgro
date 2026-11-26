@@ -3,6 +3,7 @@ import { ArrowLeft, Plus, Trash2, Send, Mail, Phone, ChevronDown, Printer,
          FileText, Phone as PhoneIcon, Users, Search, X, Check, Loader } from 'lucide-react'
 import { formatDate, NOTE_TYPES, NOTE_TEMPLATES, emptyNote, uid } from '../utils'
 import RichTextEditor from './RichTextEditor'
+import NoteTasks from './NoteTasks'
 import { buildNotePdf } from '../notePdf'
 
 const isServer = typeof window !== 'undefined' && !!window.__SERVER_MODE__
@@ -69,6 +70,32 @@ function buildNotePrintHtml(note, contact, projectName, logoDataUrl, clientLogoD
     ? note.content
     : '<p style="color:#aaa;font-style:italic;">Kein Inhalt.</p>'
 
+  // Aufgaben: im Ausdruck eine Tabelle wie im Protokoll. Ohne Aufgaben fehlt
+  // der Abschnitt ganz – eine leere Tabelle sagt nichts.
+  const STATUS_TEXT = { offen: 'Offen', in_arbeit: 'In Arbeit', erledigt: 'Erledigt', verschoben: 'Verschoben' }
+  const tasks = (note.actionItems ?? []).filter(a => (a.description || '').trim())
+  const tasksHtml = tasks.length === 0 ? '' : `
+    <div style="margin-top:6mm;">
+      <p style="font-size:7pt;text-transform:uppercase;letter-spacing:.05em;color:#777;margin:0 0 2mm;">Aufgaben</p>
+      <table style="width:100%;border-collapse:collapse;font-size:9pt;">
+        <tr>
+          <th style="text-align:left;padding:1.5mm 2mm 1.5mm 0;border-bottom:1px solid #000;width:8mm;">Nr.</th>
+          <th style="text-align:left;padding:1.5mm 2mm;border-bottom:1px solid #000;">Aufgabe</th>
+          <th style="text-align:left;padding:1.5mm 2mm;border-bottom:1px solid #000;width:38mm;">Zuständig</th>
+          <th style="text-align:left;padding:1.5mm 2mm;border-bottom:1px solid #000;width:22mm;">Frist</th>
+          <th style="text-align:left;padding:1.5mm 0 1.5mm 2mm;border-bottom:1px solid #000;width:22mm;">Status</th>
+        </tr>
+        ${tasks.map(a => `
+        <tr>
+          <td style="padding:1.5mm 2mm 1.5mm 0;border-bottom:1px solid #e5e5e5;vertical-align:top;color:#777;">${esc(String(a.no || ''))}</td>
+          <td style="padding:1.5mm 2mm;border-bottom:1px solid #e5e5e5;vertical-align:top;">${esc(a.description)}</td>
+          <td style="padding:1.5mm 2mm;border-bottom:1px solid #e5e5e5;vertical-align:top;">${esc(a.responsible || '–')}</td>
+          <td style="padding:1.5mm 2mm;border-bottom:1px solid #e5e5e5;vertical-align:top;">${a.deadline ? formatDate(a.deadline) : '–'}</td>
+          <td style="padding:1.5mm 0 1.5mm 2mm;border-bottom:1px solid #e5e5e5;vertical-align:top;">${esc(STATUS_TEXT[a.status] || a.status || '')}</td>
+        </tr>`).join('')}
+      </table>
+    </div>`
+
   return `<!DOCTYPE html>
 <html lang="de"><head><meta charset="UTF-8">
 <title>${esc(typeInfo.label)} – ${esc(note.subject || projectName || '')}</title>
@@ -95,6 +122,7 @@ function buildNotePrintHtml(note, contact, projectName, logoDataUrl, clientLogoD
   <div style="font-size:6.5pt;text-transform:uppercase;letter-spacing:.05em;color:#777;margin-bottom:2mm;">Inhalt</div>
   ${contentHtml}
 </div>
+${tasksHtml}
 </body></html>`
 }
 
@@ -318,7 +346,7 @@ function NoteEmailModal({ note, contacts, allContacts, projectName, logoDataUrl,
 const contactKey = (c) => (c.email || '').trim().toLowerCase()
   || `${(c.name || '').trim().toLowerCase()}|${(c.company || '').trim().toLowerCase()}`
 
-function NoteEditor({ note, contacts, allContacts, projectName, logoDataUrl, clientLogoDataUrl, onUpdate, onDelete, onSendEmail }) {
+function NoteEditor({ note, contacts, allContacts, projectName, logoDataUrl, clientLogoDataUrl, onUpdate, onDelete, onSendEmail, protocols = [], onAddToProtocol = null }) {
   const set = (field) => (val) => onUpdate(note.id, { [field]: typeof val === 'object' && val?.target ? val.target.value : val })
 
   const linkedContact = contacts.find(c => c.id === note.linkedContactId)
@@ -456,6 +484,14 @@ function NoteEditor({ note, contacts, allContacts, projectName, logoDataUrl, cli
         </div>
       </div>
 
+      {/* Aufgaben mit Zuständigem und Frist */}
+      <NoteTasks
+        note={note}
+        contacts={allContacts && allContacts.length ? allContacts : contacts}
+        protocols={protocols}
+        onUpdate={onUpdate}
+        onAddToProtocol={onAddToProtocol} />
+
       {/* Footer actions */}
       <div className="flex items-center justify-between pt-1 border-t border-gray-100">
         <div className="flex gap-2">
@@ -487,7 +523,7 @@ function NoteEditor({ note, contacts, allContacts, projectName, logoDataUrl, cli
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
-export default function NotesList({ notes, projectContacts, allContacts, projectName, logoDataUrl, clientLogoDataUrl, onCreate, onUpdate, onDelete, onBack, tabs }) {
+export default function NotesList({ notes, projectContacts, allContacts, projectName, logoDataUrl, clientLogoDataUrl, onCreate, onUpdate, onDelete, onBack, tabs, protocols = [], onAddToProtocol = null }) {
   const [activeId,       setActiveId]       = useState(null)
   const [search,         setSearch]         = useState('')
   const [filterType,     setFilterType]     = useState('')
@@ -659,6 +695,8 @@ export default function NotesList({ notes, projectContacts, allContacts, project
               onUpdate={onUpdate}
               onDelete={handleDelete}
               onSendEmail={() => setShowEmailModal(true)}
+              protocols={protocols}
+              onAddToProtocol={onAddToProtocol}
             />
           </div>
         )}

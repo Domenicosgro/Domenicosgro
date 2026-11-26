@@ -173,6 +173,7 @@ Domenicosgro/
 │   │   └── BaustelleApp.jsx · BerichtForm.jsx · Maengel.jsx
 │   ├── planHelfer.js              # reine Plan-Auskünfte (ohne pdfjs – auch fürs Handy)
 │   ├── planVorschau.js            # PDF → PNG im Browser, pdfjs wird nachgeladen
+│   ├── maengelliste.js            # Mängelliste als Dokument (Anlage zur Abnahme)
 │   │
 │   ├── components/
 │   │   ├── ProjectsHome.jsx       # Startseite: Projektliste, Favoriten, PWA-Install, Import, Admin-Kachel
@@ -225,7 +226,7 @@ Domenicosgro/
 │   ├── pruefstation.js            # Prüfstation: Prüfvorgänge + verknüpfte NAS-Ordner (/api/pruefstation/*)
 │   ├── bautagebuchFotos.js        # Baudokumentation: Originalfotos in den Projektordner
 │   ├── baustelle.js               # Baustellen-Fassade: schmale Schnittstelle fürs Handy (/api/baustelle/*)
-│   ├── maengel.js                 # Mangel-Status folgt der Maßnahme (Rückkanal)
+│   ├── maengel.js                 # Rückkanal: Mangel- und Notizaufgaben-Status folgen der Maßnahme
 │   ├── planVorschau.js            # PDF-Seiten als PNG, damit Mängel auf dem Plan pinnbar sind
 │   ├── assistent.js               # Assistent: Routen, Verlauf, SSE zum Browser (§15)
 │   ├── kontext.js                 # Rückgriff: Systemkopf aus dem, was die Person sehen darf
@@ -241,7 +242,7 @@ Domenicosgro/
 │   ├── pruefe-marke.mjs           # kein harter Name des Betreibers im Code
 │   ├── pruefe-fotoablage.js       # 30 Prüfungen der Fotoablage (ohne NAS)
 │   ├── pruefe-baustelle.js        # 93 Prüfungen der Baustellen-Fassade (ohne NAS, ohne Browser)
-│   └── pruefe-maengel.js          # 23 Prüfungen des Rückkanals Maßnahme → Mangel
+│   └── pruefe-maengel.js          # 37 Prüfungen des Rückkanals (Mängel und Notizaufgaben)
 │
 └── electron/                      # Desktop-Variante (optional)
     ├── main.js                    # Electron-Hauptprozess
@@ -908,7 +909,8 @@ Maßnahme „verschoben" → keine Änderung    (eine Frist, kein Zustand)
   Zustand selbst, wird daraus `'hand'`.
 - Ein Fehler in der Spiegelung darf das Speichern eines Protokolls nie
   aufhalten: alles in einem `try`, im Zweifel bleibt der Mangel, wie er war.
-- Prüflauf: `npm run pruefe:maengel` (23 Prüfungen, ohne Datenbank).
+- Prüflauf: `npm run pruefe:maengel` (37 Prüfungen, ohne Datenbank) – deckt
+  Mängel **und** Notizaufgaben ab (siehe „Notizen: Aufgaben").
 
 ### Mängel auf dem Plan verorten – auch auf PDF
 Die Verortung liegt **am Mangel**, nicht in einem zweiten Datentyp:
@@ -944,6 +946,52 @@ Pin setzen (überall)  →  nur noch das PNG
   erkennen, der Hinweis steht in der Oberfläche.
 - Grenzen, die der Server zieht: der Plan muss zum Projekt gehören, die Stelle
   muss zwischen 0 und 1 liegen, `position: null` löscht die Verortung.
+
+### Mängelliste als Dokument (Anlage zur Abnahme)
+`src/maengelliste.js` + Dialog `ListeDialog` in `MaengelView.jsx`.
+Druck-HTML wie Protokoll und Notiz, **nicht** mit pdf-lib gezeichnet: so lassen
+sich Fotos und Planseiten ohne Verrenkungen einbetten, und der Browser macht
+daraus das PDF.
+
+- **Zwei Gliederungen**, weil es zwei Anlässe gibt: nach Firma (Abnahme je
+  Gewerk) und nach Plan (Begehung).
+- **Planübersicht** je Plan und Seite: der ganze Plan mit allen Pins, jeder mit
+  der Nummer des Mangels und in der Farbe seines Standes. Ein Ausschnitt je
+  Mangel wäre schöner, bräuchte aber Zuschnitt im Bild – die Übersicht leistet
+  für die Begehung mehr.
+- **Die Spalte „Zur Abnahme" wird abgeleitet, nicht geraten:** abgenommen →
+  abgenommen, behoben → behoben und noch nicht abgenommen, offen/in Arbeit →
+  vorbehalten. Die Bewertung der Mängel steht nicht im Programm; der Hinweis
+  dazu steht im Dokument.
+- Fotos werden **vor** dem Öffnen des Druckfensters als Daten-URLs geladen
+  (`loadPhotoUrl`) – im neuen Fenster gibt es keinen Zugriff auf den
+  Anhangspeicher, dort müssen die Bilder schon drinstehen.
+- Planbilder kommen über `planBildUrl(...token)`; ein zwischenzeitlich
+  gelöschter Plan lässt sein Blatt weg, statt einen leeren Rahmen zu drucken.
+
+### Notizen: Aufgaben mit Zuständigem und Frist
+`src/components/NoteTasks.jsx`, Datenfeld `note.actionItems`.
+
+Eine Aktennotiz oder ein Telefonat endet oft mit „X kümmert sich bis Freitag".
+Bisher stand das im Fließtext und damit nirgends, wo jemand nachsieht. Das
+**Notizbuch** hatte schon eine Aufgabenliste (`tasks` mit `assignedTo`,
+`dueDate`), die **Notizen** (`notes`) nicht.
+
+- Die Felder sind die der Maßnahme (`emptyActionItem`), nicht eigene: so ist
+  die Übernahme ins Protokoll eine Kopie und keine Übersetzung.
+- **Übernahme ins Protokoll** (`handleAddNoteTasksToProtocol` in `App.jsx`) –
+  derselbe Weg wie beim Mangel. Die Maßnahme trägt `noteId` + `noteTaskId`, die
+  Notizaufgabe merkt sich `protocolRef` und wird nicht zweimal übernommen.
+  Erst dort hängen Mahnwesen, Freimeldung und Maßnahmen-Dashboard.
+- **Rückkanal** (`notizSpiegel` in `server/maengel.js`): ab der Übernahme führt
+  die Maßnahme, der Zustand der Notizaufgabe folgt ihr – alle vier Zustände,
+  ohne Umbenennung. Zuständiger und Frist laufen **nicht** mit, aus demselben
+  Grund wie beim Mangel.
+- Ausgabe: Aufgabentabelle im Ausdruck (`buildNotePrintHtml`), im PDF
+  (`src/notePdf.js`) und in der Notiz-E-Mail (`/api/notes/:id/send-email`).
+- **Bewusst nicht gebaut:** eigene Freimelde-Links für Notizaufgaben. Die
+  Token-Tabelle hängt an `protocolId`; wer eine Notizaufgabe freimelden lassen
+  will, übernimmt sie ins Protokoll – dafür ist die Übernahme da.
 
 ### Notizbuch (projektintern, 2 Ebenen)
 Projekt-Dashboard-Kachel „Notizbuch" → `NotizbuchView.jsx`. Ebene 1 = Hauptthema,

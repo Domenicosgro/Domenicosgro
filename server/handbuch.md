@@ -440,6 +440,23 @@ möglich.
 Unterschied zu den **Notizen**: Die sind Akten- und Telefonnotizen mit
 Teilnehmern und Verteiler und gehen nach außen. Das Notizbuch bleibt im Team.
 
+### Aufgaben in einer Notiz (Akten- und Telefonnotizen)
+
+Unter dem Inhalt einer Notiz steht **„Aufgaben aus dieser Notiz"**. Jede Zeile bekommt,
+was eine Maßnahme im Protokoll auch hat: **Zuständigen, Frist, Zustand und
+Dringlichkeit**. Bei der Zuständigkeit stehen die Teilnehmer der Notiz oben zur
+Auswahl — wer am Telefon war, übernimmt meistens auch die Aufgabe. Eine
+überschrittene Frist färbt die Zeile.
+
+Die Aufgaben stehen im Ausdruck, im PDF und in der E-Mail der Notiz — wer etwas
+tun soll, muss es nicht im Fließtext suchen.
+
+**„Aufgaben ins Protokoll"** übernimmt die offenen Aufgaben als Maßnahmen in
+ein Protokoll des Projekts. Erst dort greifen Erinnerung, Freimeldung durch die
+Firma und das Maßnahmen-Dashboard. Danach führt die Maßnahme: ändert sich dort
+der Zustand, folgt die Notizaufgabe von selbst, und an der Notiz steht, dass sie
+im Protokoll weiterläuft. Eine Aufgabe wird dabei nicht zweimal übernommen.
+
 ---
 
 ## Baudokumentation und Mängel
@@ -585,6 +602,32 @@ Zwei Dinge bleiben ausdrücklich Handarbeit:
 
 Damit läuft die Mängelliste über die ganze Projektlaufzeit mit, ohne doppelte
 Pflege — und ist am Ende das, was der Abnahme beigelegt wird.
+
+### Die Mängelliste als Dokument (Anlage zur Abnahme)
+
+In der Mängelverwaltung oben steht **„Mängelliste"**. Dahinter liegt das
+Dokument, das man einem Abnahmeprotokoll beilegt. Zu entscheiden sind vier
+Dinge:
+
+- **Welche Mängel** — alle, nur die nicht abgenommenen oder nur die offenen.
+- **Gliederung** — *nach Firma* für die Abnahme je Gewerk, *nach Plan* für die
+  Begehung.
+- **Abnahmedatum** (optional) — ist es gesetzt, trägt das Dokument die
+  Überschrift „Anlage zur Abnahme vom …".
+- **Fotos, Planübersicht, Unterschriftenzeilen** je an oder aus.
+
+Je Plan kommt ein eigenes Blatt mit **allen Pins**, jeder mit der Nummer des
+Mangels — rot für vorbehalten, blau für behoben, grün für abgenommen. Damit
+lässt sich die Begehung mit dem Blatt in der Hand abgehen.
+
+Die Spalte **„Zur Abnahme"** wird aus dem Zustand abgeleitet: abgenommen
+bleibt abgenommen, behoben heißt „behoben, Abnahme offen", offen und in Arbeit
+heißen „vorbehalten". Das ist eine Darstellung des Stands, keine Bewertung —
+was ein wesentlicher Mangel ist und was ein Vorbehalt bedeutet, gehört ins
+Abnahmeprotokoll und nicht in dieses Programm.
+
+Ausgegeben wird über das Druckfenster des Browsers; „Als PDF speichern" macht
+daraus die Datei für die Akte oder den Anhang.
 
 ---
 

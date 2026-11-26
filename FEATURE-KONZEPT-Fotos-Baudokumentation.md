@@ -4,7 +4,8 @@
 Projektordner), die **schlanke Handy-Oberfläche** samt eigener Schnittstelle
 (Abschnitt 9) und die **Mängel** darin: erfassen, verorten auf dem Plan,
 Zustand setzen — mit dem Rückkanal von der Maßnahme zum Mangel (Abschnitt 10).
-Offen bleibt Abschnitt 4, Weg A: das VPN auf die Handys. Das liegt bei der
+Dazu die Mängelliste als Dokument für die Abnahme (Abschnitt 10.6). Offen
+bleibt Abschnitt 4, Weg A: das VPN auf die Handys. Das liegt bei der
 Netzbetreuung, nicht in dieser Anwendung.
 
 > **Entschieden am 19.11.2026:** Die Fotos machen unsere eigenen Bauleiter.
@@ -520,11 +521,22 @@ einem gehört. Deshalb:
   Frist, kein Foto weniger
 - **abgenommener Mangel:** nichts
 
-### 10.6 Was noch fehlt (Stufe 4)
+### 10.6 Stufe 4: die Mängelliste als Dokument (gebaut)
 
-**Die Mängelliste als Dokument für die Abnahme.** Drucken geht heute, aber es
-gibt noch kein Erzeugnis, das man einem Abnahmeprotokoll als Anlage beilegt:
-nach Gewerk oder Plan sortiert, mit Planausschnitt und Pin je Mangel, Foto,
-Zuständigem, Frist, Zustand zum Abnahmetag und der Unterscheidung „bis zur
-Abnahme beseitigt" / „vorbehalten". Technisch ist dafür jetzt alles da — es
-ist die nächste Stufe, nicht diese.
+Gebaut am 26.11.2026, `src/maengelliste.js`. Die Anlage zum Abnahmeprotokoll:
+
+- **Welche Mängel** – alle, nur die nicht abgenommenen, nur die offenen
+- **Gliederung** – nach Firma (Abnahme je Gewerk) oder nach Plan (Begehung)
+- **Abnahmedatum** – gesetzt, trägt das Blatt „Anlage zur Abnahme vom …"
+- **Planübersicht** je Plan und Seite: der ganze Plan mit allen Pins, jeder mit
+  der Nummer des Mangels und in der Farbe seines Standes
+- Fotos, Unterschriftenzeilen je an oder aus
+
+Die Spalte „Zur Abnahme" ist **abgeleitet**, nicht bewertet: abgenommen →
+abgenommen, behoben → behoben und noch nicht abgenommen, offen und in Arbeit →
+vorbehalten. Was ein wesentlicher Mangel ist und was ein Vorbehalt bedeutet,
+gehört ins Abnahmeprotokoll und nicht in dieses Programm. Der Hinweis dazu
+steht im Dokument.
+
+Offen bleibt damit aus diesem Papier nur noch Weg A selbst: das VPN auf die
+Handys.

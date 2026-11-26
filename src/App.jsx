@@ -26,7 +26,7 @@ import Pruefstation          from './pruefstation/Pruefstation'
 import ProjektdatenView      from './components/ProjektdatenView'
 import ProjektdatenbankView  from './components/ProjektdatenbankView'
 import Assistent             from './components/Assistent'
-import { hashPassword, uid } from './utils'
+import { hashPassword, uid, emptyActionItem, formatDate, NOTE_TYPES } from './utils'
 import { buildProjectArchivePdf, downloadPdfBase64 } from './archivePdf'
 import { deriveKey, encryptJSON, decryptJSON, newSalt } from './crypto'
 
@@ -834,6 +834,46 @@ export default function App() {
   if (view === 'notes') {
     const project  = projectsWithContacts.find(p => p.id === selectedProjectId) ?? null
     const filtered = notes.filter(n => n.projectId === selectedProjectId)
+    const notizProtokolle = protocols
+      .filter(p => p.projectId === selectedProjectId)
+      .sort((a, b) => (b.date || '').localeCompare(a.date || ''))
+
+    // Aufgaben einer Notiz als Maßnahmen in ein Protokoll übernehmen – derselbe
+    // Weg wie beim Mangel (handleAddDefectToProtocol). Danach hängen Mahnwesen,
+    // Freimeldung und Maßnahmen-Dashboard daran, und der Zustand der
+    // Notizaufgabe folgt der Maßnahme (server/maengel.js).
+    const handleAddNoteTasksToProtocol = (protocolId, note, tasks) => {
+      const protocol = protocols.find(p => p.id === protocolId)
+      if (!protocol || !tasks?.length) return
+      const existing = protocol.actionItems || []
+      let maxNo = existing.reduce((m, a) => Math.max(m, a.no || 0), 0)
+      const typLabel = (NOTE_TYPES.find(x => x.value === note.type) || {}).label || 'Notiz'
+      const neue = []
+      const refs = new Map()
+      for (const t of tasks) {
+        maxNo += 1
+        const actionId = uid()
+        refs.set(t.id, { protocolId, actionId, datum: protocol.date || '' })
+        neue.push({
+          ...emptyActionItem(),
+          id: actionId,
+          no: maxNo,
+          description: `[${typLabel}${note.date ? ' ' + formatDate(note.date) : ''}] ${t.description || ''}`.trim(),
+          responsible: t.responsible || '',
+          deadline:    t.deadline || '',
+          status:      t.status || 'offen',
+          priority:    t.priority || 'mittel',
+          // Rückverweis auf die Notizaufgabe – daran hängt der Rückkanal.
+          noteId:      note.id,
+          noteTaskId:  t.id,
+        })
+      }
+      handleUpdateProtocol(protocolId, { actionItems: [...existing, ...neue] })
+      updateNote(note.id, {
+        actionItems: (note.actionItems || []).map(t =>
+          (refs.has(t.id) ? { ...t, protocolRef: refs.get(t.id) } : t)),
+      })
+    }
     const tabBtn = (id, label) => (
       <button
         className={`px-3 py-1.5 text-sm font-medium border transition-colors ${
@@ -855,6 +895,8 @@ export default function App() {
             />
           : <NotesList
               notes={filtered}
+              protocols={notizProtokolle}
+              onAddToProtocol={handleAddNoteTasksToProtocol}
               projectContacts={project?.contacts ?? []}
               allContacts={allContacts}
               projectName={project?.name || ''}

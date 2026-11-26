@@ -182,6 +182,48 @@ export async function buildNotePdf(note, contact, projectName, logoDataUrl, clie
     y -= LINE_H
   }
 
+  // ── Aufgaben ──────────────────────────────────────────────────────────────
+  // Ohne Aufgaben kein Abschnitt: eine leere Tabelle sagt nichts.
+  const aufgaben = (note.actionItems ?? []).filter(a => (a.description || '').trim())
+  if (aufgaben.length > 0) {
+    const STATUS_TEXT = { offen: 'Offen', in_arbeit: 'In Arbeit', erledigt: 'Erledigt', verschoben: 'Verschoben' }
+    const SP = { nr: MARGIN, text: MARGIN + 14, wer: PAGE_W - MARGIN - 150, frist: PAGE_W - MARGIN - 78, status: PAGE_W - MARGIN - 36 }
+    const TEXT_W = SP.wer - SP.text - 8
+
+    y -= 10
+    ensureSpace(30)
+    page.drawLine({ start: { x: MARGIN, y }, end: { x: PAGE_W - MARGIN, y }, thickness: 0.5, color: rgb(0.8, 0.8, 0.8) })
+    y -= 10
+    page.drawText('AUFGABEN', { x: MARGIN, y, size: 6.5, font: fontReg, color: rgb(0.47, 0.47, 0.47) })
+    y -= 14
+
+    for (const [k, x] of [['Nr.', SP.nr], ['Aufgabe', SP.text], ['Zuständig', SP.wer], ['Frist', SP.frist], ['Status', SP.status]]) {
+      page.drawText(k, { x, y, size: 7, font: fontBold, color: rgb(0.3, 0.3, 0.3) })
+    }
+    y -= 4
+    page.drawLine({ start: { x: MARGIN, y }, end: { x: PAGE_W - MARGIN, y }, thickness: 0.5, color: rgb(0.3, 0.3, 0.3) })
+    y -= 12
+
+    for (const a of aufgaben) {
+      const zeilen = wrapText(a.description || '', fontReg, 9, TEXT_W)
+      ensureSpace(Math.max(14, zeilen.length * 12 + 4))
+      const kopf = y
+      page.drawText(String(a.no || ''), { x: SP.nr, y: kopf, size: 9, font: fontReg, color: rgb(0.47, 0.47, 0.47) })
+      let zy = kopf
+      for (const z of zeilen) {
+        page.drawText(z, { x: SP.text, y: zy, size: 9, font: fontReg, color: rgb(0, 0, 0) })
+        zy -= 12
+      }
+      page.drawText(a.responsible || '–', { x: SP.wer, y: kopf, size: 8, font: fontReg, color: rgb(0, 0, 0) })
+      page.drawText(a.deadline ? a.deadline.split('-').reverse().join('.') : '–',
+        { x: SP.frist, y: kopf, size: 8, font: fontReg, color: rgb(0, 0, 0) })
+      page.drawText(STATUS_TEXT[a.status] || a.status || '',
+        { x: SP.status, y: kopf, size: 8, font: fontReg, color: rgb(0, 0, 0) })
+      y = Math.min(zy, kopf - 12) - 4
+      page.drawLine({ start: { x: MARGIN, y: y + 8 }, end: { x: PAGE_W - MARGIN, y: y + 8 }, thickness: 0.3, color: rgb(0.9, 0.9, 0.9) })
+    }
+  }
+
   for (const { mimeType, base64 } of extractHtmlImages(note.content)) {
     try {
       const pdfImg = mimeType === 'png'

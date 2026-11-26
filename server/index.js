@@ -3031,11 +3031,16 @@ function openTasksFor(projectId, responsible) {
 }
 
 // Aktualisiert ein actionItem server-autoritativ (umgeht Versionskonflikt mit Retry).
-// ── Mängel: Status folgt den Maßnahmen ──────────────────────────────────────
+// ── Rückkanal: Mängel und Notizaufgaben folgen den Maßnahmen ────────────────
 // Begründung und Regeln: server/maengel.js
-const spiegleMaengel = require('./maengel').mangelSpiegel({
-  db, broadcast, logEvent, displayName: planDisplayName,
-})
+const spiegelDeps = { db, broadcast, logEvent, displayName: planDisplayName }
+const spiegleMangelStatus = require('./maengel').mangelSpiegel(spiegelDeps)
+const spiegleNotizStatus  = require('./maengel').notizSpiegel(spiegelDeps)
+
+// Ein Haken für beide – aufgerufen nach jeder Änderung an einem Protokoll.
+function spiegleMaengel(protocolId, by, req = null) {
+  return spiegleMangelStatus(protocolId, by, req) + spiegleNotizStatus(protocolId, by, req)
+}
 
 function mutateActionItem(protocolId, actionId, transform, by) {
   function attempt() {
@@ -4807,6 +4812,27 @@ app.post('/api/notes/:id/send-email', requireAuth, async (req, res) => {
     const introText   = applyTpl(noteTpl.intro, noteVars)
     const greeting    = noteTpl.greeting || 'Guten Tag,'
 
+    // Aufgaben der Notiz: wer etwas tun soll, soll es in der Mail sehen und
+    // nicht im Fließtext suchen muessen.
+    const STATUS_TEXT = { offen: 'Offen', in_arbeit: 'In Arbeit', erledigt: 'Erledigt', verschoben: 'Verschoben' }
+    const noteTasks = (Array.isArray(note.actionItems) ? note.actionItems : [])
+      .filter(a => a && (a.description || '').trim())
+    const tasksHtml = noteTasks.length === 0 ? '' : `
+      <tr><td style="padding:4px 36px 20px 36px;">
+        <p style="margin:0 0 6px 0;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:#777;">Aufgaben</p>
+        <table width="100%" cellpadding="0" cellspacing="0" style="font-size:13px;color:#1F2937;border-collapse:collapse;">
+          ${noteTasks.map(a => `
+          <tr>
+            <td style="padding:6px 8px 6px 0;border-bottom:1px solid #E5E7EB;vertical-align:top;color:#777;width:22px;">${esc(String(a.no || ''))}</td>
+            <td style="padding:6px 8px;border-bottom:1px solid #E5E7EB;vertical-align:top;">${esc(a.description)}</td>
+            <td style="padding:6px 8px;border-bottom:1px solid #E5E7EB;vertical-align:top;white-space:nowrap;">${esc(a.responsible || '–')}</td>
+            <td style="padding:6px 8px;border-bottom:1px solid #E5E7EB;vertical-align:top;white-space:nowrap;">${
+              a.deadline ? new Date(a.deadline + 'T12:00:00').toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '–'}</td>
+            <td style="padding:6px 0 6px 8px;border-bottom:1px solid #E5E7EB;vertical-align:top;white-space:nowrap;color:#777;">${esc(STATUS_TEXT[a.status] || '')}</td>
+          </tr>`).join('')}
+        </table>
+      </td></tr>`
+
     const participants = Array.isArray(note.participants) ? note.participants : []
     const participantsHtml = participants.length > 0
       ? `<tr><td style="padding:0 36px 8px 36px;">
@@ -4833,6 +4859,7 @@ app.post('/api/notes/:id/send-email', requireAuth, async (req, res) => {
           ${pdfBase64 ? `<p style="margin:10px 0 0 0;color:#4B5563;">Die <strong>${esc(typeLabel)}</strong> ist dieser E-Mail als <strong>PDF-Anlage</strong> beigefügt.</p>` : ''}
         </td></tr>
         ${participantsHtml}
+        ${tasksHtml}
         <tr><td style="padding:12px 36px 8px 36px;border-top:1px solid #E5E7EB;">
           <p style="margin:0 0 8px 0;font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:#9CA3AF;">Inhalt</p>
           <div style="font-size:14px;color:#1F2937;line-height:1.6;">${note.content || '<p style="color:#9CA3AF;">Kein Inhalt.</p>'}</div>

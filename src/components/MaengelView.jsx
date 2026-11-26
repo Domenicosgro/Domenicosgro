@@ -1,10 +1,12 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react'
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { ArrowLeft, Plus, Camera, Trash2, Pencil, X, Loader, AlertCircle, Mail,
-         ArrowRight, MapPin, AlertOctagon } from 'lucide-react'
+         ArrowRight, MapPin, AlertOctagon, Printer, FileText } from 'lucide-react'
 import { formatDate, uid } from '../utils'
 import { savePhoto, loadPhotoUrl, removePhoto } from '../photoUtils'
 import PlanPin, { PlanPinAnsicht } from './PlanPin'
 import { vorschauErzeugen } from '../planVorschau'
+import { planBildUrl } from '../planHelfer'
+import { printMaengelliste } from '../maengelliste'
 import brand from '../brand'
 
 const isServer = typeof window !== 'undefined' && !!window.__SERVER_MODE__
@@ -36,6 +38,136 @@ function Thumb({ photoId, onRemove, size = 'w-16 h-16' }) {
           <X size={10} />
         </button>
       )}
+    </div>
+  )
+}
+
+// ── Mängelliste als Dokument ────────────────────────────────────────────────
+// Das Erzeugnis für die Abnahme (Abschnitt 10.6 des Konzeptpapiers). Die
+// Entscheidungen, die der Mensch treffen muss, stehen hier und nicht im
+// Erzeugnis: welche Mängel, wie gegliedert, mit oder ohne Fotos.
+function ListeDialog({ defects, plaene, projectId, projectName, token,
+                       logoDataUrl, clientLogoDataUrl, onClose }) {
+  const [umfang,     setUmfang]     = useState('alle')      // alle | offen | vorbehalten
+  const [gliederung, setGliederung] = useState('firma')     // firma | plan
+  const [abnahme,    setAbnahme]    = useState('')
+  const [mitFotos,   setMitFotos]   = useState(true)
+  const [mitPlan,    setMitPlan]    = useState(true)
+  const [mitUnter,   setMitUnter]   = useState(true)
+  const [busy,       setBusy]       = useState(false)
+  const [fehler,     setFehler]     = useState(null)
+
+  const auswahl = useMemo(() => {
+    if (umfang === 'offen')       return defects.filter(d => d.status === 'offen' || d.status === 'in_arbeit')
+    if (umfang === 'vorbehalten') return defects.filter(d => d.status !== 'abgenommen')
+    return defects
+  }, [defects, umfang])
+
+  const drucken = async () => {
+    setBusy(true); setFehler(null)
+    try {
+      // Fotos vorher laden: im Druckfenster gibt es keinen Zugriff auf den
+      // Anhangspeicher, dort muss eine Daten-URL stehen.
+      const fotoUrls = new Map()
+      if (mitFotos) {
+        for (const d of auswahl) {
+          for (const foto of (d.photos || [])) {
+            if (fotoUrls.has(foto.id)) continue
+            const url = await loadPhotoUrl(foto.id)
+            if (url) fotoUrls.set(foto.id, url)
+          }
+        }
+      }
+      const ok = printMaengelliste(auswahl, {
+        projektName: projectName, abnahmeDatum: abnahme, gliederung,
+        fotos: mitFotos, planUebersicht: mitPlan, unterschriften: mitUnter,
+        logoDataUrl, clientLogoDataUrl, fotoUrls, plaene,
+        planBildUrl: (planId, seite) =>
+          planBildUrl(projectId, plaene.find(p => p.id === planId), seite, token),
+      })
+      if (!ok) setFehler('Das Druckfenster wurde vom Browser blockiert. Bitte Pop-ups für diese Seite erlauben.')
+      else onClose()
+    } catch (e) {
+      setFehler(e.message || 'Die Liste konnte nicht erzeugt werden.')
+    } finally { setBusy(false) }
+  }
+
+  const verortet = auswahl.filter(d => d.position).length
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+      <div className="bg-white w-full max-w-lg border border-gray-200 shadow-2xl" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200">
+          <h3 className="font-semibold text-gray-900 flex items-center gap-2">
+            <FileText size={16} className="text-brand-600" /> Mängelliste erzeugen
+          </h3>
+          <button className="btn-ghost p-1" onClick={onClose}><X size={16} /></button>
+        </div>
+
+        <div className="p-5 space-y-4">
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">Welche Mängel</label>
+            <div className="grid grid-cols-3 gap-1">
+              {[['alle', 'Alle'], ['vorbehalten', 'Nicht abgenommen'], ['offen', 'Nur offene']].map(([v, l]) => (
+                <button key={v} onClick={() => setUmfang(v)}
+                  className={`text-xs px-2 py-2 border ${umfang === v
+                    ? 'bg-brand-600 text-white border-brand-600'
+                    : 'bg-white text-gray-600 border-gray-300 hover:border-gray-400'}`}>{l}</button>
+              ))}
+            </div>
+            <p className="text-xs text-gray-400 mt-1">{auswahl.length} von {defects.length} Mängeln</p>
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">Gliederung</label>
+            <div className="grid grid-cols-2 gap-1">
+              {[['firma', 'Nach Firma'], ['plan', 'Nach Plan']].map(([v, l]) => (
+                <button key={v} onClick={() => setGliederung(v)}
+                  className={`text-xs px-2 py-2 border ${gliederung === v
+                    ? 'bg-brand-600 text-white border-brand-600'
+                    : 'bg-white text-gray-600 border-gray-300 hover:border-gray-400'}`}>{l}</button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">Abnahmedatum (optional)</label>
+            <input type="date" className="input" value={abnahme} onChange={e => setAbnahme(e.target.value)} />
+            <p className="text-xs text-gray-400 mt-1">
+              Gesetzt, erscheint die Liste als „Anlage zur Abnahme vom …".
+            </p>
+          </div>
+
+          <div className="space-y-1.5">
+            {[[mitFotos, setMitFotos, 'Fotos mitdrucken'],
+              [mitPlan,  setMitPlan,  `Planübersicht mit Pins (${verortet} verortet)`],
+              [mitUnter, setMitUnter, 'Unterschriftenzeilen']].map(([wert, setzen, label], i) => (
+              <label key={i} className="flex items-center gap-2 text-sm text-gray-700">
+                <input type="checkbox" checked={wert} onChange={e => setzen(e.target.checked)} />
+                {label}
+              </label>
+            ))}
+          </div>
+
+          {fehler && (
+            <div className="text-sm text-red-700 flex items-start gap-2">
+              <AlertCircle size={14} className="flex-shrink-0 mt-0.5" /> {fehler}
+            </div>
+          )}
+
+          <p className="text-xs text-gray-400">
+            Die Spalte „Zur Abnahme" wird aus dem Zustand abgeleitet; die Bewertung der Mängel
+            bleibt dem Abnahmeprotokoll vorbehalten.
+          </p>
+        </div>
+
+        <div className="flex justify-end gap-2 px-5 py-4 border-t border-gray-200">
+          <button className="btn-secondary" onClick={onClose}>Abbrechen</button>
+          <button className="btn-primary flex items-center gap-1.5" onClick={drucken} disabled={busy || auswahl.length === 0}>
+            {busy ? <Loader size={14} className="animate-spin" /> : <Printer size={14} />} Drucken / PDF
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
@@ -182,6 +314,7 @@ export default function MaengelView({ project, protocols = [], serverUser, onBac
   const [filter,  setFilter]  = useState('alle')
   const [protoPick, setProtoPick] = useState(null) // defect-id für Protokoll-Auswahl
   const [planZeigen, setPlanZeigen] = useState(null) // defect-id: Planausschnitt offen
+  const [listeOffen, setListeOffen] = useState(false) // Dialog „Mängelliste erzeugen"
   const lsKey = `kp_defects_${project.id}`
 
   const contacts = project.contacts || []
@@ -339,7 +472,13 @@ export default function MaengelView({ project, protocols = [], serverUser, onBac
           </div>
         </div>
         {!editing && (
-          <button className="btn-primary no-print" onClick={() => setEditing('new')}><Plus size={15} /> Mangel erfassen</button>
+          <div className="flex items-center gap-2 no-print">
+            <button className="btn-secondary flex items-center gap-1.5" onClick={() => setListeOffen(true)}
+                    title="Mängelliste als Dokument – Anlage zur Abnahme">
+              <FileText size={15} /> Mängelliste
+            </button>
+            <button className="btn-primary" onClick={() => setEditing('new')}><Plus size={15} /> Mangel erfassen</button>
+          </div>
         )}
       </div>
 
@@ -359,6 +498,18 @@ export default function MaengelView({ project, protocols = [], serverUser, onBac
           </button>
         ))}
       </div>
+
+      {listeOffen && (
+        <ListeDialog
+          defects={defects}
+          plaene={plaene}
+          projectId={project.id}
+          projectName={project.name || ''}
+          token={token}
+          logoDataUrl={project.logo || ''}
+          clientLogoDataUrl={project.clientLogo || ''}
+          onClose={() => setListeOffen(false)} />
+      )}
 
       {editing && (
         <DefectForm

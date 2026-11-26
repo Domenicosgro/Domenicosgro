@@ -1,5 +1,6 @@
 /**
- * Prueft den Rueckkanal zwischen Massnahmen und Maengeln (server/maengel.js).
+ * Prueft den Rueckkanal von der Massnahme zum Mangel UND zur Notizaufgabe
+ * (server/maengel.js).
  *
  * Hintergrund: Ein Mangel wird zur Massnahme mit Frist und Zustaendigem. Bis
  * zum 26.11.2026 lief der Zustand nur in eine Richtung – meldete die Firma die
@@ -14,7 +15,7 @@
  * Ergebnis: Rueckgabewert 1 bei Fehlern, sonst 0.
  */
 'use strict'
-const { mangelSpiegel } = require('../server/maengel')
+const { mangelSpiegel, notizSpiegel } = require('../server/maengel')
 
 let fehler = 0
 const pruefe = (name, ok, extra = '') => {
@@ -48,11 +49,31 @@ const db = {
   },
 }
 
+const notizen = new Map()
+db.notes = {
+  get: (id) => (notizen.has(id) ? tief(notizen.get(id)) : null),
+  update: (id, daten, version, by) => {
+    const n = notizen.get(id)
+    if (!n) return { notFound: true }
+    if (n._version !== version) return { conflict: true, serverVersion: n._version }
+    schreibt++
+    notizen.set(id, { ...daten, id, _version: version + 1, _letzterBy: by })
+    return { version: version + 1 }
+  },
+}
+
 const spiegle = mangelSpiegel({
   db,
   broadcast: (art, was, id) => ereignisse.push(`${art}:${was}:${id}`),
   logEvent: () => {},
   displayName: (u) => ({ ds: 'Domenico Sgro' }[u] || u),
+})
+
+const spiegleNotiz = notizSpiegel({
+  db,
+  broadcast: (art, was, id) => ereignisse.push(`${art}:${was}:${id}`),
+  logEvent: () => {},
+  displayName: (u) => u,
 })
 
 // ── Aufbau ───────────────────────────────────────────────────────────────────
@@ -170,6 +191,79 @@ try {
   pruefe('unbekanntes Protokoll: 0', unbekannt === 0)
 } catch (e) {
   console.log('\nABBRUCH: ' + e.stack)
+  fehler++
+}
+
+// ── Notizaufgaben ───────────────────────────────────────────────────────────
+try {
+  console.log('\n9) Notizaufgaben folgen der Maßnahme')
+  protokolle = new Map()
+  maengel    = new Map()
+  ereignisse = []
+  schreibt   = 0
+
+  notizen.set('N1', {
+    id: 'N1', projectId: 'P1', type: 'telefonnotiz', subject: 'Anruf Rohbau', _version: 1,
+    actionItems: [
+      { id: 't1', no: 1, description: 'Bewehrungsplan schicken', responsible: 'Rohbau GmbH',
+        deadline: '2026-12-05', status: 'offen', priority: 'hoch' },
+      { id: 't2', no: 2, description: 'Termin bestätigen', status: 'offen' },
+      { id: 't3', no: 3, description: 'bleibt in der Notiz', status: 'offen' },
+    ],
+  })
+  notizen.set('N2', { id: 'N2', projectId: 'P1', actionItems: [{ id: 'x1', status: 'offen' }], _version: 1 })
+
+  protokolle.set('PR9', {
+    id: 'PR9', projectId: 'P1', date: '2026-11-26', _version: 1,
+    actionItems: [
+      { id: 'm1', status: 'erledigt',   noteId: 'N1', noteTaskId: 't1' },
+      { id: 'm2', status: 'in_arbeit',  noteId: 'N1', noteTaskId: 't2' },
+      { id: 'm3', status: 'verschoben', noteId: 'N2', noteTaskId: 'x1' },
+      { id: 'm4', status: 'erledigt',   noteId: 'N1', noteTaskId: 'gibtsnicht' },
+      { id: 'm5', status: 'erledigt' },                       // ohne Notizbezug
+      { id: 'm6', status: 'erledigt',   noteId: 'weg', noteTaskId: 't9' },  // Notiz gelöscht
+    ],
+  })
+
+  const n = spiegleNotiz('PR9', 'ds')
+  const N1 = notizen.get('N1')
+  const hol = (id) => N1.actionItems.find(t => t.id === id)
+  pruefe('erledigt übernommen', hol('t1').status === 'erledigt', hol('t1').status)
+  pruefe('in Arbeit übernommen', hol('t2').status === 'in_arbeit', hol('t2').status)
+  pruefe('Quelle vermerkt', hol('t1').statusQuelle === 'massnahme' && !!hol('t1').statusAm)
+  pruefe('nicht übernommene Aufgabe unberührt',
+    hol('t3').status === 'offen' && !hol('t3').statusQuelle)
+  pruefe('„verschoben" wird mitgeführt', notizen.get('N2').actionItems[0].status === 'verschoben',
+    notizen.get('N2').actionItems[0].status)
+  pruefe('Zuständiger und Frist unverändert',
+    hol('t1').responsible === 'Rohbau GmbH' && hol('t1').deadline === '2026-12-05')
+  pruefe('zwei Notizen geschrieben, nicht sechs', schreibt === 2, String(schreibt))
+  pruefe('Rückgabe zählt die Notizen', n === 2, String(n))
+  pruefe('Ereignisse gemeldet', ereignisse.includes('note:update:N1'), ereignisse.join(','))
+  pruefe('gelöschte Notiz stört nicht', true)
+
+  console.log('\n10) Zweiter Durchlauf schreibt nicht')
+  schreibt = 0
+  const n2 = spiegleNotiz('PR9', 'ds')
+  pruefe('kein Schreibvorgang', schreibt === 0 && n2 === 0, String(schreibt))
+
+  console.log('\n11) Protokoll ohne Notizbezug')
+  protokolle.set('PR8', { id: 'PR8', projectId: 'P1', _version: 1, actionItems: [{ id: 'z1', status: 'offen' }] })
+  pruefe('0 und kein Schreibvorgang', spiegleNotiz('PR8', 'ds') === 0)
+
+  console.log('\n12) Versionskonflikt bleibt ohne Folgen')
+  const n1 = notizen.get('N1')
+  notizen.set('N1', { ...n1, actionItems: n1.actionItems.map(t => ({ ...t, status: 'offen' })), _version: 99 })
+  const pr9 = protokolle.get('PR9')
+  protokolle.set('PR9', pr9)
+  const echtesUpdate = db.notes.update
+  db.notes.update = () => ({ conflict: true, serverVersion: 100 })
+  const n3 = spiegleNotiz('PR9', 'ds')
+  db.notes.update = echtesUpdate
+  pruefe('Konflikt wird gezählt, nicht geschrieben', n3 === 0, String(n3))
+  pruefe('Aufgabe bleibt, wie sie war', notizen.get('N1').actionItems[0].status === 'offen')
+} catch (e) {
+  console.log('\nABBRUCH (Notizen): ' + e.stack)
   fehler++
 }
 

@@ -283,9 +283,30 @@ export const emptyNote = (projectId = null) => ({
   content: '',
   linkedContactId: null,
   participants: [],          // Teilnehmer aus Kontakten: { id, name, company, email }
+  // Aufgaben aus der Notiz – gleiche Felder wie eine Maßnahme im Protokoll,
+  // damit die Übernahme dorthin eine Kopie ist und keine Übersetzung.
+  actionItems: [],
   sentAt: null,
   createdAt: new Date().toISOString(),
   updatedAt: new Date().toISOString(),
+})
+
+// Aufgabe aus einer Notiz. Bewusst die Felder der Maßnahme (emptyActionItem),
+// ohne Freimeldung: die hängt am Protokoll, und dorthin wird die Aufgabe
+// übernommen, wenn sie verfolgt werden soll.
+export const emptyNoteTask = () => ({
+  id: uid(),
+  no: 1,
+  description: '',
+  responsible: '',
+  deadline: '',
+  status: 'offen',
+  priority: 'mittel',
+  // Gesetzt, sobald die Aufgabe als Maßnahme in ein Protokoll übernommen
+  // wurde: { protocolId, actionId, datum }. Danach führt die Maßnahme, der
+  // Zustand hier folgt ihr (server/maengel.js).
+  protocolRef: null,
+  statusQuelle: '',
 })
 
 export const emptyProtocol = () => ({
