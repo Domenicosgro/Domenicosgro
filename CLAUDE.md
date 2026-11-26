@@ -1008,12 +1008,23 @@ aus acht Namen ohne Erklärung wäre nicht benutzbar.
 ### Notizen: Punktetabelle mit Zuständigem und Frist
 `src/components/NoteTasks.jsx`, Datenfeld `note.actionItems`.
 
-Eine Notiz endet selten mit einem Fließtext, sondern mit Punkten. Deshalb
-stehen sie als **Tabelle mit Spalten**, nicht als Kärtchen:
+Eine Notiz endet selten mit einem Fließtext, sondern mit Punkten. Jeder Punkt
+hat Thema, Text, Zuständigen, Frist und Zustand:
 
 ```
 Nr. · Thema · Punkt / Ergebnis · Zuständig · Frist · Status
 ```
+
+**Eingabe wie im Protokoll, Ausgabe als Tabelle.** Eingegeben wird
+untereinander in ganzer Breite, im Zuschnitt von `ActionItems.jsx` (Nummer,
+Haken, Thema fett, Text, darunter Zuständig · Frist · Dringlichkeit · Zustand).
+Eine Eingabetabelle mit sechs Spalten sieht geordnet aus, aber man schreibt in
+briefmarkengroße Felder und sieht den eigenen Satz nicht; das Textfeld wächst
+deshalb mit dem Inhalt (`WachsendesFeld`). **Gedruckt** wird als Tabelle, und
+zwar **quer**: im Notizdruck über eine benannte Seite (`@page quer`, Chrome und
+Edge können das; andere drucken hochkant weiter), im PDF über eine eigene
+Querseite (`neueSeite(true)` in `notePdf.js` – Text bleibt hochkant, die
+Tabelle wird quer). Die Mängelliste hat dafür einen Schalter, Vorgabe quer.
 
 - **Ein Punkt ohne Zuständigen und Frist ist eine Feststellung, mit beidem eine
   Aufgabe** – derselbe Datensatz, dieselben Felder wie eine Maßnahme

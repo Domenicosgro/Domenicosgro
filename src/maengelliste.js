@@ -44,7 +44,7 @@ const PRIO_TEXT = { hoch: 'Hoch', mittel: 'Mittel', niedrig: 'Niedrig' }
  * maengel   – Mängel des Projekts (bereits gefiltert, falls gewünscht)
  * optionen  – {
  *   projektName, abnahmeDatum, gliederung: 'firma'|'plan',
- *   fotos: bool, planUebersicht: bool,
+ *   fotos: bool, planUebersicht: bool, quer: bool (Querformat, Vorgabe an),
  *   unterschriften: bool,
  *   logoDataUrl, clientLogoDataUrl,
  *   fotoUrls: Map<fotoId, dataUrl>,        // vorher geladen (async)
@@ -55,7 +55,7 @@ const PRIO_TEXT = { hoch: 'Hoch', mittel: 'Mittel', niedrig: 'Niedrig' }
 export function buildMaengellistePrintHtml(maengel, optionen = {}) {
   const {
     projektName = '', abnahmeDatum = '', gliederung = 'firma',
-    fotos = true, planUebersicht = true, unterschriften = true,
+    fotos = true, planUebersicht = true, unterschriften = true, quer = true,
     logoDataUrl = '', clientLogoDataUrl = '',
     fotoUrls = new Map(), plaene = [], planBildUrl = null,
   } = optionen
@@ -196,7 +196,7 @@ export function buildMaengellistePrintHtml(maengel, optionen = {}) {
 <html lang="de"><head><meta charset="UTF-8">
 <title>Mängelliste – ${esc(projektName)}</title>
 <style>
-  @page { size: A4; margin: 12mm 12mm 16mm 12mm; }
+  @page { size: A4 ${quer ? 'landscape' : 'portrait'}; margin: 12mm 12mm 16mm 12mm; }
   * { box-sizing: border-box; }
   body { font-family: Arial, sans-serif; font-size: 10pt; color: #000; margin: 0; background: #fff; line-height: 1.45; }
   h1 { font-size: 16pt; margin: 0 0 1mm; }

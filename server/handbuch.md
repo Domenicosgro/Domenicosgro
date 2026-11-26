@@ -502,10 +502,12 @@ Auswahl; wer am Telefon war, übernimmt meistens auch den Punkt. Eine
 überschrittene Frist färbt die Zeile rot.
 
 Mit den Pfeilen rechts lässt sich die Reihenfolge ändern — die Nummern laufen
-mit. Am Telefon oder Tablet wird aus der Tabelle eine gestapelte Liste.
+mit. Das Textfeld wächst mit dem Inhalt: auch ein Punkt über fünf Zeilen ist
+beim Schreiben ganz zu sehen.
 
 Die Punkte stehen im Ausdruck, im PDF und in der E-Mail der Notiz — wer etwas
-tun soll, muss es nicht im Fließtext suchen.
+tun soll, muss es nicht im Fließtext suchen. **Gedruckt werden sie als Tabelle
+im Querformat**, auf einem eigenen Blatt; der Text der Notiz bleibt hochkant.
 
 **„Punkte ins Protokoll"** übernimmt sie als Maßnahmen in ein Protokoll des
 Projekts; in der Maßnahme steht dann „Thema: Punkt". Erst dort greifen
@@ -674,7 +676,8 @@ Dinge:
   Begehung.
 - **Abnahmedatum** (optional) — ist es gesetzt, trägt das Dokument die
   Überschrift „Anlage zur Abnahme vom …".
-- **Fotos, Planübersicht, Unterschriftenzeilen** je an oder aus.
+- **Querformat, Fotos, Planübersicht, Unterschriftenzeilen** je an oder aus.
+  Querformat ist voreingestellt — die Tabelle hat sechs Spalten.
 
 Je Plan kommt ein eigenes Blatt mit **allen Pins**, jeder mit der Nummer des
 Mangels — rot für vorbehalten, blau für behoben, grün für abgenommen. Damit

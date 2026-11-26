@@ -53,10 +53,15 @@ function wrapText(text, font, fontSize, maxWidth) {
 
 export async function buildNotePdf(note, contact, projectName, logoDataUrl, clientLogoDataUrl = null) {
   const pdfDoc = await PDFDocument.create()
-  const PAGE_W = 595.28
-  const PAGE_H = 841.89
-  const MARGIN = 42
-  const CONTENT_W = PAGE_W - MARGIN * 2
+  // Hoch- und Querformat im selben Dokument: der Text liest sich hochkant
+  // besser, die Punktetabelle braucht quer. Deshalb sind die Maße veraenderlich
+  // und werden beim Seitenwechsel neu gesetzt.
+  const A4_KURZ = 595.28
+  const A4_LANG = 841.89
+  const MARGIN  = 42
+  let PAGE_W = A4_KURZ
+  let PAGE_H = A4_LANG
+  let CONTENT_W = PAGE_W - MARGIN * 2
 
   const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold)
   const fontReg  = await pdfDoc.embedFont(StandardFonts.Helvetica)
@@ -64,14 +69,22 @@ export async function buildNotePdf(note, contact, projectName, logoDataUrl, clie
   const typeInfo = NOTE_TYPES.find(t => t.value === note.type) ?? NOTE_TYPES[0]
   const today    = new Date().toISOString().slice(0, 10)
 
-  let page = pdfDoc.addPage([PAGE_W, PAGE_H])
-  let y    = PAGE_H - MARGIN
+  let quer = false
+  let page
+  let y
+
+  const neueSeite = (alsQuer = quer) => {
+    quer      = alsQuer
+    PAGE_W    = quer ? A4_LANG : A4_KURZ
+    PAGE_H    = quer ? A4_KURZ : A4_LANG
+    CONTENT_W = PAGE_W - MARGIN * 2
+    page      = pdfDoc.addPage([PAGE_W, PAGE_H])
+    y         = PAGE_H - MARGIN
+  }
+  neueSeite(false)
 
   const ensureSpace = (needed) => {
-    if (y - needed < MARGIN) {
-      page = pdfDoc.addPage([PAGE_W, PAGE_H])
-      y    = PAGE_H - MARGIN
-    }
+    if (y - needed < MARGIN) neueSeite()
   }
 
   // Logos (Büro-Logo + optionales Auftraggeber-Logo)
@@ -187,13 +200,11 @@ export async function buildNotePdf(note, contact, projectName, logoDataUrl, clie
   const aufgaben = (note.actionItems ?? []).filter(a => (a.description || a.topic || '').trim())
   if (aufgaben.length > 0) {
     const STATUS_TEXT = { offen: 'Offen', in_arbeit: 'In Arbeit', erledigt: 'Erledigt', verschoben: 'Verschoben' }
-    const SP = { nr: MARGIN, text: MARGIN + 14, wer: PAGE_W - MARGIN - 150, frist: PAGE_W - MARGIN - 78, status: PAGE_W - MARGIN - 36 }
+    // Ab hier quer – mit allen Maßen, die daran hängen.
+    neueSeite(true)
+    const SP = { nr: MARGIN, text: MARGIN + 14, wer: PAGE_W - MARGIN - 230, frist: PAGE_W - MARGIN - 110, status: PAGE_W - MARGIN - 52 }
     const TEXT_W = SP.wer - SP.text - 8
 
-    y -= 10
-    ensureSpace(30)
-    page.drawLine({ start: { x: MARGIN, y }, end: { x: PAGE_W - MARGIN, y }, thickness: 0.5, color: rgb(0.8, 0.8, 0.8) })
-    y -= 10
     page.drawText('PUNKTE', { x: MARGIN, y, size: 6.5, font: fontReg, color: rgb(0.47, 0.47, 0.47) })
     y -= 14
 

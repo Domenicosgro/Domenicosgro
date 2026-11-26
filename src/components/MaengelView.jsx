@@ -54,6 +54,8 @@ function ListeDialog({ defects, plaene, projectId, projectName, token,
   const [mitFotos,   setMitFotos]   = useState(true)
   const [mitPlan,    setMitPlan]    = useState(true)
   const [mitUnter,   setMitUnter]   = useState(true)
+  // Sechs Spalten brauchen Platz – quer ist die Vorgabe.
+  const [quer,       setQuer]       = useState(true)
   const [busy,       setBusy]       = useState(false)
   const [fehler,     setFehler]     = useState(null)
 
@@ -80,7 +82,7 @@ function ListeDialog({ defects, plaene, projectId, projectName, token,
       }
       const ok = printMaengelliste(auswahl, {
         projektName: projectName, abnahmeDatum: abnahme, gliederung,
-        fotos: mitFotos, planUebersicht: mitPlan, unterschriften: mitUnter,
+        fotos: mitFotos, planUebersicht: mitPlan, unterschriften: mitUnter, quer,
         logoDataUrl, clientLogoDataUrl, fotoUrls, plaene,
         planBildUrl: (planId, seite) =>
           planBildUrl(projectId, plaene.find(p => p.id === planId), seite, token),
@@ -139,7 +141,8 @@ function ListeDialog({ defects, plaene, projectId, projectName, token,
           </div>
 
           <div className="space-y-1.5">
-            {[[mitFotos, setMitFotos, 'Fotos mitdrucken'],
+            {[[quer,     setQuer,     'Querformat (empfohlen, die Tabelle hat sechs Spalten)'],
+              [mitFotos, setMitFotos, 'Fotos mitdrucken'],
               [mitPlan,  setMitPlan,  `Planübersicht mit Pins (${verortet} verortet)`],
               [mitUnter, setMitUnter, 'Unterschriftenzeilen']].map(([wert, setzen, label], i) => (
               <label key={i} className="flex items-center gap-2 text-sm text-gray-700">

@@ -79,8 +79,12 @@ function buildNotePrintHtml(note, contact, projectName, logoDataUrl, clientLogoD
   // Die Spalte „Thema" fällt weg, wenn keine Zeile eine hat – sonst steht im
   // Ausdruck eine leere Spalte.
   const mitThema = tasks.some(a => (a.topic || '').trim())
+  // Die Punkte kommen auf eine eigene Seite im Querformat: sechs Spalten
+  // brauchen Platz, und im Hochformat quetscht sich der Text in Schlangen.
+  // Benannte Seiten (@page quer) kennen Chrome und Edge; kann ein Browser sie
+  // nicht, druckt er die Tabelle hochkant weiter – unschoener, aber lesbar.
   const tasksHtml = tasks.length === 0 ? '' : `
-    <div style="margin-top:6mm;">
+    <div class="punkteblatt">
       <p style="font-size:7pt;text-transform:uppercase;letter-spacing:.05em;color:#777;margin:0 0 2mm;">Punkte</p>
       <table style="width:100%;border-collapse:collapse;font-size:9pt;">
         <tr>
@@ -107,7 +111,9 @@ function buildNotePrintHtml(note, contact, projectName, logoDataUrl, clientLogoD
 <html lang="de"><head><meta charset="UTF-8">
 <title>${esc(typeInfo.label)} – ${esc(note.subject || projectName || '')}</title>
 <style>
-  @page { size: A4; margin: 12mm 12mm 16mm 12mm; }
+  @page { size: A4 portrait; margin: 12mm 12mm 16mm 12mm; }
+  @page quer { size: A4 landscape; margin: 12mm 12mm 16mm 12mm; }
+  .punkteblatt { page: quer; page-break-before: always; margin-top: 0; }
   * { box-sizing: border-box; }
   body { font-family: Arial, sans-serif; font-size: 10pt; color: #000; margin: 0; background: #fff; line-height: 1.5; }
   p { margin: 0 0 2mm; }
