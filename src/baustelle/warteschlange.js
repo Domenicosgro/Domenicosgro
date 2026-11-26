@@ -19,9 +19,19 @@
 // Gegen doppelte Berichte: jeder Bericht trägt eine eigene Kennung (clientId).
 // Bricht die Verbindung ab, nachdem der Server ihn angelegt hat, bekommt der
 // zweite Versuch denselben Bericht zurück statt eines zweiten Eintrags.
+//
+// Zwei Arten warten hier, im selben Speicher und mit derselben Reihenfolge:
+//
+//   art: 'bericht' – Tagesbericht der Baudokumentation, mit Originalfotos
+//   art: 'mangel'  – ein Mangel, neu oder geändert
+//
+// Für Mängel werden keine Originale verwahrt. Ein Mangelfoto dient dem
+// Nachweis im Bericht und in der Mängelliste, nicht dem Archiv – und die
+// Ablage im Projektordner hängt am Tagesbericht (server/bautagebuchFotos.js).
 
 import { uid } from '../utils'
-import { anhangSpeichern, berichtAnlegen, berichtAendern, authHeaders, fotoPfad } from './api'
+import { anhangSpeichern, berichtAnlegen, berichtAendern,
+         mangelAnlegen, mangelAendern, authHeaders, fotoPfad } from './api'
 import { originalAdd, originaleSenden } from '../fotoOriginale'
 
 const DB_NAME = 'kp_baustelle_v1'
@@ -70,7 +80,7 @@ async function alle(store) {
 export async function berichtEinstellen({ projectId, entryId = null, version = null, felder, fotos = [] }) {
   const id = uid()
   await schreibe(BERICHTE, s => s.put({
-    id, projectId, entryId, version,
+    id, art: 'bericht', projectId, entryId, version,
     clientId: id,
     felder,
     fotos: fotos.map(f => ({ id: f.id, name: f.name, caption: f.caption || '', base64: f.base64 })),
@@ -85,10 +95,38 @@ export async function berichtEinstellen({ projectId, entryId = null, version = n
   return id
 }
 
-/** Wartende Berichte – alle oder die eines Projekts. */
-export async function berichteOffen(projectId = null) {
+/**
+ * Mangel in die Warteschlange legen.
+ * mangelId gesetzt = Änderung, sonst neu. fotos: [{ id, name, base64 }]
+ */
+export async function mangelEinstellen({ projectId, mangelId = null, version = null, felder, fotos = [] }) {
+  const id = uid()
+  await schreibe(BERICHTE, s => s.put({
+    id, art: 'mangel', projectId, mangelId, version,
+    clientId: id,
+    felder,
+    fotos: fotos.map(f => ({ id: f.id, name: f.name, base64: f.base64 })),
+    queuedAt: new Date().toISOString(), versuche: 0, fehler: '',
+  }))
+  return id
+}
+
+/** Wartende Sätze – alle oder die eines Projekts, nach Art gefiltert. */
+export async function berichteOffen(projectId = null, art = 'bericht') {
   const liste = await alle(BERICHTE)
-  return projectId ? liste.filter(b => b.projectId === projectId) : liste
+  return liste
+    .filter(b => (b.art || 'bericht') === art)
+    .filter(b => !projectId || b.projectId === projectId)
+}
+
+/** Wie viel wartet, nach Art getrennt. */
+export async function offeneAnzahl(projectId = null) {
+  const liste = await alle(BERICHTE)
+  const mein = liste.filter(b => !projectId || b.projectId === projectId)
+  return {
+    berichte: mein.filter(b => (b.art || 'bericht') === 'bericht').length,
+    maengel:  mein.filter(b => b.art === 'mangel').length,
+  }
 }
 
 async function berichtEntfernen(id) {
@@ -132,7 +170,22 @@ async function durchlauf() {
       for (const f of satz.fotos || []) {
         if (f.base64) await anhangSpeichern(satz.projectId, f.id, f.base64)
       }
-      // 2) Der Bericht selbst
+
+      // 2a) Ein Mangel ist mit dem Senden fertig – kein Original, keine Ablage
+      if (satz.art === 'mangel') {
+        const nutzlast = {
+          ...satz.felder,
+          clientId: satz.clientId,
+          fotos: (satz.fotos || []).map(f => ({ id: f.id, name: f.name })),
+        }
+        if (satz.mangelId) await mangelAendern(satz.projectId, satz.mangelId, { ...nutzlast, version: satz.version })
+        else               await mangelAnlegen(satz.projectId, nutzlast)
+        await berichtEntfernen(satz.id)
+        gesendet++
+        continue
+      }
+
+      // 2b) Der Bericht selbst
       const nutzlast = {
         ...satz.felder,
         clientId: satz.clientId,

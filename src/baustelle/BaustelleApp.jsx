@@ -7,14 +7,15 @@ import LoginScreen from '../components/LoginScreen'
 import SessionExpiredModal from '../components/SessionExpiredModal'
 import brand from '../brand'
 import { projekteLaden, berichteLaden, tokenOf, authHeaders, fotoPfad, GRUND_TEXT } from './api'
-import { berichteOffen, warteschlangeSenden, berichtVerwerfen } from './warteschlange'
+import { berichteOffen, offeneAnzahl, warteschlangeSenden, berichtVerwerfen } from './warteschlange'
 import { originalList, originaleSenden } from '../fotoOriginale'
 import BerichtForm from './BerichtForm'
+import Maengel from './Maengel'
 
 // ── Baustelle ────────────────────────────────────────────────────────────────
 // Die schlanke Oberfläche für das Handy: Projekt wählen, Tagesbericht
-// schreiben, fotografieren. Nichts weiter – Protokolle, Mängel, Kontakte und
-// Nachträge bleiben im Protokolltool am Rechner.
+// schreiben, Mängel erfassen, fotografieren. Nichts weiter – Protokolle,
+// Kontakte, Nachträge und die Dateiablage bleiben am Rechner.
 //
 // Alles läuft über /api/baustelle/* (server/baustelle.js). Geschrieben wird
 // immer in die Warteschlange und von dort gesendet – damit ein Bericht auf der
@@ -123,7 +124,7 @@ function Baustelle({ user }) {
   const [fehler,   setFehler]   = useState(null)
   const [projektId, setProjektId] = useState(() => localStorage.getItem(LETZTES_PROJEKT) || null)
   const [form,     setForm]     = useState(null)      // null | 'neu' | Bericht
-  const [offen,    setOffen]    = useState({ berichte: 0, originale: 0 })
+  const [offen,    setOffen]    = useState({ berichte: 0, maengel: 0, originale: 0 })
   const [sendet,   setSendet]   = useState(false)
   // Zähler, der nach jedem Versand hochgeht. Die Projektansicht hängt daran
   // und lädt neu – sonst stünde ein gerade gesendeter Bericht weiter unter
@@ -132,11 +133,14 @@ function Baustelle({ user }) {
   const [hinweis,  setHinweis]  = useState(null)
 
   const zaehleOffene = useCallback(async () => {
-    const [b, o] = await Promise.all([berichteOffen(), originalList()])
-    setOffen({ berichte: b.length, originale: o.length })
-    const mit = b.find(x => x.fehler)
+    const [anzahl, alleSaetze, o] = await Promise.all([
+      offeneAnzahl(), berichteOffen(null, 'mangel'), originalList(),
+    ])
+    const berichte = await berichteOffen(null, 'bericht')
+    setOffen({ ...anzahl, originale: o.length })
+    const mit = [...berichte, ...alleSaetze].find(x => x.fehler)
     setHinweis(mit ? mit.fehler : null)
-    return b.length + o.length
+    return anzahl.berichte + anzahl.maengel + o.length
   }, [])
 
   const senden = useCallback(async ({ still = false } = {}) => {
@@ -172,7 +176,13 @@ function Baustelle({ user }) {
   useEffect(() => {
     const an = () => senden({ still: true })
     window.addEventListener('online', an)
-    return () => window.removeEventListener('online', an)
+    // Die Mängel-Ansicht meldet sich so, wenn sie etwas eingestellt hat –
+    // kein Durchreichen von Rückrufen durch drei Ebenen.
+    window.addEventListener('kp-baustelle-senden', an)
+    return () => {
+      window.removeEventListener('online', an)
+      window.removeEventListener('kp-baustelle-senden', an)
+    }
   }, [senden])
 
   useEffect(() => {
@@ -186,7 +196,12 @@ function Baustelle({ user }) {
     if (!laden && projektId && projekte.length && !projekt) setProjektId(null)
   }, [laden, projektId, projekte, projekt])
 
-  const wartet = offen.berichte + offen.originale
+  const wartet = offen.berichte + offen.maengel + offen.originale
+  const warteText = [
+    offen.berichte  > 0 && `${offen.berichte} Bericht${offen.berichte === 1 ? '' : 'e'}`,
+    offen.maengel   > 0 && `${offen.maengel} Mangel-Eintr${offen.maengel === 1 ? 'ag' : 'äge'}`,
+    offen.originale > 0 && `${offen.originale} Foto${offen.originale === 1 ? '' : 's'}`,
+  ].filter(Boolean).join(', ')
 
   return (
     <div className="pb-24">
@@ -201,12 +216,7 @@ function Baustelle({ user }) {
         <div className="bg-sky/20 border-b border-sky text-brand-800 text-sm px-4 py-2 flex items-center justify-between gap-2">
           <span className="flex items-center gap-2 min-w-0">
             <UploadCloud size={15} className="flex-shrink-0" />
-            <span className="truncate">
-              {offen.berichte > 0 && `${offen.berichte} Bericht${offen.berichte === 1 ? '' : 'e'}`}
-              {offen.berichte > 0 && offen.originale > 0 && ', '}
-              {offen.originale > 0 && `${offen.originale} Foto${offen.originale === 1 ? '' : 's'}`}
-              {' '}warten
-            </span>
+            <span className="truncate">{warteText} warten</span>
           </span>
           <button className="btn btn-secondary px-3 py-1.5 flex-shrink-0" disabled={sendet || !online} onClick={() => senden()}>
             {sendet ? <Loader size={14} className="animate-spin" /> : <RefreshCw size={14} />} Senden
@@ -315,13 +325,16 @@ function ProjektAnsicht({ projekt, online, stand, onZurueck, onNeu, onBearbeiten
   const [wartende, setWartende] = useState([])
   const [laden,    setLaden]    = useState(true)
   const [fehler,   setFehler]   = useState(null)
+  // Zwei Dinge gibt es auf der Baustelle zu tun: dokumentieren und
+  // beanstanden. Mehr Reiter braucht diese Oberfläche nicht.
+  const [reiter,   setReiter]   = useState('berichte')
 
   const laden_ = useCallback(async () => {
     setLaden(true); setFehler(null)
     try {
       const [d, w] = await Promise.all([
         online ? berichteLaden(projekt.id) : Promise.resolve({ berichte: [] }),
-        berichteOffen(projekt.id),
+        berichteOffen(projekt.id, 'bericht'),
       ])
       setBerichte(d.berichte || [])
       setWartende(w)
@@ -353,6 +366,21 @@ function ProjektAnsicht({ projekt, online, stand, onZurueck, onNeu, onBearbeiten
         </div>
       )}
 
+      <div className="grid grid-cols-2 gap-1 border-b border-concrete">
+        {[['berichte', 'Berichte'], ['maengel', 'Mängel']].map(([v, l]) => (
+          <button
+            key={v}
+            className={`py-3 text-sm font-medium border-b-2 -mb-px ${
+              reiter === v ? 'border-brand-600 text-brand-700' : 'border-transparent text-gray-500'}`}
+            onClick={() => setReiter(v)}
+          >{l}</button>
+        ))}
+      </div>
+
+      {reiter === 'maengel' ? (
+        <Maengel projekt={projekt} online={online} stand={stand} />
+      ) : (
+      <>
       <button className="btn btn-primary w-full py-3 text-base justify-center" onClick={onNeu}>
         <Plus size={18} /> Neuer Tagesbericht
       </button>
@@ -427,6 +455,8 @@ function ProjektAnsicht({ projekt, online, stand, onZurueck, onNeu, onBearbeiten
           </li>
         ))}
       </ul>
+      </>
+      )}
     </div>
   )
 }

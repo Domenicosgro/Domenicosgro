@@ -1644,12 +1644,18 @@ app.post('/api/projects/:id/plans/:planId/file', requireAuth, writeLimiter,
       const filePath = path.join(PLANS_DIR, req.params.planId)
 
       fs.writeFileSync(filePath, req.body)
+      // Neuer Planstand: die Vorschaubilder der alten Fassung sind damit
+      // falsch. Die Pins der Mängel bleiben an ihrem Anteil stehen – wenn
+      // sich der Zuschnitt geändert hat, sitzen sie daneben. Darauf weist die
+      // Oberfläche hin; erkennen kann es die Anwendung nicht.
+      planVorschau.vorschauWeg(PLANS_DIR, req.params.planId)
       const stat = fs.statSync(filePath)
 
       const { _version, _updatedAt, ...pData } = plan
       const now     = new Date().toISOString()
       const updated = {
         ...pData, filename, mimeType, size: stat.size, hasFile: true,
+        vorschauSeiten: [], seiten: 0,
         uploadedAt: now, uploadedBy: planDisplayName(req.user), updatedAt: now,
       }
       db.bimPlans.update(req.params.planId, updated, _version, req.user)
@@ -1717,10 +1723,19 @@ app.delete('/api/projects/:id/plans/:planId', requireAuth, writeLimiter, (req, r
     if (plan && plan.projectId !== req.params.id) return res.status(404).json({ error: 'Plan nicht gefunden.' })
     const filePath = path.join(PLANS_DIR, req.params.planId)
     if (fs.existsSync(filePath)) fs.unlinkSync(filePath)
+    planVorschau.vorschauWeg(PLANS_DIR, req.params.planId)
     db.bimPlans.delete(req.params.planId)
     logEvent('PLAN_DELETE', req, `project=${req.params.id} id=${req.params.planId}`)
     res.json({ ok: true })
   } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// ── Planvorschau: PDF-Seiten als Bild, damit Pins möglich sind ───────────────
+// Gerendert wird im Browser, abgelegt hier. Begründung: server/planVorschau.js
+const planVorschau = require('./planVorschau')
+planVorschau.registerPlanVorschau(app, {
+  db, express, requireAuth, writeLimiter, getAccessibleProject, canAccessProject,
+  resolveToken, apiKey: API_KEY, logEvent, plansDir: PLANS_DIR,
 })
 
 // ── Generische projektgebundene CRUD-Routen (Bautagebuch, Mängel) ────────────
@@ -1997,8 +2012,12 @@ require('./pruefstation').registerPruefstation(app, {
 // Details und Begründung: server/baustelle.js
 require('./baustelle').registerBaustelle(app, {
   db, requireAuth, writeLimiter, getAccessibleProject, canAccessProject,
-  attachments, validAttachmentId, logEvent, broadcast,
+  attachments, validAttachmentId, logEvent, broadcast, resolveToken,
   displayName: planDisplayName, wetterHandler,
+  // Planbilder fuer die Verortung von Maengeln. Die Fassade liefert sie selbst
+  // aus, damit das Handy keine Route des Protokolltools braucht.
+  planBildPfad:  (planId, seite) => require('./planVorschau').vorschauPfad(PLANS_DIR, planId, seite),
+  planDateiPfad: (planId) => path.join(PLANS_DIR, planId),
 })
 
 // ── Personalplanung: Mitarbeiter-Stammdaten (Arbeitszeitmodelle) ──────────────
@@ -3012,6 +3031,12 @@ function openTasksFor(projectId, responsible) {
 }
 
 // Aktualisiert ein actionItem server-autoritativ (umgeht Versionskonflikt mit Retry).
+// ── Mängel: Status folgt den Maßnahmen ──────────────────────────────────────
+// Begründung und Regeln: server/maengel.js
+const spiegleMaengel = require('./maengel').mangelSpiegel({
+  db, broadcast, logEvent, displayName: planDisplayName,
+})
+
 function mutateActionItem(protocolId, actionId, transform, by) {
   function attempt() {
     const proto = db.protocols.get(protocolId)
@@ -3030,6 +3055,9 @@ function mutateActionItem(protocolId, actionId, transform, by) {
   }
   let result = attempt()
   if (result.conflict) result = attempt()   // einmal erneut versuchen
+  // Freimeldung, Genehmigung und Ablehnung laufen alle hier durch – also ist
+  // das die Stelle, an der der Mangel dem Zustand der Maßnahme folgt.
+  if (result && !result.conflict && !result.notFound) spiegleMaengel(protocolId, by)
   return result
 }
 
@@ -4212,7 +4240,7 @@ app.use(express.static(distDir, {
 }))
 
 // ── Row-level data API ────────────────────────────────────────────────────────
-function makeRoutes(router, store, resourceType) {
+function makeRoutes(router, store, resourceType, nachUpdate = null) {
   router.get('/', requireAuth, (req, res) => {
     try { res.json(store.list()) }
     catch (e) { res.status(500).json({ error: e.message }) }
@@ -4233,6 +4261,7 @@ function makeRoutes(router, store, resourceType) {
       if (store.get(data.id)) return res.status(409).json({ error: 'ID existiert bereits.' })
       const result = store.create(data, req.user)
       broadcast(resourceType, 'create', data.id, data.updatedAt)
+      if (nachUpdate) nachUpdate(data.id, req.user, req)
       res.status(201).json(result)
     } catch (e) { res.status(500).json({ error: e.message }) }
   })
@@ -4249,6 +4278,7 @@ function makeRoutes(router, store, resourceType) {
         serverData:    result.serverData,
       })
       broadcast(resourceType, 'update', req.params.id, data.updatedAt)
+      if (nachUpdate) nachUpdate(req.params.id, req.user, req)
       res.json(result)
     } catch (e) { res.status(500).json({ error: e.message }) }
   })
@@ -4274,7 +4304,7 @@ function makeRoutes(router, store, resourceType) {
 
 const protocolRouter = express.Router()
 const projectRouter  = express.Router()
-makeRoutes(protocolRouter, db.protocols, 'protocol')
+makeRoutes(protocolRouter, db.protocols, 'protocol', spiegleMaengel)
 makeRoutes(projectRouter,  db.projects,  'project')
 
 // ── Projektzugang: Route-Overrides vor den generischen Routern ───────────────

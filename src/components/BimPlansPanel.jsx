@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { Plus, X, FileText, Image as ImageIcon, Trash2, Pencil, Upload, Loader, AlertCircle, Map } from 'lucide-react'
 import { formatDate } from '../utils'
+import { vorschauErzeugen } from '../planVorschau'
 
 const PLAN_TYPES = [
   { value: 'grundriss', label: 'Grundriss' },
@@ -27,6 +28,7 @@ function PlanForm({ projectId, token, plan, onSaved, onCancel }) {
   const [busy,        setBusy]        = useState(false)
   const [progress,    setProgress]    = useState(0)
   const [error,       setError]       = useState(null)
+  const [vorschau,    setVorschau]    = useState(null)
   const fileRef = useRef(null)
 
   const authHeaders = token ? { Authorization: `Bearer ${token}` } : {}
@@ -63,6 +65,19 @@ function PlanForm({ projectId, token, plan, onSaved, onCancel }) {
           xhr.onerror = () => reject(new Error('Netzwerkfehler beim Upload'))
           xhr.send(file)
         })
+        // PDF-Seiten einmal in Bilder wandeln, damit Mängel und Prüfvermerke
+        // darauf verortet werden können (src/planVorschau.js). Schlägt das
+        // fehl, ist der Plan trotzdem hochgeladen – nur das Pinnen geht noch
+        // nicht, und das lässt sich in der Mängelliste nachholen.
+        if ((file.type || '').includes('pdf') || /\.pdf$/i.test(file.name)) {
+          try {
+            setVorschau('Plan wird für Pins aufbereitet…')
+            await vorschauErzeugen(projectId, { id: planId, hasFile: true, mimeType: 'application/pdf', filename: file.name },
+              file, { token, onFortschritt: (n, g) => setVorschau(`Seite ${n} von ${g} aufbereitet…`) })
+          } catch (e) {
+            console.warn('Vorschau fehlgeschlagen:', e)
+          } finally { setVorschau(null) }
+        }
       }
       onSaved()
     } catch (e) {
@@ -108,6 +123,7 @@ function PlanForm({ projectId, token, plan, onSaved, onCancel }) {
           <div className="h-full bg-brand-500 transition-all" style={{ width: `${progress}%` }} />
         </div>
       )}
+      {vorschau && <p className="text-[10px] text-brand-300">{vorschau}</p>}
 
       <div className="flex gap-2 pt-1">
         <button onClick={onCancel} disabled={busy}

@@ -3,13 +3,24 @@ import { X, Smartphone, Loader } from 'lucide-react'
 import QRCode from 'qrcode'
 
 /**
- * QR-Code zur Installation der App auf dem Smartphone.
- * Kodiert die aktuelle App-Adresse – am Handy gescannt öffnet sich die
- * PWA und kann über den Browser installiert werden.
+ * QR-Code zur Installation auf dem Smartphone.
+ *
+ * Zwei Ziele, weil es zwei Anwendungen gibt:
+ *
+ *   Baustelle (/baustelle) – schlank, für die Baustelle gedacht: Projekt,
+ *     Tagesbericht, Mängel, Fotos. Lädt ein Zwanzigstel des Protokolltools
+ *     und ist mit einem Daumen bedienbar. Das ist der Normalfall am Handy.
+ *   Protokolltool (/) – alles, aber für einen großen Bildschirm gebaut.
+ *
+ * Beide sind eigene Anwendungen auf dem Home-Bildschirm und können
+ * nebeneinander liegen.
  */
 export default function QrInstallModal({ onClose }) {
   const [qrUrl, setQrUrl] = useState(null)
-  const appUrl = window.location.origin
+  const [ziel,  setZiel]  = useState('baustelle')
+  const appUrl = ziel === 'baustelle'
+    ? `${window.location.origin}/baustelle`
+    : window.location.origin
 
   useEffect(() => {
     QRCode.toDataURL(appUrl, { width: 300, margin: 2, color: { dark: '#000040', light: '#ffffff' } })
@@ -34,6 +45,22 @@ export default function QrInstallModal({ onClose }) {
         </div>
 
         <div className="p-5 text-center">
+          <div className="grid grid-cols-2 gap-1 mb-4">
+            {[['baustelle', 'Baustelle'], ['tool', 'Protokolltool']].map(([v, l]) => (
+              <button
+                key={v}
+                onClick={() => setZiel(v)}
+                className={`text-xs px-2 py-2 border ${ziel === v
+                  ? 'bg-brand-600 text-white border-brand-600'
+                  : 'bg-white text-gray-600 border-gray-300 hover:border-gray-400'}`}
+              >{l}</button>
+            ))}
+          </div>
+          <p className="text-xs text-gray-500 mb-3">
+            {ziel === 'baustelle'
+              ? 'Schlanke Oberfläche für die Baustelle: Tagesbericht, Mängel, Fotos.'
+              : 'Das vollständige Protokolltool – für einen großen Bildschirm gebaut.'}
+          </p>
           {qrUrl
             ? <img src={qrUrl} alt="QR-Code zur App" className="mx-auto w-64 h-64" />
             : <div className="w-64 h-64 mx-auto flex items-center justify-center"><Loader size={22} className="animate-spin text-gray-300" /></div>}

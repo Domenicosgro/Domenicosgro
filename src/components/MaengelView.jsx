@@ -3,6 +3,8 @@ import { ArrowLeft, Plus, Camera, Trash2, Pencil, X, Loader, AlertCircle, Mail,
          ArrowRight, MapPin, AlertOctagon } from 'lucide-react'
 import { formatDate, uid } from '../utils'
 import { savePhoto, loadPhotoUrl, removePhoto } from '../photoUtils'
+import PlanPin, { PlanPinAnsicht } from './PlanPin'
+import { vorschauErzeugen } from '../planVorschau'
 import brand from '../brand'
 
 const isServer = typeof window !== 'undefined' && !!window.__SERVER_MODE__
@@ -38,7 +40,8 @@ function Thumb({ photoId, onRemove, size = 'w-16 h-16' }) {
   )
 }
 
-function DefectForm({ defect, contacts, onSave, onCancel }) {
+function DefectForm({ defect, contacts, onSave, onCancel,
+                     projectId, plaene = [], andereMaengel = [], token, onAufbereiten }) {
   const [form, setForm] = useState({
     title:       defect?.title       || '',
     description: defect?.description || '',
@@ -48,6 +51,12 @@ function DefectForm({ defect, contacts, onSave, onCancel }) {
     priority:    defect?.priority    || 'mittel',
     status:      defect?.status      || 'offen',
   })
+  // Verortung auf dem Plan: eine Einheit, damit Plan, Seite und Stelle nie
+  // auseinanderlaufen (null = nicht verortet).
+  const [ort, setOrt] = useState(
+    defect?.position ? { planId: defect.planId, planSeite: defect.planSeite || 1,
+                         planTitel: defect.planTitel || '', position: defect.position } : null)
+  const [planOffen, setPlanOffen] = useState(!!defect?.position)
   const [photos,    setPhotos]    = useState(defect?.photos || [])
   const [uploading, setUploading] = useState(false)
   const fileRef = useRef(null)
@@ -111,6 +120,28 @@ function DefectForm({ defect, contacts, onSave, onCancel }) {
         </div>
       </div>
 
+      {/* Auf dem Plan verorten */}
+      <div>
+        <div className="flex items-center justify-between gap-2">
+          <label className="block text-xs font-medium text-gray-500">Stelle im Plan</label>
+          <button className="btn btn-ghost px-2 py-1 text-xs" onClick={() => setPlanOffen(v => !v)}>
+            <MapPin size={12} /> {planOffen ? 'zuklappen' : (ort ? 'Pin ändern' : 'Auf Plan verorten')}
+          </button>
+        </div>
+        {!planOffen && ort && (
+          <p className="text-xs text-gray-500 mt-1">
+            {ort.planTitel || 'Plan'}{ort.planSeite > 1 ? `, Seite ${ort.planSeite}` : ''} – verortet
+          </p>
+        )}
+        {planOffen && (
+          <div className="mt-2">
+            <PlanPin
+              projectId={projectId} plaene={plaene} wert={ort} andere={andereMaengel}
+              token={token} onChange={setOrt} aufbereiten={onAufbereiten} hoehe="h-[50vh]" />
+          </div>
+        )}
+      </div>
+
       {/* Fotos */}
       <div>
         <label className="block text-xs font-medium text-gray-500 mb-1">Foto-Dokumentation</label>
@@ -131,7 +162,13 @@ function DefectForm({ defect, contacts, onSave, onCancel }) {
 
       <div className="flex gap-2 justify-end pt-1">
         <button className="btn-secondary" onClick={onCancel}>Abbrechen</button>
-        <button className="btn-primary" disabled={!form.title.trim()} onClick={() => onSave({ ...form, photos })}>Speichern</button>
+        <button className="btn-primary" disabled={!form.title.trim()} onClick={() => onSave({
+          ...form, photos,
+          planId:    ort?.planId    || null,
+          planSeite: ort?.planSeite || null,
+          planTitel: ort?.planTitel || '',
+          position:  ort?.position  || null,
+        })}>Speichern</button>
       </div>
     </div>
   )
@@ -144,10 +181,32 @@ export default function MaengelView({ project, protocols = [], serverUser, onBac
   const [editing, setEditing] = useState(null)     // defect | 'new' | null
   const [filter,  setFilter]  = useState('alle')
   const [protoPick, setProtoPick] = useState(null) // defect-id für Protokoll-Auswahl
+  const [planZeigen, setPlanZeigen] = useState(null) // defect-id: Planausschnitt offen
   const lsKey = `kp_defects_${project.id}`
 
   const contacts = project.contacts || []
   const todayISO = new Date().toISOString().slice(0, 10)
+  const token = typeof localStorage !== 'undefined' ? localStorage.getItem('kp_session_token') : null
+
+  // Pläne des Projekts – für die Verortung der Mängel. Nur im Server-Modus;
+  // lokal gibt es keine Plandateien.
+  const [plaene, setPlaene] = useState([])
+  const ladePlaene = useCallback(async () => {
+    if (!isServer) return
+    try {
+      const res = await fetch(`/api/projects/${project.id}/plans`, { headers: authHeaders() })
+      if (res.ok) setPlaene(await res.json())
+    } catch { /* ohne Pläne geht alles andere weiter */ }
+  }, [project.id])
+  useEffect(() => { ladePlaene() }, [ladePlaene])
+
+  // Ein PDF-Plan, der noch nie aufbereitet wurde (z. B. vor dieser Fassung
+  // hochgeladen): Seiten jetzt in Bilder wandeln. Läuft nur am Rechner – das
+  // Handy benutzt die fertigen Bilder (src/planVorschau.js).
+  const aufbereiten = useCallback(async (plan) => {
+    await vorschauErzeugen(project.id, plan, null, { token })
+    await ladePlaene()
+  }, [project.id, token, ladePlaene])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -199,20 +258,29 @@ export default function MaengelView({ project, protocols = [], serverUser, onBac
     } catch (e) { setError(`Speichern fehlgeschlagen: ${e.message}`) }
   }
 
+  // Von Hand gesetzter Zustand: die Herkunft wird auf „hand" gesetzt. Sonst
+  // stünde am Mangel weiter „aus Maßnahme", obwohl ihn jemand selbst geändert
+  // hat (Spiegelung: server/maengel.js).
+  const vonHand = (next) => ({
+    status: next, statusQuelle: 'hand',
+    statusAm: new Date().toISOString(),
+    statusDurch: serverUser?.display_name || serverUser?.username || '',
+  })
+
   const cycleStatus = async (defect) => {
     const next = STATUS_ORDER[(STATUS_ORDER.indexOf(defect.status) + 1) % STATUS_ORDER.length]
     if (isServer) {
       const { _version, _updatedAt, ...data } = defect
-      setDefects(prev => prev.map(d => d.id === defect.id ? { ...d, status: next, _version: (_version || 0) + 1 } : d))
+      setDefects(prev => prev.map(d => d.id === defect.id ? { ...d, ...vonHand(next), _version: (_version || 0) + 1 } : d))
       try {
         const res = await fetch(`/api/projects/${project.id}/defects/${defect.id}`, {
           method: 'PATCH', headers: { 'Content-Type': 'application/json', ...authHeaders() },
-          body: JSON.stringify({ data: { ...data, status: next }, version: _version }),
+          body: JSON.stringify({ data: { ...data, ...vonHand(next) }, version: _version }),
         })
         if (!res.ok) load()
       } catch { load() }
     } else {
-      persistLocal(defects.map(d => d.id === defect.id ? { ...d, status: next } : d))
+      persistLocal(defects.map(d => d.id === defect.id ? { ...d, ...vonHand(next) } : d))
     }
   }
 
@@ -293,7 +361,12 @@ export default function MaengelView({ project, protocols = [], serverUser, onBac
       </div>
 
       {editing && (
-        <DefectForm defect={editing === 'new' ? null : editing} contacts={contacts} onSave={save} onCancel={() => setEditing(null)} />
+        <DefectForm
+          defect={editing === 'new' ? null : editing}
+          contacts={contacts} onSave={save} onCancel={() => setEditing(null)}
+          projectId={project.id} plaene={plaene} token={token}
+          onAufbereiten={isServer ? aufbereiten : null}
+          andereMaengel={defects.filter(d => editing === 'new' || d.id !== editing?.id)} />
       )}
 
       {loading ? (
@@ -322,8 +395,21 @@ export default function MaengelView({ project, protocols = [], serverUser, onBac
                     <div className="flex items-center gap-2 mt-1.5 flex-wrap text-xs">
                       <button onClick={() => cycleStatus(d)} title="Status wechseln"
                         className={`px-2 py-0.5 border ${st.badge} cursor-pointer`}>{st.label}</button>
+                      {d.statusQuelle === 'massnahme' && (
+                        <span className="text-gray-400 flex items-center gap-0.5"
+                              title={`Aus der Maßnahme übernommen${d.statusAm ? ` am ${formatDate(d.statusAm.slice(0, 10))}` : ''}`}>
+                          <ArrowRight size={11} /> aus Maßnahme
+                        </span>
+                      )}
                       <span className={`font-medium ${pr.color}`}>{pr.label}</span>
                       {d.location && <span className="text-gray-500 flex items-center gap-0.5"><MapPin size={11} /> {d.location}</span>}
+                      {d.position && (
+                        <button className="text-brand-600 hover:text-brand-700 flex items-center gap-0.5 no-print"
+                                title="Stelle im Plan zeigen"
+                                onClick={() => setPlanZeigen(planZeigen === d.id ? null : d.id)}>
+                          <MapPin size={11} /> {d.planTitel || 'im Plan'}{d.planSeite > 1 ? `, S. ${d.planSeite}` : ''}
+                        </button>
+                      )}
                       {d.responsible && <span className="text-gray-500">{d.responsible}</span>}
                       {d.dueDate && (
                         <span className={ovr ? 'text-red-600 font-semibold' : 'text-gray-500'}>
@@ -335,6 +421,13 @@ export default function MaengelView({ project, protocols = [], serverUser, onBac
                     {(d.photos || []).length > 0 && (
                       <div className="flex gap-2 flex-wrap mt-2">
                         {d.photos.map(p => <Thumb key={p.id} photoId={p.id} />)}
+                      </div>
+                    )}
+                    {planZeigen === d.id && d.position && (
+                      <div className="mt-2 max-w-xl">
+                        <PlanPinAnsicht
+                          projectId={project.id} token={token} wert={d}
+                          plan={plaene.find(pl => pl.id === d.planId)} hoehe="max-h-80" />
                       </div>
                     )}
                     {protoPick === d.id && (

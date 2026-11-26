@@ -13,7 +13,8 @@
     "electron:build:mac": "vite build && electron-builder --mac --publish never",
     "electron:build:all": "vite build && electron-builder --win --mac --publish never",
     "pruefe:fotoablage": "node scripts/pruefe-fotoablage.js",
-    "pruefe:baustelle": "node scripts/pruefe-baustelle.js"
+    "pruefe:baustelle": "node scripts/pruefe-baustelle.js",
+    "pruefe:maengel": "node scripts/pruefe-maengel.js"
   },
   "dependencies": {
     "@azure/msal-node": "^5.2.2",
@@ -38,6 +39,7 @@
     "lucide-react": "^0.462.0",
     "nspell": "^2.1.5",
     "pdf-lib": "^1.17.1",
+    "pdfjs-dist": "^6.5.438",
     "qrcode": "^1.5.4",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",

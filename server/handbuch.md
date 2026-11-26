@@ -500,6 +500,8 @@ Sie lädt ein Zwanzigstel des Protokolltools und lässt sich wie eine eigene App
 auf den Home-Bildschirm legen (im Browser „Zur Startseite hinzufügen"). Oben
 rechts führt ein Pfeil zurück ins Protokolltool.
 
+Oben gibt es zwei Reiter: **Berichte** und **Mängel**.
+
 **Was dort geht:**
 
 - **Neuer Tagesbericht** — Tag und Tageshälfte, Wetter (wird für den
@@ -510,6 +512,17 @@ rechts führt ein Pfeil zurück ins Protokolltool.
   landet im Bericht, das Original im Projektordner (siehe oben).
 - **Berichte der letzten 14 Tage** ansehen und **eigene** Berichte
   nachbearbeiten.
+- **Mängel erfassen** — Kurztext, Beschreibung, Ort, Foto, Frist,
+  Dringlichkeit, verantwortliche Firma. Und die Stelle **auf dem Plan**
+  (siehe unten).
+- **Mängel abarbeiten** — die offenen Mängel des Projekts stehen in der Liste,
+  der nächstfällige oben. Mit einem Tippen wird aus „Offen" „In Arbeit" oder
+  „Behoben".
+
+> **Bei einem Mangel, den jemand anderes erfasst hat**, lassen sich der Zustand
+> ändern und Fotos hinzufügen — Text, Frist und Zuständiger bleiben, wie das
+> Büro sie eingetragen hat. Und **abnehmen kann man am Handy nicht**: behoben
+> meldet die Baustelle, abgenommen erklärt das Büro.
 
 **Ohne Netz:** Der Bericht wird zuerst auf dem Gerät gespeichert und gesendet,
 sobald wieder Verbindung besteht — von selbst, oder über „Senden" im Streifen
@@ -524,6 +537,54 @@ oben. Ein angefangener Bericht übersteht dabei auch das Schließen der App.
 > Baustelle aus braucht das Handy eine VPN-Verbindung. Sie ist aber so gebaut,
 > dass man sie — falls das einmal gewünscht ist — getrennt vom übrigen Tool
 > zugänglich machen könnte.
+
+> **Aufs Handy kommt sie** über „Handy-App" auf der Startseite: dort den
+> QR-Code für **Baustelle** scannen (nicht den fürs Protokolltool) und die
+> Seite auf den Home-Bildschirm legen.
+
+### Einen Mangel auf dem Plan verorten
+
+Jeder Mangel kann eine Stelle im Plan haben — ein Pin, gesetzt mit dem Finger
+oder der Maus. Wer später die Mängelliste liest, sieht nicht nur „EG, Achse
+C/4", sondern den Ausschnitt mit dem Punkt darin.
+
+So geht es: Im Mangel auf **„Auf Plan verorten"** tippen, Plan und Seite
+wählen, auf die Stelle tippen. Fertig — der Pin lässt sich durch nochmaliges
+Tippen verschieben und über das Kreuz entfernen. In der Mängelliste führt ein
+Klick auf den Planhinweis zum Ausschnitt.
+
+Die Pläne kommen aus der Plan-Ansicht des Projekts (PDF oder Bild). **PDF-Pläne
+werden beim Hochladen einmal aufbereitet**, damit darauf gepinnt werden kann;
+bei Plänen, die vorher hochgeladen wurden, steht im Mangel die Schaltfläche
+„Jetzt aufbereiten" — das geht am Rechner, nicht am Handy.
+
+> **Neuer Planstand:** Wird eine Plandatei ersetzt, bleiben die Pins an ihrer
+> relativen Stelle. Hat der neue Plan einen anderen Zuschnitt, sitzen sie
+> daneben — das kann das Programm nicht erkennen. Pins nach einem Planwechsel
+> einmal durchsehen.
+
+### Mängel und Maßnahmen hängen zusammen
+
+Ein Mangel lässt sich mit dem Pfeil-Symbol **in ein Protokoll übernehmen**.
+Dort wird er zu einer Maßnahme mit Zuständigem und Frist — mit allem, was dazu
+gehört: Erinnerung, Freimeldung durch die Firma, Mahnung.
+
+**Und der Weg zurück stimmt jetzt auch:** Wird die Maßnahme erledigt oder von
+der Firma freigemeldet und genehmigt, wechselt der Mangel von selbst auf
+„Behoben". Wird die Freimeldung abgelehnt, steht er wieder auf „Offen". In der
+Mängelliste steht dann „aus Maßnahme" neben dem Zustand, damit man sieht, dass
+das nicht jemand von Hand gesetzt hat.
+
+Zwei Dinge bleiben ausdrücklich Handarbeit:
+
+- **„Abgenommen"** setzt nur das Büro. Behoben meldet die Baustelle oder die
+  Firma — abgenommen ist eine Erklärung mit Rechtsfolgen.
+- **Die Frist** läuft nicht mit. Sie steht am Mangel und an der Maßnahme und
+  ist an beiden Stellen änderbar; es wäre schlimmer, wenn eine alte Frist die
+  neue überschreibt.
+
+Damit läuft die Mängelliste über die ganze Projektlaufzeit mit, ohne doppelte
+Pflege — und ist am Ende das, was der Abnahme beigelegt wird.
 
 ---
 

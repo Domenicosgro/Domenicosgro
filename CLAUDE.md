@@ -168,9 +168,11 @@ Domenicosgro/
 │   │   ├── layout.js              # Quartiere, Farbfamilien, Parzellen, Deko, Zielwaben
 │   │   └── engine.js              # Three.js: Waben, Bauzustände, Figuren, Agenten, Kamera
 │   │
-│   ├── baustelle/                 # Handy-Oberfläche: Projektwahl, Tagesbericht, Warteschlange
+│   ├── baustelle/                 # Handy-Oberfläche: Projektwahl, Tagesbericht, Mängel, Warteschlange
 │   │   ├── main.jsx · api.js · warteschlange.js
-│   │   └── BaustelleApp.jsx · BerichtForm.jsx
+│   │   └── BaustelleApp.jsx · BerichtForm.jsx · Maengel.jsx
+│   ├── planHelfer.js              # reine Plan-Auskünfte (ohne pdfjs – auch fürs Handy)
+│   ├── planVorschau.js            # PDF → PNG im Browser, pdfjs wird nachgeladen
 │   │
 │   ├── components/
 │   │   ├── ProjectsHome.jsx       # Startseite: Projektliste, Favoriten, PWA-Install, Import, Admin-Kachel
@@ -223,6 +225,8 @@ Domenicosgro/
 │   ├── pruefstation.js            # Prüfstation: Prüfvorgänge + verknüpfte NAS-Ordner (/api/pruefstation/*)
 │   ├── bautagebuchFotos.js        # Baudokumentation: Originalfotos in den Projektordner
 │   ├── baustelle.js               # Baustellen-Fassade: schmale Schnittstelle fürs Handy (/api/baustelle/*)
+│   ├── maengel.js                 # Mangel-Status folgt der Maßnahme (Rückkanal)
+│   ├── planVorschau.js            # PDF-Seiten als PNG, damit Mängel auf dem Plan pinnbar sind
 │   ├── assistent.js               # Assistent: Routen, Verlauf, SSE zum Browser (§15)
 │   ├── kontext.js                 # Rückgriff: Systemkopf aus dem, was die Person sehen darf
 │   ├── ki.js                      # Einzige Stelle, die das Dashboard kennt (Weg zur KI-Farm)
@@ -236,7 +240,8 @@ Domenicosgro/
 ├── scripts/                       # Prüfläufe, über npm run pruefe:* aufrufbar
 │   ├── pruefe-marke.mjs           # kein harter Name des Betreibers im Code
 │   ├── pruefe-fotoablage.js       # 30 Prüfungen der Fotoablage (ohne NAS)
-│   └── pruefe-baustelle.js        # 53 Prüfungen der Baustellen-Fassade (ohne NAS, ohne Browser)
+│   ├── pruefe-baustelle.js        # 93 Prüfungen der Baustellen-Fassade (ohne NAS, ohne Browser)
+│   └── pruefe-maengel.js          # 23 Prüfungen des Rückkanals Maßnahme → Mangel
 │
 └── electron/                      # Desktop-Variante (optional)
     ├── main.js                    # Electron-Hauptprozess
@@ -583,10 +588,23 @@ POST  …/berichte/:entryId/fotos                    Original (Rohdaten) → Pro
 POST  /api/baustelle/projekte/:id/anhang           kleine Fassung  {id, data}
 GET   …/anhang/:anhangId                           nur Bilder an Berichten dieses Projekts
 GET   /api/baustelle/projekte/:id/wetter           wie im Büro
+GET   /api/baustelle/projekte/:id/maengel          offene Mängel + frisch geschlossene
+POST  /api/baustelle/projekte/:id/maengel          erfassen  {clientId, …, position}
+PATCH …/maengel/:mangelId                          eigene: alles · fremde: Zustand + Fotos
+GET   /api/baustelle/projekte/:id/plaene           Planliste, schmal
+GET   …/plaene/:planId/bild?seite=                 Vorschaubild der Seite (kein PDF)
 ```
-Diese acht Routen sind die **gesamte** Fläche der Handy-Oberfläche. Wer hier
-etwas hinzufügt, vergrößert genau das, was eines Tages nach außen gehen könnte
-— also mit Absicht, nicht aus Bequemlichkeit.
+Diese **dreizehn** Routen sind die gesamte Fläche der Handy-Oberfläche. Wer
+hier etwas hinzufügt, vergrößert genau das, was eines Tages nach außen gehen
+könnte — also mit Absicht, nicht aus Bequemlichkeit. Der Prüflauf
+`npm run pruefe:baustelle` hat dafür einen eigenen Abschnitt („die Fassade hat
+keine weiteren Routen"): Löschen und die Plandatei selbst gehören nicht dazu.
+
+**Planvorschau** (`server/planVorschau.js`)
+```
+POST /api/projects/:id/plans/:planId/vorschau?seite=&seiten=   PNG-Rohdaten
+GET  /api/projects/:id/plans/:planId/vorschau?seite=           PNG (auch ?token=)
+```
 
 **Statische Auslieferung**
 ```
@@ -847,10 +865,85 @@ Tippen ein Satz von 100 MB neu geschrieben). Nach dem Senden wandern die
 Originale in `src/fotoOriginale.js` – die kennt den Bericht erst, wenn er eine
 Kennung hat.
 
-Testlauf ohne NAS und Browser: `npm run pruefe:baustelle` (53 Prüfungen –
-Datensparsamkeit der Projektliste, Fenster, Sperrgründe, Feld-Weißliste,
-Fotomischung, Doppelsendung, Anhanggrenzen, Projektgrenze, „keine weiteren
-Routen").
+Testlauf ohne NAS und Browser: `npm run pruefe:baustelle` (93 Prüfungen –
+Datensparsamkeit von Projekt- und Planliste, Fenster, Sperrgründe,
+Feld-Weißliste, Fotomischung, Doppelsendung, Anhanggrenzen, Projektgrenze,
+Mängelrechte, Pin-Grenzen, „keine weiteren Routen").
+
+Mängel sind dort **anders geregelt als Tagesberichte**, weil sie gemeinsames
+Arbeitsmaterial sind: wer auf der Baustelle nachsieht, muss den Zustand setzen
+können, auch bei einem Mangel aus dem Büro. Deshalb zwei Stufen — eigener
+Mangel: alles; fremder Mangel: Zustand und zusätzliche Fotos, kein Text, keine
+Frist, kein Foto weniger. **„Abgenommen" gibt es vom Handy aus nicht**, in
+keiner Stufe: behoben meldet die Baustelle, abgenommen erklärt das Büro.
+
+### Mängel: Status folgt der Maßnahme (Rückkanal)
+`server/maengel.js`. Ein Mangel wird über „in Protokoll übernehmen" zur
+Maßnahme (`handleAddDefectToProtocol` in `App.jsx`), die dabei `defectId`
+trägt. **Diese Kennung wurde bis zum 26.11.2026 geschrieben und nie gelesen** —
+meldete die Firma die Maßnahme frei, blieb der Mangel auf „offen", und die
+Mängelliste, die bis zur Abnahme geführt wird, lief unbemerkt auseinander.
+
+```
+Maßnahme „erledigt"   → Mangel „behoben"
+Maßnahme „in Arbeit"  → Mangel „in Arbeit"
+Maßnahme „offen"      → Mangel „offen"    (auch zurück: abgelehnte Freimeldung)
+Maßnahme „verschoben" → keine Änderung    (eine Frist, kein Zustand)
+```
+
+- **Eine Richtung, ein Feld.** Nur der Status. Die Frist steht an beiden
+  Stellen und bleibt an beiden von Hand änderbar — liefe sie mit, würde die
+  alte Frist der Maßnahme die neue am Mangel überschreiben.
+- **„Abgenommen" ist tabu.** Ein Mangel in diesem Zustand wird nie wieder
+  angefasst.
+- Mehrere Maßnahmen zu einem Mangel: es gilt die **am wenigsten
+  fortgeschrittene** — behoben ist er erst, wenn alle erledigt sind.
+- Angehängt an zwei Stellen: in `mutateActionItem` (Freimeldung, Genehmigung,
+  Ablehnung laufen alle dort durch) und als `nachUpdate`-Haken am generischen
+  Protokoll-PATCH (der Editor speichert das ganze Protokoll). Die Spiegelung
+  bricht früh ab, wenn kein `defectId` im Protokoll steht — das ist der
+  Normalfall und sie läuft bei jedem Zwischenspeichern.
+- Am Mangel steht danach `statusQuelle: 'massnahme'` (plus `statusAm`,
+  `statusDurch`); die Mängelliste zeigt „aus Maßnahme". Setzt jemand den
+  Zustand selbst, wird daraus `'hand'`.
+- Ein Fehler in der Spiegelung darf das Speichern eines Protokolls nie
+  aufhalten: alles in einem `try`, im Zweifel bleibt der Mangel, wie er war.
+- Prüflauf: `npm run pruefe:maengel` (23 Prüfungen, ohne Datenbank).
+
+### Mängel auf dem Plan verorten – auch auf PDF
+Die Verortung liegt **am Mangel**, nicht in einem zweiten Datentyp:
+`planId`, `planSeite`, `planTitel`, `position: { x, y }`. Die Stelle ist ein
+**Anteil der Bildkante (0…1)**, also maßstabs- und bildschirmunabhängig.
+
+Der Haken war: Pins brauchen ein Bild, Pläne sind PDF (im Planviewer stand
+`canPin = !isPdf`). Gelöst wird das einmal pro Planseite:
+
+```
+Hochladen (Büro)  →  pdfjs im Browser rendert jede Seite  →  PNG auf den Server
+                                                              (PLANS_DIR/<planId>.s<n>.png)
+Pin setzen (überall)  →  nur noch das PNG
+```
+
+- **pdfjs wird nachgeladen** (`await import('pdfjs-dist')` in
+  `src/planVorschau.js`), nie mitgebaut. Das Bündel der Baustellen-Oberfläche
+  bleibt bei ~295 kB; der pdf-Brocken (500 kB + 1,3 MB Worker) liegt in
+  eigenen Chunks und wird nur im Büro geladen.
+- **Der Server rendert nichts.** Poppler oder Ghostscript im Abbild wären eine
+  Abhängigkeit, die bei jedem Umzug Arbeit macht.
+- Die reinen Auskünfte stehen in `src/planHelfer.js` – ohne jeden Bezug auf
+  pdfjs, damit das Handy sie benutzen kann.
+- Gemeinsame Oberfläche: `src/components/PlanPin.jsx` (Büro und Handy), mit
+  `bildUrl`-Haken, weil die Baustellen-Oberfläche ihre Bilder über die Fassade
+  holt. Pins anderer Mängel sind zur Orientierung eingeblendet, nach
+  Zustand gefärbt.
+- Pläne, die vor dieser Fassung hochgeladen wurden, haben keine Vorschau. Die
+  Mängelliste bietet dann „Jetzt aufbereiten" an (nur am Rechner).
+- **Neuer Planstand:** Beim Austausch der Plandatei werden die Vorschauen
+  gelöscht (`vorschauWeg`), die Pins bleiben an ihrem Anteil stehen. Ändert
+  der neue Stand den Zuschnitt, sitzen sie daneben — das kann keine Anwendung
+  erkennen, der Hinweis steht in der Oberfläche.
+- Grenzen, die der Server zieht: der Plan muss zum Projekt gehören, die Stelle
+  muss zwischen 0 und 1 liegen, `position: null` löscht die Verortung.
 
 ### Notizbuch (projektintern, 2 Ebenen)
 Projekt-Dashboard-Kachel „Notizbuch" → `NotizbuchView.jsx`. Ebene 1 = Hauptthema,

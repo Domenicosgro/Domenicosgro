@@ -10,11 +10,20 @@
  * dass ein doppelt gesendeter Bericht nicht zweimal im Buero steht und dass
  * der Vermerk der Fotoablage nicht verloren geht.
  *
+ * Seit dem 26.11.2026 gehoeren Maengel dazu: dort darf jeder mit
+ * Projektzugang den Zustand setzen, aber nur der Verfasser den Text aendern,
+ * und "abgenommen" gibt es vom Handy aus gar nicht. Auch das wird hier
+ * geprueft, ebenso die Verortung auf dem Plan (der Pin muss zum Projekt
+ * gehoeren und im Bild liegen).
+ *
  * Aufruf:  npm run pruefe:baustelle
  * Ergebnis: Rueckgabewert 1 bei Fehlern, sonst 0.
  */
 'use strict'
 const express = require('express')
+const fs   = require('fs')
+const os   = require('os')
+const path = require('path')
 const { registerBaustelle } = require('../server/baustelle')
 
 let fehler = 0
@@ -79,8 +88,74 @@ setze({
   workItems: [], photos: [],
 })
 
+// ── Maengel ─────────────────────────────────────────────────────────────────
+const maengel = new Map()
+const setzeMangel = (m) => maengel.set(m.id, m)
+setzeMangel({
+  id: 'M1', projectId: 'P1', no: 1, title: 'Risse Bodenplatte', description: 'EG',
+  location: 'EG, Achse C/4', responsible: 'Rohbau GmbH', dueDate: tagVor(-7),
+  priority: 'hoch', status: 'offen', createdBy: 'Domenico Sgro', createdAt: new Date().toISOString(),
+  photos: [{ id: 'mangelfoto', name: 'riss.jpg' }], _version: 1,
+})
+setzeMangel({
+  id: 'M2', projectId: 'P1', no: 2, title: 'Fuge Fenster OG', status: 'offen',
+  createdBy: 'Sabine Beispiel', createdAt: new Date().toISOString(), dueDate: tagVor(-20),
+  photos: [{ id: 'fremdfoto', name: 'fuge.jpg' }], _version: 1,
+})
+setzeMangel({
+  id: 'M3', projectId: 'P1', no: 3, title: 'Abgenommen und fertig', status: 'abgenommen',
+  createdBy: 'Domenico Sgro', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+  photos: [], _version: 1,
+})
+setzeMangel({
+  id: 'M4', projectId: 'P1', no: 4, title: 'Alt und behoben', status: 'behoben',
+  createdBy: 'Domenico Sgro', createdAt: tagVor(200), updatedAt: tagVor(200),
+  photos: [], _version: 1,
+})
+
+// ── Plaene ──────────────────────────────────────────────────────────────────
+const plaene = new Map()
+plaene.set('PL1', {
+  id: 'PL1', projectId: 'P1', title: 'Grundriss EG', planType: 'grundriss', order: 1,
+  hasFile: true, mimeType: 'application/pdf', filename: 'eg.pdf',
+  size: 123456, description: 'interne Notiz', seiten: 2, vorschauSeiten: [1], _version: 1,
+})
+plaene.set('PL2', {
+  id: 'PL2', projectId: 'P1', title: 'Lageplan', planType: 'lageplan', order: 2,
+  hasFile: true, mimeType: 'image/png', filename: 'lage.png', size: 2048, _version: 1,
+})
+plaene.set('PL3', { id: 'PL3', projectId: 'P1', title: 'Ohne Datei', hasFile: false, _version: 1 })
+plaene.set('PL9', {
+  id: 'PL9', projectId: 'P9', title: 'Fremder Plan', hasFile: true,
+  mimeType: 'image/png', filename: 'fremd.png', _version: 1,
+})
+
+// Planbilder auf der Platte: Seite 1 des PDF ist aufbereitet, Seite 2 nicht.
+const bildDir = fs.mkdtempSync(path.join(os.tmpdir(), 'kp-plan-'))
+fs.writeFileSync(path.join(bildDir, 'PL1.s1.png'), Buffer.from('89504e470d0a1a0a', 'hex'))
+fs.writeFileSync(path.join(bildDir, 'PL2'), Buffer.from('89504e470d0a1a0a', 'hex'))
+
 const db = {
-  projects: { list: () => projekte.map(p => JSON.parse(JSON.stringify(p))) },
+  projects: {
+    list: () => projekte.map(p => JSON.parse(JSON.stringify(p))),
+    get:  (id) => { const p = projekte.find(x => x.id === id); return p ? JSON.parse(JSON.stringify(p)) : null },
+  },
+  defects: {
+    list: () => [...maengel.values()].map(m => JSON.parse(JSON.stringify(m))),
+    get:  (id) => (maengel.has(id) ? JSON.parse(JSON.stringify(maengel.get(id))) : null),
+    create: (daten) => { setzeMangel({ ...daten, _version: 1 }); return { version: 1 } },
+    update: (id, daten, version) => {
+      const m = maengel.get(id)
+      if (!m) return { notFound: true }
+      if (m._version !== version) return { conflict: true, serverVersion: m._version }
+      setzeMangel({ ...daten, id, _version: version + 1 })
+      return { version: version + 1 }
+    },
+  },
+  bimPlans: {
+    list: () => [...plaene.values()].map(p => JSON.parse(JSON.stringify(p))),
+    get:  (id) => (plaene.has(id) ? JSON.parse(JSON.stringify(plaene.get(id))) : null),
+  },
   diaryEntries: {
     list: () => [...eintraege.values()].map(e => JSON.parse(JSON.stringify(e))),
     get:  (id) => { const e = eintraege.get(id); return e ? JSON.parse(JSON.stringify(e)) : null },
@@ -105,6 +180,9 @@ const attachments = {
 
 const validAttachmentId = (id) => typeof id === 'string' && /^[A-Za-z0-9_-]{1,100}$/.test(id)
 
+// Die Bildroute prueft die Anmeldung selbst (ein <img> schickt keine Header).
+db.users = { hasAny: () => true }
+
 // ── Server ───────────────────────────────────────────────────────────────────
 let nutzer = 'ds'
 const anzeigename = { ds: 'Domenico Sgro', sb: 'Sabine Beispiel' }
@@ -126,6 +204,9 @@ registerBaustelle(app, {
   },
   canAccessProject: (p, user) => !p.isAccessControlled || (p.allowedUsers || []).includes(user),
   logEvent: () => {}, broadcast: () => {},
+  resolveToken: (tok) => (tok === 'gueltig' ? nutzer : null),
+  planBildPfad:  (planId, seite) => path.join(bildDir, `${planId}.s${seite}.png`),
+  planDateiPfad: (planId) => path.join(bildDir, planId),
   displayName: (u) => anzeigename[u] || u,
   wetterHandler: (req, res) => res.json({ weather: 'regen', tempMin: 4, tempMax: 11, date: req.query.date, location: 'Krefeld' }),
 })
@@ -274,8 +355,13 @@ const server = app.listen(0, async () => {
     const verboten = []
     for (const [pfad, art] of [
       ['/projekte/P1/protokolle', 'GET'], ['/projekte/P1/kontakte', 'GET'],
-      ['/projekte/P1/maengel', 'GET'], ['/projekte/P1/dateien', 'GET'],
-      ['/projekte/P1/berichte/E1', 'DELETE'],
+      ['/projekte/P1/dateien', 'GET'], ['/projekte/P1/nachtraege', 'GET'],
+      // Loeschen gehoert ins Buero – weder Bericht noch Mangel verschwinden
+      // vom Handy aus.
+      ['/projekte/P1/berichte/E1', 'DELETE'], ['/projekte/P1/maengel/M1', 'DELETE'],
+      // Die Plandatei selbst (das PDF) gibt die Fassade nicht heraus, nur das
+      // Vorschaubild der Seite.
+      ['/projekte/P1/plaene/PL1/datei', 'GET'], ['/projekte/P1/plaene/PL1/file', 'GET'],
     ]) {
       const r = await hole(basis + pfad, { method: art })
       if (r.status !== 404) verboten.push(`${art} ${pfad} -> ${r.status}`)
@@ -288,10 +374,113 @@ const server = app.listen(0, async () => {
     pruefe('E1 fuer Sabine gesperrt', sicht.body.berichte.find(b => b.id === 'E1').nurBuero === 'fremd')
     pruefe('E2 fuer Sabine aenderbar', sicht.body.berichte.find(b => b.id === 'E2').nurBuero === null)
     nutzer = 'ds'
+    console.log('\n14) Mängelliste: offen immer, erledigt nur frisch')
+    const ml = await hole(`${basis}/projekte/P1/maengel`)
+    const mids = (ml.body.maengel || []).map(m => m.id)
+    pruefe('offene dabei', mids.includes('M1') && mids.includes('M2'), JSON.stringify(mids))
+    pruefe('frisch abgenommener dabei', mids.includes('M3'))
+    pruefe('lange behobener nicht dabei', !mids.includes('M4'))
+    pruefe('nach Frist sortiert (M1 in 7 Tagen vor M2 in 20)',
+      mids.indexOf('M1') < mids.indexOf('M2'), JSON.stringify(mids))
+    const m1 = ml.body.maengel.find(m => m.id === 'M1')
+    pruefe('eigener Mangel voll änderbar', m1.meins === true && m1.darfVoll === true)
+    pruefe('fremder Mangel nicht voll änderbar',
+      ml.body.maengel.find(m => m.id === 'M2').darfVoll === false)
+
+    console.log('\n15) Mangel erfassen')
+    const ohneText = await sende(`${basis}/projekte/P1/maengel`, { description: 'nur Text' })
+    pruefe('ohne Kurztext: 400', ohneText.status === 400, String(ohneText.status))
+    const neuM = await sende(`${basis}/projekte/P1/maengel`, {
+      clientId: 'handy-m1', title: 'Estrich wellig', location: 'OG 1', responsible: 'Estrich AG',
+      dueDate: tagVor(-14), priority: 'hoch', status: 'abgenommen',
+      planId: 'PL1', planSeite: 2, position: { x: 0.25, y: 0.5 },
+      fotos: [{ id: 'neufoto', name: 'estrich.jpg' }],
+    })
+    pruefe('201', neuM.status === 201, JSON.stringify(neuM.body))
+    const gM = maengel.get(neuM.body.id)
+    pruefe('laufende Nummer vergeben', gM.no === 5, String(gM.no))
+    pruefe('Herkunft vermerkt', gM.source === 'baustelle')
+    pruefe('„abgenommen" vom Handy abgewiesen', gM.status === 'offen', gM.status)
+    pruefe('Pin übernommen', gM.planId === 'PL1' && gM.planSeite === 2 && gM.position.x === 0.25,
+      JSON.stringify({ p: gM.planId, s: gM.planSeite, pos: gM.position }))
+    pruefe('Plantitel mitgeschrieben', gM.planTitel === 'Grundriss EG', gM.planTitel)
+    const nochM = await sende(`${basis}/projekte/P1/maengel`, { clientId: 'handy-m1', title: 'Estrich wellig' })
+    pruefe('doppelt gesendet: derselbe Mangel', nochM.status === 200 && nochM.body.id === neuM.body.id)
+
+    console.log('\n16) Pin: nur gültige Stellen')
+    const wildPin = await sende(`${basis}/projekte/P1/maengel`, {
+      clientId: 'pin-1', title: 'Pin daneben', planId: 'PL1', position: { x: 4, y: -1 },
+    })
+    pruefe('Stelle außerhalb 0…1 verworfen', !maengel.get(wildPin.body.id).position,
+      JSON.stringify(maengel.get(wildPin.body.id).position))
+    const fremdPin = await sende(`${basis}/projekte/P1/maengel`, {
+      clientId: 'pin-2', title: 'Fremder Plan', planId: 'PL9', position: { x: 0.5, y: 0.5 },
+    })
+    pruefe('Plan eines anderen Projekts verworfen', !maengel.get(fremdPin.body.id).planId)
+    const wegPin = await sende(`${basis}/projekte/P1/maengel/${neuM.body.id}`,
+      { version: maengel.get(neuM.body.id)._version, title: 'Estrich wellig', position: null }, 'PATCH')
+    pruefe('position:null löscht die Verortung',
+      wegPin.status === 200 && !maengel.get(neuM.body.id).planId && !maengel.get(neuM.body.id).position,
+      JSON.stringify(wegPin.body))
+
+    console.log('\n17) Was am fremden Mangel geändert werden darf')
+    const fremdVoll = await sende(`${basis}/projekte/P1/maengel/M2`, {
+      version: 1, status: 'behoben', title: 'umbenannt', dueDate: '2026-12-31',
+      fotos: [{ id: 'dazufoto', name: 'neu.jpg' }],
+    }, 'PATCH')
+    pruefe('200', fremdVoll.status === 200, JSON.stringify(fremdVoll.body))
+    const n2 = maengel.get('M2')
+    pruefe('Zustand gesetzt', n2.status === 'behoben')
+    pruefe('Titel unverändert', n2.title === 'Fuge Fenster OG', n2.title)
+    pruefe('Frist unverändert', !n2.dueDate || n2.dueDate === tagVor(-20), String(n2.dueDate))
+    pruefe('Foto dazugekommen', n2.photos.length === 2 && n2.photos.some(f => f.id === 'dazufoto'),
+      JSON.stringify(n2.photos))
+    pruefe('vorhandenes Foto nicht verschwunden', n2.photos.some(f => f.id === 'fremdfoto'))
+    pruefe('von Hand gesetzt vermerkt', n2.statusQuelle === 'hand' && !!n2.statusDurch)
+
+    console.log('\n18) Abgenommen ist tabu, Konflikt bleibt Konflikt')
+    const abg = await sende(`${basis}/projekte/P1/maengel/M3`, { version: 1, status: 'offen' }, 'PATCH')
+    pruefe('409 + Grund abgenommen', abg.status === 409 && abg.body.grund === 'abgenommen', JSON.stringify(abg))
+    const konfliktM = await sende(`${basis}/projekte/P1/maengel/M1`, { version: 99, status: 'behoben' }, 'PATCH')
+    pruefe('veraltete Version: 409', konfliktM.status === 409 && konfliktM.body.grund === 'version')
+    const fremdesProjekt = await sende(`${basis}/projekte/P2/maengel/M1`, { version: 1, status: 'behoben' }, 'PATCH')
+    pruefe('Mangel über die Projektgrenze: 404', fremdesProjekt.status === 404)
+
+    console.log('\n19) Pläne: schmal und nur mit Datei')
+    const plAntwort = await hole(`${basis}/projekte/P1/plaene`)
+    const plids = (plAntwort.body.plaene || []).map(x => x.id)
+    pruefe('Pläne mit Datei dabei', plids.includes('PL1') && plids.includes('PL2'), JSON.stringify(plids))
+    pruefe('Plan ohne Datei fehlt', !plids.includes('PL3'))
+    pruefe('fremder Plan fehlt', !plids.includes('PL9'))
+    pruefe('keine Dateinamen, keine Größen, keine Notizen',
+      !/eg\.pdf|123456|interne Notiz/.test(JSON.stringify(plAntwort.body)), JSON.stringify(plAntwort.body).slice(0, 200))
+    pruefe('Seitenzahl und aufbereitete Seiten gemeldet',
+      plAntwort.body.plaene.find(x => x.id === 'PL1').seiten === 2 &&
+      plAntwort.body.plaene.find(x => x.id === 'PL1').vorschauSeiten.join() === '1')
+
+    console.log('\n20) Planbild')
+    const bild1 = await fetch(`${basis}/projekte/P1/plaene/PL1/bild?seite=1&token=gueltig`)
+    pruefe('aufbereitete Seite kommt als PNG',
+      bild1.status === 200 && bild1.headers.get('content-type') === 'image/png', String(bild1.status))
+    const bild2 = await hole(`${basis}/projekte/P1/plaene/PL1/bild?seite=2&token=gueltig`)
+    pruefe('nicht aufbereitete Seite: 404 + Grund',
+      bild2.status === 404 && bild2.body.grund === 'vorschau', JSON.stringify(bild2))
+    const bildImg = await fetch(`${basis}/projekte/P1/plaene/PL2/bild?token=gueltig`)
+    pruefe('Bildplan wird direkt geliefert', bildImg.status === 200, String(bildImg.status))
+    const ohneTok = await hole(`${basis}/projekte/P1/plaene/PL2/bild`)
+    pruefe('ohne Anmeldung: 401', ohneTok.status === 401, String(ohneTok.status))
+    const fremdBild = await hole(`${basis}/projekte/P1/plaene/PL9/bild?token=gueltig`)
+    pruefe('Plan eines anderen Projekts: 404', fremdBild.status === 404)
+
+    console.log('\n21) Anhang eines Mangels ist lesbar')
+    anhaenge.set('mangelfoto', 'AAAA')
+    const mFoto = await hole(`${basis}/projekte/P1/anhang/mangelfoto`)
+    pruefe('Mangelfoto lesbar', mFoto.status === 200 && mFoto.body.data === 'AAAA', JSON.stringify(mFoto))
   } catch (e) {
     console.log('\nABBRUCH: ' + e.stack)
     fehler++
   } finally {
+    try { fs.rmSync(bildDir, { recursive: true, force: true }) } catch {}
     server.close()
     console.log(fehler === 0 ? '\n--- alles gruen' : `\n--- ${fehler} Fehler`)
     process.exit(fehler === 0 ? 0 : 1)

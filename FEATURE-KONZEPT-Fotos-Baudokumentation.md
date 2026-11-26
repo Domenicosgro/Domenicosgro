@@ -1,9 +1,11 @@
 # Feature-Konzept: Fotos von der Baustelle in die Baudokumentation
 
-**Stand:** 25. November 2026 · **Abschnitt 5 ist gebaut** (Ablage im
-Projektordner), und dazu die **schlanke Handy-Oberfläche** samt eigener
-Schnittstelle (Abschnitt 9, neu). Offen bleibt Abschnitt 4, Weg A: das VPN auf
-die Handys. Das liegt bei der Netzbetreuung, nicht in dieser Anwendung.
+**Stand:** 26. November 2026 · Gebaut sind **Abschnitt 5** (Ablage im
+Projektordner), die **schlanke Handy-Oberfläche** samt eigener Schnittstelle
+(Abschnitt 9) und die **Mängel** darin: erfassen, verorten auf dem Plan,
+Zustand setzen — mit dem Rückkanal von der Maßnahme zum Mangel (Abschnitt 10).
+Offen bleibt Abschnitt 4, Weg A: das VPN auf die Handys. Das liegt bei der
+Netzbetreuung, nicht in dieser Anwendung.
 
 > **Entschieden am 19.11.2026:** Die Fotos machen unsere eigenen Bauleiter.
 > Damit gilt **Weg A** (Abschnitt 4): VPN auf die Diensthandys, kein
@@ -297,6 +299,7 @@ hast — nur noch nicht für Fremdfirmen.
 |---|---|---|
 | **1** ✓ | Ablage im Projektordner (5.1–5.3), VPN auf die Diensthandys (Weg A) | Eigene Leute fotografieren von der Baustelle, die Originale liegen im Projektordner |
 | **1b** ✓ | Schlanke Handy-Oberfläche mit eigener Schnittstelle (Abschnitt 9) | Auf der Baustelle wird nicht das ganze Tool geladen, und die Fläche nach außen wäre klein |
+| **1c** ✓ | Mängel am Handy, Pin auf dem Plan, Rückkanal zur Maßnahme (Abschnitt 10) | Die Mängelliste läuft bis zur Abnahme mit, ohne doppelte Pflege |
 | **2** | Eingangskorb am Projekt: Fotos, die noch keinem Tag zugewiesen sind, mit Zuweisung per Klick | Fotos müssen nicht im Moment der Aufnahme einem Bericht zugeordnet werden |
 | **3** | Fotos aus dem Projektordner im Tool auswählen und anhängen | Bilder, die jemand von Hand aufs Laufwerk gelegt hat, kommen in den Bericht |
 | ~~4~~ | ~~Einwurfseite plus Abrufschleife (Weg B)~~ | *Zurückgestellt — nur nötig, wenn Fremdfirmen liefern sollen* |
@@ -425,10 +428,103 @@ machen kann:
 Nachprüfbar ohne NAS und ohne Browser: `npm run pruefe:baustelle`
 (53 Prüfungen, darunter „die Fassade hat keine weiteren Routen").
 
-### 9.3 Was als Nächstes naheliegt
+### 9.3 Mängel sind dazugekommen
 
-**Mängel auf der Baustelle erfassen.** Bewusst nicht in dieser Runde: Mängel
-liegen in einem eigenen Speicher und haben Status, Fristen und
-Verantwortliche. Sobald die Bauleiter das Ding in der Hand haben, wird es der
-erste Wunsch sein — die Fassade ist darauf vorbereitet, aber die Entscheidung
-steht noch an.
+Stand 25.11. hieß es hier: „Bewusst nicht in dieser Runde." Am 26.11. ist es
+gebaut — siehe Abschnitt 10.
+
+---
+
+## 10. Mängel: erfassen, verorten, bis zur Abnahme führen (26.11.2026)
+
+Die Frage war: Mängel am Handy aufnehmen, auf dem Plan verorten, daraus eine
+Mängelliste mit Aufgaben und Fristen machen, die im Protokolltool weiterläuft
+und zur Abnahme beigelegt wird. Was davon schon da war, was gefehlt hat und
+was jetzt gebaut ist:
+
+### 10.1 Der Befund: zwei Drittel waren da, eine Stelle war kaputt
+
+| | Stand vor dem 26.11. |
+|---|---|
+| Mangel mit Nummer, Ort, Zuständigem, Frist, Dringlichkeit, Zustand, Fotos | **da** (`MaengelView.jsx`, Tabelle `defects`) |
+| Mangel → Maßnahme im Protokoll, mit Freimeldung und Mahnwesen | **da** (`handleAddDefectToProtocol`) |
+| Pläne je Projekt, Pins mit Anteilskoordinaten | **da**, aber an der *Planprüfung* (`plan_reviews`), nicht am Mangel |
+| Pin auf einem PDF | **nein** — im Planviewer stand `canPin = !isPdf`, und Pläne sind PDF |
+| Mängel am Handy | **nein** |
+| Rückweg Maßnahme → Mangel | **kaputt**: die Maßnahme trug `defectId`, gelesen hat es niemand |
+
+Der letzte Punkt war der wichtigste. Meldete die Firma die Maßnahme frei, blieb
+der Mangel auf „offen" — die Liste, die bis zur Abnahme geführt wird, lief
+auseinander, und zwar unbemerkt, weil beide Seiten für sich richtig aussahen.
+
+### 10.2 Eine Entscheidung: ein Mangel, nicht zwei Sorten
+
+`planId`, `planSeite` und `position` sind jetzt **Felder am Mangel**, kein
+eigener Datentyp. Ob ein Mangel auf dem Plan verortet ist oder nur „EG, Achse
+C/4" im Textfeld trägt, ist damit eine Eigenschaft — und die Mängelliste ist
+immer vollständig. Das ist die Bedingung dafür, dass sie bis zur Abnahme trägt.
+
+Die **Planprüfung** bleibt daneben bestehen: dort wird der *Plan* geprüft, beim
+Mangel ein Fehler am *Bauwerk* dokumentiert, der auf dem Plan nur verortet
+wird. Gleiche Technik, zwei Vorgänge.
+
+### 10.3 PDF-Pläne: einmal aufbereiten statt jedes Mal rendern
+
+Pins brauchen ein Bild. Statt einen PDF-Renderer auf den Server zu holen
+(Poppler im Abbild — eine Abhängigkeit, die bei jedem Umzug Arbeit macht) oder
+aufs Handy (400 kB über Mobilfunk, nur um einen Punkt zu setzen), wird **jede
+Planseite einmal im Büro in ein PNG gewandelt** und abgelegt. Danach braucht
+niemand mehr pdfjs:
+
+```
+Hochladen (Büro)      pdfjs im Browser → PNG je Seite → Server
+Pin setzen (überall)  nur noch das PNG
+```
+
+pdfjs wird dabei nachgeladen, nicht mitgebaut — das Bündel der
+Baustellen-Oberfläche bleibt bei rund 295 kB.
+
+**Offener Punkt, der keine Technik lösen kann:** Wird eine Plandatei durch
+einen neuen Stand ersetzt, bleiben die Pins an ihrem Anteil stehen. Hat der
+neue Plan einen anderen Zuschnitt, sitzen sie daneben. Der Hinweis steht in der
+Oberfläche und im Handbuch — erkennen lässt es sich nicht.
+
+### 10.4 Der Rückkanal
+
+```
+Maßnahme „erledigt"   → Mangel „behoben"
+Maßnahme „in Arbeit"  → Mangel „in Arbeit"
+Maßnahme „offen"      → Mangel „offen"     (abgelehnte Freimeldung = nachbessern)
+Maßnahme „verschoben" → keine Änderung
+```
+
+Zwei Dinge laufen ausdrücklich **nicht** mit:
+
+- **„Abgenommen".** Behoben meldet die Baustelle oder die Firma, abgenommen
+  erklärt das Büro. Das ist eine Erklärung mit Rechtsfolgen und keine
+  Schaltfläche für unterwegs — am Handy gibt es diesen Zustand gar nicht.
+- **Die Frist.** Sie steht am Mangel und an der Maßnahme und bleibt an beiden
+  Stellen von Hand änderbar. Liefe sie mit, würde die alte Frist der Maßnahme
+  die neue am Mangel überschreiben.
+
+Hängen mehrere Maßnahmen an einem Mangel, gilt die am wenigsten
+fortgeschrittene: behoben ist er erst, wenn alle erledigt sind.
+
+### 10.5 Was am Handy wem erlaubt ist
+
+Mängel sind gemeinsames Arbeitsmaterial — anders als der Tagesbericht, der
+einem gehört. Deshalb:
+
+- **eigener Mangel:** alles änderbar
+- **fremder Mangel:** Zustand setzen und Fotos dazulegen; kein Text, keine
+  Frist, kein Foto weniger
+- **abgenommener Mangel:** nichts
+
+### 10.6 Was noch fehlt (Stufe 4)
+
+**Die Mängelliste als Dokument für die Abnahme.** Drucken geht heute, aber es
+gibt noch kein Erzeugnis, das man einem Abnahmeprotokoll als Anlage beilegt:
+nach Gewerk oder Plan sortiert, mit Planausschnitt und Pin je Mangel, Foto,
+Zuständigem, Frist, Zustand zum Abnahmetag und der Unterscheidung „bis zur
+Abnahme beseitigt" / „vorbehalten". Technisch ist dafür jetzt alles da — es
+ist die nächste Stufe, nicht diese.

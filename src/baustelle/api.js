@@ -64,6 +64,37 @@ export async function anhangLaden(projectId, id) {
   } catch { return null }
 }
 
+// ── Mängel ──────────────────────────────────────────────────────────────────
+export const maengelLaden = (projectId) => api(`${B(projectId)}/maengel`)
+
+export const mangelAnlegen = (projectId, daten) =>
+  api(`${B(projectId)}/maengel`, { method: 'POST', body: daten })
+
+export const mangelAendern = (projectId, mangelId, daten) =>
+  api(`${B(projectId)}/maengel/${encodeURIComponent(mangelId)}`, { method: 'PATCH', body: daten })
+
+// ── Pläne ───────────────────────────────────────────────────────────────────
+export const plaeneLaden = (projectId) => api(`${B(projectId)}/plaene`)
+
+/** Adresse des Planbildes – beim PDF die im Büro erzeugte Vorschau. */
+export const planBildUrl = (projectId, planId, seite = 1) => {
+  const t = tokenOf()
+  return `${B(projectId)}/plaene/${encodeURIComponent(planId)}/bild?seite=${seite}`
+       + (t ? `&token=${encodeURIComponent(t)}` : '')
+}
+
+export const MANGEL_STATUS = [
+  { value: 'offen',     label: 'Offen',     farbe: 'bg-red-100 text-red-700 border-red-300' },
+  { value: 'in_arbeit', label: 'In Arbeit', farbe: 'bg-amber-100 text-amber-800 border-amber-300' },
+  { value: 'behoben',   label: 'Behoben',   farbe: 'bg-blue-100 text-blue-700 border-blue-300' },
+]
+// „Abgenommen" steht hier nicht: die Abnahme erklärt das Büro.
+export const MANGEL_PRIO = [
+  { value: 'hoch',    label: 'Hoch'    },
+  { value: 'mittel',  label: 'Mittel'  },
+  { value: 'niedrig', label: 'Niedrig' },
+]
+
 export const wetterHolen = (projectId, date, half) =>
   api(`${B(projectId)}/wetter?date=${encodeURIComponent(date)}&half=${encodeURIComponent(half)}`)
 
