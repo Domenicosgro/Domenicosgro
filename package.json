@@ -14,7 +14,8 @@
     "electron:build:all": "vite build && electron-builder --win --mac --publish never",
     "pruefe:fotoablage": "node scripts/pruefe-fotoablage.js",
     "pruefe:baustelle": "node scripts/pruefe-baustelle.js",
-    "pruefe:maengel": "node scripts/pruefe-maengel.js"
+    "pruefe:maengel": "node scripts/pruefe-maengel.js",
+    "pruefe:termine": "node scripts/pruefe-termine.js"
   },
   "dependencies": {
     "@azure/msal-node": "^5.2.2",

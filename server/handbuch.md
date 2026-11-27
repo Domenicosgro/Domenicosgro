@@ -106,6 +106,36 @@ Jedes Protokoll zeigt:
 ### Neues Protokoll anlegen oder erstellen
 Der Button „Neues Protokoll" erstellt ein leeres Protokoll für das aktuelle Projekt.
 
+### Termine: aus dem Kalender wird ein vorbereitetes Protokoll
+
+Über der Protokollliste steht der Bereich **Termine**. Er zeigt die
+Besprechungen aus Ihrem Outlook-Kalender – die der nächsten drei Wochen und die
+der letzten zwei. Er erscheint nur, wenn Ihr Büro die Kalenderanbindung
+eingerichtet hat und für Ihren Zugang eine E-Mail-Adresse hinterlegt ist.
+
+**Private Termine und abgesagte erscheinen nicht.** Was in Outlook als privat
+markiert ist, bleibt privat.
+
+So wird daraus ein Protokoll:
+
+1. Beim Termin auf **Protokoll vorbereiten** klicken.
+2. Das neue Protokoll steht da – mit Datum, Uhrzeit, Ort, Besprechungsart und
+   **allen Eingeladenen als Teilnehmer**.
+3. Wer in den Projektkontakten steht, kommt mit Firma und Funktion. Wer nicht,
+   kommt mit dem Namen aus der Einladung; in der Teilnehmerliste steht dann
+   „neu".
+4. Wer die Einladung abgelehnt hat, steht als **nicht anwesend** drin. Den
+   Haken setzen Sie am Ende ohnehin selbst – eine Einladung ist keine
+   Anwesenheit.
+
+Mit dem Auswahlfeld rechts sagen Sie einmal, zu welchem **Projekt** ein Termin
+gehört. Das bleibt gemerkt, auch für Ihre Kollegen, und eine Serie ist damit
+auf Dauer zugeordnet. Über **„… weitere Termine im Kalender zeigen"** sehen Sie
+die noch nicht zugeordneten.
+
+Auf den kleinen Pfeil links klicken zeigt, wer eingeladen ist, bevor Sie das
+Protokoll anlegen.
+
 ### Aktionen pro Protokoll
 - **Öffnen**: Klick auf das Protokoll öffnet den Editor
 - **Duplizieren**: Kopie des Protokolls erstellen (Kopiersymbol)
@@ -175,6 +205,35 @@ Der Hauptbereich des Protokolls enthält die Protokollpunkte.
 
 **Übernahme aus Vorgänger-Protokoll:**
 Wenn ein Vorgänger-Protokoll verknüpft ist, werden beim Öffnen automatisch alle offenen Punkte aus dem Vorgänger übernommen (Carryover). Erledigte Punkte erscheinen grau und werden ebenfalls zur Dokumentation übernommen.
+
+### Mitschrift einlesen: aus dem Teams-Transkript werden Punkte
+
+Über den Protokollpunkten steht **Mitschrift einlesen**. Damit wird aus der
+Mitschrift einer Besprechung ein Vorschlag für die Protokollpunkte.
+
+1. In Teams in der Besprechung **Transkript herunterladen** wählen, Format
+   **.vtt**. (Word-Dateien `.docx` kann das Programm nicht lesen – in Teams
+   gibt es beides.) Eine abgetippte Mitschrift geht genauso: einfach einfügen.
+2. Datei in das Fenster ziehen oder auswählen.
+3. Optional einen **Hinweis** mitgeben, z. B. „Nur die Punkte zum Rohbau".
+4. **Punkte vorschlagen** klicken. Bei einer langen Besprechung dauert das ein
+   paar Minuten; das Fenster bitte offen lassen.
+
+Sie bekommen eine Liste zum Durchsehen. Alles ist vorangehakt – **nehmen Sie
+weg, was nicht stimmt**. Bei jedem Punkt können Sie zusätzlich entscheiden, ob
+daraus eine **Maßnahme** mit Zuständigem und Frist werden soll.
+
+**Das ist ein Vorschlag, kein Protokoll.** Eine Besprechung besteht nicht aus
+dem, was gesagt wurde, sondern aus dem, was gilt – und das entscheiden Sie.
+Zusagen, Fristen und Zuständigkeiten stehen am Ende als verbindlich im
+Protokoll, lesen Sie sie also gegen.
+
+Die übernommenen Punkte werden **hinten angehängt** und weitergezählt. Was Sie
+vorher selbst geschrieben haben, wird nicht angefasst. Sie können die Punkte
+danach ganz normal bearbeiten, umsortieren und ergänzen.
+
+Die Mitschrift geht an die KI-Rechner im eigenen Büro, nicht an einen Dienst im
+Internet.
 
 ### Maßnahmen und Aufgaben anlegen, zuweisen, Frist setzen
 Unterhalb der Protokollpunkte gibt es eine Maßnahmenliste.

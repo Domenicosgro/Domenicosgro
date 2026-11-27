@@ -1,6 +1,6 @@
 import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react'
 import { flushSync } from 'react-dom'
-import { ArrowLeft, Printer, Download, Send, RefreshCw, AlertCircle, Lock, Unlock, FileText, RotateCcw, Layers, Loader, Eye, EyeOff, Users, Box, ClipboardCheck, Paperclip, Trash2, Plus, Upload } from 'lucide-react'
+import { ArrowLeft, Printer, Download, Send, RefreshCw, AlertCircle, Lock, Unlock, FileText, RotateCcw, Layers, Loader, Eye, EyeOff, Users, Box, ClipboardCheck, Paperclip, Trash2, Plus, Upload, ListChecks } from 'lucide-react'
 import MeetingHeader    from './MeetingHeader'
 import ParticipantsList from './ParticipantsList'
 import AgendaDraft      from './AgendaDraft'
@@ -9,7 +9,7 @@ import ProtocolEmailModal from './ProtocolEmailModal'
 import ProtocolItems    from './ProtocolItems'
 import ActionItems      from './ActionItems'
 import NotesSection     from './NotesSection'
-import { formatDate, buildProtocolNo, getChainNo, uid, emptyAgendaItem, distributionFor, emptyContact, isMirrorAction, infoItemsForProject } from '../utils'
+import { formatDate, buildProtocolNo, getChainNo, uid, emptyAgendaItem, emptyActionItem, distributionFor, emptyContact, isMirrorAction, infoItemsForProject } from '../utils'
 import { exportDocx } from '../exportDocx'
 import { attachmentStore } from '../attachmentStore'
 import GesamtprotokollModal from './GesamtprotokollModal'
@@ -20,9 +20,15 @@ import ProtocolInfoPanel from './ProtocolInfoPanel'
 import PrintSheet from './PrintSheet'
 import { collectPrintHtml } from '../printHtml'
 import InfoItemsList from './InfoItemsList'
+import MitschriftModal from './MitschriftModal'
 
 const isElectron = typeof window !== 'undefined' && !!window.electronAPI
 const isServer   = typeof window !== 'undefined' && !!window.__SERVER_MODE__
+
+// Der Text aus der Mitschrift geht in ein Rich-Text-Feld (HTML). Ungeprueft
+// eingesetzt wuerde ein "<" im Gesagten das Feld zerlegen.
+const escHtml = (s) => String(s ?? '')
+  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 
 function formatFileSize(bytes) {
   if (!bytes) return ''
@@ -122,6 +128,7 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
   const [showEmailModal,       setShowEmailModal]       = useState(false)
   const [confirmClose,         setConfirmClose]         = useState(false)
   const [showGesamtprotokoll,  setShowGesamtprotokoll]  = useState(false)
+  const [showMitschrift,       setShowMitschrift]       = useState(false)
   const [showProtocolEmail,    setShowProtocolEmail]    = useState(false)
   const [emailMode,            setEmailMode]            = useState('send')   // 'send' | 'freigabe'
   const [printAttachmentData,  setPrintAttachmentData]  = useState({})  // attId → base64
@@ -308,6 +315,63 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
     if (protocol.phase) return
     change({ phase: predecessor.phase })
   }, [predecessor?.id]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Mitschrift → Protokollpunkte ──────────────────────────────────────────
+  //
+  // Die Punkte werden ANGEHAENGT, nie eingemischt: Was schon im Protokoll
+  // steht, hat jemand geschrieben, und das wird von einem Vorschlag nicht
+  // angefasst. Die Nummerierung laeuft hinter dem letzten Hauptpunkt weiter.
+  //
+  // Zustaendigkeit und Frist stehen am Punkt UND, wenn angehakt, in einer
+  // Massnahme. Beides, weil der Punkt die Besprechung dokumentiert und die
+  // Massnahme den Auftrag -- an der Massnahme haengen Erinnerung und
+  // Freimeldung.
+  const mitschriftUebernehmen = (punkte) => {
+    const items = protocol.agendaItems ?? []
+    const tasks = protocol.actionItems ?? []
+    let nr = items.filter(it => (it.level ?? 1) === 1)
+                  .reduce((m, it) => Math.max(m, parseInt(it.no) || 0), 0)
+    const neueItems = []
+    const neueTasks = []
+
+    for (const p of punkte) {
+      nr += 1
+      const absaetze = [
+        p.besprochen ? `<p>${escHtml(p.besprochen)}</p>` : '',
+        p.ergebnis   ? `<p><strong>Ergebnis:</strong> ${escHtml(p.ergebnis)}</p>` : '',
+      ].filter(Boolean).join('')
+
+      const item = {
+        ...emptyAgendaItem(1),
+        no:         String(nr),
+        topic:      p.thema,
+        discussion: absaetze,
+        assignedTo: p.zustaendig || '',
+        // Der Punkt traegt das Datum der BESPRECHUNG, nicht den Zeitpunkt des
+        // Einlesens -- genauso wie ein von Hand angelegter Punkt.
+        ...(protocol.date ? { createdAt: `${protocol.date}T12:00:00.000Z` } : {}),
+      }
+      neueItems.push(item)
+
+      if (p._massnahme) {
+        neueTasks.push({
+          ...emptyActionItem(),
+          no:             String(tasks.length + neueTasks.length + 1),
+          title:          p.thema,
+          description:    p.ergebnis || p.besprochen || '',
+          responsible:    p.zustaendig || '',
+          deadline:       p.frist || '',
+          protocolItemId: item.id,
+        })
+      }
+    }
+
+    change({
+      agendaItems: [...items, ...neueItems],
+      ...(neueTasks.length ? { actionItems: [...tasks, ...neueTasks] } : {}),
+    })
+    setShowMitschrift(false)
+  }
 
   // Live sync: whenever agenda changes, create/move/remove protocol items immediately.
   // "Neu erstellen" (null)  → standalone new Hauptpunkt appended at the end.
@@ -972,6 +1036,19 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
 
         {/* Protocol points */}
         <div className="py-6">
+          {/* Mitschrift einlesen – nur im Server-Modus (braucht die KI-Farm)
+              und nur, solange das Protokoll offen ist. */}
+          {isServer && !isClosed && (
+            <div className="flex items-center gap-2 mb-3 no-print">
+              <button className="btn-secondary text-sm" onClick={() => setShowMitschrift(true)}
+                      title="Aus einem Teams-Transkript Punkte vorschlagen lassen">
+                <ListChecks size={14} /> Mitschrift einlesen
+              </button>
+              <span className="text-xs text-gray-400">
+                Teams-Transkript (.vtt) → Vorschlag für Punkte. Wird angehängt, nicht eingemischt.
+              </span>
+            </div>
+          )}
           <ProtocolItems
             items={protocol.agendaItems ?? []}
             onChange={agendaItems => change({ agendaItems })}
@@ -1157,6 +1234,16 @@ export default function ProtocolEditor({ protocol, protocols, projects, projectC
           protocol={protocol}
           onClose={() => setShowEmailModal(false)}
           onSent={() => change({ agendaSentAt: new Date().toISOString() })}
+        />
+      )}
+
+      {showMitschrift && (
+        <MitschriftModal
+          projektId={protocol.projectId}
+          projektName={protocol.projectName}
+          betreff={[protocol.meetingType, protocol.subtitle].filter(Boolean).join(' – ')}
+          onApply={mitschriftUebernehmen}
+          onClose={() => setShowMitschrift(false)}
         />
       )}
 

@@ -4220,6 +4220,16 @@ require('./stammdaten').registerStammdaten(app, db, requireStammdaten)
 require('./assistent').registerAssistent(app, db, requireAuth,
                                          canAccessProject, logEvent)
 
+// ── Termine und Mitschriften ─────────────────────────────────────────────────
+// Stufe 1: Die Termine aus dem Outlook-Kalender, daraus ein vorbereitetes
+// Protokoll (Datum, Ort, Teilnehmer aus den Eingeladenen).
+// Stufe 2: Aus einem Teams-Transkript ein VORSCHLAG fuer Protokollpunkte.
+// Welche Postfaecher gelesen werden, entscheidet nicht die Nutzung, sondern
+// der Betrieb -- Begruendung und Grenzen in server/termine.js.
+require('./termine').registerTermine(app, {
+  db, requireAuth, writeLimiter, canAccessProject, logEvent,
+})
+
 // ── Spiegel: vollstaendige Projektdokumente ──────────────────────────────────
 // Fuer den Umzug der Projektdatenbank ins Dashboard. Getrennt von den
 // Stammdaten, weil es hier um das VOLLSTAENDIGE Dokument geht (inkl.

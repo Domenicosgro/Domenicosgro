@@ -193,6 +193,8 @@ Domenicosgro/
 │   │   ├── AgendaEmailModal.jsx   # Agenda per E-Mail versenden
 │   │   ├── AgendaItems.jsx        # Agenda-Punkte-Liste
 │   │   ├── ProtocolItems.jsx      # Protokollpunkte (rich text, Drag & Drop, Anhänge)
+│   │   ├── TerminePanel.jsx       # Termine aus dem Kalender → Protokoll vorbereiten (§16)
+│   │   ├── MitschriftModal.jsx    # Transkript einlesen → Vorschlag für Protokollpunkte (§16)
 │   │   ├── ActionItems.jsx        # Maßnahmen/Aufgaben-Liste (+ Freimeldung-Badge)
 │   │   ├── PersonenFeld.jsx       # Zuständigkeit für mehrere Personen (Chips, ein Textfeld dahinter)
 │   │   ├── kontaktQuellen.js      # Projektkontakte oder Kontaktdatenbank – Quellen für die Suche
@@ -223,6 +225,7 @@ Domenicosgro/
 │   ├── db.js                      # better-sqlite3 Setup + Migrationen (DB_PATH-aware)
 │   ├── auth.js                    # Session-Token-Authentifizierung (opak, 8h TTL), Token-Generator
 │   ├── synologyAuth.js            # Synology-DSM Web-API: Login + Admin-Gruppen-Check + User-Liste
+│   ├── graph.js                   # Microsoft Graph: Zugangsdaten, Token, Anfrage (für Mail UND Kalender)
 │   ├── mailer.js                  # E-Mail-Abstraktion: Microsoft Graph (OAuth2) + SMTP-Fallback
 │   ├── attachments.js             # Anhang-Endpunkte (Datei-Upload/-Download im /data-Volume)
 │   ├── gelaende.js                # Gelände-Daten je Kalenderwoche (Dashboard-Integration)
@@ -235,6 +238,7 @@ Domenicosgro/
 │   ├── assistent.js               # Assistent: Routen, Verlauf, SSE zum Browser (§15)
 │   ├── kontext.js                 # Rückgriff: Systemkopf aus dem, was die Person sehen darf
 │   ├── ki.js                      # Einzige Stelle, die das Dashboard kennt (Weg zur KI-Farm)
+│   ├── termine.js                 # Kalender lesen, Mitschrift → Protokollpunkte (§16)
 │   ├── handbuch.md                # Nutzerhandbuch – Laufzeitdatei, der Assistent liest sie
 │   ├── pm2.config.js              # PM2-Konfiguration für direkten Linux-Betrieb (ohne Docker)
 │   └── package.json               # Nur Server-Abhängigkeiten (kein Electron, kein Vite)
@@ -1679,3 +1683,126 @@ lässt sich nicht behaupten, nur messen.
 Mit `--vorschau` bleibt am Ende alles stehen (Anmeldung `anna` sieht beide
 Projekte, `bert` nur eines), um die Oberfläche anzusehen. Portblock: 3477
 Anwendung, 3478 Attrappe.
+
+---
+
+## 16. Termine und Mitschriften
+
+Zwei Dinge, die am selben Termin hängen: `server/termine.js`,
+`src/components/TerminePanel.jsx`, `src/components/MitschriftModal.jsx`.
+Prüfung: `npm run pruefe:termine`.
+
+### 16.1 Stufe 1 – der Kalender
+
+`GET /api/termine` liest `calendarView` über Microsoft Graph. Dieselbe in Entra
+registrierte App wie der Mailversand; Token und Zugangsdaten liegen seit diesem
+Umbau in `server/graph.js`, damit beide Wege **einen** Token teilen. Zusätzlich
+nötig: Anwendungsberechtigung **`Calendars.Read`**.
+
+Aus einem Termin wird ein vorbereitetes Protokoll: Datum, Uhrzeit, Ort,
+Besprechungsart (nur wenn sie im Betreff steht – sonst leer, ein falscher
+Vorschlag würde mitgedruckt), Untertitel und die **Teilnehmer**. Letzteres ist
+der eigentliche Gewinn: die Eingeladenen werden über die E-Mail gegen die
+Kontakte abgeglichen, Treffer kommen mit Firma und Rolle. Wer abgelehnt hat,
+steht als abwesend drin statt zu fehlen – eine Einladung ist keine Anwesenheit,
+der Haken bleibt beim Menschen.
+
+Die Zuordnung Termin → Projekt macht die Anwendung **nicht** automatisch.
+Betreffzeilen sehen in jedem Büro anders aus. Stattdessen ordnet man einmal zu
+(`PUT /api/termine/zuordnung`, Schlüssel ist die `iCalUId`, Ablage im
+`appState`); die Zuordnung gilt für alle, nicht nur für den, der sie gesetzt
+hat.
+
+### 16.2 Welche Postfächer gelesen werden – und warum das eine Sicherheitsfrage ist
+
+Anwendungsberechtigungen in Graph gelten **tenantweit**: mit `Calendars.Read`
+könnte diese Anwendung jeden Kalender im Haus lesen. Deshalb entscheidet nicht
+die Nutzung, welches Postfach gelesen wird, sondern `postfaecherFuer`:
+
+- das **eigene** Postfach – die Adresse aus der Benutzerverwaltung, die nur ein
+  Administrator setzen kann
+- die gemeinsamen Kalender aus **`TERMINE_KALENDER`** (Kommaliste, z. B. ein
+  Projektkalender) – ebenfalls eine Entscheidung des Betriebs
+
+Ein Eingabefeld „fremdes Postfach" gibt es absichtlich nicht. Sonst liest der
+Erste, der es ausprobiert, den Kalender der Geschäftsführung. Zweite Mauer:
+eine **Application Access Policy** in Exchange Online, die die App tenantseitig
+auf diese Postfächer beschränkt. Die Anwendung verlässt sich nicht darauf, aber
+haben will man sie.
+
+Termine mit `sensitivity: 'private'` und abgesagte werden nie ausgeliefert. Ein
+Zahnarzttermin hat in einem Bautagebuch nichts zu suchen.
+
+### 16.3 Stufe 2 – aus der Mitschrift werden Punkte
+
+`POST /api/termine/mitschrift` nimmt den Text einer `.vtt` (Teams: „Transkript
+herunterladen"), `.srt`, `.txt` oder eine abgetippte Mitschrift.
+
+- `redeAus()` wirft Zeitstempel, Block-IDs und Anmerkungen weg und fasst
+  aufeinanderfolgende Sätze desselben Sprechers zusammen. Das halbiert die
+  Zeichenzahl – und verhindert, dass das Modell Uhrzeiten als Fristen liest.
+- `abschnitte()` teilt in Stücke von ~6 000 Zeichen, **ohne einen Wortbeitrag
+  zu zerschneiden** (sonst entstehen zwei halbe Punkte an der Grenze). Deckel:
+  8 Abschnitte; darüber sagt die Antwort `gekuerzt: true`, und die Oberfläche
+  sagt es weiter.
+- Die Abschnitte gehen **nacheinander** an die KI-Farm, nicht gleichzeitig: Je
+  Anfrage wird dort eine Karte belegt, auch eine, an der jemand sitzt.
+- `punkteAus()` prüft, was zurückkommt. Kein Thema → kein Punkt. Eine Frist nur
+  als ISO-Datum in sinnvoller Nähe; „nächste Woche" ist kein Datum und wird
+  verworfen, statt geraten zu werden.
+- `jsonAus()` nimmt das JSON aus der Antwort, auch mit Zaun oder Gerede
+  drumherum. **Die Reihenfolge der Versuche richtet sich nach der Position der
+  öffnenden Klammer** – wer bei `[{…},{…}]` die geschweifte zuerst nimmt,
+  bekommt den ersten Punkt und verliert still alle anderen.
+
+Übernommen wird im Editor (`mitschriftUebernehmen`): Die Punkte werden
+**angehängt**, nie eingemischt, und die Nummerierung läuft hinter dem letzten
+Hauptpunkt weiter. Was schon im Protokoll steht, hat ein Mensch geschrieben.
+Ein angehakter Punkt mit Zuständigem und Frist wird zusätzlich eine Maßnahme
+(`protocolItemId` verknüpft beide): Der Punkt dokumentiert die Besprechung, die
+Maßnahme trägt den Auftrag – an ihr hängen Erinnerung und Freimeldung.
+
+Die Mitschrift geht an die **eigenen KI-Rechner** (`server/ki.js`), nicht an
+einen Dienst im Netz. Bei einem Wortprotokoll mit Nachunternehmern, Preisen und
+Namen ist das kein Feinheitsunterschied.
+
+### 16.4 Was bewusst fehlt
+
+**Das Transkript selbst abholen.** Graph könnte das
+(`/onlineMeetings/{id}/transcripts`, `OnlineMeetingTranscript.Read.All`), es
+hätte aber drei Haken: Es greift nur, wenn wirklich transkribiert wurde (ohne
+Teams-Richtlinie, die das automatisch startet, ist die Hälfte der Termine
+leer); Microsoft rechnet das Abholen der Inhalte über ein Azure-Abo nach
+Nutzung ab; und es geht nur für Besprechungen, deren Organisator im eigenen
+Tenant sitzt. Der Umweg über die heruntergeladene Datei kostet einen Handgriff,
+dafür nichts weiter – und er funktioniert auch mit Zoom und Webex.
+
+**Aufnehmen.** Der Mitschnitt einer Besprechung im Baucontainer wäre der
+eigentliche Hebel, ist aber ohne Zustimmung **jedes** Anwesenden eine Straftat
+(§ 201 StGB) – kein Datenschutzverstoß, eine Straftat. Solange nicht geklärt
+ist, wie diese Zustimmung in der Praxis eingeholt und nachgewiesen wird, gehört
+dafür kein Knopf in die Oberfläche.
+
+**`.docx`-Transkripte.** Auf dem Server liegt kein Zip-/Word-Leser, und für
+diesen einen Zweck lohnt keiner: Teams bietet neben `.docx` auch `.vtt` an. Das
+Hochladen einer `.docx` sagt genau das.
+
+### 16.5 Einrichten
+
+```yaml
+# docker-compose.yml auf der NAS – die Secrets gehören NICHT in Git
+GRAPH_TENANT_ID:     …        # wie für den Mailversand
+GRAPH_CLIENT_ID:     …
+GRAPH_CLIENT_SECRET: …
+TERMINE_KALENDER:    "projekte@…"   # optional: gemeinsame Kalender
+TERMINE_ZEITZONE:    "W. Europe Standard Time"   # Vorgabe
+```
+
+Dazu in Entra die Anwendungsberechtigung `Calendars.Read` erteilen (Admin-
+Zustimmung) und in der Benutzerverwaltung bei jedem Zugang die E-Mail-Adresse
+eintragen – ohne sie kennt die Anwendung kein Postfach und zeigt den Bereich
+gar nicht. Stufe 2 braucht zusätzlich nichts: sie hängt an derselben
+KI-Verbindung wie der Assistent (`KI_DASHBOARD_URL`, `KI_DASHBOARD_KEY`).
+
+Fehlt eines davon, **erscheint der Terminbereich gar nicht**. Ein leerer Kasten
+mit „nicht eingerichtet" stünde in jedem Projekt im Weg.

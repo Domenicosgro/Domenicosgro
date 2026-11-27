@@ -26,7 +26,7 @@ import Pruefstation          from './pruefstation/Pruefstation'
 import ProjektdatenView      from './components/ProjektdatenView'
 import ProjektdatenbankView  from './components/ProjektdatenbankView'
 import Assistent             from './components/Assistent'
-import { hashPassword, uid, emptyActionItem, formatDate, NOTE_TYPES } from './utils'
+import { hashPassword, uid, emptyActionItem, emptyParticipant, today, formatDate, NOTE_TYPES } from './utils'
 import { buildProjectArchivePdf, downloadPdfBase64 } from './archivePdf'
 import { deriveKey, encryptJSON, decryptJSON, newSalt } from './crypto'
 
@@ -398,12 +398,24 @@ export default function App() {
     setView('protocols')
   }
 
-  const handleCreateProtocol = () => {
+  // `vorlage` kommt aus dem Terminbereich (TerminePanel): Datum, Uhrzeit, Ort,
+  // Besprechungsart und die Teilnehmer aus den Eingeladenen. Ohne Vorlage ist
+  // es das leere Protokoll wie bisher.
+  const handleCreateProtocol = (vorlage = null) => {
     const project = projectsWithContacts.find(p => p.id === selectedProjectId)
+    const teilnehmer = (vorlage?.participants ?? []).map(p => ({ ...emptyParticipant(), ...p }))
     const id = createProtocol({
       projectId:   selectedProjectId ?? null,
       projectName: project?.name ?? '',
       phase:       selectedPhase ?? null,
+      ...(vorlage ? {
+        date:        vorlage.date        || today(),
+        time:        vorlage.time        || '',
+        location:    vorlage.location    || '',
+        meetingType: vorlage.meetingType || '',
+        subtitle:    vorlage.subtitle    || '',
+        participants: teilnehmer,
+      } : {}),
     })
     setActiveId(id)
     setView('editor')
@@ -680,6 +692,8 @@ export default function App() {
           phaseFilter={selectedPhase}
           onCreate={handleCreateProtocol}
           onOpen={handleOpenProtocol}
+          projekte={projectsWithContacts}
+          allContacts={allContacts}
           onDelete={deleteProtocol}
           onDuplicate={duplicateProtocol}
           onImport={importProtocol}

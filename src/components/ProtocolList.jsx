@@ -2,6 +2,7 @@ import React, { useState, useRef } from 'react'
 import { Plus, Trash2, Copy, FileText, Search, ChevronRight, Upload, Lock, ArrowLeft, Users, RotateCcw, Download, Box, Eye, EyeOff } from 'lucide-react'
 import { formatDate, buildProtocolNo, getChainNo, phaseBadge, PHASES,
          supersededActionIds, isMirrorAction } from '../utils'
+import TerminePanel from './TerminePanel'
 
 function formatBytes(bytes) {
   if (!bytes) return ''
@@ -14,6 +15,7 @@ const isElectron = typeof window !== 'undefined' && !!window.electronAPI
 export default function ProtocolList({
   protocols, allProtocols, project, phaseFilter, onCreate, onOpen, onDelete, onDuplicate,
   onImport, onOpenImported, onBack, onManageContacts, onRefresh, onOpenBim,
+  projekte = [], allContacts = [],
 }) {
   const pool = allProtocols ?? protocols  // fall back to current list if not provided
   const fileInputRef = useRef(null)
@@ -285,6 +287,17 @@ export default function ProtocolList({
           )}
         </div>
       )}
+
+      {/* Termine aus dem Kalender – nur im Server-Modus und nur, wenn der
+          Betrieb Microsoft Graph eingerichtet hat (siehe server/termine.js).
+          Die Projektkontakte stehen vorn: sie haben Rolle und Gewerk, die
+          projektübergreifende Liste hat nur die Grunddaten. */}
+      <TerminePanel
+        project={project}
+        projekte={projekte}
+        kontakte={[...contacts, ...allContacts]}
+        onVorbereiten={onCreate}
+      />
 
       {/* BIM-Verknüpfung */}
       {project?.bimMeta && onOpenBim && (

@@ -21,50 +21,20 @@
 const fs         = require('fs')
 const nodemailer = require('nodemailer')
 
-const GRAPH_SCOPE      = 'https://graph.microsoft.com/.default'
-// Basis-URLs überschreibbar, damit der Versandweg gegen eine Attrappe geprüft
-// werden kann (Testläufe ohne echtes Microsoft-365-Konto).
-const GRAPH_BASE       = process.env.GRAPH_BASE_URL  || 'https://graph.microsoft.com/v1.0'
-const GRAPH_LOGIN_BASE = process.env.GRAPH_LOGIN_URL || 'https://login.microsoftonline.com'
+// Zugangsdaten und Token kommen aus server/graph.js -- dieselbe registrierte
+// App, derselbe Token wie fuer die Termine. Hier bleibt nur das, was den
+// VERSAND ausmacht: das Absenderpostfach.
+const graph = require('./graph')
+const GRAPH_BASE = process.env.GRAPH_BASE_URL || 'https://graph.microsoft.com/v1.0'
 
 function graphConfig() {
-  const tenant = process.env.GRAPH_TENANT_ID
-  const client = process.env.GRAPH_CLIENT_ID
-  const secret = process.env.GRAPH_CLIENT_SECRET
+  const auth   = graph.graphAuth()
   const sender = process.env.GRAPH_SENDER || process.env.SMTP_FROM || process.env.SMTP_USER
-  if (tenant && client && secret && sender) return { tenant, client, secret, sender }
+  if (auth && sender) return { ...auth, sender }
   return null
 }
 
-// ── OAuth2-Token (Client Credentials) mit einfachem In-Memory-Cache ───────────
-let _tokenCache = { token: null, expiresAt: 0 }
-
-async function getGraphToken({ tenant, client, secret }) {
-  const now = Date.now()
-  if (_tokenCache.token && now < _tokenCache.expiresAt - 60_000) return _tokenCache.token
-
-  const url  = `${GRAPH_LOGIN_BASE}/${encodeURIComponent(tenant)}/oauth2/v2.0/token`
-  const body = new URLSearchParams({
-    client_id:     client,
-    client_secret: secret,
-    scope:         GRAPH_SCOPE,
-    grant_type:    'client_credentials',
-  })
-  const res = await fetch(url, {
-    method:  'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body:    body.toString(),
-  })
-  const data = await res.json().catch(() => ({}))
-  if (!res.ok) {
-    throw new Error(`Graph-Token fehlgeschlagen (${res.status}): ${data.error_description || data.error || 'unbekannt'}`)
-  }
-  _tokenCache = {
-    token:     data.access_token,
-    expiresAt: now + (data.expires_in || 3600) * 1000,
-  }
-  return _tokenCache.token
-}
+const getGraphToken = (cfg) => graph.graphToken(cfg)
 
 // ── Hilfsfunktionen ───────────────────────────────────────────────────────────
 // "Anzeigename <adresse@domain>" oder "adresse@domain" → { name, address }
