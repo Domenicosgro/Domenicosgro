@@ -488,6 +488,31 @@ Eigene Vorlagen stehen danach im Menü „Neue Notiz" unter *Eigene Vorlagen* un
 gelten für das ganze Büro. Löschen geht im selben Fenster über das
 Mülleimer-Symbol.
 
+### Kontakte in einer Notiz
+
+Überall, wo in einer Notiz ein Name einzutragen ist — Gesprächspartner,
+Teilnehmer, Zuständige —, wird **gesucht statt gescrollt**. Tippen Sie die
+ersten Buchstaben, die Vorschläge werden mit jedem Buchstaben enger.
+
+Über der Vorschlagsliste stehen zwei Schaltflächen:
+
+| | |
+|---|---|
+| **Projekt** | die Kontakte dieses Projekts — meistens die richtige Wahl |
+| **Kontaktdatenbank** | alle Kontakte aus allen Projekten |
+
+Sie müssen aber gar nicht wissen, wo jemand steht: Finden wir in der einen
+Quelle nichts, steht unter der Liste **„1 weiterer Treffer in
+,Kontaktdatenbank' – umschalten"**. Ein Klick, und der Kontakt ist da.
+
+Ganz oben stehen die **häufig genutzten** Kontakte — das Tool merkt sich, mit
+wem Sie oft zu tun haben. Wer gar nicht in der Datenbank steht, wird einfach
+eingetippt; **Enter** übernimmt den Namen.
+
+**Zuständig können mehrere sein.** Namen werden nacheinander eingetragen und
+stehen dann als kleine Felder nebeneinander; das x daneben entfernt einen
+wieder. Im Ausdruck erscheinen sie durch · getrennt.
+
 ### Punkte in einer Notiz (Akten- und Telefonnotizen)
 
 Unter dem Inhalt einer Notiz steht **„Punkte dieser Notiz"** — eine Tabelle:

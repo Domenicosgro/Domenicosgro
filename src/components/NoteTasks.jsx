@@ -4,7 +4,8 @@ import {
   CheckCircle2, Circle, ChevronUp, ChevronDown,
 } from 'lucide-react'
 import { ACTION_STATUSES, PRIORITIES, emptyNoteTask, formatDate } from '../utils'
-import ContactAutocomplete from './ContactAutocomplete'
+import PersonenFeld from './PersonenFeld'
+import { kontaktQuellen } from './kontaktQuellen'
 
 // ── Die Punkte einer Notiz ───────────────────────────────────────────────────
 //
@@ -19,6 +20,10 @@ import ContactAutocomplete from './ContactAutocomplete'
 // briefmarkengroße Felder und sieht den eigenen Satz nicht. Gedruckt wird
 // dann als Tabelle — quer, damit die Spalten Platz haben
 // (`buildNotePrintHtml`, `notePdf.js`).
+//
+// Zuständig können **mehrere** sein (`PersonenFeld`); gespeichert bleibt ein
+// Text mit „ · " dazwischen, damit Ausdruck, PDF, E-Mail und die Maßnahme im
+// Protokoll unverändert damit umgehen können.
 //
 // Ein Punkt ohne Zuständigen und Frist ist eine Feststellung, mit beidem eine
 // Aufgabe — derselbe Datensatz, dieselben Felder wie eine Maßnahme im
@@ -53,8 +58,11 @@ function WachsendesFeld({ value, onChange, className = '', ...rest }) {
 }
 
 export default function NoteTasks({
-  note, contacts = [], protocols = [], onUpdate, onAddToProtocol,
+  note, contacts = [], allContacts = [], protocols = [], onUpdate, onAddToProtocol,
 }) {
+  // Projektkontakte und Kontaktdatenbank stehen beide zur Wahl – wer einen
+  // Punkt vergibt, meint nicht immer jemanden aus diesem Projekt.
+  const quellen = useMemo(() => kontaktQuellen(contacts, allContacts), [contacts, allContacts])
   const tasks = Array.isArray(note.actionItems) ? note.actionItems : []
   const [protoWahl, setProtoWahl] = useState(false)
 
@@ -186,12 +194,11 @@ export default function NoteTasks({
                 <div className="flex items-center gap-3 pl-14 flex-wrap">
                   <div className="flex items-center gap-1">
                     <User size={12} className="text-gray-400 flex-shrink-0" />
-                    <ContactAutocomplete
+                    <PersonenFeld
                       className={`input py-0.5 text-xs w-40 ${fertig ? 'text-gray-400' : ''}`}
-                      placeholder="Zuständig…"
                       value={t.responsible || ''}
                       onChange={(v) => setze(t.id, { responsible: v })}
-                      contacts={contacts}
+                      quellen={quellen}
                       extraOptions={vorschlaege}
                       preferredLabel="Teilnehmer dieser Notiz" />
                   </div>

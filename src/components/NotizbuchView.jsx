@@ -1,9 +1,10 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react'
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import {
   ArrowLeft, Plus, Trash2, ChevronRight, ChevronDown,
   BookOpen, Printer, Mail, X, CheckSquare, Square, PanelLeftClose, PanelLeftOpen,
 } from 'lucide-react'
-import ContactAutocomplete from './ContactAutocomplete'
+import PersonenFeld from './PersonenFeld'
+import { kontaktQuellen } from './kontaktQuellen'
 import { useNotebook } from '../hooks/useNotebook'
 import { uid } from '../utils'
 import RichTextEditor from './RichTextEditor'
@@ -107,7 +108,7 @@ function TopicItem({ topic, selectedNoteId, onSelectNote, onAddNote, onDeleteTop
 
 // ── Task row ──────────────────────────────────────────────────────────────────
 
-function TaskRow({ task, contacts, onChange, onDelete }) {
+function TaskRow({ task, quellen, onChange, onDelete }) {
   return (
     <div className="flex items-start gap-2 group py-1">
       <button
@@ -125,11 +126,11 @@ function TaskRow({ task, contacts, onChange, onDelete }) {
         placeholder="Aufgabe…"
         onChange={e => onChange({ text: e.target.value })}
       />
-      <ContactAutocomplete
-        className="input text-xs w-28 py-0.5 shrink-0"
+      <PersonenFeld
+        className="input text-xs w-28 py-0.5"
         placeholder="Zuständig"
         value={task.assignedTo || ''}
-        contacts={contacts}
+        quellen={quellen}
         onChange={v => onChange({ assignedTo: v })}
       />
       <input
@@ -234,7 +235,7 @@ function EmailModal({ project, selNote, selTopic, onClose }) {
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export default function NotizbuchView({ project, serverUser, onBack, tabs }) {
+export default function NotizbuchView({ project, allContacts = [], serverUser, onBack, tabs }) {
   const { notebook, loaded, saving, addTopic, updateTopic, deleteTopic, addNote, updateNote, deleteNote } = useNotebook(project.id)
 
   const [selectedTopicId, setSelectedTopicId] = useState(null)
@@ -249,6 +250,8 @@ export default function NotizbuchView({ project, serverUser, onBack, tabs }) {
   const selTopic = topics.find(t => t.id === selectedTopicId) ?? null
   const selNote  = selTopic?.notes?.find(n => n.id === selectedNoteId) ?? null
   const contacts = project.contacts || []
+  // Projektkontakte und Kontaktdatenbank – dieselbe Wahl wie in den Notizen.
+  const quellen  = useMemo(() => kontaktQuellen(contacts, allContacts), [contacts, allContacts])
 
   // Auto-select first topic/note on load
   useEffect(() => {
@@ -474,7 +477,7 @@ export default function NotizbuchView({ project, serverUser, onBack, tabs }) {
                     <TaskRow
                       key={task.id}
                       task={task}
-                      contacts={contacts}
+                      quellen={quellen}
                       onChange={patch => handleChangeTask(task.id, patch)}
                       onDelete={() => handleDeleteTask(task.id)}
                     />

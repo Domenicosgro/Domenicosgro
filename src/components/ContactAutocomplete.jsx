@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import {
   useContactUsage, useStableScore, matchesTerm, matchRank,
-  splitFrequent, FREQUENT_LABEL, REST_LABEL,
+  splitFrequent, FREQUENT_LABEL, REST_LABEL, usageKey,
 } from '../contactUsage'
 
 // Wiederverwendbares Namensfeld mit smarter Suche: Bei Eingabe der ersten
@@ -24,10 +24,33 @@ const labelOf = (c) =>
 // naheliegenden sind, stehen oben in einer eigenen Gruppe – z. B. die
 // Mitarbeiter der bereits gewählten Firma. Alle übrigen Kontakte bleiben
 // erreichbar, Freitext ebenfalls.
+//
+// quellen: mehrere Kontaktquellen zur Auswahl, z. B.
+// [{ id: 'projekt', label: 'Projekt', contacts }, { id: 'alle', label: 'Kontaktdatenbank', contacts }].
+// Dann steht über der Liste eine Umschaltung, und die Wahl bleibt gemerkt
+// (`quelleKey`). Wichtig für die Bedienung: wer in der einen Quelle sucht und
+// nichts findet, bekommt die Treffer der anderen **angeboten** – niemand soll
+// raten müssen, in welcher Schublade jemand steckt.
+//
+// onPick(label, option): ein Eintrag wurde gewählt (nicht: getippt).
+// onSubmit(text): Enter, ohne dass ein Vorschlag hervorgehoben war.
+const quelleLesen = (quellen, key) => {
+  if (!quellen?.length) return null
+  try {
+    const v = localStorage.getItem(key)
+    if (quellen.some(q => q.id === v)) return v
+  } catch {}
+  return quellen[0].id
+}
+
 export default function ContactAutocomplete({
   value,
   onChange,
   contacts = [],
+  quellen = null,
+  quelleKey = 'kp_kontaktquelle',
+  onPick = null,
+  onSubmit = null,
   preferred = null,
   preferredLabel = 'Passend zur Auswahl',
   extraOptions = [],
@@ -50,15 +73,25 @@ export default function ContactAutocomplete({
 
   const q = (value || '').toLowerCase().trim()
 
+  // Gewählte Quelle. Ohne `quellen` bleibt alles wie bisher.
+  const [quelleId, setQuelleId] = useState(() => quelleLesen(quellen, quelleKey))
+  const aktiveQuelle = quellen?.find(x => x.id === quelleId) || quellen?.[0] || null
+  const liste = aktiveQuelle ? (aktiveQuelle.contacts || []) : contacts
+  const quelleWaehlen = (id) => {
+    setQuelleId(id)
+    try { localStorage.setItem(quelleKey, id) } catch {}
+    place()
+  }
+
   const isPreferred = useCallback(
     (c) => (typeof preferred === 'function' ? !!preferred(c) : false),
     [preferred])
 
   const matches = useMemo(() => {
-    if (!contacts.length) return []
+    if (!liste.length) return []
     // Nach Anzeige-Wert deduplizieren
     const seen = new Set()
-    return contacts
+    return liste
       .filter(c => matchesTerm(c, q))
       .map(c => ({ c, label: labelOf(c), score: scoreOf(c), pref: isPreferred(c) }))
       .filter(({ label }) => label && !seen.has(label) && seen.add(label))
@@ -70,7 +103,20 @@ export default function ContactAutocomplete({
         || b.score - a.score
         || a.label.localeCompare(b.label, 'de'))
       .slice(0, 10)
-  }, [contacts, q, scoreOf, isPreferred])
+  }, [liste, q, scoreOf, isPreferred])
+
+  // Treffer in den übrigen Quellen – nur solche, die hier nicht ohnehin stehen.
+  const woanders = useMemo(() => {
+    if (!quellen || quellen.length < 2 || !q) return []
+    const hier = new Set(liste.filter(c => matchesTerm(c, q)).map(usageKey))
+    return quellen
+      .filter(x => x.id !== aktiveQuelle?.id)
+      .map(x => ({
+        id: x.id, label: x.label,
+        treffer: (x.contacts || []).filter(c => matchesTerm(c, q) && !hier.has(usageKey(c))).length,
+      }))
+      .filter(x => x.treffer > 0)
+  }, [quellen, aktiveQuelle, liste, q])
 
   // Feste Auswahleinträge zuerst, danach – ohne Suchtext gruppiert – die Kontakte:
   // „Häufig genutzt" vor „Weitere Kontakte".
@@ -97,14 +143,17 @@ export default function ContactAutocomplete({
     if (el) setRect(el.getBoundingClientRect())
   }, [])
 
-  const openMenu = () => { if (contacts.length || extraOptions.length) { place(); setHi(-1); setOpen(true) } }
+  const hatAuswahl = liste.length || extraOptions.length || (quellen?.length > 1)
+  const openMenu = () => { if (hatAuswahl) { place(); setHi(-1); setOpen(true) } }
   const close    = () => { setOpen(false); setHi(-1) }
 
   const choose = (opt) => {
     // opt kann ein Options-Objekt (mit Kontakt) oder ein reiner Label-String sein.
     const label = typeof opt === 'string' ? opt : opt.label
     if (typeof opt === 'object' && opt.kind === 'contact') record(opt.c)
-    onChange(label); close(); inputRef.current?.focus()
+    onChange(label)
+    onPick?.(label, typeof opt === 'object' ? opt : null)
+    close(); inputRef.current?.focus()
   }
 
   const isSelectable = (o) => o && o.kind !== 'header'
@@ -135,10 +184,16 @@ export default function ContactAutocomplete({
 
   const onKeyDown = (e) => {
     if (!open && (e.key === 'ArrowDown')) { openMenu(); return }
-    if (!open) return
+    if (!open) {
+      if (e.key === 'Enter' && onSubmit && (value || '').trim()) { e.preventDefault(); onSubmit(value.trim()) }
+      return
+    }
     if (e.key === 'ArrowDown')      { e.preventDefault(); setHi(h => { const n = firstSelectable(h + 1, +1); return n === -1 ? h : n }) }
     else if (e.key === 'ArrowUp')   { e.preventDefault(); setHi(h => { const n = firstSelectable(h - 1, -1); return n === -1 ? h : n }) }
-    else if (e.key === 'Enter')     { if (hi >= 0 && isSelectable(options[hi])) { e.preventDefault(); choose(options[hi]) } }
+    else if (e.key === 'Enter')     {
+      if (hi >= 0 && isSelectable(options[hi])) { e.preventDefault(); choose(options[hi]) }
+      else if (onSubmit && (value || '').trim()) { e.preventDefault(); onSubmit(value.trim()); close() }
+    }
     else if (e.key === 'Escape')    { close() }
   }
 
@@ -157,12 +212,39 @@ export default function ContactAutocomplete({
         onKeyDown={onKeyDown}
         autoComplete="off"
       />
-      {open && rect && options.length > 0 && createPortal(
+      {open && rect && (options.length > 0 || quellen?.length > 1) && createPortal(
         <div
           ref={listRef}
           className="fixed z-[9999] bg-white border border-brand-200 shadow-lg max-h-60 overflow-y-auto text-sm"
-          style={{ top: rect.bottom + 2, left: rect.left, width: Math.max(rect.width, 220) }}
+          // Nicht breiter als nötig: ein 1000 Pixel breites Menü zwingt das Auge quer
+          // über den Schirm, obwohl drei Namen darin stehen.
+          style={{ top: rect.bottom + 2, left: rect.left, width: Math.min(Math.max(rect.width, 240), 460) }}
         >
+          {quellen?.length > 1 && (
+            <div className="flex gap-1 p-1 border-b border-gray-100 bg-gray-50 sticky top-0 z-10">
+              {quellen.map(x => (
+                <button
+                  key={x.id} type="button"
+                  className={`flex-1 text-xs px-2 py-1 border ${
+                    x.id === aktiveQuelle?.id
+                      ? 'bg-brand-600 text-white border-brand-600'
+                      : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}
+                  onMouseDown={e => { e.preventDefault(); quelleWaehlen(x.id) }}
+                  title={`${(x.contacts || []).length} Kontakte`}
+                >
+                  {x.label}
+                  <span className={`ml-1 ${x.id === aktiveQuelle?.id ? 'text-white/70' : 'text-gray-400'}`}>
+                    {(x.contacts || []).length}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+          {options.length === 0 && (
+            <div className="px-3 py-2 text-xs text-gray-400">
+              {q ? 'Hier kein Treffer.' : 'Keine Kontakte in dieser Quelle.'}
+            </div>
+          )}
           {options.map((o, i) => (
             o.kind === 'header' ? (
               <div key={`h-${o.label}-${i}`}
@@ -193,6 +275,15 @@ export default function ContactAutocomplete({
               )}
             </button>
             )
+          ))}
+          {woanders.map(x => (
+            <button
+              key={`w-${x.id}`} type="button"
+              className="w-full text-left px-3 py-1.5 text-xs text-brand-700 bg-sky/5 border-t border-gray-100 hover:bg-sky/10"
+              onMouseDown={e => { e.preventDefault(); quelleWaehlen(x.id) }}
+            >
+              {x.treffer} {x.treffer === 1 ? 'weiterer Treffer' : 'weitere Treffer'} in „{x.label}“ – umschalten
+            </button>
           ))}
         </div>,
         document.body,

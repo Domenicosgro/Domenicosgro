@@ -891,6 +891,7 @@ export default function App() {
         {notesTab === 'notizbuch'
           ? <NotizbuchView
               project={project}
+              allContacts={allContacts}
               serverUser={effectiveUser}
               onBack={() => setView('project-dashboard')}
               tabs={tabs}

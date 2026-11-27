@@ -175,6 +175,7 @@ Domenicosgro/
 │   ├── planVorschau.js            # PDF → PNG im Browser, pdfjs wird nachgeladen
 │   ├── maengelliste.js            # Mängelliste als Dokument (Anlage zur Abnahme)
 │   ├── druckSeiten.js             # Seitenumbruch von Hand: Fußzeile mit Logos und „Seite x von y“
+│   ├── contactUsage.jsx           # wie oft ein Kontakt genutzt wird → Reihenfolge der Vorschläge
 │   │
 │   ├── components/
 │   │   ├── ProjectsHome.jsx       # Startseite: Projektliste, Favoriten, PWA-Install, Import, Admin-Kachel
@@ -193,6 +194,8 @@ Domenicosgro/
 │   │   ├── AgendaItems.jsx        # Agenda-Punkte-Liste
 │   │   ├── ProtocolItems.jsx      # Protokollpunkte (rich text, Drag & Drop, Anhänge)
 │   │   ├── ActionItems.jsx        # Maßnahmen/Aufgaben-Liste (+ Freimeldung-Badge)
+│   │   ├── PersonenFeld.jsx       # Zuständigkeit für mehrere Personen (Chips, ein Textfeld dahinter)
+│   │   ├── kontaktQuellen.js      # Projektkontakte oder Kontaktdatenbank – Quellen für die Suche
 │   │   ├── FreimeldungBadge.jsx   # Badge + Modal für Aufgaben-Freimeldungen (Server-Modus)
 │   │   ├── MassnahmenDashboard.jsx# Projektübergreifende Maßnahmen + Aufgaben-E-Mail-Versand
 │   │   ├── PersonalplanungView.jsx# Personalplanung (Wochenraster, Mitarbeiter, Teams, Gelände)
@@ -1046,6 +1049,47 @@ deshalb mit dem Inhalt (`WachsendesFeld`). **Gedruckt** wird als Tabelle.
   Format hinter der Querseite.
 - `buildNotePrintHtml` ist exportiert, damit die drei Formate ohne Browser
   geprüft werden können.
+
+### Kontakte in den Notizen: zwei Quellen, eine Bedienung
+`src/components/kontaktQuellen.js` + `quellen`-Prop von `ContactAutocomplete`.
+
+Zwei Töpfe stehen zur Wahl: die Kontakte **dieses Projekts** und die
+projektübergreifende **Kontaktdatenbank** (`allContacts` aus `App.jsx`).
+Vorgabe ist das Projekt; die Wahl bleibt in `localStorage` unter
+`kp_kontaktquelle`.
+
+- Der entscheidende Teil ist nicht die Umschaltung, sondern: **wer in der einen
+  Quelle sucht und nichts findet, bekommt die Treffer der anderen angeboten**
+  („1 weiterer Treffer in ‚Kontaktdatenbank' – umschalten"). Niemand soll
+  raten müssen, in welcher Schublade jemand steckt.
+- Die Reihenfolge der Vorschläge kommt weiterhin aus `contactUsage.jsx`:
+  „★ Häufig genutzt" vor „Weitere Kontakte", pro Nutzer gezählt.
+- Ist ein Topf leer, fällt er weg – eine Umschaltung mit einer Seite wäre nur
+  ein Knopf, der nichts tut.
+- Neue Props an `ContactAutocomplete`: `quellen`, `quelleKey`, `onPick(label,
+  option)` (ein Eintrag wurde **gewählt**, nicht getippt), `onSubmit(text)`
+  (Enter ohne hervorgehobenen Vorschlag → Freitext übernehmen).
+- Betroffen: Gesprächspartner und Teilnehmer der Notiz (statt der alten
+  Auswahllisten – eine Liste mit 300 Kontakten ist keine Bedienung), die
+  Zuständigkeit der Notizpunkte und die Aufgaben im Notizbuch. Der
+  verknüpfte Kontakt wird deshalb in **beiden** Töpfen gesucht, sonst wäre ein
+  Kontakt aus der Datenbank nach dem Neuladen wieder namenlos.
+
+### Zuständigkeit für mehrere Personen
+`src/components/PersonenFeld.jsx` – Chips statt eines einzelnen Namens.
+
+**Gespeichert wird weiterhin ein Text**, die Namen mit `·` verbunden
+(`TRENNER`). Das ist Absicht: Zuständigkeiten stehen im Ausdruck, im PDF, in
+der E-Mail, in der Maßnahme im Protokoll und in der Freimeldung durch die
+Firma – ein eigenes Datenformat hätte jede dieser Stellen angefasst, und alte
+Notizen hätten umziehen müssen. Ein einzelner Name bleibt genau das, was er
+vorher war. Der Mittelpunkt steht in Namen nicht, anders als das Komma
+(„Müller, Meier & Co").
+
+Verwendet in `NoteTasks.jsx` (Punkte der Notiz) und `NotizbuchView.jsx`
+(Aufgaben). Die Maßnahmen im Protokoll (`ActionItems.jsx`) haben weiterhin
+einen Zuständigen – dort hängen Erinnerung und Freimeldung an genau einer
+Adresse.
 
 ### Fußzeile und Seitenzählung
 `src/druckSeiten.js` – **Seitenumbruch von Hand.**

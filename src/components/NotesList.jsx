@@ -8,6 +8,8 @@ import RichTextEditor from './RichTextEditor'
 import NoteTasks from './NoteTasks'
 import { buildNotePdf } from '../notePdf'
 import { seitenAufteilen, blattBreite, fussCss } from '../druckSeiten'
+import ContactAutocomplete from './ContactAutocomplete'
+import { kontaktQuellen } from './kontaktQuellen'
 
 const isServer = typeof window !== 'undefined' && !!window.__SERVER_MODE__
 
@@ -244,7 +246,8 @@ function NoteEmailModal({ note, contacts, allContacts, projectName, logoDataUrl,
   const [error,        setError]        = useState('')
 
   const contactsWithEmail = contacts.filter(c => c.email)
-  const linkedContact     = contacts.find(c => c.id === note.linkedContactId) ?? null
+  const linkedContact     = [...(contacts ?? []), ...(allContacts ?? [])]
+    .find(c => c.id === note.linkedContactId) ?? null
 
   // Kontaktdatenbank (projektübergreifend) – nur mit E-Mail, gefiltert per Suche
   const dbContacts = useMemo(() => {
@@ -579,7 +582,10 @@ function VorlagenDialog({ note, vorlagen, onAnwenden, onSpeichern, onLoeschen, o
 function NoteEditor({ note, contacts, allContacts, projectName, logoDataUrl, clientLogoDataUrl, onUpdate, onDelete, onSendEmail, protocols = [], onAddToProtocol = null, vorlagen = [], onVorlageSpeichern = null, onVorlageLoeschen = null }) {
   const set = (field) => (val) => onUpdate(note.id, { [field]: typeof val === 'object' && val?.target ? val.target.value : val })
 
-  const linkedContact = contacts.find(c => c.id === note.linkedContactId)
+  // Auch die Kontaktdatenbank, nicht nur das Projekt – sonst wäre ein von dort
+  // gewählter Gesprächspartner nach dem Neuladen wieder namenlos.
+  const linkedContact = [...(contacts ?? []), ...(allContacts ?? [])]
+    .find(c => c.id === note.linkedContactId)
   const typeInfo = NOTE_TYPES.find(t => t.value === note.type) ?? NOTE_TYPES[0]
 
   // Teilnehmer aus Kontakten (Projektkontakte + Kontaktdatenbank, dedupliziert)
@@ -602,12 +608,22 @@ function NoteEditor({ note, contacts, allContacts, projectName, logoDataUrl, cli
   }, [contacts, allContacts])
 
   const availableContacts = contactPool.filter(c => !participantKeys.has(contactKey(c)))
+  // Zwei Quellen zur Wahl: die Kontakte dieses Projekts und die
+  // projektübergreifende Datenbank. Bereits eingetragene Teilnehmer fallen raus.
+  const quellen = useMemo(
+    () => kontaktQuellen(
+      (contacts ?? []).filter(c => !participantKeys.has(contactKey(c))),
+      availableContacts),
+    [contacts, availableContacts, participants])
+  const quellenAlle = useMemo(() => kontaktQuellen(contacts, allContacts), [contacts, allContacts])
+  const [teilnehmerSuche, setTeilnehmerSuche] = useState('')
+  const [kontaktSuche,    setKontaktSuche]    = useState('')
   const formatLabel = DRUCKFORMATE.find(f => f.id === druckFormat)?.label || 'Format wählen'
 
-  const addParticipant = (key) => {
-    const c = contactPool.find(x => contactKey(x) === key)
+  const addParticipant = (c) => {
     if (!c) return
     const entry = { id: c.id || uid(), name: c.name || '', company: c.company || '', email: c.email || '' }
+    if (participantKeys.has(contactKey(entry))) return
     onUpdate(note.id, { participants: [...participants, entry] })
   }
 
@@ -651,26 +667,42 @@ function NoteEditor({ note, contacts, allContacts, projectName, logoDataUrl, cli
         <input className="input text-sm" placeholder="Betreff / Thema" value={note.subject || ''} onChange={set('subject')} />
       </div>
 
-      {/* Linked contact */}
-      {contacts.length > 0 && (
+      {/* Gesprächspartner – aus dem Projekt oder aus der Kontaktdatenbank */}
+      {quellenAlle.length > 0 && (
         <div>
           <label className="text-xs font-medium text-gray-500 block mb-1">
             {note.type === 'telefonnotiz' ? 'Gesprächspartner (Kontakt)' : 'Verknüpfter Kontakt'}
           </label>
-          <select
-            className="input text-sm"
-            value={note.linkedContactId || ''}
-            onChange={e => onUpdate(note.id, { linkedContactId: e.target.value || null })}
-          >
-            <option value="">– kein Kontakt –</option>
-            {contacts.map(c => (
-              <option key={c.id} value={c.id}>{c.name}{c.company ? ` (${c.company})` : ''}</option>
-            ))}
-          </select>
-          {linkedContact?.phone && (
-            <a href={`tel:${linkedContact.phone}`} className="inline-flex items-center gap-1 mt-1 text-xs text-gray-500 hover:text-brand-600">
-              <Phone size={11} /> {linkedContact.phone}
-            </a>
+          {linkedContact ? (
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="inline-flex items-center gap-1 text-sm px-2 py-1 bg-brand-50 border border-brand-100 text-brand-800">
+                {linkedContact.name || linkedContact.company}
+                {linkedContact.company && linkedContact.name && (
+                  <span className="text-brand-400">({linkedContact.company})</span>
+                )}
+                <button className="ml-0.5 text-brand-400 hover:text-red-500"
+                        onClick={() => onUpdate(note.id, { linkedContactId: null })}
+                        title="Kontakt entfernen">
+                  <X size={12} />
+                </button>
+              </span>
+              {linkedContact.phone && (
+                <a href={`tel:${linkedContact.phone}`} className="inline-flex items-center gap-1 text-xs text-gray-500 hover:text-brand-600">
+                  <Phone size={11} /> {linkedContact.phone}
+                </a>
+              )}
+            </div>
+          ) : (
+            <ContactAutocomplete
+              className="input text-sm"
+              placeholder="Kontakt suchen…"
+              value={kontaktSuche}
+              onChange={setKontaktSuche}
+              onPick={(label, opt) => {
+                if (opt?.c?.id) onUpdate(note.id, { linkedContactId: opt.c.id })
+                setKontaktSuche('')
+              }}
+              quellen={quellenAlle} />
           )}
         </div>
       )}
@@ -693,18 +725,25 @@ function NoteEditor({ note, contacts, allContacts, projectName, logoDataUrl, cli
             ))}
           </div>
         )}
-        <select
+        {/* Suchen statt scrollen: eine Auswahlliste mit 300 Kontakten ist keine.
+            Freitext bleibt erlaubt – nicht jeder am Tisch steht in der Datenbank. */}
+        <ContactAutocomplete
           className="input text-sm"
-          value=""
-          onChange={e => { if (e.target.value) addParticipant(e.target.value) }}
-        >
-          <option value="">＋ Teilnehmer aus Kontakten hinzufügen…</option>
-          {availableContacts.map(c => (
-            <option key={contactKey(c)} value={contactKey(c)}>
-              {c.name || c.company}{c.company && c.name ? ` (${c.company})` : ''}{c.email ? ` · ${c.email}` : ''}
-            </option>
-          ))}
-        </select>
+          placeholder="Teilnehmer suchen oder eintragen…"
+          value={teilnehmerSuche}
+          onChange={setTeilnehmerSuche}
+          onPick={(label, opt) => {
+            addParticipant(opt?.c || { name: label })
+            setTeilnehmerSuche('')
+          }}
+          onSubmit={(text) => { addParticipant({ name: text }); setTeilnehmerSuche('') }}
+          quellen={quellen}
+          quelleKey="kp_kontaktquelle" />
+        {teilnehmerSuche.trim() && (
+          <p className="text-xs text-gray-400 mt-1">
+            Enter trägt „{teilnehmerSuche.trim()}“ als Teilnehmer ein – auch ohne Kontakt in der Datenbank.
+          </p>
+        )}
       </div>
 
       {/* Content */}
@@ -723,7 +762,8 @@ function NoteEditor({ note, contacts, allContacts, projectName, logoDataUrl, cli
       {/* Aufgaben mit Zuständigem und Frist */}
       <NoteTasks
         note={note}
-        contacts={allContacts && allContacts.length ? allContacts : contacts}
+        contacts={contacts}
+        allContacts={allContacts}
         protocols={protocols}
         onUpdate={onUpdate}
         onAddToProtocol={onAddToProtocol} />
