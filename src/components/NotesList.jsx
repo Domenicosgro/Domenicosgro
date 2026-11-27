@@ -7,6 +7,7 @@ import { formatDate, NOTE_TYPES, NOTE_TEMPLATES, emptyNote, uid,
 import RichTextEditor from './RichTextEditor'
 import NoteTasks from './NoteTasks'
 import { buildNotePdf } from '../notePdf'
+import { seitenAufteilen, blattBreite, fussCss } from '../druckSeiten'
 
 const isServer = typeof window !== 'undefined' && !!window.__SERVER_MODE__
 
@@ -59,15 +60,13 @@ export function buildNotePrintHtml(note, contact, projectName, logoDataUrl, clie
   const typeInfo = NOTE_TYPES.find(t => t.value === note.type) ?? NOTE_TYPES[0]
   const today    = new Date().toISOString().slice(0, 10)
 
-  const officeImg = logoDataUrl
-    ? `<img src="${logoDataUrl}" style="height:40px;max-width:120px;object-fit:contain;display:block;">`
-    : ''
-  const clientImg = clientLogoDataUrl
-    ? `<img src="${clientLogoDataUrl}" style="height:40px;max-width:120px;object-fit:contain;display:block;">`
-    : ''
-  const logoHtml = (officeImg || clientImg)
-    ? `<div style="display:flex;align-items:flex-end;gap:14px;">${officeImg}${clientImg}</div>`
-    : '<div style="height:40px"></div>'
+  // Die Logos stehen in der Fußzeile, klein, auf jeder Seite – oben steht
+  // dafür der Betreff. Größe und Rahmen setzt `fussCss()`.
+  const bild = (quelle) => quelle ? `<img src="${quelle}">` : ''
+  const logoHtml = `${bild(logoDataUrl)}${bild(clientLogoDataUrl)}`
+  // Attribut: Anführungszeichen im Betreff würden es sonst zerreißen.
+  const fussText = [projectName, note.subject].filter(Boolean).map(esc).join(' · ')
+    .replace(/"/g, '&quot;')
 
   // Metadaten-Zeilen (nur befüllte anzeigen)
   const metaRows = []
@@ -112,18 +111,18 @@ export function buildNotePrintHtml(note, contact, projectName, logoDataUrl, clie
   // Benannte Seiten (@page quer) kennen Chrome und Edge; kann ein Browser sie
   // nicht, druckt er die Tabelle hochkant weiter – unschoener, aber lesbar.
   const tasksHtml = tasks.length === 0 ? '' : `
-    <div class="punkte">
-      <p style="font-size:7pt;text-transform:uppercase;letter-spacing:.05em;color:#777;margin:0 0 2mm;">Punkte</p>
-      <table style="width:100%;border-collapse:collapse;font-size:9pt;">
-        <tr>
+    <div class="gruppe punkte" data-quer="${format === 'hoch' ? '0' : '1'}">
+      <p class="atom" style="font-size:7pt;text-transform:uppercase;letter-spacing:.05em;color:#777;margin:0 0 2mm;">Punkte</p>
+      <table class="atom teilbar" style="width:100%;border-collapse:collapse;font-size:9pt;">
+        <thead><tr>
           <th style="text-align:left;padding:1.5mm 2mm 1.5mm 0;border-bottom:1px solid #000;width:8mm;">Nr.</th>
           ${mitThema ? '<th style="text-align:left;padding:1.5mm 2mm;border-bottom:1px solid #000;width:32mm;">Thema</th>' : ''}
           <th style="text-align:left;padding:1.5mm 2mm;border-bottom:1px solid #000;">Punkt / Ergebnis</th>
           <th style="text-align:left;padding:1.5mm 2mm;border-bottom:1px solid #000;width:38mm;">Zuständig</th>
           <th style="text-align:left;padding:1.5mm 2mm;border-bottom:1px solid #000;width:22mm;">Frist</th>
           <th style="text-align:left;padding:1.5mm 0 1.5mm 2mm;border-bottom:1px solid #000;width:22mm;">Status</th>
-        </tr>
-        ${tasks.map(a => `
+        </tr></thead>
+        <tbody>${tasks.map(a => `
         <tr>
           <td style="padding:1.5mm 2mm 1.5mm 0;border-bottom:1px solid #e5e5e5;vertical-align:top;color:#777;">${esc(String(a.no || ''))}</td>
           ${mitThema ? `<td style="padding:1.5mm 2mm;border-bottom:1px solid #e5e5e5;vertical-align:top;font-weight:bold;">${esc(a.topic || '')}</td>` : ''}
@@ -131,7 +130,7 @@ export function buildNotePrintHtml(note, contact, projectName, logoDataUrl, clie
           <td style="padding:1.5mm 2mm;border-bottom:1px solid #e5e5e5;vertical-align:top;">${esc(a.responsible || '–')}</td>
           <td style="padding:1.5mm 2mm;border-bottom:1px solid #e5e5e5;vertical-align:top;">${a.deadline ? formatDate(a.deadline) : '–'}</td>
           <td style="padding:1.5mm 0 1.5mm 2mm;border-bottom:1px solid #e5e5e5;vertical-align:top;">${esc(STATUS_TEXT[a.status] || a.status || '')}</td>
-        </tr>`).join('')}
+        </tr>`).join('')}</tbody>
       </table>
     </div>`
 
@@ -140,8 +139,7 @@ export function buildNotePrintHtml(note, contact, projectName, logoDataUrl, clie
   const RAND = 'margin: 12mm 12mm 16mm 12mm;'
   const seitenCss = format === 'quer'
     ? `  @page { size: A4 landscape; ${RAND} }
-  .punkte { margin-top: 6mm; }
-  .inhalt { max-width: 190mm; }`
+  .punkte { margin-top: 6mm; }`
     : format === 'hoch'
       ? `  @page { size: A4 portrait; ${RAND} }
   .punkte { margin-top: 6mm; }`
@@ -159,21 +157,24 @@ ${seitenCss}
   p { margin: 0 0 2mm; }
   ul, ol { margin: 0 0 2mm; padding-left: 6mm; }
   strong { font-weight: bold; }
+  img { max-width: 100%; }
+  /* Beim Messen im Iframe darf kein Rollbalken die Breite verkleinern. */
+  @media screen { html { overflow: hidden; } }
+${fussCss()}
 </style></head><body>
-<div style="display:flex;align-items:flex-end;justify-content:space-between;border-bottom:1pt solid #000;padding-bottom:4mm;margin-bottom:6mm;">
-  <div>${logoHtml}</div>
-  <div style="text-align:right;line-height:1.4;">
+<div id="fussdaten" data-text="${fussText}" style="display:none">${logoHtml}</div>
+
+<div class="gruppe${format === 'quer' ? ' schmal' : ''}" data-quer="${format === 'quer' ? '1' : '0'}" data-schmal="${format === 'quer' ? '1' : '0'}">
+  <div class="atom" style="border-bottom:1pt solid #000;padding-bottom:4mm;margin-bottom:6mm;line-height:1.4;">
     <div style="font-size:6.5pt;text-transform:uppercase;letter-spacing:.1em;color:#555;">${esc(typeInfo.label)}</div>
     <div style="font-size:15pt;font-weight:bold;">${esc(note.subject || typeInfo.label)}</div>
     <div style="font-size:7pt;color:#555;">${esc(projectName || '')}${projectName ? ' · ' : ''}Stand: ${formatDate(today)}</div>
   </div>
-</div>
 
-<table style="width:100%;border-collapse:collapse;margin-bottom:6mm;">${metaHtml}</table>
+  <table class="atom" style="width:100%;border-collapse:collapse;margin-bottom:6mm;">${metaHtml}</table>
 
-<div class="inhalt" style="border-top:0.5pt solid #ccc;padding-top:4mm;">
-  <div style="font-size:6.5pt;text-transform:uppercase;letter-spacing:.05em;color:#777;margin-bottom:2mm;">Inhalt</div>
-  ${contentHtml}
+  <div class="atom" style="border-top:0.5pt solid #ccc;padding-top:4mm;font-size:6.5pt;text-transform:uppercase;letter-spacing:.05em;color:#777;margin-bottom:2mm;">Inhalt</div>
+  <div class="fliess">${contentHtml}</div>
 </div>
 ${tasksHtml}
 </body></html>`
@@ -182,15 +183,29 @@ ${tasksHtml}
 function printNote(note, contact, projectName, logoDataUrl, clientLogoDataUrl, format = 'gemischt') {
   const html   = buildNotePrintHtml(note, contact, projectName, logoDataUrl, clientLogoDataUrl, format)
   const iframe = document.createElement('iframe')
-  const breite = format === 'quer' ? '297mm' : '210mm'
-  const hoehe  = format === 'quer' ? '210mm' : '297mm'
-  iframe.style.cssText = `position:fixed;top:-9999px;left:-9999px;width:${breite};height:${hoehe};border:none;visibility:hidden;`
+  // Gemessen wird in der Breite, in der auch gedruckt wird: Seite minus
+  // Seitenränder. Sonst bricht der Text im Iframe anders um als auf dem Papier
+  // und die Seitenzahlen stimmen nicht.
+  const setzeBreite = (quer) => { iframe.style.width = `${blattBreite(quer)}mm` }
+  iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;height:3000mm;border:none;visibility:hidden;'
+  setzeBreite(format === 'quer')
   document.body.appendChild(iframe)
 
   const doc = iframe.contentDocument || iframe.contentWindow.document
   doc.open(); doc.write(html); doc.close()
 
   const doPrint = () => {
+    try {
+      const daten = doc.getElementById('fussdaten')
+      seitenAufteilen(doc, {
+        breiteFuer: setzeBreite,
+        fuss: { logos: daten?.innerHTML || '', text: daten?.dataset.text || '' },
+      })
+    } catch (e) {
+      // Lieber ohne Fußzeile drucken als gar nicht.
+      console.warn('Seitenumbruch nicht möglich:', e)
+    }
+    setzeBreite(format === 'quer')
     iframe.style.visibility = 'visible'
     iframe.contentWindow.focus()
     iframe.contentWindow.print()
@@ -199,9 +214,15 @@ function printNote(note, contact, projectName, logoDataUrl, clientLogoDataUrl, f
     }, 2000)
   }
 
-  const img = doc.querySelector('img')
-  if (img && !img.complete) { img.onload = doPrint; img.onerror = doPrint }
-  else { setTimeout(doPrint, 150) }
+  // Erst messen, wenn alle Bilder da sind – ein noch leeres Bild ist 0 hoch
+  // und würde die Seitenzahl verfälschen.
+  const bilder = [...doc.images].filter(i => !i.complete)
+  if (bilder.length === 0) { setTimeout(doPrint, 150); return }
+  let offen = bilder.length
+  let fertig = false
+  const weiter = () => { if (--offen <= 0 && !fertig) { fertig = true; doPrint() } }
+  bilder.forEach(i => { i.addEventListener('load', weiter); i.addEventListener('error', weiter) })
+  setTimeout(() => { if (!fertig) { fertig = true; doPrint() } }, 2500)
 }
 
 const TYPE_ICONS = {

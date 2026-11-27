@@ -174,6 +174,7 @@ Domenicosgro/
 │   ├── planHelfer.js              # reine Plan-Auskünfte (ohne pdfjs – auch fürs Handy)
 │   ├── planVorschau.js            # PDF → PNG im Browser, pdfjs wird nachgeladen
 │   ├── maengelliste.js            # Mängelliste als Dokument (Anlage zur Abnahme)
+│   ├── druckSeiten.js             # Seitenumbruch von Hand: Fußzeile mit Logos und „Seite x von y“
 │   │
 │   ├── components/
 │   │   ├── ProjectsHome.jsx       # Startseite: Projektliste, Favoriten, PWA-Install, Import, Admin-Kachel
@@ -1045,6 +1046,49 @@ deshalb mit dem Inhalt (`WachsendesFeld`). **Gedruckt** wird als Tabelle.
   Format hinter der Querseite.
 - `buildNotePrintHtml` ist exportiert, damit die drei Formate ohne Browser
   geprüft werden können.
+
+### Fußzeile und Seitenzählung
+`src/druckSeiten.js` – **Seitenumbruch von Hand.**
+
+Die Fußzeile trägt die beiden Logos (klein, 8 mm), Projekt · Betreff und
+„Seite x von y". Der Kopf trägt dafür allein den Betreff, linksbündig – im
+Ausdruck und im PDF gleich.
+
+**Warum von Hand:** eine Fußzeile auf jeder Seite kann ein Browser
+(`components/PrintSheet.jsx` macht das mit `<tfoot>`), eine *Seitenzahl* nicht:
+die CSS-Zähler dafür (`@bottom-center`, `counter(pages)`) kennt keine der
+Druckmaschinen von Chrome, Edge und Firefox, und eine wiederholte Fußzeile
+steht auf jeder Seite gleich da. Bei einem Dokument, das unterschrieben und
+abgeheftet wird, ist die Zahl aber der Punkt.
+
+Das Druck-HTML ist dazu gegliedert:
+
+```html
+<div class="gruppe" data-quer="0" data-schmal="0">
+  <div class="atom">…</div>             <!-- bleibt am Stück -->
+  <div class="fliess">…</div>           <!-- Kinder werden einzeln zu Atomen -->
+  <table class="atom teilbar">…</table> <!-- wird zeilenweise getrennt -->
+</div>
+```
+
+- Jede Gruppe hat ihre eigene Ausrichtung, weil im Format „gemischt" der Text
+  hochkant und die Punktetabelle quer steht.
+- **Gemessen wird in der Breite, in der gedruckt wird** (Seite minus Ränder);
+  `printNote` stellt die Iframe-Breite je Gruppe um. Eine Regel, die nur im
+  fertigen Blatt gilt (etwa die schmale Textspalte im Querformat), muss auch
+  beim Messen gelten – sonst wird in voller Breite gemessen und in halber
+  gesetzt, und der Text läuft in die Fußzeile.
+- Gemessen wird **erst, wenn alle Bilder geladen sind**; ein leeres Bild ist
+  0 hoch und verfälscht die Seitenzahl.
+- Eine getrennte Tabelle bekommt auf jedem Blatt ihren Kopf wieder (`<thead>`
+  wird geklont).
+- Ein Stück, das allein höher ist als eine Seite, bekommt sein eigenes Blatt
+  und läuft notfalls über – abschneiden wäre schlimmer.
+- Schlägt der Umbruch fehl, wird **ohne** Fußzeile gedruckt statt gar nicht
+  (`try/catch` in `printNote`).
+- Im PDF ist es einfacher: die Fußzeile wird am Ende über `getPages()`
+  gezeichnet, wenn die Zahl der Seiten feststeht – wie im Protokoll-PDF.
+  `ensureSpace` lässt dafür unten `FUSS_H` frei.
 - Die Mängelliste hat ihren eigenen Schalter im Dialog, Vorgabe quer.
 
 - **Ein Punkt ohne Zuständigen und Frist ist eine Feststellung, mit beidem eine

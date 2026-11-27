@@ -84,8 +84,11 @@ export async function buildNotePdf(note, contact, projectName, logoDataUrl, clie
   }
   neueSeite(format === 'quer')
 
+  // Unten bleibt Platz für die Fußzeile (Logos, Projekt, Seitenzahl):
+  // der Text endet darüber, nicht darin.
+  const FUSS_H = 20
   const ensureSpace = (needed) => {
-    if (y - needed < MARGIN) neueSeite()
+    if (y - needed < MARGIN + FUSS_H) neueSeite()
   }
 
   // Logos (Büro-Logo + optionales Auftraggeber-Logo)
@@ -101,27 +104,15 @@ export async function buildNotePdf(note, contact, projectName, logoDataUrl, clie
   const logoImg       = await embedLogo(logoDataUrl)
   const clientLogoImg = await embedLogo(clientLogoDataUrl)
 
-  // Draw logos and track where the logo area ends (right edge of last logo)
-  let logoRight = MARGIN
-  if (logoImg) {
-    const d = logoImg.scaleToFit(100, 32)
-    page.drawImage(logoImg, { x: logoRight, y: y - d.height, width: d.width, height: d.height })
-    logoRight += d.width + 12
-  }
-  if (clientLogoImg) {
-    const d = clientLogoImg.scaleToFit(100, 32)
-    page.drawImage(clientLogoImg, { x: logoRight, y: y - d.height, width: d.width, height: d.height })
-    logoRight += d.width + 12
-  }
-
-  // Right header block — text column starts after the logo area + gap
-  const TEXT_COL_MIN_X = logoRight + 8          // never draw text left of this
-  const TEXT_COL_W     = PAGE_W - MARGIN - TEXT_COL_MIN_X   // usable width for title
+  // Die Logos stehen klein in der Fußzeile (unten, auf jeder Seite) – der Kopf
+  // trägt dafür allein den Betreff und hat die ganze Breite.
+  const TEXT_COL_W = PAGE_W - MARGIN * 2        // Breite für den Titel
   const typeText  = typeInfo.label.toUpperCase()
   const rawTitle  = note.subject || typeInfo.label
   const standText = `${projectName ? projectName + ' · ' : ''}Stand: ${formatDate(today)}`
 
-  // Wrap the title so it fits in the right column and never reaches into the logo area
+  // Linksbündig wie im Ausdruck: rechtsbündig war der Titel nur, weil links das
+  // Logo stand. Das steht jetzt in der Fußzeile.
   const TITLE_SIZE   = 13
   const TITLE_LINE_H = 16
   const titleLines   = wrapText(rawTitle, fontBold, TITLE_SIZE, TEXT_COL_W)
@@ -130,21 +121,17 @@ export async function buildNotePdf(note, contact, projectName, logoDataUrl, clie
   const HEADER_H = Math.max(44, 10 + titleLines.length * TITLE_LINE_H + 14 + 8)
 
   page.drawText(typeText, {
-    x: PAGE_W - MARGIN - fontReg.widthOfTextAtSize(typeText, 7),
-    y: y - 10, size: 7, font: fontReg, color: rgb(0.33, 0.33, 0.33),
+    x: MARGIN, y: y - 10, size: 7, font: fontReg, color: rgb(0.33, 0.33, 0.33),
   })
   let titleY = y - 24
   for (const line of titleLines) {
-    const lineW = fontBold.widthOfTextAtSize(line, TITLE_SIZE)
     page.drawText(line, {
-      x: Math.max(TEXT_COL_MIN_X, PAGE_W - MARGIN - lineW),
-      y: titleY, size: TITLE_SIZE, font: fontBold, color: rgb(0, 0, 0),
+      x: MARGIN, y: titleY, size: TITLE_SIZE, font: fontBold, color: rgb(0, 0, 0),
     })
     titleY -= TITLE_LINE_H
   }
   page.drawText(standText, {
-    x: PAGE_W - MARGIN - fontReg.widthOfTextAtSize(standText, 7),
-    y: titleY + 2, size: 7, font: fontReg, color: rgb(0.33, 0.33, 0.33),
+    x: MARGIN, y: titleY + 2, size: 7, font: fontReg, color: rgb(0.33, 0.33, 0.33),
   })
 
   y -= HEADER_H
@@ -261,6 +248,34 @@ export async function buildNotePdf(note, contact, projectName, logoDataUrl, clie
       page.drawLine({ start: { x: MARGIN, y: y + 8 }, end: { x: PAGE_W - MARGIN, y: y + 8 }, thickness: 0.3, color: rgb(0.9, 0.9, 0.9) })
     }
   }
+
+  // ── Fußzeile auf jeder Seite ───────────────────────────────────────
+  // Erst jetzt, weil die Zahl der Seiten vorher nicht feststeht. Gleiche Form
+  // wie im Protokoll-PDF, nur mit den beiden Logos davor.
+  const blaetter = pdfDoc.getPages()
+  const fussText = [projectName, note.subject].filter(Boolean).join(' · ')
+  blaetter.forEach((pg, i) => {
+    const breite = pg.getWidth()
+    pg.drawLine({
+      start: { x: MARGIN, y: 44 }, end: { x: breite - MARGIN, y: 44 },
+      thickness: 0.3, color: rgb(0.8, 0.8, 0.8),
+    })
+    let x = MARGIN
+    for (const img of [logoImg, clientLogoImg]) {
+      if (!img) continue
+      const d = img.scaleToFit(60, 16)
+      pg.drawImage(img, { x, y: 22, width: d.width, height: d.height })
+      x += d.width + 10
+    }
+    if (fussText) {
+      pg.drawText(fussText, { x: x + 2, y: 26, size: 7, font: fontReg, color: rgb(0.5, 0.5, 0.5) })
+    }
+    const seite = `Seite ${i + 1} von ${blaetter.length}`
+    pg.drawText(seite, {
+      x: breite - MARGIN - fontReg.widthOfTextAtSize(seite, 7),
+      y: 26, size: 7, font: fontReg, color: rgb(0.5, 0.5, 0.5),
+    })
+  })
 
   return pdfDoc.saveAsBase64()
 }

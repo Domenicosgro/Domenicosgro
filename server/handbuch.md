@@ -521,6 +521,11 @@ Der Knopf selbst druckt sofort im zuletzt gewählten Format — Sie werden nicht
 vor jedem Ausdruck gefragt. Dieselbe Wahl gilt für das PDF, das einer E-Mail
 angehängt wird.
 
+**Auf jedem Blatt steht unten eine Fußzeile:** die beiden Logos klein (Büro und
+Auftraggeber), daneben Projekt und Betreff, rechts **„Seite 2 von 5"**. Oben
+steht dafür nur noch der Betreff — so ist jedes einzelne Blatt zuzuordnen,
+auch wenn die Heftklammer verlorengeht.
+
 **„Punkte ins Protokoll"** übernimmt sie als Maßnahmen in ein Protokoll des
 Projekts; in der Maßnahme steht dann „Thema: Punkt". Erst dort greifen
 Erinnerung, Freimeldung durch die Firma und das Maßnahmen-Dashboard. Danach
