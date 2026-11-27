@@ -1020,11 +1020,32 @@ untereinander in ganzer Breite, im Zuschnitt von `ActionItems.jsx` (Nummer,
 Haken, Thema fett, Text, darunter Zuständig · Frist · Dringlichkeit · Zustand).
 Eine Eingabetabelle mit sechs Spalten sieht geordnet aus, aber man schreibt in
 briefmarkengroße Felder und sieht den eigenen Satz nicht; das Textfeld wächst
-deshalb mit dem Inhalt (`WachsendesFeld`). **Gedruckt** wird als Tabelle, und
-zwar **quer**: im Notizdruck über eine benannte Seite (`@page quer`, Chrome und
-Edge können das; andere drucken hochkant weiter), im PDF über eine eigene
-Querseite (`neueSeite(true)` in `notePdf.js` – Text bleibt hochkant, die
-Tabelle wird quer). Die Mängelliste hat dafür einen Schalter, Vorgabe quer.
+deshalb mit dem Inhalt (`WachsendesFeld`). **Gedruckt** wird als Tabelle.
+
+### Druckformat der Notiz
+`DRUCKFORMATE` in `src/components/NotesList.jsx`, drei Werte:
+
+| id | Ausdruck | PDF |
+|----|----------|-----|
+| `gemischt` (Vorgabe) | Text hochkant, Punkte auf benannter Querseite (`@page quer`) | `neueSeite(true)` vor der Tabelle |
+| `hoch` | alles hochkant, engere Spalten | eine Richtung, Tabelle fließend |
+| `quer` | alles quer, Text auf `max-width: 190mm` | alle Seiten quer |
+
+- Gewählt wird am **geteilten Knopf** „Drucken / PDF" (Pfeil daneben); der
+  erste Klick druckt im zuletzt gewählten Format, niemand wird vor jedem
+  Ausdruck gefragt. Die Wahl liegt in `localStorage` unter
+  `kp_note_druckformat` und gilt auch für das PDF im E-Mail-Anhang
+  (`gemerktesFormat()`).
+- Benannte Seiten kennen Chrome und Edge; ein Browser ohne sie druckt die
+  Tabelle hochkant weiter – unschöner, aber lesbar.
+- Im PDF sind die Seitenmaße deshalb veränderlich (`neueSeite(quer)` setzt
+  `PAGE_W`, `PAGE_H`, `CONTENT_W` neu); die Spaltenpositionen hängen an
+  `PAGE_W` und werden **nach** dem Seitenwechsel berechnet. Bilder aus dem
+  Inhalt werden vor der Tabelle gezeichnet, sonst landen sie im gemischten
+  Format hinter der Querseite.
+- `buildNotePrintHtml` ist exportiert, damit die drei Formate ohne Browser
+  geprüft werden können.
+- Die Mängelliste hat ihren eigenen Schalter im Dialog, Vorgabe quer.
 
 - **Ein Punkt ohne Zuständigen und Frist ist eine Feststellung, mit beidem eine
   Aufgabe** – derselbe Datensatz, dieselben Felder wie eine Maßnahme

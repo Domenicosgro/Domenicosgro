@@ -506,8 +506,20 @@ mit. Das Textfeld wächst mit dem Inhalt: auch ein Punkt über fünf Zeilen ist
 beim Schreiben ganz zu sehen.
 
 Die Punkte stehen im Ausdruck, im PDF und in der E-Mail der Notiz — wer etwas
-tun soll, muss es nicht im Fließtext suchen. **Gedruckt werden sie als Tabelle
-im Querformat**, auf einem eigenen Blatt; der Text der Notiz bleibt hochkant.
+tun soll, muss es nicht im Fließtext suchen. Gedruckt werden sie als Tabelle.
+
+**Das Format wählen Sie selbst.** Der kleine Pfeil neben „Drucken / PDF" öffnet
+die Wahl:
+
+| Format | wofür |
+|---|---|
+| Text hochkant, Punkte quer | Vorgabe: der Text liest sich hochkant, die Tabelle bekommt ein eigenes Querblatt |
+| Alles hochkant | ein Blatt, eine Richtung — für den Ordner; die Spalten werden enger |
+| Alles quer | für lange Texte in der Tabelle; der Text steht dann in einer Spalte |
+
+Der Knopf selbst druckt sofort im zuletzt gewählten Format — Sie werden nicht
+vor jedem Ausdruck gefragt. Dieselbe Wahl gilt für das PDF, das einer E-Mail
+angehängt wird.
 
 **„Punkte ins Protokoll"** übernimmt sie als Maßnahmen in ein Protokoll des
 Projekts; in der Maßnahme steht dann „Thema: Punkt". Erst dort greifen

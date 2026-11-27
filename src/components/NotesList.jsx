@@ -26,8 +26,36 @@ function esc(str) {
   return (str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }
 
+// ── Druckformat ─────────────────────────────────────────────────────────────────
+//
+// Eine Notiz ist zweierlei: Text und eine Punktetabelle mit sechs Spalten. Beide
+// wollen ein anderes Blatt. Deshalb wird das Format gewählt und nicht geraten;
+// die Wahl bleibt stehen und gilt auch für das PDF im E-Mail-Anhang.
+export const DRUCKFORMATE = [
+  { id: 'gemischt', label: 'Text hochkant, Punkte quer',
+    hinweis: 'Empfohlen: der Text liest sich hochkant, die Tabelle bekommt ein eigenes Querblatt.' },
+  { id: 'hoch',     label: 'Alles hochkant',
+    hinweis: 'Ein Blatt, eine Richtung – für den Ordner. Die Tabelle wird enger.' },
+  { id: 'quer',     label: 'Alles quer',
+    hinweis: 'Für lange Texte in der Tabelle. Der Text steht dann in einer Spalte.' },
+]
+const FORMAT_KEY = 'kp_note_druckformat'
+
+export function gemerktesFormat() {
+  try {
+    const v = localStorage.getItem(FORMAT_KEY)
+    if (DRUCKFORMATE.some(f => f.id === v)) return v
+  } catch {}
+  return 'gemischt'
+}
+
+function formatMerken(id) {
+  try { localStorage.setItem(FORMAT_KEY, id) } catch {}
+}
+
 // ── Notiz-Druck (Design wie Protokoll) ──────────────────────────────────────────
-function buildNotePrintHtml(note, contact, projectName, logoDataUrl, clientLogoDataUrl) {
+// Exportiert, damit die drei Formate ohne Browser geprüft werden können.
+export function buildNotePrintHtml(note, contact, projectName, logoDataUrl, clientLogoDataUrl, format = 'gemischt') {
   const typeInfo = NOTE_TYPES.find(t => t.value === note.type) ?? NOTE_TYPES[0]
   const today    = new Date().toISOString().slice(0, 10)
 
@@ -84,7 +112,7 @@ function buildNotePrintHtml(note, contact, projectName, logoDataUrl, clientLogoD
   // Benannte Seiten (@page quer) kennen Chrome und Edge; kann ein Browser sie
   // nicht, druckt er die Tabelle hochkant weiter – unschoener, aber lesbar.
   const tasksHtml = tasks.length === 0 ? '' : `
-    <div class="punkteblatt">
+    <div class="punkte">
       <p style="font-size:7pt;text-transform:uppercase;letter-spacing:.05em;color:#777;margin:0 0 2mm;">Punkte</p>
       <table style="width:100%;border-collapse:collapse;font-size:9pt;">
         <tr>
@@ -107,13 +135,25 @@ function buildNotePrintHtml(note, contact, projectName, logoDataUrl, clientLogoD
       </table>
     </div>`
 
+  // Benannte Seiten (@page quer) kennen Chrome und Edge; kann ein Browser sie
+  // nicht, druckt er die Tabelle hochkant weiter – unschöner, aber lesbar.
+  const RAND = 'margin: 12mm 12mm 16mm 12mm;'
+  const seitenCss = format === 'quer'
+    ? `  @page { size: A4 landscape; ${RAND} }
+  .punkte { margin-top: 6mm; }
+  .inhalt { max-width: 190mm; }`
+    : format === 'hoch'
+      ? `  @page { size: A4 portrait; ${RAND} }
+  .punkte { margin-top: 6mm; }`
+      : `  @page { size: A4 portrait; ${RAND} }
+  @page quer { size: A4 landscape; ${RAND} }
+  .punkte { page: quer; page-break-before: always; margin-top: 0; }`
+
   return `<!DOCTYPE html>
 <html lang="de"><head><meta charset="UTF-8">
 <title>${esc(typeInfo.label)} – ${esc(note.subject || projectName || '')}</title>
 <style>
-  @page { size: A4 portrait; margin: 12mm 12mm 16mm 12mm; }
-  @page quer { size: A4 landscape; margin: 12mm 12mm 16mm 12mm; }
-  .punkteblatt { page: quer; page-break-before: always; margin-top: 0; }
+${seitenCss}
   * { box-sizing: border-box; }
   body { font-family: Arial, sans-serif; font-size: 10pt; color: #000; margin: 0; background: #fff; line-height: 1.5; }
   p { margin: 0 0 2mm; }
@@ -131,7 +171,7 @@ function buildNotePrintHtml(note, contact, projectName, logoDataUrl, clientLogoD
 
 <table style="width:100%;border-collapse:collapse;margin-bottom:6mm;">${metaHtml}</table>
 
-<div style="border-top:0.5pt solid #ccc;padding-top:4mm;">
+<div class="inhalt" style="border-top:0.5pt solid #ccc;padding-top:4mm;">
   <div style="font-size:6.5pt;text-transform:uppercase;letter-spacing:.05em;color:#777;margin-bottom:2mm;">Inhalt</div>
   ${contentHtml}
 </div>
@@ -139,10 +179,12 @@ ${tasksHtml}
 </body></html>`
 }
 
-function printNote(note, contact, projectName, logoDataUrl, clientLogoDataUrl) {
-  const html   = buildNotePrintHtml(note, contact, projectName, logoDataUrl, clientLogoDataUrl)
+function printNote(note, contact, projectName, logoDataUrl, clientLogoDataUrl, format = 'gemischt') {
+  const html   = buildNotePrintHtml(note, contact, projectName, logoDataUrl, clientLogoDataUrl, format)
   const iframe = document.createElement('iframe')
-  iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:210mm;height:297mm;border:none;visibility:hidden;'
+  const breite = format === 'quer' ? '297mm' : '210mm'
+  const hoehe  = format === 'quer' ? '210mm' : '297mm'
+  iframe.style.cssText = `position:fixed;top:-9999px;left:-9999px;width:${breite};height:${hoehe};border:none;visibility:hidden;`
   document.body.appendChild(iframe)
 
   const doc = iframe.contentDocument || iframe.contentWindow.document
@@ -215,7 +257,7 @@ function NoteEmailModal({ note, contacts, allContacts, projectName, logoDataUrl,
         let pdfBase64 = null
         let pdfFilename = null
         try {
-          pdfBase64  = await buildNotePdf(note, linkedContact, projectName, logoDataUrl, clientLogoDataUrl)
+          pdfBase64  = await buildNotePdf(note, linkedContact, projectName, logoDataUrl, clientLogoDataUrl, gemerktesFormat())
           const typeLabel = NOTE_TYPES.find(t => t.value === note.type)?.label || 'Notiz'
           const safeName  = (note.subject || typeLabel).replace(/[^a-zA-Z0-9äöüÄÖÜß _\-]/g, '').trim().slice(0, 60)
           pdfFilename = `${typeLabel}_${safeName || 'Notiz'}${note.date ? '_' + note.date : ''}.pdf`
@@ -521,6 +563,10 @@ function NoteEditor({ note, contacts, allContacts, projectName, logoDataUrl, cli
 
   // Teilnehmer aus Kontakten (Projektkontakte + Kontaktdatenbank, dedupliziert)
   const [vorlagenOffen, setVorlagenOffen] = useState(false)
+  // Gedruckt wird mit einem Klick im zuletzt gewählten Format; der Pfeil daneben
+  // öffnet die Wahl. Niemand soll vor jedem Ausdruck gefragt werden.
+  const [druckFormat,  setDruckFormat]  = useState(gemerktesFormat)
+  const [formatOffen,  setFormatOffen]  = useState(false)
   const participants = note.participants ?? []
   const participantKeys = new Set(participants.map(contactKey))
 
@@ -535,6 +581,7 @@ function NoteEditor({ note, contacts, allContacts, projectName, logoDataUrl, cli
   }, [contacts, allContacts])
 
   const availableContacts = contactPool.filter(c => !participantKeys.has(contactKey(c)))
+  const formatLabel = DRUCKFORMATE.find(f => f.id === druckFormat)?.label || 'Format wählen'
 
   const addParticipant = (key) => {
     const c = contactPool.find(x => contactKey(x) === key)
@@ -677,13 +724,48 @@ function NoteEditor({ note, contacts, allContacts, projectName, logoDataUrl, cli
           >
             <Mail size={14} /> Per E-Mail senden
           </button>
-          <button
-            className="btn-secondary flex items-center gap-1 text-sm"
-            onClick={() => printNote(note, linkedContact, projectName, logoDataUrl, clientLogoDataUrl)}
-            title="Notiz drucken / als PDF speichern"
-          >
-            <Printer size={14} /> Drucken / PDF
-          </button>
+          <div className="relative flex">
+            <button
+              className="btn-secondary flex items-center gap-1 text-sm"
+              onClick={() => printNote(note, linkedContact, projectName, logoDataUrl, clientLogoDataUrl, druckFormat)}
+              title={`Notiz drucken / als PDF speichern – ${formatLabel}`}
+            >
+              <Printer size={14} /> Drucken / PDF
+            </button>
+            <button
+              className="btn-secondary px-1.5 text-sm border-l-0"
+              onClick={() => setFormatOffen(o => !o)}
+              title="Format des Ausdrucks wählen"
+            >
+              <ChevronDown size={14} />
+            </button>
+            {formatOffen && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setFormatOffen(false)} />
+                <div className="absolute bottom-full left-0 mb-1 z-50 w-80 bg-white border border-gray-200 shadow-xl">
+                  <p className="px-3 pt-2.5 pb-1 text-xs font-medium text-gray-500">Format des Ausdrucks</p>
+                  {DRUCKFORMATE.map(f => (
+                    <button
+                      key={f.id}
+                      className={`w-full text-left px-3 py-2 border-t border-gray-100 hover:bg-gray-50 flex items-start gap-2 ${
+                        druckFormat === f.id ? 'bg-sky/10' : ''}`}
+                      onClick={() => {
+                        setDruckFormat(f.id); formatMerken(f.id); setFormatOffen(false)
+                        printNote(note, linkedContact, projectName, logoDataUrl, clientLogoDataUrl, f.id)
+                      }}
+                    >
+                      <Check size={13} className={`mt-0.5 flex-shrink-0 ${
+                        druckFormat === f.id ? 'text-brand-600' : 'text-transparent'}`} />
+                      <span className="min-w-0">
+                        <span className="block text-sm text-gray-900">{f.label}</span>
+                        <span className="block text-xs text-gray-500">{f.hinweis}</span>
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
         </div>
         <button
           className="btn-ghost p-2 text-red-400 hover:text-red-600 hover:bg-red-50"

@@ -51,7 +51,8 @@ function wrapText(text, font, fontSize, maxWidth) {
   return lines
 }
 
-export async function buildNotePdf(note, contact, projectName, logoDataUrl, clientLogoDataUrl = null) {
+// format: 'hoch' (alles hochkant) | 'gemischt' (Text hoch, Punkte quer) | 'quer'
+export async function buildNotePdf(note, contact, projectName, logoDataUrl, clientLogoDataUrl = null, format = 'gemischt') {
   const pdfDoc = await PDFDocument.create()
   // Hoch- und Querformat im selben Dokument: der Text liest sich hochkant
   // besser, die Punktetabelle braucht quer. Deshalb sind die Maße veraenderlich
@@ -81,7 +82,7 @@ export async function buildNotePdf(note, contact, projectName, logoDataUrl, clie
     page      = pdfDoc.addPage([PAGE_W, PAGE_H])
     y         = PAGE_H - MARGIN
   }
-  neueSeite(false)
+  neueSeite(format === 'quer')
 
   const ensureSpace = (needed) => {
     if (y - needed < MARGIN) neueSeite()
@@ -195,14 +196,32 @@ export async function buildNotePdf(note, contact, projectName, logoDataUrl, clie
     y -= LINE_H
   }
 
+  for (const { mimeType, base64 } of extractHtmlImages(note.content)) {
+    try {
+      const pdfImg = mimeType === 'png'
+        ? await pdfDoc.embedPng(base64)
+        : await pdfDoc.embedJpg(base64)
+      const d = pdfImg.scaleToFit(CONTENT_W, 280)
+      ensureSpace(d.height + 10)
+      page.drawImage(pdfImg, { x: MARGIN, y: y - d.height, width: d.width, height: d.height })
+      y -= d.height + 10
+    } catch {}
+  }
+
   // ── Aufgaben ──────────────────────────────────────────────────────────────
   // Ohne Aufgaben kein Abschnitt: eine leere Tabelle sagt nichts.
   const aufgaben = (note.actionItems ?? []).filter(a => (a.description || a.topic || '').trim())
   if (aufgaben.length > 0) {
     const STATUS_TEXT = { offen: 'Offen', in_arbeit: 'In Arbeit', erledigt: 'Erledigt', verschoben: 'Verschoben' }
-    // Ab hier quer – mit allen Maßen, die daran hängen.
-    neueSeite(true)
-    const SP = { nr: MARGIN, text: MARGIN + 14, wer: PAGE_W - MARGIN - 230, frist: PAGE_W - MARGIN - 110, status: PAGE_W - MARGIN - 52 }
+    // „gemischt“: der Text bleibt hochkant, die Tabelle bekommt eine eigene
+    // Querseite. „quer“: wir stehen schon quer. „hoch“: alles bleibt hochkant,
+    // dann hat die Textspalte weniger Platz – deshalb engere Spalten.
+    if (format === 'gemischt') neueSeite(true)
+    else { y -= 10; ensureSpace(30) }
+
+    const SP = quer
+      ? { nr: MARGIN, text: MARGIN + 14, wer: PAGE_W - MARGIN - 230, frist: PAGE_W - MARGIN - 110, status: PAGE_W - MARGIN - 52 }
+      : { nr: MARGIN, text: MARGIN + 14, wer: PAGE_W - MARGIN - 150, frist: PAGE_W - MARGIN -  78, status: PAGE_W - MARGIN - 36 }
     const TEXT_W = SP.wer - SP.text - 8
 
     page.drawText('PUNKTE', { x: MARGIN, y, size: 6.5, font: fontReg, color: rgb(0.47, 0.47, 0.47) })
@@ -241,18 +260,6 @@ export async function buildNotePdf(note, contact, projectName, logoDataUrl, clie
       y = Math.min(zy, kopf - 12) - 4
       page.drawLine({ start: { x: MARGIN, y: y + 8 }, end: { x: PAGE_W - MARGIN, y: y + 8 }, thickness: 0.3, color: rgb(0.9, 0.9, 0.9) })
     }
-  }
-
-  for (const { mimeType, base64 } of extractHtmlImages(note.content)) {
-    try {
-      const pdfImg = mimeType === 'png'
-        ? await pdfDoc.embedPng(base64)
-        : await pdfDoc.embedJpg(base64)
-      const d = pdfImg.scaleToFit(CONTENT_W, 280)
-      ensureSpace(d.height + 10)
-      page.drawImage(pdfImg, { x: MARGIN, y: y - d.height, width: d.width, height: d.height })
-      y -= d.height + 10
-    } catch {}
   }
 
   return pdfDoc.saveAsBase64()
