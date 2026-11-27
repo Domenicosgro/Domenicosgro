@@ -101,6 +101,15 @@ const FUELLWOERTER = new Set([
   // nach dem Ort, nicht nach dem Wort "hin" -- und "hin" steht in jedem
   // "hinzufuegen".
   'hin', 'her', 'dran', 'rein', 'raus', 'dabei', 'damit', 'denn', 'etwa',
+  // "Nochmal." ist keine Frage nach etwas, sondern eine Bitte um dasselbe.
+  // Einzeln standen 'noch', 'mal' und 'wieder' schon oben; zusammen-
+  // geschrieben fehlte es. Dass es lange nicht auffiel, liegt an der
+  // Haeufigkeitsregel: Solange "nochmal" ueberall stand, flog es als
+  // Allerweltswort heraus. Als im Handbuch genau EIN "nochmaliges" stand,
+  // wurde daraus ein seltenes -- also schwer wiegendes -- Suchwort, und ein
+  // blosses "nochmal" holte diese eine Stelle. Seltenheit misst Trennschaerfe
+  // nur bei Woertern, die ueberhaupt etwas bedeuten.
+  'nochmal', 'nochmals', 'erneut',
 ])
 
 const ohneHtml = (s) => String(s || '')

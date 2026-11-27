@@ -298,6 +298,25 @@ async function main() {
     username: 'bert', password: 'bert-Passwort-1' } })).json?.token
   pruefe('Anna und Bert sind angemeldet', Boolean(annaTok && bertTok))
 
+  // Neuigkeiten gelten erst ab dem Tag, an dem jemand dazugekommen ist
+  // (neuigkeiten.js, offenFuer): Wer heute anfaengt, bekommt nicht die
+  // Versionsgeschichte des letzten Jahres vorgesetzt. Anna und Bert sind
+  // aber gerade erst angelegt worden -- damit sahen sie ab dem Tag KEINE
+  // Neuigkeit mehr, an dem der juengste Eintrag in neuigkeiten.md aelter
+  // ist als heute. Der Lauf scheiterte dann an einem Kalenderblatt, nicht
+  // an einem Fehler. Also: beide gibt es schon laenger.
+  //
+  // Geschrieben wird direkt in die Pruef-Datenbank im Temp-Verzeichnis --
+  // ueber die Schnittstelle laesst sich ein Anlagedatum nicht setzen, und
+  // das soll auch so bleiben.
+  {
+    const Datenbank = require(path.join(WURZEL, 'node_modules', 'better-sqlite3'))
+    const d = new Datenbank(path.join(scratch, 'komplizen.db'))
+    d.prepare("UPDATE users SET created_at = '2020-01-01 00:00:00'"
+              + " WHERE username IN ('anna','bert')").run()
+    d.close()
+  }
+
   // Ein offenes Projekt und ein zugangsbeschränktes, das nur Anna sehen darf.
   await ruf('/api/projects', { methode: 'POST', token: chefTok, koerper: {
     id: 'p-offen', name: 'Halle Nord', nummer: '24-07',
